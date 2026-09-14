@@ -4,17 +4,6 @@ Reproducible build environment for the kernel repo, so Windows/WSL2 and Mac
 teammates build against the exact same toolchain instead of whatever apt or
 Homebrew happen to have installed that week.
 
-## What's here
-
-| File | Purpose |
-|---|---|
-| `Dockerfile` | Pinned build environment: ARM toolchain, Pico SDK, `bear` |
-| `docker-compose.yml` | Convenience wrapper — bind-mounts the repo into the container |
-| `.devcontainer/devcontainer.json` | Wires the same compose service into VS Code's Dev Containers extension |
-| `.vscode/settings.json` | Fallback IntelliSense config that applies even if VS Code isn't opened via Dev Containers |
-
-Drop all four at the root of your `mtk3smp-rp2040` clone, alongside `build_make/`.
-
 > [!WARNING]
 > `devcontainer.json` **must** be inside a folder named exactly `.devcontainer/`
 > (or be a dot-file `.devcontainer.json` at the root) — nothing else. A loose
