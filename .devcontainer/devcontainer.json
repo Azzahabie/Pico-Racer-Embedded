@@ -1,0 +1,24 @@
+{
+  "name": "mtk3smp-rp2040 dev",
+  // Reuses the same docker-compose.yml and Dockerfile used for plain
+  // command-line builds, so the VS Code environment and the CLI build
+  // environment never drift apart.
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "build",
+  "workspaceFolder": "/workspace",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools"
+      ],
+      "settings": {
+        // Picked up once you run `bear -- make -j8` inside build_make/
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json"
+      }
+    }
+  },
+
+  // Sanity check on container start: confirms the pinned toolchain is on PATH.
+  "postCreateCommand": "arm-none-eabi-gcc --version"
+}
