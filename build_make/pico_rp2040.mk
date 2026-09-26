@@ -432,6 +432,9 @@ endif
 ifeq ($(WIFI_TCPBULK),1)
 LWIP_PORT_OBJS += ./mtkernel_3/lib/libnet/lwip/lwip_utk_tcpbulk.o
 endif
+ifeq ($(WIFI_MQTT),1)
+LWIP_PORT_OBJS += ./mtkernel_3/lib/libnet/lwip/lwip_utk_mqtt.o
+endif
 endif
 
 WIFI_INCLUDES := -I"$(WIFIDIR)" \

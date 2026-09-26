@@ -28,6 +28,9 @@
 #if TM_WIFI_TCPBULK
 #include "lwip_utk_tcpbulk.h"
 #endif
+#if TM_WIFI_MQTT
+#include "lwip_utk_mqtt.h"
+#endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP
 #include "lwip_utk_ipv4.h"
 #endif
@@ -232,6 +235,51 @@ static void update_tcp_status(void)
     radio_status.tcp_port = status.port;
     for(unsigned int i = 0; i < sizeof(status.target); i++) {
         radio_status.tcp_target[i] = status.target[i];
+    }
+}
+#endif
+
+#if TM_WIFI_MQTT
+/* The mirror in cyw43_utk.h duplicates the topic/payload capacity for the same
+   reason as the UDP ring geometry: that header is seen by code which cannot
+   include the lwIP headers.  Catch drift here rather than silently truncating
+   a published message. */
+typedef char cyw43_mqtt_size_matches[
+	(LWIP_UTK_MQTT_TOPIC_MAX == CYW43_MQTT_TOPIC_MAX
+	 && LWIP_UTK_MQTT_PAYLOAD_MAX == CYW43_MQTT_PAYLOAD_MAX) ? 1 : -1];
+
+static void update_mqtt_status(void)
+{
+    T_LWIP_UTK_MQTT_STATUS status;
+
+    lwip_utk_mqtt_get_status(&status);
+    radio_status.mqtt_enabled = TM_WIFI_MQTT;
+    radio_status.mqtt_init_result = status.init_result;
+    radio_status.mqtt_connect_request = status.connect_request;
+    radio_status.mqtt_connection_result = status.connection_result;
+    radio_status.mqtt_publish_result = status.publish_result;
+    radio_status.mqtt_publish_ack = status.publish_ack;
+    radio_status.mqtt_result = status.result;
+    radio_status.mqtt_initialized = status.initialized;
+    radio_status.mqtt_started = status.started;
+    radio_status.mqtt_connected = status.connected;
+    radio_status.mqtt_published = status.published;
+    radio_status.mqtt_complete = status.complete;
+    radio_status.mqtt_connect_attempts = status.connect_attempts;
+    radio_status.mqtt_publish_attempts = status.publish_attempts;
+    radio_status.mqtt_poll_calls = status.poll_calls;
+    radio_status.mqtt_guard_blocked = status.guard_blocked;
+    radio_status.mqtt_connect_ms = status.connect_ms;
+    radio_status.mqtt_elapsed_ms = status.elapsed_ms;
+    radio_status.mqtt_port = status.port;
+    for(unsigned int i = 0; i < sizeof(status.broker); i++) {
+        radio_status.mqtt_broker[i] = status.broker[i];
+    }
+    for(unsigned int i = 0; i < sizeof(status.topic); i++) {
+        radio_status.mqtt_topic[i] = status.topic[i];
+    }
+    for(unsigned int i = 0; i < sizeof(status.payload); i++) {
+        radio_status.mqtt_payload[i] = status.payload[i];
     }
 }
 #endif
@@ -541,6 +589,16 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
             lwip_utk_tcpbulk_poll(&cyw43_state.netif[CYW43_ITF_STA]);
         }
         update_bulk_status();
+#endif
+#if TM_WIFI_MQTT
+        /* Gated on having an address rather than on the echo phases: MQTT is
+         * the feature under test here, not another link check, so it should
+         * not queue behind the UDP/TCP qualification traffic.  The module
+         * guards on the netif state itself as well. */
+        if(radio_status.dhcp_complete) {
+            lwip_utk_mqtt_poll(&cyw43_state.netif[CYW43_ITF_STA]);
+        }
+        update_mqtt_status();
 #endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP
         lwip_utk_ipv4_poll(&cyw43_state.netif[CYW43_ITF_STA]);
