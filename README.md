@@ -61,22 +61,24 @@ that risk entirely for the whole team.
 > nothing else.
 
 3. First build takes a few minutes (base image, toolchain, Pico SDK); cached after that.
-4. For working IntelliSense:
+4. For working IntelliSense, build *through* `bear` and write the database to
+   the repo root — which is where both `.vscode/settings.json` and
+   `devcontainer.json` look for it:
    ```sh
    cd build_make
    make clean
-   bear -- make -j8
+   bear --output ../compile_commands.json -- make -j8
    ```
    `make clean` matters — if most `.o` files are already up to date, plain
    `make` skips recompiling them and `bear` only captures whatever actually
    ran, giving you a mostly-empty `compile_commands.json`.
-5. `bear` writes `compile_commands.json` into your current directory
-   (`build_make/`), not the repo root. Either copy it up:
-   ```sh
-   cp compile_commands.json ../compile_commands.json
-   ```
-   or generate it there directly: `bear --output ../compile_commands.json -- make -j8`.
-6. If IntelliSense still hasn't picked it up: Command palette →
+
+   The paths recorded inside it are container paths (`/workspace/...`,
+   `/opt/arm-toolchain/...`), so it only means anything to a VS Code window
+   that is itself running inside the container. That's the deliberate
+   trade-off of this setup rather than a bug — open the folder normally and
+   the C/C++ extension falls back to `cl.exe` and gets nothing useful.
+5. If IntelliSense still hasn't picked it up: Command palette →
    **C/C++: Reset IntelliSense Database**, then **Developer: Reload Window**.
    VS Code caches its fallback results and won't always notice a new file on its own.
 
@@ -100,6 +102,37 @@ pinned toolchain as the VS Code path; the only thing you lose is in-editor
 IntelliSense, and even that's recoverable with the `.vscode/settings.json`
 fallback below if `bear` has been run at least once.
 
+## AI coding agents — where they run
+
+The image deliberately ships **no AI tooling**. Everyone uses whichever agent
+they prefer (Claude Code, Codex, Qwen Code, Cursor, Copilot, …) on their own
+host, so this repo never imposes one person's choice on anyone else.
+
+Two things follow from that inside a Dev Container:
+
+- The container and your host see the **same files** — `docker-compose.yml`
+  bind-mounts the repo at `/workspace` — so an agent editing on the host is
+  editing exactly what the container compiles. Nothing to sync, no drift.
+- But the agent **cannot run `arm-none-eabi-gcc` or `make` directly**, because
+  that toolchain exists only inside the container. Route every build through
+  Docker instead:
+
+  ```sh
+  # VS Code is attached to the container ("Reopen in Container"):
+  docker compose exec build bash -lc "cd build_make && make -j8"
+
+  # no VS Code attached:
+  docker compose run --rm build bash -lc "cd build_make && make -j8"
+  ```
+
+  Add whatever profile flags the build needs (`SMP=1`, `CONSOLE=usb_cdc`,
+  `WIFI=cyw43`, …) after `make`.
+
+Tell your agent this up front, or record it in whichever context file that
+agent reads (`QWEN.md`, `CLAUDE.md`, `AGENTS.md`, …). Left to its own devices
+it will run `make` on the host, find no toolchain, and set about fixing a
+problem that doesn't exist.
+
 ## Troubleshooting quick reference
 
 | Symptom | Cause | Fix |
@@ -108,7 +141,8 @@ fallback below if `bear` has been run at least once.
 | `accessing specified distro mount service: ... no such file or directory` | Docker Desktop ↔ WSL2 integration bug, survives a reboot | Check WSL Integration is on for your distro in Docker Desktop settings; if still broken, use the command-line fallback |
 | IntelliSense log shows `Using "cl.exe" instead` | VS Code isn't actually running inside the container | Reopen in Container, don't just run a Docker terminal alongside a normal window |
 | `compile_commands.json` exists but squiggles persist | Wrong location, or IntelliSense cache is stale | Copy/regenerate at the repo root, then Reset IntelliSense Database + reload |
-| `compile_commands.json` only has a handful of entries | Build was already up to date when `bear` ran | `make clean` first, then `bear -- make -j8` |
+| `compile_commands.json` only has a handful of entries | Build was already up to date when `bear` ran | `make clean` first, then `bear --output ../compile_commands.json -- make -j8` |
+| Your AI agent runs `make` on the host and reports `arm-none-eabi-gcc: not found` | Agent isn't routed through the container — the toolchain isn't installed on your host | Have it build via `docker compose exec build bash -lc "cd build_make && make -j8"` |
 
 ## What stays outside the container
 
