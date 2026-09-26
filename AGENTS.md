@@ -15,11 +15,15 @@ inside the Docker build image defined by `Dockerfile`. Every build goes
 through Docker:
 
 ```sh
-# a build container is already running (e.g. VS Code attached via Dev Containers):
-docker compose exec build bash -lc "cd build_make && make -j8"
-
-# otherwise:
+# On a fresh clone nothing is running yet — use this form. Compose builds the
+# image automatically on first use; that first build takes several minutes
+# (Ubuntu + the ARM toolchain download + a Pico SDK clone), so wait it out
+# rather than assuming it has hung.
 docker compose run --rm build bash -lc "cd build_make && make -j8"
+
+# Only if a container is ALREADY up (e.g. VS Code attached via Dev Containers):
+docker compose exec build bash -lc "cd build_make && make -j8"
+# If that reports `service "build" is not running`, use the run form above.
 ```
 
 If you see `arm-none-eabi-gcc: not found` or `g++: not found`, you have broken
