@@ -22,3 +22,11 @@ config/tcp_test_config.h
 # Python
 __pycache__/
 *.pyc
+
+#local MD files
+*.local.md
+
+#AI 
+.qwen
+.claude
+.chatgpt
