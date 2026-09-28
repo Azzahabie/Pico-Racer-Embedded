@@ -16,6 +16,8 @@ proving each piece on hardware.
   [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md) argues the two seams in depth and
   holds the decision log this one builds on; [`APPLICATION.md`](APPLICATION.md)
   holds the M7–M10 roadmap and the briefing's deliverables;
+  [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) is the flat wire contract derived from §4,
+  §8 and §9 — the document to hand to a teammate or the instructor;
   [`ARCHITECTURE.md`](ARCHITECTURE.md) is the general repo map.
 - **Written for a reader with no embedded background** — every new term is
   glossed where it first appears, and §19 collects them.
@@ -860,16 +862,16 @@ instructor's.
 
 | Value | Lives in | State |
 |---|---|---|
-| broker address, port | `config/broker_config.h` | exists (`broker_config.example.h:38-39`) |
+| broker address, port | `config/broker_config.h` | exists (`broker_config.example.h:44-45`) |
 | client id | same | exists — and doubles as the `<id>` in every topic |
 | keep-alive | same | exists (60 s) |
 | **topic prefix and map topic** | same, **proposed addition** | new — so `robocar` and the `…/map` name are not compiled in either (§9.2) |
 | **username / password** | same, **proposed addition** | new — the struct supports both (`mqtt.h:71-73`); the module sets neither today (`lwip_utk_mqtt.c:121-124`) |
-| publish cadence | `messages.h` or a config header | TBD, §16 decision 2 |
+| publish cadence | `messages.h` or a config header | TBD — proposed 1 s, tracked as open item 4 in [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §12 |
 
 The `*_SET` guard pattern is the enforcement: copy the `.example.h`, fill it in,
 flip the flag to `1`. An unedited copy **fails at compile time**
-(`broker_config.example.h:34-36`), which is deliberate — a value to flip rather
+(`broker_config.example.h:39-40`), which is deliberate — a value to flip rather
 than a line to delete. Populated `config/*.h` files are gitignored, and the
 `.gitignore` entry for `broker_config.h` exists because the file once showed up
 as an untracked near-miss (`NETWORKING.md` §6.3, Group A).
@@ -959,6 +961,8 @@ that **Docker's daemon was not running on this machine at the time of writing**
 ### M10 — documentation
 - [ ] `docs/MQTT_SCHEMA.md`: topics, the `"S"`/`"E"` JSON records (§8.2), the
       event catalogue as a table a teammate can implement from without reading C.
+      **First draft written 2026-09-28**; its §12 lists the fields still proposed
+      (the mission letter, the heartbeat/snapshot key sets, the cadence).
 - [ ] Broker setup walkthrough (the `amqtt` + `paho-mqtt` recipe, including the
       `python.exe`-not-`amqtt.exe` firewall trap in `NETWORKING.md` §4).
 - [ ] A "third party" test: hand the schema to a teammate and have them write a

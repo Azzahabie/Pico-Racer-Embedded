@@ -181,7 +181,9 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       schema document is that design written for the other buddies rather than
       for you. (The wire format was revised to **JSON outbound** on 2026-09-28 —
       see §8.1 there for why: on demo day the reader is the instructor's client,
-      not your own script.)
+      not your own script.) **First draft now exists:**
+      [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) — its §12 lists the fields still
+      proposed.
 - [ ] Define the kernel-object hand-off between `wifi_task` and the radio task.
 - [ ] (Optional, low priority) Reconcile `GETTING_STARTED.md` §6b task table with
       the actual five tasks — `led_test` is missing from the doc.
