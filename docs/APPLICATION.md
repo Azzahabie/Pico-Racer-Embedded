@@ -6,9 +6,12 @@ they consume, and how they hand work down to the network layer.
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Status:** seeded 2026-09-26 — the milestone roadmap below is the plan; the
   code starts at M7.
-- **Companion:** [`NETWORKING.md`](NETWORKING.md) covers everything *below* this
-  layer (transport, protocol, config, build). General repo map:
-  [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- **Companions:** [`NETWORKING.md`](NETWORKING.md) covers everything *below* this
+  layer (transport, protocol, config, build); [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md)
+  covers the application layer's two cross-task seams and the options for each;
+  [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) is the subsystem design
+  this roadmap is built to — tasks, queues, topics, wire format, test gates.
+  General repo map: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
@@ -63,6 +66,11 @@ drains it.
 **The "Communication API" deliverable** is exactly this interface: the message
 structs and kernel-object IDs in `app_program/common/messages.h`, plus the MQTT
 topics/payloads.
+
+> **In depth:** [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md) works this boundary out
+> in full — the kernel-object primer, the three ways the buddies could feed
+> `wifi_task`, the three ways the one-shot MQTT module could grow into a
+> persistent client, and the recommendation. Read it before writing `wifi_task`.
 
 ---
 
@@ -167,7 +175,13 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 ## 9. Open next actions
 
 - [ ] Write the **topic/payload schema** (`docs/MQTT_SCHEMA.md`) — the contract
-      blocking all four teammates.
+      blocking all four teammates. The topics, the event catalogue and the wire
+      format are already designed in
+      [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4, §8 and §9; the
+      schema document is that design written for the other buddies rather than
+      for you. (The wire format was revised to **JSON outbound** on 2026-09-28 —
+      see §8.1 there for why: on demo day the reader is the instructor's client,
+      not your own script.)
 - [ ] Define the kernel-object hand-off between `wifi_task` and the radio task.
 - [ ] (Optional, low priority) Reconcile `GETTING_STARTED.md` §6b task table with
       the actual five tasks — `led_test` is missing from the doc.
