@@ -23,10 +23,11 @@
 #define LWIP_RAW                        (TM_WIFI_STATIC || TM_WIFI_DHCP)
 #define LWIP_UDP                        TM_WIFI_DHCP
 #define LWIP_TCP                        TM_WIFI_TCP
-/* The altcp shim is only needed by application protocols written against it
- * Nothing in this tree uses it; turn it on here if you add something that
- * does. */
-#define LWIP_ALTCP                      0
+/* The altcp shim is required by lwIP's bundled MQTT client -- and by anything
+ * else written against that API.  It follows the MQTT gate rather than being
+ * enabled speculatively, because it swaps the TCP dispatch path underneath the
+ * raw-TCP phases. */
+#define LWIP_ALTCP                      TM_WIFI_MQTT
 #define LWIP_ALTCP_TLS                  0
 #define LWIP_DHCP                       TM_WIFI_DHCP
 #define LWIP_AUTOIP                     0
@@ -47,7 +48,15 @@
 #define MEM_SIZE                        (8 * 1024)
 #endif
 #define MEMP_NUM_PBUF                   16
+#if TM_WIFI_MQTT
+/* The MQTT client parks a cyclic sys_timeout while connected, on top of the
+   DHCP/DNS/ARP/TCP ones.  The computed internal minimum is already 8, so this
+   gate exists purely to leave headroom: an exhausted timeout pool trips
+   lwip_utk_assert, which halts the board silently. */
+#define MEMP_NUM_SYS_TIMEOUT            12
+#else
 #define MEMP_NUM_SYS_TIMEOUT            8
+#endif
 #define PBUF_POOL_SIZE                  8
 #define PBUF_POOL_BUFSIZE               1600
 

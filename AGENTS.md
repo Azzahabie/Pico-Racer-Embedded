@@ -5,8 +5,11 @@ Raspberry Pi Pico W (RP2040)** running on both cores (SMP). The build is a
 hand-written **GNU make** system inherited from upstream µT-Kernel — there is
 **no CMake anywhere**, despite the Pico SDK being a real dependency.
 
-`docs/` is the reference set: `ARCHITECTURE.md` (repo map, plain-language
-overview, glossary), `GETTING_STARTED.md`, `PORT_RP2040.md`.
+`docs/` holds the reference set: `ARCHITECTURE.md` (repo map, plain-language
+overview, glossary), `GETTING_STARTED.md`, `PORT_RP2040.md`, and the graded team
+design doc `embedded .md`. **Buddy 1's WiFi + Telemetry subsystem docs live in
+`docs/comms/`** — start at `docs/comms/README.md` (the progress hub); every other
+file in that folder is detail behind a link from it.
 
 ## 1. Never build on the host — always build through Docker
 
@@ -107,14 +110,15 @@ so an up-to-date tree yields a near-empty database.
 
 ## 6. Not implemented — do not assume it exists
 
-- **No MQTT, HTTP or CoAP layer.** `docs/GETTING_STARTED.md:596` and
-  `docs/PORT_RP2040.md:119` state this explicitly: the transports stop at UDP,
-  TCP and bulk TCP, and anything layered on top is left as an exercise. UDP is
-  the only networking path validated on hardware.
-- `app_program/{motor_task,line_task,obstacle_task,imu_task,wifi_task}/` are
+- **No HTTP or CoAP layer.** MQTT itself is implemented and verified on hardware
+  (M6, gated by `WIFI_MQTT`); what is *not* built is the application layer on top
+  of it — the `comms_task` telemetry framework and command channel (M7–M10, see
+  `docs/comms/APPLICATION.md`). The `docs/GETTING_STARTED.md:596` and
+  `docs/PORT_RP2040.md:119` notes predate M6.
+- `app_program/{motor_task,line_task,obstacle_task,imu_task,comms_task}/` are
   empty team stubs, as is `app_program/common/messages.h`.
 - The working Wi-Fi driver lives in `lib/`, not the app:
-  `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`. `app_program/wifi_task/` is
+  `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`. `app_program/comms_task/` is
   a separate, still-empty scaffold.
 
 ## 7. Gotchas that cause real bugs
@@ -123,9 +127,10 @@ so an up-to-date tree yields a near-empty database.
   `lib/libnet/lwip/include/lwipopts.h:14`. Never call lwIP from an arbitrary
   task — hand work to the processor-1 polling service through a kernel object
   (e.g. `tk_snd_mbf`).
-- **`LWIP_ALTCP` is 0** (`lib/libnet/lwip/include/lwipopts.h:29`), while
-  lwIP's bundled MQTT client needs it set to 1. Flip it only when you actually
-  add an MQTT client, not speculatively.
+- **`LWIP_ALTCP` follows the MQTT gate** — `#define LWIP_ALTCP TM_WIFI_MQTT`
+  (`lib/libnet/lwip/include/lwipopts.h:30`): 1 in MQTT builds, 0 otherwise. Don't
+  make it unconditional — the comment there notes it swaps the TCP dispatch path
+  underneath the raw-TCP phases.
 - **`tm_printf` is atomic per call, not per line.** Compose the message with
   `tm_sprintf`, then emit it with exactly one `tm_printf`, or concurrent tasks
   will interleave mid-line.

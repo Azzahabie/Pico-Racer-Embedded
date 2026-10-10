@@ -14,6 +14,13 @@
 #define CYW43_UDP_RING     32
 #define CYW43_UDP_PAYLOAD  48
 
+/* Mirrors LWIP_UTK_MQTT_TOPIC_MAX / LWIP_UTK_MQTT_PAYLOAD_MAX in
+   lib/libnet/lwip/include/lwip_utk_mqtt.h.  Duplicated for the same reason as
+   the UDP geometry above -- this header is included by code that cannot see
+   the lwIP headers -- and checked at compile time in cyw43_utk.c. */
+#define CYW43_MQTT_TOPIC_MAX    48
+#define CYW43_MQTT_PAYLOAD_MAX  48
+
 typedef struct {
     volatile int32_t init_result;
     volatile uint32_t init_complete;
@@ -160,6 +167,30 @@ typedef struct {
     volatile uint32_t bulk_throughput_bps;
     uint8_t bulk_target[4];
     uint16_t bulk_port;
+    /* MQTT publish qualification (Phase 9).  Written only when WIFI_MQTT is on;
+       the fields exist in every build so readers need no conditional. */
+    volatile uint32_t mqtt_enabled;
+    volatile int32_t  mqtt_init_result;
+    volatile int32_t  mqtt_connect_request;
+    volatile int32_t  mqtt_connection_result;
+    volatile int32_t  mqtt_publish_result;
+    volatile int32_t  mqtt_publish_ack;
+    volatile int32_t  mqtt_result;
+    volatile uint32_t mqtt_initialized;
+    volatile uint32_t mqtt_started;
+    volatile uint32_t mqtt_connected;
+    volatile uint32_t mqtt_published;
+    volatile uint32_t mqtt_complete;
+    volatile uint32_t mqtt_connect_attempts;
+    volatile uint32_t mqtt_publish_attempts;
+    volatile uint32_t mqtt_poll_calls;
+    volatile uint32_t mqtt_guard_blocked;
+    volatile uint32_t mqtt_connect_ms;
+    volatile uint32_t mqtt_elapsed_ms;
+    uint8_t mqtt_broker[4];
+    uint16_t mqtt_port;
+    char mqtt_topic[CYW43_MQTT_TOPIC_MAX];
+    char mqtt_payload[CYW43_MQTT_PAYLOAD_MAX];
     volatile int32_t ipv4_config_result;
     volatile uint32_t ipv4_configured;
     volatile uint32_t arp_resolved;

@@ -270,6 +270,9 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 	UW			cursor = 0;	/* echoes printed so far */
 	UB			ip[16];
 	UW			last_dhcp = 0xffffffffU;
+#if TM_WIFI_MQTT
+	UW			last_mqtt = 0xffffffffU;
+#endif
 	UW			stalled_polls = 0;
 	UW			shown_session = 0xffffffffU;
 	UW			summarised = 0xffffffffU;
@@ -317,6 +320,24 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 					  ip, gw, dns);
 			}
 		}
+
+#if TM_WIFI_MQTT
+		/* MQTT is one-shot, so report the verdict once on the completion
+		   edge -- including the broker and what was published, because
+		   unlike the echo phases nothing else on this console proves it. */
+		if(st.mqtt_complete != last_mqtt) {
+			last_mqtt = st.mqtt_complete;
+			if(st.mqtt_complete) {
+				UB broker[16];
+				fmt_ipv4(broker, st.mqtt_broker);
+				tm_printf((UB *)"[mqtt] %s:%u  topic=%s  payload=%s"
+					       "  result=%d  published=%u\n",
+					  broker, st.mqtt_port, st.mqtt_topic,
+					  st.mqtt_payload, st.mqtt_result,
+					  st.mqtt_published);
+			}
+		}
+#endif
 
 		if(!st.udp_enabled) {
 			tk_dly_tsk(WIFI_IDLE_MS);
