@@ -14,8 +14,7 @@ subscriber **without reading any C**.
 - **Scope:** the message contract only. It does not cover build flags, the
   broker recipe, or the RTOS internals — see the companions.
 - **Companions:** [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) for the
-  design and evidence; [`WIFI_SUBSYSTEM_SUMMARY.md`](WIFI_SUBSYSTEM_SUMMARY.md)
-  for the same design in software-engineering terms;
+  design and evidence;
   [`NETWORKING.md`](NETWORKING.md) §4 for the broker environment and §6 for the
   M6 protocol evidence; [`APPLICATION.md`](APPLICATION.md) §9 for why this
   document blocks the other four buddies.
@@ -298,6 +297,19 @@ Two properties worth stating because a client may rely on them:
   malformed*, never silently truncated. More than 26 codes, or a non-digit, is a
   rejected command.
 
+> **Three things about this table are not yet pinned (§12 items 7–9).**
+> 1. **What a code *means*.** The table gives each letter a digit, but nothing
+>    yet defines what a digit *does*. Reusing the motion-state vocabulary — `0`
+>    stop, `1` straight, `2` left, `3` right (§4) — would make "barcode `E` →
+>    turn right" directly expressible, which is exactly what "barcode → direction"
+>    needs. **To be agreed with Buddy 3 and the instructor**; until then, treat a
+>    code as an opaque digit.
+> 2. **The alphabet is assumed A–Z** (26 entries, one single-digit code each).
+>    Lowercase, digits, or a larger alphabet would need a different encoding.
+> 3. **A compiled-in default table** is needed so the car is drivable before any
+>    `map` has ever been pushed — e.g. if the broker restarted and lost the
+>    retained table.
+
 ### 8.4 A malformed command
 
 Produces exactly one visible line on the car's console and no state change. This
@@ -377,6 +389,9 @@ closed deliberately rather than by accident.
 | 4 | The publish cadence | §4 | 1 s |
 | 5 | Topic prefix / endpoint names as config | §2 | add to `config/broker_config.h` (design §12) |
 | 6 | Inbound stays `key=value` vs. flat JSON | §8 | `key=value` (design §16 decision 17; publisher unconfirmed) |
+| 7 | **The action-code → direction vocabulary** — what a digit *means* | §8.3 | **unknown — to agree with Buddy 3 / the instructor.** Suggested: reuse the motion-state enum `0` stop / `1` straight / `2` left / `3` right (§4), so "barcode `E` → turn right" is expressible as code 3 at index 4 |
+| 8 | Barcode alphabet assumed **A–Z, 26 entries** | §8.3 | A–Z only, one single-digit code each. Lowercase, digits, or a larger alphabet would need a different encoding (and a larger inbound payload) |
+| 9 | A **compiled-in default table** | §8.3 | a sane default so the car is drivable before any `map` has ever been pushed (e.g. broker restarted and lost the retained table). To be specified with Buddy 3 |
 
 ---
 
@@ -391,24 +406,12 @@ closed deliberately rather than by accident.
 - **Don't treat `k` and the barcode's ASCII letter as the same alphabet** (§5.1).
 - **Don't expect QoS 1 to survive a disconnect.** lwIP forces a clean session;
   retained `map` plus the `mpv` echo is what actually survives (design §9.2).
-- **Don't hardcode the broker or the topic prefix** — they are the instructor's
-  on demo day (design §12).
+- **Don't hardcode the broker, the topic prefix, or the barcode
+  letter→direction mapping** — the mapping is the one thing the demo explicitly
+  forbids hardcoding (§8.3; `APPLICATION.md` §7, risk 4).
 
 ---
 
 ## 14. Glossary
 
-| Term | Plain meaning |
-|---|---|
-| **Topic** | The channel name a message is published to, e.g. `robocar/<id>/telemetry`. |
-| **Payload** | The message body — in our case the JSON object. |
-| **QoS 0 / QoS 1** | MQTT delivery guarantees: "at most once, fire and forget" / "at least once, acknowledged". |
-| **Retain** | A broker flag: it keeps the last message on a topic and hands it to any later subscriber. |
-| **Edge event** | A record published the moment something happens, rather than at the next tick. |
-| **Snapshot** | The current state at one instant, as opposed to the history of events. |
-| **Sequence number (`s`)** | A per-run counter that makes gaps observable. |
-| **Sentinel** | A reserved value meaning "no value yet" — here, `0` in the state fields. |
-| **Idempotent** | Doing it twice has the same effect as doing it once — why a replayed `map` is safe. |
-| **ASCII code** | The integer for a character: `'A'`=65, `'E'`=69, `'Z'`=90. |
-| **Clean session** | An MQTT flag meaning "forget my previous session"; lwIP always sets it. |
-| **FPU** | Floating-point unit. The RP2040 has none, so every value on the wire is an integer. |
+> **Moved.** Every term is collected in the shared [`GLOSSARY.md`](GLOSSARY.md) — one copy for the whole `docs/comms/` set.

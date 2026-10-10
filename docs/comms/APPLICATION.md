@@ -11,7 +11,7 @@ they consume, and how they hand work down to the network layer.
   covers the application layer's two cross-task seams and the options for each;
   [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) is the subsystem design
   this roadmap is built to — tasks, queues, topics, wire format, test gates.
-  General repo map: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+  General repo map: [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ---
 
@@ -29,7 +29,7 @@ task, plus a shared contract file.
 | `app_program/line_task/` | Buddy 3 | **empty stub** |
 | `app_program/imu_task/` | Buddy 4 | **empty stub** |
 | `app_program/obstacle_task/` | Buddy 5 | **empty stub** |
-| **`app_program/wifi_task/`** | **Buddy 1** | **empty stub — this is ours** |
+| **`app_program/comms_task/`** | **Buddy 1** | **empty stub — this is ours** |
 | `app_program/common/messages.h` | shared | **empty** — the integration contract |
 
 > **What it means:** the stubs are placeholders deliberately shipped so each
@@ -42,14 +42,14 @@ task, plus a shared contract file.
 ## 2. The boundary — how this layer talks to the network
 
 **The rule:** the network layer (lwIP) is `NO_SYS 1` — single-threaded and not
-thread-safe. Only the radio-owner task may touch it. So `wifi_task` **cannot**
+thread-safe. Only the radio-owner task may touch it. So `comms_task` **cannot**
 call MQTT functions directly.
 
 **The pattern:** hand work across with a kernel object, then the radio task
 drains it.
 
 ```
-   wifi_task (our task)                     radio-owner task
+   comms_task (our task)                     radio-owner task
    ────────────────────                     ────────────────
    gather telemetry from other buddies
    build the message
@@ -69,8 +69,8 @@ topics/payloads.
 
 > **In depth:** [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md) works this boundary out
 > in full — the kernel-object primer, the three ways the buddies could feed
-> `wifi_task`, the three ways the one-shot MQTT module could grow into a
-> persistent client, and the recommendation. Read it before writing `wifi_task`.
+> `comms_task`, the three ways the one-shot MQTT module could grow into a
+> persistent client, and the recommendation. Read it before writing `comms_task`.
 
 ---
 
@@ -174,7 +174,7 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 
 ## 9. Open next actions
 
-- [ ] Write the **topic/payload schema** (`docs/MQTT_SCHEMA.md`) — the contract
+- [ ] Write the **topic/payload schema** (`docs/comms/MQTT_SCHEMA.md`) — the contract
       blocking all four teammates. The topics, the event catalogue and the wire
       format are already designed in
       [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4, §8 and §9; the
@@ -184,7 +184,11 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       not your own script.) **First draft now exists:**
       [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) — its §12 lists the fields still
       proposed.
-- [ ] Define the kernel-object hand-off between `wifi_task` and the radio task.
+- [ ] Reconcile the **task count, names and priorities** with the team document
+      before writing `comms_task` — the team doc and the design disagree (see
+      [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md); its §7
+      decision log is the blank to fill).
+- [ ] Define the kernel-object hand-off between `comms_task` and the radio task.
 - [ ] (Optional, low priority) Reconcile `GETTING_STARTED.md` §6b task table with
       the actual five tasks — `led_test` is missing from the doc.
 
@@ -197,5 +201,5 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 - Don't look for CMake — it is a plain GNU make build.
 - Don't rebuild the Wi-Fi layer — scan, join, DHCP, DNS, UDP, TCP and **MQTT** all
   already work (see `NETWORKING.md`).
-- Don't expect the Wi-Fi driver in `app_program/wifi_task/` — the real code lives
+- Don't expect the Wi-Fi driver in `app_program/comms_task/` — the real code lives
   in `lib/libwifi/` and `lib/libnet/`; this folder is the *application* task.

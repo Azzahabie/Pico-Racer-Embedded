@@ -18,9 +18,9 @@ proving each piece on hardware.
   holds the M7–M10 roadmap and the briefing's deliverables;
   [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) is the flat wire contract derived from §4,
   §8 and §9 — the document to hand to a teammate or the instructor;
-  [`ARCHITECTURE.md`](ARCHITECTURE.md) is the general repo map.
+  [`ARCHITECTURE.md`](../ARCHITECTURE.md) is the general repo map.
 - **Written for a reader with no embedded background** — every new term is
-  glossed where it first appears, and §19 collects them.
+  glossed where it first appears, and [`GLOSSARY.md`](GLOSSARY.md) collects them.
 
 ---
 
@@ -38,7 +38,7 @@ proposing work that is done.
 | MQTT as a *persistent* client (many publishes, subscribe, reconnect) | **not written** | **this document** |
 | Telemetry framework over MQTT | **not written** | **this document** |
 | Command channel, snapshot, live barcode remap | **not written** | **this document** |
-| The task that produces traffic (`app_program/wifi_task/`) | **empty stub** | **this document** |
+| The task that produces traffic (`app_program/comms_task/`) | **empty stub** | **this document** |
 | The shared contract (`app_program/common/messages.h`) | **empty** | **this document** |
 
 > **What it means:** M2–M5 changed no source at all — they were "run the ladder
@@ -82,7 +82,7 @@ task boundary.
    the four buddies + Vehicle Controller
              │   Seam 1 — one event mailbox (§5)
              ▼
-        wifi_task                    ← the task this document designs
+        comms_task                    ← the task this document designs
              │   Seam 2 — one publish mailbox (§6)
              ▼
       cyw43_utk_task ──── Wi-Fi ────▶ broker
@@ -92,7 +92,7 @@ task boundary.
              └── commands from the broker
 ```
 
-> **What it means:** read as a software engineer, `wifi_task` is a service in
+> **What it means:** read as a software engineer, `comms_task` is a service in
 > front of a single-threaded dependency. It accepts work over a queue; a
 > dedicated worker thread owns the dependency. You do not let every feature
 > handler open its own database connection — same idea, and the phrase to use in
@@ -166,15 +166,15 @@ packet. That is precisely what the mailboxes in §3.2 exist to prevent.
 | Task | Entry | Priority | Stack | Affinity | Created by |
 |---|---|---|---|---|---|
 | `cyw43_utk_task` — exists | `cyw43_utk.c:496` | 4 | 6 KB | `TP_PRC1` (SMP) | kernel device init, `devinit.c:107` |
-| `wifi_task` — **new** | `app_program/wifi_task/wifi_task.c` | 8 (proposed) | 4 KB | unpinned (proposed) | `usermain()`, `app_main.c` |
+| `comms_task` — **new** | `app_program/comms_task/comms_task.c` | 8 (proposed) | 4 KB | unpinned (proposed) | `usermain()`, `app_main.c` |
 
 Priority: in µT-Kernel a **smaller number is a higher priority**. The radio task
 sits at 4, the console at 3 (`cyw43_utk_kernel.c:14` explains that ordering —
-the USB console must drain first). Putting `wifi_task` at 8 — the same level as
+the USB console must drain first). Putting `comms_task` at 8 — the same level as
 the existing read-only reporter — means it can never delay the radio or the
 console, which is exactly what a best-effort telemetry producer should be.
 
-`wifi_task` must be gated with the same `#if` its objects are (`TM_WIFI_MQTT`),
+`comms_task` must be gated with the same `#if` its objects are (`TM_WIFI_MQTT`),
 so **a non-MQTT radio build compiles and behaves exactly as it does today**. That
 protects the M2–M6 evidence, which is the only hardware proof the subsystem has.
 
@@ -192,10 +192,10 @@ exists. Only the radio task predates `usermain()`, and §6.3 handles that.
 
 | Object | Type | Direction | Chosen by | Proposal |
 |---|---|---|---|---|
-| `tele_mbfid` | message buffer | buddies → `wifi_task` | §16 decision 4 | 16 records |
-| `tele_pub_mbfid` | message buffer | `wifi_task` → radio task | §6.3 | 4 records × ~320 B (topic + 256-byte JSON payload, §8.3) |
-| `tele_cmd_mbfid` | message buffer | `wifi_task` → `line_task` | §16 decision 4 | 4 records |
-| `tele_rx_mbfid` | message buffer | radio task → `wifi_task` | §9.3 | 4 records × ~192 B |
+| `tele_mbfid` | message buffer | buddies → `comms_task` | §16 decision 4 | 16 records |
+| `tele_pub_mbfid` | message buffer | `comms_task` → radio task | §6.3 | 4 records × ~320 B (topic + 256-byte JSON payload, §8.3) |
+| `tele_cmd_mbfid` | message buffer | `comms_task` → `line_task` | §16 decision 4 | 4 records |
+| `tele_rx_mbfid` | message buffer | radio task → `comms_task` | §9.3 | 4 records × ~192 B |
 
 IDs and the record types live in **`app_program/common/messages.h`** — the file
 whose own comment says every buddy depends on it and that changes should go
@@ -218,11 +218,11 @@ this design is behind a queue or owned by exactly one task.
 
 ---
 
-## 4. Seam 1 — how the four buddies hand data to `wifi_task`
+## 4. Seam 1 — how the four buddies hand data to `comms_task`
 
 This is the decision that shapes your teammates' code, because it is the
 interface *they* write against. Option **A** was chosen this session
-(`RTOS_INTERFACES.md` §7): one shared mailbox, `wifi_task` the only reader.
+(`RTOS_INTERFACES.md` §7): one shared mailbox, `comms_task` the only reader.
 
 ### 4.1 The record
 
@@ -278,7 +278,7 @@ error immediately; the buddy counts a dropped event and carries on.
 > the periodic line (§7) so a gap is self-evident on the laptop instead of
 > silently missing.
 
-### 4.3 What `wifi_task` does with them
+### 4.3 What `comms_task` does with them
 
 Two different needs, two different structures, one drain loop:
 
@@ -288,14 +288,14 @@ Two different needs, two different structures, one drain loop:
 - **A latest-state table** keeps the newest value per source, so a periodic line
   can report everything at once and M8's snapshot is a cheap copy.
 
-Because `wifi_task` is the only reader of the mailbox and the only writer of the
+Because `comms_task` is the only reader of the mailbox and the only writer of the
 table, the table needs **no lock at all** — the data is single-owner by
 construction. That is the payoff for choosing A over B.
 
 ```
 for (;;) {
     while (tk_rcv_mbf(tele_mbfid, &e, TMO_POL) > 0) {
-        fold_into_latest_state(&e);       /* wifi_task's private table */
+        fold_into_latest_state(&e);       /* comms_task's private table */
         append_to_log(&e);                /* ordered, bounded ring     */
     }
     if (++ticks >= PUBLISH_TICKS) { ticks = 0; publish_state_line(); }
@@ -404,7 +404,7 @@ a persistent state machine:
 ```
 
 **The load-bearing subtlety.** `lwip_utk_mqtt_publish()` must be callable from
-`wifi_task`, which may not touch lwIP. So it **enqueues**, and the radio task
+`comms_task`, which may not touch lwIP. So it **enqueues**, and the radio task
 does the real call:
 
 ```c
@@ -547,7 +547,7 @@ The two directions are not symmetric, and the whole argument turns on that:
 | Direction | Who writes it | Who reads it | Cost of JSON |
 |---|---|---|---|
 | **Device → broker** — `telemetry`, `heartbeat`, `state` | **us**: one `tm_sprintf` | **possibly the instructor's client** | **≈ zero.** A format string. No parser, and no FPU concern: every value is an integer and the only strings are single letters, so there is nothing to escape |
-| **Broker → device** — `cmd`, `map` | **us**: our own laptop publisher (§9.2) | **us**: a parser in `wifi_task` | **real.** A JSON scanner runs on the device, where every line is graded and explainability is a scored risk (§15) |
+| **Broker → device** — `cmd`, `map` | **us**: our own laptop publisher (§9.2) | **us**: a parser in `comms_task` | **real.** A JSON scanner runs on the device, where every line is graded and explainability is a scored risk (§15) |
 
 > **What it means:** JSON is *free to produce* and *costly to consume*. So the
 > rule is **produce JSON, and be deliberate about what you parse.** The outbound
@@ -579,7 +579,7 @@ keeps the writer to one `tm_sprintf`:
 |---|---|
 | `t` | record type: `"S"` periodic state, `"E"` edge event — the same discriminant as before, now a key instead of a leading letter |
 | `v` | schema version — bumped when a field changes meaning, so an old subscriber fails loudly instead of silently |
-| `s` | monotonic sequence number for the whole run, assigned by `wifi_task` |
+| `s` | monotonic sequence number for the whole run, assigned by `comms_task` |
 | `up` | milliseconds since boot (`tk_get_otm()`), the producer's stamp |
 | `k` | event kind, from §4.4 |
 | `a`, `b` | the two values, meaning by `k` |
@@ -690,7 +690,7 @@ publish completes from the TCP sent-callback rather than from an ack.
 >    changes nothing on our side: lwIP's inbound handler looks only at the packet
 >    type and QoS (`mqtt.c:708-784`), so it arrives through the same two
 >    callbacks (§9.3);
-> 3. the table carries a **version**, and `wifi_task` reports the version it is
+> 3. the table carries a **version**, and `comms_task` reports the version it is
 >    actually running in every periodic line (`mpv=` in §8) — so the laptop can
 >    *verify* what the car holds instead of assuming;
 > 4. the remap is **idempotent** — applying the same table twice changes nothing,
@@ -709,7 +709,7 @@ broker ──▶ radio task (inside mqtt_set_inpub_callback)
              1. topic + payload arrive, possibly in chunks
              2. reassemble into a bounded buffer (~192 B); overflow = drop + count
              3. tk_snd_mbf(tele_rx_mbfid, …)  ← copy only; never parse, never block
-           ──▶ wifi_task
+           ──▶ comms_task
              4. tk_rcv_mbf, parse the textual command
              5. dispatch by type
 ```
@@ -739,12 +739,12 @@ static void indata_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
 { /* append to the assembler; on MQTT_DATA_FLAG_LAST → post to tele_rx_mbfid */ }
 ```
 
-`wifi_task` dispatches three command types:
+`comms_task` dispatches three command types:
 
 | Command | Action | Evidence it must produce |
 |---|---|---|
 | `snap` | publish a state line plus **diagnostics** (uptime, RSSI, IP, queue depth, drop counters, MQTT verdict) on `…/state` | the laptop asks, and gets an answer within one tick |
-| `map` (arrives on `…/map`, retained) | validate the letter→action table, then `tk_snd_mbf(tele_cmd_mbfid, …)` to `line_task`, and update `wifi_task`'s own copy and its `mpv` | the remap arrives **without a recompile** — the requirement that cannot be hardcoded |
+| `map` (arrives on `…/map`, retained) | validate the letter→action table, then `tk_snd_mbf(tele_cmd_mbfid, …)` to `line_task`, and update `comms_task`'s own copy and its `mpv` | the remap arrives **without a recompile** — the requirement that cannot be hardcoded |
 | anything else | count it and print one line | an unknown command is visible, not silence |
 
 A fourth, optional: `ping` → a single line on `…/heartbeat`, for a manual
@@ -888,7 +888,7 @@ than discovered:
 | Consumer | Cost | Note |
 |---|---|---|
 | App tasks now: 6 × 4 KB stacks | 24 KB | `STACK_SZ 4096`, `app_main.c:73`; stacks are the dominant RAM cost |
-| `wifi_task` stack | 4 KB | a seventh task |
+| `comms_task` stack | 4 KB | a seventh task |
 | Radio task stack | 6 KB | `cyw43_utk_kernel.c:18` |
 | Status snapshot | ~2.3 KB | copied per `cyw43_utk_get_status()` call; **do not grow it** (§6.4) |
 | lwIP heap `MEM_SIZE` | 12 KB | `lwipopts.h:45-49` |
@@ -959,7 +959,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
       enabled, measured on the console timestamps.
 
 ### M10 — documentation
-- [ ] `docs/MQTT_SCHEMA.md`: topics, the `"S"`/`"E"` JSON records (§8.2), the
+- [ ] `docs/comms/MQTT_SCHEMA.md`: topics, the `"S"`/`"E"` JSON records (§8.2), the
       event catalogue as a table a teammate can implement from without reading C.
       **First draft written 2026-09-28**; its §12 lists the fields still proposed
       (the mission letter, the heartbeat/snapshot key sets, the cadence).
@@ -979,7 +979,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
 
 ## 15. Risks, ranked
 
-1. **The single-threaded rule.** Calling lwIP from `wifi_task` compiles fine and
+1. **The single-threaded rule.** Calling lwIP from `comms_task` compiles fine and
    corrupts state at random. The queues in §3 are the mitigation, and the
    discipline to keep is that no `lwip_*` symbol ever appears in
    `app_program/`.
@@ -987,7 +987,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
    evidence. Mitigated by the gate staying on `WIFI_MQTT`, the evidence being
    captured in `NETWORKING.md` §8, and the M6 console line being preserved.
 3. **Telemetry delaying the car.** Every producer send is non-blocking (§4.2),
-   `wifi_task` runs at a lower priority than the radio and console (§3.1), and
+   `comms_task` runs at a lower priority than the radio and console (§3.1), and
    payload formatting is integer-only.
 4. **"Explain every line."** The M6 module is only 224 lines and is already
    yours; growing it in place keeps the code explainable. Do not paste in a
@@ -1025,8 +1025,8 @@ recommendation for each so a decision is a yes/no rather than new analysis.
 | 4 | Mailbox granularity: one `EVT_*` mailbox for all four buddies, or one per buddy? | one — one contract, one drain loop | per-buddy queues isolate a noisy producer |
 | 5 | Producer send: never block (+ drop counter) or a bounded block? | never block, count drops (§4.2) | 10 ms bound, as `RTOS_INTERFACES.md` §4 |
 | 6 | Heartbeat: fold into the periodic line, or its own topic? | **own topic** — changed 2026-09-27: M9's requirement says "**heartbeat topic** so liveness is visible" in writing, and a topic name is a string literal, not code. Fold was the earlier recommendation | fold into the periodic line; cheaper, and the absence of a line is still the signal |
-| 7 | The reporter: keep `wifi_status_task` as-is, rename it, or fold it into `wifi_task`? | keep it as a read-only reporter and **rename** it `wifi_report_task` | fold — one task, but it then prints radio internals it does not own |
-| 8 | `wifi_task` affinity: unpinned, or pinned to processor 2? | unpinned; priority 8 already keeps it out of the radio's way | `TP_PRC2` keeps it off the radio+USB core entirely |
+| 7 | The reporter: keep `wifi_status_task` as-is, rename it, or fold it into `comms_task`? | keep it as a read-only reporter and **rename** it `wifi_report_task` | fold — one task, but it then prints radio internals it does not own |
+| 8 | `comms_task` affinity: unpinned, or pinned to processor 2? | unpinned; priority 8 already keeps it out of the radio's way | `TP_PRC2` keeps it off the radio+USB core entirely |
 | 9 | **Outbound** wire format: JSON, key=value, or compact positional? | **changed 2026-09-28: JSON (§8).** The reader may be the instructor's client, and every generic MQTT tool renders JSON with no help; producing it costs one `tm_sprintf`. The earlier `key=value` recommendation assumed you own the reader, which you do not | key=value saves ~35% of the bytes; positional saves more, but neither is readable by the instructor's client |
 | 10 | Payload maximum: 256 bytes, or larger? | **changed 2026-09-28: 256** (was 192), **plus** raising the client's ring buffer to 512 and its receive buffer to 256 (§6.4) — the JSON state line is 141 B and the diagnostic snapshot is longer (§8.3) | smaller forces shorter lines and breaks the snapshot; larger costs RAM in the lib's queues |
 | 11 | QoS on the wire: QoS 0 everywhere, or QoS 1 for the remap? | **changed 2026-09-27: QoS 0 for telemetry *and* for `…/cmd`; QoS 1 on the `…/map` *subscription* only.** lwIP never retransmits a QoS 1 publish — the request just expires with `ERR_TIMEOUT` (`mqtt.c:390-413`) — so QoS 1 outbound buys detection, not delivery. QoS 1 *inbound* is acknowledged by the library (`mqtt.c:776-783`), so subscribing at QoS 1 costs no application code | QoS 1 outbound on `cmd`; costs a request slot and a callback for a signal the design does not act on |
@@ -1035,7 +1035,7 @@ recommendation for each so a decision is a yes/no rather than new analysis.
 | 14 | Reconnect rate: the 2/4/8/15 s ladder, a fixed interval, or "attempt on every poll"? | **fixed interval of 2–5 s** (a counter and a timestamp, ~6 lines). The ladder's *curve* is optional; a **rate limit is not** — the radio poll runs every 2 ms, each attempt takes one of only **6** TCP PCBs (`mqtt.c:1395`, `lwipopts.h:71`), and connections that were established then closed hold a pool entry for 2MSL (`lwipopts.h:67-70`), so an unbounded retry rate is what can leave the client unable to reconnect at all | the full 2/4/8/15 s ladder, if the extra states are worth it to you |
 | 15 | Device-side event history: keep the bounded ring, or drop it? | **drop it** — nothing on the device consumes the history. M7's "reconstructable map of the run" is reconstructed from the **published stream** on the laptop, using `s=` and `drp=` (§8); the ring only makes sense if the device must *replay what was missed while offline*, which M7 does not ask for and which fights the never-block producer rule (§4.2) | keep the ring if you want a reconnect-replay feature later |
 | 16 | Inbound reassembly: full fragment assembler, or single-fragment? | **single-fragment, with a bound**: handle `MQTT_DATA_FLAG_LAST` and reject anything that arrives in more than one fragment. With a 128-byte receive buffer and a ~25-byte topic, one fragment carries ~95 bytes — so the `map` payload must fit that, enforced by a static assert. Cheaper, and the failure is a rejected command rather than a truncated table | full assembler (as §9.3 describes) if `map` may ever exceed ~95 bytes |
-| 17 | **Inbound** (`cmd`, `map`) wire format: `key=value`, or a flat JSON subset? | **`key=value`** — you author the publisher (§9.2), so the reader here *is* yours, and `strtok` is far cheaper to defend line by line than a device-side JSON scanner (§8.1). Consistency with the outbound JSON is cosmetic; the cost is real. **Open on 2026-09-28: the inbound publisher is unconfirmed** — do not flip this on "maybe"; see the hedge in §8.1 | flat JSON inbound, so the whole system speaks one format — at the cost of a scanner in `wifi_task` and more code to explain. Choose this only if the instructor may publish commands himself |
+| 17 | **Inbound** (`cmd`, `map`) wire format: `key=value`, or a flat JSON subset? | **`key=value`** — you author the publisher (§9.2), so the reader here *is* yours, and `strtok` is far cheaper to defend line by line than a device-side JSON scanner (§8.1). Consistency with the outbound JSON is cosmetic; the cost is real. **Open on 2026-09-28: the inbound publisher is unconfirmed** — do not flip this on "maybe"; see the hedge in §8.1 | flat JSON inbound, so the whole system speaks one format — at the cost of a scanner in `comms_task` and more code to explain. Choose this only if the instructor may publish commands himself |
 
 **Reviewed 2026-09-28** — the wire-format question was reopened because the reader
 on demo day is the instructor's client, not your own script: rows 9 and 10 changed,
@@ -1087,7 +1087,7 @@ worth closing before the report:
   reader is the instructor's client, so the outbound stream is JSON (§8.1).
 - Don't hardcode the broker, the topic prefix, or the barcode mapping (§12).
 - Don't commit a populated `config/*.h` (§12).
-- Don't expect the radio code in `app_program/wifi_task/` — it lives in
+- Don't expect the radio code in `app_program/comms_task/` — it lives in
   `lib/libwifi/` and `lib/libnet/`; that folder is the application task.
 - Don't build on the host. `arm-none-eabi-gcc` exists only inside the Docker
   image.
@@ -1098,27 +1098,4 @@ worth closing before the report:
 
 ## 19. Glossary
 
-| Term | Plain meaning |
-|---|---|
-| **Task** | The RTOS equivalent of a thread. |
-| **Radio-owner task** | `cyw43_utk_task` — the single task allowed to call lwIP. |
-| **Message buffer** (`tk_snd_mbf` / `tk_rcv_mbf`) | A thread-safe queue of variable-length records between tasks. |
-| **`TMO_POL`** | Timeout value meaning "do not block; check and return now". |
-| **`TMO_FEVR`** | Timeout value meaning "block forever". |
-| **Seam** | A point where two layers hand data across — here, always a kernel object. |
-| **Seqlock** | A lock-free way to copy a struct one task writes while another reads: check a version counter before and after, retry if it changed. |
-| **Latch** | A flag set once and never cleared — e.g. `dhcp_complete`, which is why the MQTT poll runs forever after DHCP succeeds. |
-| **Persistent client** | A connection kept open across the run, rather than connecting for one message. |
-| **QoS 0 / QoS 1** | MQTT delivery guarantees: "at most once, fire and forget" / "at least once, acknowledged". |
-| **Retain** | An MQTT flag: the broker keeps the last message on a topic and hands it to any later subscriber. |
-| **Clean session** | An MQTT connect flag meaning "forget my previous session". lwIP always sets it, so subscriptions and undelivered messages are discarded the moment we disconnect. |
-| **Idempotent** | Doing it twice has the same effect as doing it once — what makes a re-sent or replayed command safe. |
-| **LWT / last will** | A message the broker publishes on your behalf if your connection dies abruptly. |
-| **Backoff** | Waiting progressively longer between retries so a broken peer is not hammered. |
-| **Reassembly** | Rebuilding a message that arrived in pieces, bounded by a fixed buffer. |
-| **Payload** | The message body, as opposed to the topic (the channel name). |
-| **Edge event** | A record published the moment something happens, rather than at the next tick. |
-| **Snapshot** | The current state at one instant, as opposed to the history of events. |
-| **FPU** | Floating-point unit — the hardware for decimal maths. The RP2040 has none, so payloads are integers. |
-| **UF2** | The file format the Pico's bootloader accepts on drag-and-drop. |
-| **Build profile** | The flags a build was made with, baked into the image name. |
+> **Moved.** Every term is collected in the shared [`GLOSSARY.md`](GLOSSARY.md) — one copy for the whole `docs/comms/` set.

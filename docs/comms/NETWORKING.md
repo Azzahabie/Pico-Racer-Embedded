@@ -8,7 +8,7 @@ constraints, and the captured evidence.
 - **Last updated:** 2026-09-26
 - **Scope:** everything *below* `app_program/`. The application layer has its own
   companion document: [`APPLICATION.md`](APPLICATION.md). The general repo map is
-  in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+  in [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 - **Written for a reader with no embedded background** — technical terms are
   glossed in §10, and every design choice has a plain-language note.
 
@@ -32,7 +32,7 @@ constraints, and the captured evidence.
 
 **This document covers the `lib/` side.** The working networking code — the radio
 driver and the lwIP protocol clients — lives in `lib/`, **not** in
-`app_program/wifi_task/` (which is an empty scaffold for the *application* task).
+`app_program/comms_task/` (which is an empty scaffold for the *application* task).
 Two reasons:
 
 1. **MQTT is a protocol, not application logic.** It belongs beside the existing
@@ -420,28 +420,9 @@ Suggested message for the implementation commit:
 
 ---
 
-## 10. Glossary — embedded term → plain meaning
+## 10. Glossary
 
-| Term | Plain meaning |
-|---|---|
-| **MQTT** | A lightweight publish/subscribe messaging protocol. Clients publish to *topics* on a *broker*; others subscribe. Like an event bus over the network. |
-| **Broker** | The central message server (here, `amqtt` on the laptop). |
-| **Topic / payload** | The channel name (`robocar/test/mqtt`) and the message body. |
-| **QoS 0** | "At most once" — fire-and-forget, no acknowledgement. |
-| **CONNACK** | The broker's reply accepting/rejecting a connection. |
-| **Keep-alive** | A periodic "still here" ping so an idle client is not dropped. |
-| **lwIP** | A small embeddable TCP/IP library (the Pico's network stack). |
-| **`NO_SYS 1`** | lwIP built without OS/threading: not thread-safe, one task only. |
-| **netif** | lwIP's network-interface object — the Wi-Fi adapter. |
-| **altcp** | lwIP's layer letting application code (MQTT) use TCP without touching raw buffers. |
-| **Poll loop** | A task that wakes periodically and does a little work each time. |
-| **`sys_timeout`** | lwIP's internal alarm/timer facility. |
-| **Error codes** | lwIP: `0` OK, `-1` out of memory, `-3` timeout, `-11` connection refused. |
-| **Build profile** | The flags a build was made with, baked into the image name. |
-| **UF2** | The file format the Pico bootloader accepts on drag-and-drop. |
-| **Static assert** | A compiler-checked invariant (e.g. the `typedef char[±1]` trick). |
-| **Seqlock** | A lock-free way to copy a struct one task writes while another reads. |
-| **Radio-owner task** | The single RTOS task that owns the Wi-Fi chip and all networking calls. |
+> **Moved.** Every term is collected in the shared [`GLOSSARY.md`](GLOSSARY.md) — one copy for the whole `docs/comms/` set.
 
 ---
 
