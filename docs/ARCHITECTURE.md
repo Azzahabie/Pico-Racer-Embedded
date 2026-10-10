@@ -285,7 +285,7 @@ The five subsystem tasks are **empty stubs**. Each contains only includes and a
 | `app_program/line_task/line_task.c` | same |
 | `app_program/obstacle_task/obstacle_task.c` | same |
 | `app_program/imu_task/imu_task.c` | same |
-| `app_program/wifi_task/wifi_task.c` | same |
+| `app_program/comms_task/comms_task.c` | same |
 
 The shared contract they will communicate through,
 `app_program/common/messages.h`, is also empty — its own comment states the
@@ -294,7 +294,7 @@ buddy's task depends on this file — route changes through a pull request so
 nobody's build breaks silently."*
 
 Each subsystem has its own **git branch** (`motor_task`, `line_task`,
-`obstacle_task`, `imu_task`, `wifi_task`) — a deliberate one-branch-per-person
+`obstacle_task`, `imu_task`, `comms_task`) — a deliberate one-branch-per-person
 layout.
 
 > **Two things to know before building on this.**
@@ -304,11 +304,11 @@ layout.
 >    under `app_program/` — stubs included — joins the build. They are harmless
 >    empty translation units today, but they are not inert: a stub that fails to
 >    compile will break the build even though nothing calls it.
-> 2. **Real WiFi code lives in `lib/`, not `app_program/wifi_task/`.**
+> 2. **Real WiFi code lives in `lib/`, not `app_program/comms_task/`.**
 >    The working radio driver is `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`
 >    plus `lib/libnet/lwip/*`. The app-level WiFi reporter is
 >    `wifi_status_task` inside `app_main.c` (compiled only when
->    `TM_WIFI_CYW43` is set). The `app_program/wifi_task/` folder is a separate,
+>    `TM_WIFI_CYW43` is set). The `app_program/comms_task/` folder is a separate,
 >    still-empty team scaffold.
 
 ### Documentation drift found
