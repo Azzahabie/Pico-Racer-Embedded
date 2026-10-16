@@ -57,6 +57,10 @@ typedef struct {
     volatile int32_t dhcp_result;
     volatile uint32_t dhcp_elapsed_ms;
     volatile uint32_t dhcp_tries;
+    volatile uint32_t dhcp_state;       /* lwIP dhcp_state_enum_t: 6 SELECTING,
+                                           1 REQUESTING, 8 CHECKING, 10 BOUND */
+    volatile uint32_t poll_stage;       /* last step the radio loop entered
+                                           (see cyw43_utk_task); diagnostic */
     uint8_t dhcp_address[4];
     uint8_t dhcp_netmask[4];
     uint8_t dhcp_gateway[4];

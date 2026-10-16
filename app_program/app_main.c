@@ -340,6 +340,26 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 #endif
 
 		if(!st.udp_enabled) {
+#if TM_WIFI_DHCP
+			/* Diagnostic (F1.0): linked but no lease yet.  polls= frozen
+			   between lines means the radio task has stopped, and stage=
+			   says where; rd= climbing means it stopped mid-publish.  The
+			   address fields are what lwIP holds so far.  (The UDP profile
+			   has its own "[udp] waiting" line.) */
+			if(st.link_up && !st.dhcp_complete) {
+				UB gw[16], dns[16];
+				fmt_ipv4(ip, st.dhcp_address);
+				fmt_ipv4(gw, st.dhcp_gateway);
+				fmt_ipv4(dns, st.dhcp_dns);
+				tm_printf((UB *)"[wifi] waiting for lease: state=%u tries=%u"
+					       " t=%ums addr=%s gw=%s dns=%s polls=%u"
+					       " stage=%u rd=%u\n",
+					  st.dhcp_state, st.dhcp_tries,
+					  st.dhcp_elapsed_ms, ip, gw, dns,
+					  st.poll_count, st.poll_stage,
+					  st.status_retries);
+			}
+#endif
 			tk_dly_tsk(WIFI_IDLE_MS);
 			continue;
 		}

@@ -434,7 +434,10 @@ static void update_dhcp_status(void)
     uint64_t now = time_us_64();
 
     radio_status.dhcp_started = (dhcp != NULL);
-    if(dhcp != NULL) radio_status.dhcp_tries = dhcp->tries;
+    if(dhcp != NULL) {
+        radio_status.dhcp_tries = dhcp->tries;
+        radio_status.dhcp_state = dhcp->state;
+    }
     if(radio_status.netif_link_up && dhcp_started_us == 0) {
         dhcp_started_us = now;
     }
@@ -554,16 +557,20 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
     for(;;) {
         was_scanning = radio_status.scan_active != 0;
         cyw43_thread_enter();
+        radio_status.poll_stage = 1;     /* diagnostic: driver poll */
         if(cyw43_poll != NULL) cyw43_poll();
         status_publish_begin();
 #if TM_WIFI_NETIF
+        radio_status.poll_stage = 2;     /* lwIP timers (DHCP, ACD, DNS) */
         sys_check_timeouts();
         update_netif_status();
 #endif
 #if TM_WIFI_DHCP
+        radio_status.poll_stage = 3;
         update_dhcp_status();
 #endif
 #if TM_WIFI_DNS
+        radio_status.poll_stage = 4;
         update_dns_status();
 #endif
 #if TM_WIFI_UDP
@@ -601,9 +608,11 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         update_mqtt_status();
 #endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP
+        radio_status.poll_stage = 5;
         lwip_utk_ipv4_poll(&cyw43_state.netif[CYW43_ITF_STA]);
         update_ipv4_status();
 #endif
+        radio_status.poll_stage = 6;     /* join bookkeeping */
         radio_status.poll_count++;
         radio_status.scan_active = cyw43_wifi_scan_active(&cyw43_state);
         if(was_scanning && !radio_status.scan_active) {
@@ -657,6 +666,7 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
 #endif
         status_publish_end();
         cyw43_utk_poll_requested = 0;
+        radio_status.poll_stage = 7;     /* sleeping until next poll */
         cyw43_thread_exit();
         (void)tk_dly_tsk(CYW43_POLL_MS);
     }
