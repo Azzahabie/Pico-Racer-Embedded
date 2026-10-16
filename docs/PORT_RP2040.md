@@ -187,6 +187,13 @@ for runnable work by the coalesced SIO FIFO IPI transport.
 
 ## Validation history
 
+> **Post-validation port fixes** are tracked in
+> [`port_fixes/`](port_fixes/README.md). **PF-001** (2026-10-16): the TIMER
+> ran ~43× slow after a power-on because the watchdog tick was never
+> programmed. The microsecond figures in this document are only valid if
+> their runs started after a reflash or debugger load. See PF-001
+> `DRILLDOWN.md` D4.
+
 | Phase | Tag | Result |
 |---|---|---|
 | 0 - baseline import, Pico W, `.data` alignment HardFault | `phase0-baseline` | done |
