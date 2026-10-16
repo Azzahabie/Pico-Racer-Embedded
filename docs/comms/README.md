@@ -128,6 +128,8 @@ kernel message buffer, `tk_snd_mbf`) before writing any telemetry code.
 | [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) | The **wire contract** (topics + JSON payloads). Hand this to a teammate. |
 | [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md) | The **task count / priority / affinity** decision record + the prepared team-doc edits. |
 | [`STATECHART1_DIAGRAM_SPEC.md`](STATECHART1_DIAGRAM_SPEC.md) | The spec to **regenerate the statechart** diagram. |
+| [`WEEK6_FEEDBACK.md`](WEEK6_FEEDBACK.md) | The **Week 6 instructor feedback**, narrowed to this subsystem, with next steps. |
+| [`resolve_feedback/Actions.md`](resolve_feedback/Actions.md) · [`results.md`](resolve_feedback/results.md) | The **step-by-step fix plan** for that feedback, and the log of what each step produced. |
 
 **Outside this folder (`docs/`):**
 
