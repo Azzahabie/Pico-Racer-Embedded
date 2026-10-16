@@ -1,0 +1,66 @@
+# PF-001 D2 capture, 2026-10-16 (22:04-22:15). Base profile, no Wi-Fi:
+#   make SMP=1 CONSOLE=usb_cdc -j8
+# Images: build_make/pf001_d2_nofix.uf2 (PF001_APPLY_FIX 0), build_make/pf001_d2_fix.uf2 (1).
+# R4 = nofix, first boot after UF2 reflash   R3 = nofix, power cycle
+# R2 = fix,   first boot after UF2 reflash   R1 = fix,   power cycle
+# Raw console output follows, unedited (monitor lines removed by the user).
+
+# R4
+[22:04:28.592] === uT-Kernel 3.0 / RP2040 demo ===
+[22:04:28.603] SMP build: 2 processors
+[22:04:28.617] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:04:28.626] [pf001] tick_at_boot=0x60c (enable=1 cycles=12 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[22:04:28.635] [pf001] wd_reason=0x1 (timer=1 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[22:04:29.606] [pf001] timer advanced 1004812 us over a 1000 ms kernel delay
+[22:04:39.624] [pf001] D2 1/6: window kernel=10010 ms timer=10007413 us (999.741 us/ms)  cumulative 10010 ms -> 999.741 us/ms
+[22:04:49.623] [pf001] D2 2/6: window kernel=10010 ms timer=10009977 us (999.997 us/ms)  cumulative 20020 ms -> 999.869 us/ms
+[22:04:59.642] [pf001] D2 3/6: window kernel=10010 ms timer=10010008 us (1000.000 us/ms)  cumulative 30030 ms -> 999.913 us/ms
+[22:05:09.643] [pf001] D2 4/6: window kernel=10010 ms timer=10009967 us (999.996 us/ms)  cumulative 40040 ms -> 999.934 us/ms
+[22:05:19.661] [pf001] D2 5/6: window kernel=10010 ms timer=10010081 us (1000.008 us/ms)  cumulative 50050 ms -> 999.948 us/ms
+[22:05:29.664] [pf001] D2 6/6: window kernel=10010 ms timer=10009916 us (999.991 us/ms)  cumulative 60060 ms -> 999.956 us/ms
+[22:05:29.667] [pf001] D2 done: fix compiled OUT, tick cycles=12
+
+# R3
+[22:09:46.014] === uT-Kernel 3.0 / RP2040 demo ===
+[22:09:46.015] SMP build: 2 processors
+[22:09:46.018] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:09:46.020] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x600 (enable=1 cycles=0 running=1)
+[22:09:46.022] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[22:09:47.032] [pf001] timer advanced 23554 us over a 1000 ms kernel delay
+[22:09:57.056] [pf001] D2 1/6: window kernel=10010 ms timer=234553 us (23.431 us/ms)  cumulative 10010 ms -> 23.431 us/ms
+[22:10:07.056] [pf001] D2 2/6: window kernel=10010 ms timer=234609 us (23.437 us/ms)  cumulative 20020 ms -> 23.434 us/ms
+[22:10:17.073] [pf001] D2 3/6: window kernel=10010 ms timer=234609 us (23.437 us/ms)  cumulative 30030 ms -> 23.435 us/ms
+[22:10:27.071] [pf001] D2 4/6: window kernel=10010 ms timer=234609 us (23.437 us/ms)  cumulative 40040 ms -> 23.436 us/ms
+[22:10:37.095] [pf001] D2 5/6: window kernel=10010 ms timer=234611 us (23.437 us/ms)  cumulative 50050 ms -> 23.436 us/ms
+[22:10:47.088] [pf001] D2 6/6: window kernel=10010 ms timer=234608 us (23.437 us/ms)  cumulative 60060 ms -> 23.436 us/ms
+[22:10:47.089] [pf001] D2 done: fix compiled OUT, tick cycles=0
+
+# R2
+[22:11:54.858] === uT-Kernel 3.0 / RP2040 demo ===
+[22:11:54.860] SMP build: 2 processors
+[22:11:54.864] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:11:54.868] [pf001] tick_at_boot=0x60c (enable=1 cycles=12 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[22:11:54.872] [pf001] wd_reason=0x1 (timer=1 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[22:11:55.874] [pf001] timer advanced 1004810 us over a 1000 ms kernel delay
+[22:12:05.892] [pf001] D2 1/6: window kernel=10010 ms timer=10007407 us (999.740 us/ms)  cumulative 10010 ms -> 999.740 us/ms
+[22:12:15.887] [pf001] D2 2/6: window kernel=10010 ms timer=10009984 us (999.998 us/ms)  cumulative 20020 ms -> 999.869 us/ms
+[22:12:25.908] [pf001] D2 3/6: window kernel=10010 ms timer=10010007 us (1000.000 us/ms)  cumulative 30030 ms -> 999.913 us/ms
+[22:12:35.904] [pf001] D2 4/6: window kernel=10010 ms timer=10009964 us (999.996 us/ms)  cumulative 40040 ms -> 999.934 us/ms
+[22:12:45.923] [pf001] D2 5/6: window kernel=10010 ms timer=10010077 us (1000.007 us/ms)  cumulative 50050 ms -> 999.948 us/ms
+[22:12:55.931] [pf001] D2 6/6: window kernel=10010 ms timer=10009921 us (999.992 us/ms)  cumulative 60060 ms -> 999.956 us/ms
+[22:12:55.933] [pf001] D2 done: fix compiled IN, tick cycles=12
+
+# R1
+[22:14:00.934] === uT-Kernel 3.0 / RP2040 demo ===
+[22:14:00.935] SMP build: 2 processors
+[22:14:00.937] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:14:00.940] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[22:14:00.942] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[22:14:01.944] [pf001] timer advanced 1004901 us over a 1000 ms kernel delay
+[22:14:11.968] [pf001] D2 1/6: window kernel=10010 ms timer=10007410 us (999.741 us/ms)  cumulative 10010 ms -> 999.741 us/ms
+[22:14:21.966] [pf001] D2 2/6: window kernel=10010 ms timer=10009988 us (999.998 us/ms)  cumulative 20020 ms -> 999.870 us/ms
+[22:14:31.989] [pf001] D2 3/6: window kernel=10010 ms timer=10010005 us (1000.000 us/ms)  cumulative 30030 ms -> 999.913 us/ms
+[22:14:41.988] [pf001] D2 4/6: window kernel=10010 ms timer=10009961 us (999.996 us/ms)  cumulative 40040 ms -> 999.934 us/ms
+[22:14:52.008] [pf001] D2 5/6: window kernel=10010 ms timer=10010075 us (1000.007 us/ms)  cumulative 50050 ms -> 999.948 us/ms
+[22:15:02.003] [pf001] D2 6/6: window kernel=10010 ms timer=10009922 us (999.992 us/ms)  cumulative 60060 ms -> 999.956 us/ms
+[22:15:02.004] [pf001] D2 done: fix compiled IN, tick cycles=12

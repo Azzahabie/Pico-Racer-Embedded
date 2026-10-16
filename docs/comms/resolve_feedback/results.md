@@ -86,8 +86,8 @@ Wi-Fi-specific notes that stay here:
   laptop's real IP.
 - **Diagnostic line still in the build:** `[wifi] waiting for lease: state=
   tries= t= addr= gw= dns= polls= stage= rd=` (`app_main.c`, plus the
-  `dhcp_state` / `poll_stage` fields in `cyw43_utk.h` / `.c`). Fold it into
-  F1.4 or remove it before committing.
+  `dhcp_state` / `poll_stage` fields in `cyw43_utk.h` / `.c`). Committed as
+  `3e40f08` (debug). Fold it into F1.4's retry counters or remove it there.
 
 - Success rate, Pico2_IoT: __ / 20
 - Success rate, hotspot: __ / 10

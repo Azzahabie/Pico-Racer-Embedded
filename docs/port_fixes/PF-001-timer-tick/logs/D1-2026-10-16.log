@@ -1,0 +1,93 @@
+# PF-001 D1 capture, 2026-10-16 (21:53-21:55). Replaces the earlier 21:48 capture.
+# Build: DNS profile + PF-001 fix + TEMP PF-001 D1 prints. All boots = power cycles.
+# Each "[pf001] timer advanced" line marks one boot. 11 boots:
+#   #1 21:53:23 full      #5 21:54:11 full      #9  21:54:46 timer only
+#   #2 21:53:34 partial   #6 21:54:15 partial   #10 21:54:51 full
+#   #3 21:53:57 timer only #7 21:54:30 full     #11 21:54:55 full
+#   #4 21:54:06 full      #8 21:54:39 timer only
+# "partial"/"timer only": earlier lines printed before the serial terminal
+# reattached after re-enumeration (a capture gap, not a firmware result).
+# Raw console output follows, unedited.
+
+[21:53:17.217] [monitor] seq=98 produced=98 consumed=98 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:23.177] === uT-Kernel 3.0 / RP2040 demo ===
+[21:53:23.178] SMP build: 2 processors
+[21:53:23.180] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:53:23.190] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:53:23.192] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:53:23.378] [wifi] link DOWN
+[21:53:24.216] [pf001] timer advanced 1005049 us over a 1000 ms kernel delay
+[21:53:24.217] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:26.220] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:28.233] [monitor] seq=12 produced=12 consumed=12 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:34.785] tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:53:34.786] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:53:34.973] [wifi] link DOWN
+[21:53:35.806] [pf001] timer advanced 1005082 us over a 1000 ms kernel delay
+[21:53:35.807] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:37.811] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:39.826] [monitor] seq=12 produced=12 consumed=12 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:40.988] [wifi] link UP  rssi=-36  mac=d8:3a:dd:ae:4b:eb
+[21:53:40.990] [wifi] waiting for lease: state=8 tries=0 t=2079ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=277 stage=7 rd=1
+[21:53:41.828] [monitor] seq=16 produced=16 consumed=16 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:57.538] [pf001] timer advanced 1005075 us over a 1000 ms kernel delay
+[21:53:57.538] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:53:59.539] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:01.556] [monitor] seq=12 produced=12 consumed=12 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:02.724] [wifi] link UP  rssi=-35  mac=d8:3a:dd:ae:4b:eb
+[21:54:02.725] [wifi] waiting for lease: state=8 tries=0 t=2019ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=277 stage=7 rd=1
+[21:54:03.561] [monitor] seq=16 produced=16 consumed=16 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:06.222] === uT-Kernel 3.0 / RP2040 demo ===
+[21:54:06.224] SMP build: 2 processors
+[21:54:06.226] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:54:06.228] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:54:06.233] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:06.409] [wifi] link DOWN
+[21:54:07.246] [pf001] timer advanced 1005047 us over a 1000 ms kernel delay
+[21:54:07.247] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:11.299] === uT-Kernel 3.0 / RP2040 demo ===
+[21:54:11.312] SMP build: 2 processors
+[21:54:11.315] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:54:11.317] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:54:11.331] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:11.516] [wifi] link DOWN
+[21:54:12.332] [pf001] timer advanced 1005015 us over a 1000 ms kernel delay
+[21:54:12.333] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:15.023] n=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:15.208] [wifi] link DOWN
+[21:54:16.047] [pf001] timer advanced 1005068 us over a 1000 ms kernel delay
+[21:54:16.048] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:18.047] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:30.409] === uT-Kernel 3.0 / RP2040 demo ===
+[21:54:30.430] SMP build: 2 processors
+[21:54:30.431] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:54:30.432] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:54:30.446] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:30.631] [wifi] link DOWN
+[21:54:31.457] [pf001] timer advanced 1005032 us over a 1000 ms kernel delay
+[21:54:31.460] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:33.472] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:39.863] [pf001] timer advanced 1005066 us over a 1000 ms kernel delay
+[21:54:39.864] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:41.858] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:46.285] [wifi] link DOWN
+[21:54:47.099] [pf001] timer advanced 1005030 us over a 1000 ms kernel delay
+[21:54:47.100] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:51.274] === uT-Kernel 3.0 / RP2040 demo ===
+[21:54:51.285] SMP build: 2 processors
+[21:54:51.286] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:54:51.287] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:54:51.304] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:51.491] [wifi] link DOWN
+[21:54:52.305] [pf001] timer advanced 1005021 us over a 1000 ms kernel delay
+[21:54:52.306] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:55.711] === uT-Kernel 3.0 / RP2040 demo ===
+[21:54:55.712] SMP build: 2 processors
+[21:54:55.713] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[21:54:55.714] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[21:54:55.718] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00000100 (por=1 run=0 psm_restart=0)
+[21:54:55.903] [wifi] link DOWN
+[21:54:56.737] [pf001] timer advanced 1005028 us over a 1000 ms kernel delay
+[21:54:56.738] [monitor] seq=4 produced=4 consumed=4 dropped=0  made_on=prc1 seen_on=prc2
+[21:54:58.742] [monitor] seq=8 produced=8 consumed=8 dropped=0  made_on=prc1 seen_on=prc2
+[21:55:00.763] [monitor] seq=12 produced=12 consumed=12 dropped=0  made_on=prc1 seen_on=prc2

@@ -87,8 +87,9 @@ search of the repo found **no code that programs it**. `cpu_clock.c`
 configures the crystal, PLLs and `clk_ref`/`clk_sys`, but not the tick. The
 measured rate matches 12 MHz ÷ 512 = 23 437 ticks/s. Why a reflash hides the
 fault: the boot ROM programs the tick, and the reboot into the application
-doesn't reset it. (Both points are inferred from the evidence; confirming
-them directly is [`DRILLDOWN.md`](DRILLDOWN.md) D1-D2.)
+doesn't reset it. (Inferred at this point. **Later confirmed directly in
+[`DRILLDOWN.md`](DRILLDOWN.md) D1:** at boot, the register held CYCLES = 0
+after a power-on and CYCLES = 12 after a reflash.)
 
 ### 7. Fix and verification
 
