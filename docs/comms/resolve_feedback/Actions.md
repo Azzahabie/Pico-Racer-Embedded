@@ -16,9 +16,14 @@ The exact steps to close each feedback point in
 
 ## Progress
 
+> **Next session, start here:** [`ACD_DECISION.md`](ACD_DECISION.md). It's an
+> open decision (turn off DHCP address-conflict detection to save 6-9 s per
+> lease for NFR-09). Recommendation and steps are on that page. After it,
+> continue with F1.5 (T1, T3, T4, T5 still untested).
+
 | Point | Topic | Steps planned | Status |
 |---|---|---|---|
-| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0, F1.1 done; F1.2 + F1.3 pass T2 + T6 on hardware |
+| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0-F1.4 done. **Next: decide ACD ([`ACD_DECISION.md`](ACD_DECISION.md))**, then F1.5 |
 | F2 | MQTT interface doc + map versioning | not yet planned | ⬜ |
 | F3 | Queue sizing, command-full ≠ Fault | not yet planned | ⬜ |
 | F4 | Core 1 timing with Wi-Fi active | not yet planned | ⬜ |
@@ -181,7 +186,13 @@ profiles. Not yet tested on hardware. See `results.md` → F1.3.
 docker compose run --rm build bash -lc "cd build_make && make SMP=1 CONSOLE=usb_cdc WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_UDP=1 WIFI_TCP=1 WIFI_MQTT=1 -j8"
 ```
 
-### F1.4 Make retries visible ⬜
+### F1.4 Make retries visible ✅
+
+**Status (19 Oct 2026):** passes on hardware (AP off, then on → state lines,
+`join-failed(NONET)` reasons, ends in `ip=`).
+Implemented as a transition log, because the console polls slower than
+JOINING lasts. The join failure reason is on the BACKOFF line. See
+`results.md` → F1.4.
 
 Evidence needs counters, not silence.
 

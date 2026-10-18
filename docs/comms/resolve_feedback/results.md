@@ -117,7 +117,8 @@ Wi-Fi-specific notes that stay here:
 - **Lease time:** ~9-10 s from link UP to `ip=` (15-18 s from power-on), almost
   all of it lwIP's ACD address check (`state=8`). ACD can be disabled
   (`LWIP_DHCP_DOES_ACD_CHECK 0` in `lwipopts.h`) to help NFR-09 (15 s
-  recovery), at the cost of conflict detection. Decide in F1.2 / after F1.5.
+  recovery), at the cost of conflict detection. **Decision open, written
+  up in [`ACD_DECISION.md`](ACD_DECISION.md).**
 - **✅ Address overlap resolved (19 Oct 2026):** the Pico gets `192.168.50.8`,
   which used to be the broker address. The broker is `192.168.50.11`, now set in
   the local `config/broker_config.h:37` (gitignored).
@@ -260,20 +261,110 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 - Not yet run on hardware.
 
 ### F1.4 Retry visibility
-- Date:
-- Sample console output:
+- Date: 19 Oct 2026 (built; not yet run on hardware)
+- Commit: not yet committed
+- Build: ✅ radio-only, JOIN-only, DHCP-only, DNS and MQTT (full chain)
+  profiles, 0 errors / 0 warnings. `cyw43_utk.c` and `app_main.c` with
+  `-Wall -Wextra`: 0 warnings in every profile.
+- What changed:
+  - `cyw43_utk.h`: states and reasons are now public (`CYW43_NET_*`,
+    `CYW43_NET_WHY_*`). `T_CYW43_UTK_STATUS` gains `net_state`,
+    `join_attempts`, `lease_attempts`, `link_losses`, plus an 8-entry
+    **transition log** `net_log[]` / `net_log_seq` (same cursor scheme as the
+    UDP ring). The struct grows 2524 → 2768 bytes. No existing static assert
+    covers its size.
+  - **Why a log, not just the current state:** the console polls every 3 s
+    (`WIFI_IDLE_MS`), but JOINING lasts ~2-3 s and a fast join failure goes
+    straight to BACKOFF. A poll of the current state would miss exactly the
+    retries this step is meant to show.
+  - `cyw43_utk.c`: every transition goes through `net_enter()`, which updates
+    the counters and writes one log entry (state, reason, driver code,
+    counters, ms since boot).
+  - `app_main.c`: drains the log, one line per transition, each emitted with
+    one `tm_printf`. If more than 8 transitions pile up between polls, it
+    prints how many were dropped.
+  - **Join failure reason (step 4)** is part of the BACKOFF line instead of a
+    separate `join failed:` line: `why=join-failed(FAIL|NONET|BADAUTH)`,
+    `join-timeout`, `join-request(<code>)`. Other reasons: `lease-timeout`,
+    `link-lost`, `lease-lost`.
+  - Cosmetic fix from T2: `update_dhcp_status()` copies the address fields
+    only while the link is up, so `waiting for lease` no longer shows the
+    old address during a back-off.
+  - The console's status snapshot `st` is now `static`. At ~2.7 KB it was
+    most of the task's 4 KB stack.
+- Kept: the F1.0 `waiting for lease` diagnostic line (`3e40f08`). It still
+  shows lwIP's DHCP state while the state machine waits. Remove it in a later
+  cleanup if it's too noisy.
+- Expected console output on a hotspot boot that needs one retry
+  (illustrative, not captured):
   ```
+  [wifi] state=JOINING join#=1 lease#=0 lost=0 t=4100ms
+  [wifi] state=BACKOFF why=join-failed(FAIL) join#=1 lease#=0 lost=0 t=7000ms
+  [wifi] state=JOINING join#=2 lease#=0 lost=0 t=10000ms
+  [wifi] link UP  rssi=-39  mac=d8:3a:dd:ae:4b:eb
+  [wifi] state=WAIT_LEASE join#=2 lease#=1 lost=0 t=12000ms
+  [wifi] state=ONLINE join#=2 lease#=1 lost=0 t=21000ms
+  [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
   ```
+- **Hardware, 19 Oct 2026: ✅ passes "Done when"** (AP off, then on: the
+  state lines show it, it ends in `ip=…`, and a failed join prints its
+  reason). Hotspot `Test1`, one boot and two hotspot drops. `[wifi]` lines only,
+  `[monitor]` and `waiting for lease` lines removed:
+  ```
+  [01:57:38.595] [wifi] link DOWN
+  [01:57:41.594] [wifi] state=JOINING join#=1 lease#=0 lost=0 t=2176ms
+  [01:57:44.614] [wifi] state=WAIT_LEASE join#=1 lease#=1 lost=0 t=5396ms
+  [01:57:44.618] [wifi] link UP  rssi=-30  mac=d8:3a:dd:ae:4b:eb
+  [01:57:50.635] [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=13176ms
+  [01:57:50.637] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+  [01:58:35.791] [wifi] state=BACKOFF why=link-lost join#=1 lease#=1 lost=1 t=56875ms
+  [01:58:35.792] [wifi] link DOWN
+  [01:58:38.792] [wifi] state=JOINING join#=2 lease#=1 lost=1 t=59895ms
+  [01:58:41.813] [wifi] state=WAIT_LEASE join#=2 lease#=2 lost=1 t=63136ms
+  [01:58:41.815] [wifi] link UP  rssi=-34  mac=d8:3a:dd:ae:4b:eb
+  [01:58:50.845] [wifi] state=ONLINE join#=2 lease#=2 lost=1 t=71016ms
+  [01:58:50.846] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+  [01:58:56.872] [wifi] state=BACKOFF why=link-lost join#=2 lease#=2 lost=2 t=76955ms
+  [01:58:56.874] [wifi] link DOWN
+  [01:58:59.872] [wifi] state=JOINING join#=3 lease#=2 lost=2 t=79975ms
+  [01:58:59.875] [wifi] state=BACKOFF why=join-failed(NONET) join#=3 lease#=2 lost=2 t=80915ms
+  ... joins #4-#7 identical: JOINING, then join-failed(NONET) ~0.94 s later ...
+  [01:59:17.934] [wifi] state=JOINING join#=8 lease#=2 lost=2 t=99775ms
+  [01:59:20.950] [wifi] state=WAIT_LEASE join#=8 lease#=3 lost=2 t=102956ms
+  [01:59:20.951] [wifi] link UP  rssi=-43  mac=d8:3a:dd:ae:4b:eb
+  [01:59:29.985] [wifi] state=ONLINE join#=8 lease#=3 lost=2 t=109996ms
+  [01:59:29.987] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+  ```
+- Findings:
+  - Every transition was printed. At most 2 arrived between console polls, so
+    the 8-entry log never overflowed.
+  - Counters agree with the events: `join#` +1 per attempt, `lease#` +1 per
+    WAIT_LEASE, `lost` +1 per `link-lost`.
+  - **`join-failed(NONET)` (SSID not found) while the hotspot is off fails in
+    ~0.94 s**, not at the 15 s join timeout, so the retry cycle is ~4 s (3 s
+    back-off + 0.94 s). The rest of the system kept running throughout.
+  - Join ≈ 3.2 s and lease ≈ 7-8 s on every attempt. So **once the AP is
+    back, recovery takes ≈ 11-15 s** (≤ 4 s to the next retry + 3.2 s +
+    7-8 s), on top of the ~8 s it takes to detect the drop (T2). This is at
+    NFR-09's 15 s limit. Disabling ACD would remove ~5 s per lease.
+  - ~~Still open: reject vs ignore~~ **Answered by the F1.4 T6 re-run:
+    `join-failed(FAIL)` on every back-to-back boot, so the phone rejects.**
+    This boot's first join succeeded. The boot came ~12 min after the previous test, which fits a
+    hotspot idle timeout clearing the stale entry (weak evidence).
+  - Ordering on the console: `state=WAIT_LEASE` prints just before
+    `link UP`, because log lines are drained first in each poll. The `t=`
+    values give the true order.
 
 ### F1.5 Recovery tests
 
 | Test | Date | Outcome | Evidence / timing |
 |---|---|---|---|
 | T1 AP off at boot | | | router-on → ip = __ s |
-| T2 AP drop while online | 2026-10-19 | ✅ 2 / 2 (hotspot) | link DOWN → link UP 9.0 s / 12.0 s, → new `ip=` 15.1 s / 21.1 s. Hotspot-off → `link DOWN` ≈ **8 s** (stopwatch). Off duration not timed. See note below |
+| T2 AP drop while online | 2026-10-19 | ✅ 4 / 4 (hotspot; 2 more with F1.4 logging: link-lost → ONLINE 14.1 s with a brief drop, 33.0 s with the hotspot off long enough for 5 NONET retries over ~17 s, see F1.4) | link DOWN → link UP 9.0 s / 12.0 s, → new `ip=` 15.1 s / 21.1 s. Hotspot-off → `link DOWN` ≈ **8 s** (stopwatch). Off duration not timed. See note below |
 | T3 DHCP refused | | | |
 | T4 wrong password | | | |
 | T5 30 min soak | | | link_losses = __ |
+| T6 hotspot back-to-back power cycles (F1.4 re-run) | 2026-10-19 | ✅ 3 / 3, **every boot `join-failed(FAIL)` then success on join#2** | first join fails ~3.4 s after it starts (t≈5.6 s). ONLINE at 18.7 / 19.2 / 21.8 s. **The phone rejects the stale session** (not `join-timeout`): question closed |
 | T6 hotspot back-to-back power cycles | 2026-10-19 | ✅ 5 / 5 reached `ip=` (before: 6 / 11) | link UP at +6.0 s (boot 1), then +12.0 s on boots 2-5 → 1 retry each (inferred). `ip=` at 12.1 / 21.1 / 21.1 / 18.1 / ~18.1 s |
 
 Build for T2 / T6: F1.2 + F1.3, DNS profile, uncommitted tree on top of

@@ -5,7 +5,7 @@ other document in this folder is *detail behind a link* — open one only when y
 need it.
 
 - **Owner:** Buddy 1 (WiFi + Telemetry)
-- **Last updated:** 2026-10-10
+- **Last updated:** 2026-10-19 (§3 pointer to F1 / ACD; the rest is as of 2026-10-10)
 - **Tasks:** `comms_task` — the application task (in `app_program/comms_task/`,
   an empty stub); `cyw43_utk_task` — the radio owner, library code that already
   exists (`lib/libwifi/`)
@@ -68,7 +68,18 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 ---
 
-## 3. Current focus — M7 (telemetry framework)
+## 3. Current focus
+
+> **Right now (19 Oct 2026): Week 6 feedback F1, Wi-Fi reliability.** F1.0-F1.4
+> are done: the car now rejoins and re-leases on its own and logs every
+> connection state change. **Next session, start at
+> [`resolve_feedback/ACD_DECISION.md`](resolve_feedback/ACD_DECISION.md)**, an
+> open decision on turning off DHCP address-conflict detection (6-9 s per
+> lease, NFR-09). Then continue F1.5 in
+> [`resolve_feedback/Actions.md`](resolve_feedback/Actions.md). M7 below
+> follows after F1.
+
+### M7 (telemetry framework)
 
 **Goal:** a timestamped, ordered event log published on a cadence, collected from
 the four buddies (motion, line/barcode, IMU, obstacle) plus the vehicle
