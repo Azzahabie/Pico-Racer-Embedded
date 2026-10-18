@@ -478,7 +478,11 @@ static void update_dhcp_status(void)
                 (uint32_t)((now - dhcp_started_us) / 1000ULL);
     }
 
-    if(!radio_status.dhcp_complete && dhcp_supplied_address(netif)) {
+    /* Link check for the same reason as in lease_valid(): while the link is
+     * down lwIP still reports the old lease as supplied, and copying it would
+     * show a stale address on the console during the back-off. */
+    if(!radio_status.dhcp_complete && radio_status.netif_link_up
+       && dhcp_supplied_address(netif)) {
         copy_ip4(radio_status.dhcp_address, netif_ip4_addr(netif));
         copy_ip4(radio_status.dhcp_netmask, netif_ip4_netmask(netif));
         copy_ip4(radio_status.dhcp_gateway, netif_ip4_gw(netif));
@@ -536,34 +540,44 @@ static void lease_reset(void)
  * link dropping -- goes to BACKOFF, which leaves the AP and rejoins.  A full
  * leave + rejoin also resets lwIP's DHCP back-off (tries = 0 on link up), which
  * would otherwise grow to 60 s between DISCOVERs.  Only checks timestamps and
- * flags; it never waits inside the poll loop. */
-typedef enum {
-    NET_SCANNING,       /* first scan still running; the first join follows */
-    NET_JOINING,
-    NET_WAIT_LEASE,
-    NET_ONLINE,
-    NET_BACKOFF,
-} net_state_t;
-
-static net_state_t net_state = NET_SCANNING;
+ * flags; it never waits inside the poll loop.  States and reasons are the
+ * CYW43_NET_* values in cyw43_utk.h. */
+static uint32_t net_state = CYW43_NET_SCANNING;
 static uint64_t net_state_us;           /* when net_state was entered */
 
 #if !TM_WIFI_DHCP
 static void lease_reset(void) {}        /* no lease to forget */
 #endif
 
-static void net_enter(net_state_t next, uint64_t now)
+/* Every transition goes through here, so the counters and net_log can never
+ * disagree with the state.  Runs inside the status publication. */
+static void net_enter(uint32_t next, uint32_t why, int32_t code, uint64_t now)
 {
+    T_CYW43_UTK_NET_EVENT *ev =
+            &radio_status.net_log[radio_status.net_log_seq % CYW43_NET_LOG];
+
     net_state = next;
     net_state_us = now;
+    if(next == CYW43_NET_WAIT_LEASE) radio_status.lease_attempts++;
+    if(why == CYW43_NET_WHY_LINK_LOST) radio_status.link_losses++;
+    radio_status.net_state = next;
+
+    ev->t_ms = (uint32_t)(now / 1000ULL);
+    ev->state = next;
+    ev->why = why;
+    ev->code = code;
+    ev->join_attempts = radio_status.join_attempts;
+    ev->lease_attempts = radio_status.lease_attempts;
+    ev->link_losses = radio_status.link_losses;
+    radio_status.net_log_seq++;
 }
 
 /* Leave on entry rather than after the wait, so a slow association cannot
  * complete in the middle of the back-off.  Harmless when not associated. */
-static void net_backoff(uint64_t now)
+static void net_backoff(uint32_t why, int32_t code, uint64_t now)
 {
     (void)cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
-    net_enter(NET_BACKOFF, now);
+    net_enter(CYW43_NET_BACKOFF, why, code, now);
 }
 
 static void join_start(uint64_t now)
@@ -571,6 +585,7 @@ static void join_start(uint64_t now)
     int32_t result;
 
     lease_reset();
+    radio_status.join_attempts++;
     radio_status.join_started = 1;
     radio_status.join_complete = 0;
     radio_status.link_up = 0;
@@ -585,18 +600,19 @@ static void join_start(uint64_t now)
         radio_status.join_result = result;
         mp_memory_barrir();
         radio_status.join_complete = 1;
-        net_backoff(now);
+        net_backoff(CYW43_NET_WHY_JOIN_REQUEST, result, now);
     } else {
-        net_enter(NET_JOINING, now);
+        net_enter(CYW43_NET_JOINING, CYW43_NET_WHY_NONE, 0, now);
     }
 }
 
-static void join_finish(int32_t join_result, uint64_t now)
+/* why is only used when join_result != 0. */
+static void join_finish(int32_t join_result, uint32_t why, uint64_t now)
 {
     radio_status.join_result = join_result;
     mp_memory_barrir();
     radio_status.join_complete = 1;
-    if(join_result != 0) net_backoff(now);
+    if(join_result != 0) net_backoff(why, join_result, now);
 }
 
 static void update_net_state(uint64_t now)
@@ -606,11 +622,11 @@ static void update_net_state(uint64_t now)
 #endif
 
     switch(net_state) {
-    case NET_SCANNING:
+    case CYW43_NET_SCANNING:
         if(radio_status.scan_complete) join_start(now);
         break;
 
-    case NET_JOINING: {
+    case CYW43_NET_JOINING: {
         int32_t link = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
 
         radio_status.join_elapsed_ms = (uint32_t)
@@ -620,47 +636,47 @@ static void update_net_state(uint64_t now)
             (void)cyw43_wifi_get_bssid(&cyw43_state, radio_status.bssid);
             (void)cyw43_wifi_get_rssi(&cyw43_state,
                                       (int32_t *)&radio_status.link_rssi);
-            join_finish(0, now);
+            join_finish(0, CYW43_NET_WHY_NONE, now);
 #if TM_WIFI_DHCP
-            net_enter(NET_WAIT_LEASE, now);
+            net_enter(CYW43_NET_WAIT_LEASE, CYW43_NET_WHY_NONE, 0, now);
 #else
-            net_enter(NET_ONLINE, now);
+            net_enter(CYW43_NET_ONLINE, CYW43_NET_WHY_NONE, 0, now);
 #endif
         } else if(link < CYW43_LINK_DOWN) {
-            join_finish(link, now);
+            join_finish(link, CYW43_NET_WHY_JOIN_FAILED, now);
         } else if(now - net_state_us >= CYW43_JOIN_TIMEOUT_US) {
-            join_finish(-CYW43_ETIMEDOUT, now);
+            join_finish(-CYW43_ETIMEDOUT, CYW43_NET_WHY_JOIN_TIMEOUT, now);
         }
         break;
     }
 
 #if TM_WIFI_DHCP
-    case NET_WAIT_LEASE:
+    case CYW43_NET_WAIT_LEASE:
         if(!radio_status.link_up) {
-            net_backoff(now);
+            net_backoff(CYW43_NET_WHY_LINK_LOST, 0, now);
         } else if(lease_valid(netif)) {
-            net_enter(NET_ONLINE, now);
+            net_enter(CYW43_NET_ONLINE, CYW43_NET_WHY_NONE, 0, now);
         } else if(now - net_state_us >= CYW43_DHCP_TIMEOUT_US) {
-            net_backoff(now);
+            net_backoff(CYW43_NET_WHY_LEASE_TIMEOUT, 0, now);
         }
         break;
 #endif
 
-    case NET_ONLINE:
+    case CYW43_NET_ONLINE:
         /* Clear the lease on the way out, not at the next join_start(), so
          * nothing gated on dhcp_complete runs during the back-off. */
         if(!radio_status.link_up) {
             lease_reset();
-            net_backoff(now);
+            net_backoff(CYW43_NET_WHY_LINK_LOST, 0, now);
 #if TM_WIFI_DHCP
         } else if(!lease_valid(netif)) {
             lease_reset();
-            net_enter(NET_WAIT_LEASE, now);
+            net_enter(CYW43_NET_WAIT_LEASE, CYW43_NET_WHY_LEASE_LOST, 0, now);
 #endif
         }
         break;
 
-    case NET_BACKOFF:
+    case CYW43_NET_BACKOFF:
         if(now - net_state_us >= CYW43_RETRY_BACKOFF_US) join_start(now);
         break;
 

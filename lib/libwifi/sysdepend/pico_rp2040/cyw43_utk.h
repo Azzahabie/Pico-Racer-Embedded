@@ -21,6 +21,38 @@
 #define CYW43_MQTT_TOPIC_MAX    48
 #define CYW43_MQTT_PAYLOAD_MAX  48
 
+/* Connection state machine in cyw43_utk.c (net_state, and the state of each
+   net_log entry). */
+#define CYW43_NET_SCANNING      0   /* first scan still running */
+#define CYW43_NET_JOINING       1
+#define CYW43_NET_WAIT_LEASE    2
+#define CYW43_NET_ONLINE        3
+#define CYW43_NET_BACKOFF       4
+
+/* Why a state was entered (net_log why); NONE for the normal forward path. */
+#define CYW43_NET_WHY_NONE          0
+#define CYW43_NET_WHY_JOIN_REQUEST  1   /* cyw43_wifi_join() refused; code = its result */
+#define CYW43_NET_WHY_JOIN_FAILED   2   /* code = CYW43_LINK_FAIL / _NONET / _BADAUTH */
+#define CYW43_NET_WHY_JOIN_TIMEOUT  3
+#define CYW43_NET_WHY_LEASE_TIMEOUT 4
+#define CYW43_NET_WHY_LINK_LOST     5   /* link dropped after association */
+#define CYW43_NET_WHY_LEASE_LOST    6   /* lease gone while the link stayed up */
+
+#define CYW43_NET_LOG   8
+
+/* One state transition.  The counters are the totals at the moment of the
+   transition, so a reader that drains the log late still prints them as they
+   were. */
+typedef struct {
+    uint32_t t_ms;              /* since boot */
+    uint32_t state;             /* CYW43_NET_* entered */
+    uint32_t why;               /* CYW43_NET_WHY_* */
+    int32_t  code;              /* driver result for JOIN_REQUEST / JOIN_FAILED */
+    uint32_t join_attempts;
+    uint32_t lease_attempts;
+    uint32_t link_losses;
+} T_CYW43_UTK_NET_EVENT;
+
 typedef struct {
     volatile int32_t init_result;
     volatile uint32_t init_complete;
@@ -42,6 +74,16 @@ typedef struct {
     volatile uint32_t join_elapsed_ms;
     volatile int32_t link_rssi;
     uint8_t bssid[6];
+    /* Connection state machine.  Counters are totals since boot. */
+    volatile uint32_t net_state;        /* CYW43_NET_* */
+    volatile uint32_t join_attempts;
+    volatile uint32_t lease_attempts;   /* times WAIT_LEASE was entered */
+    volatile uint32_t link_losses;
+    /* Every transition, because the console polls slower than JOINING lasts
+       and would otherwise miss states.  net_log_seq is the total ever written;
+       a reader tracks its own cursor against it, as with the UDP ring. */
+    T_CYW43_UTK_NET_EVENT net_log[CYW43_NET_LOG];
+    uint32_t net_log_seq;
     volatile uint32_t lwip_initialized;
     volatile uint32_t netif_initialized;
     volatile uint32_t netif_up;

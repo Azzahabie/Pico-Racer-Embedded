@@ -263,9 +263,57 @@ LOCAL void fmt_ipv4(UB *dst, const UB *a)
 	tm_sprintf(dst, (UB *)"%u.%u.%u.%u", a[0], a[1], a[2], a[3]);
 }
 
+/* Names for the connection state machine's log (cyw43_utk.h). */
+LOCAL const char *net_state_name(UW state)
+{
+	static const char *const name[] = {
+		"SCANNING", "JOINING", "WAIT_LEASE", "ONLINE", "BACKOFF"
+	};
+
+	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
+}
+
+/* " why=..." for a log entry, or "" on the normal forward path.  The link
+   codes are CYW43_LINK_FAIL / _NONET / _BADAUTH from cyw43.h, which this file
+   cannot include. */
+LOCAL void fmt_net_why(UB *dst, const T_CYW43_UTK_NET_EVENT *ev)
+{
+	const char	*link;
+
+	switch(ev->why) {
+	case CYW43_NET_WHY_JOIN_REQUEST:
+		tm_sprintf(dst, (UB *)" why=join-request(%d)", ev->code);
+		break;
+	case CYW43_NET_WHY_JOIN_FAILED:
+		link = (ev->code == -1) ? "FAIL"
+		     : (ev->code == -2) ? "NONET"
+		     : (ev->code == -3) ? "BADAUTH" : "?";
+		tm_sprintf(dst, (UB *)" why=join-failed(%s)", link);
+		break;
+	case CYW43_NET_WHY_JOIN_TIMEOUT:
+		tm_sprintf(dst, (UB *)" why=join-timeout");
+		break;
+	case CYW43_NET_WHY_LEASE_TIMEOUT:
+		tm_sprintf(dst, (UB *)" why=lease-timeout");
+		break;
+	case CYW43_NET_WHY_LINK_LOST:
+		tm_sprintf(dst, (UB *)" why=link-lost");
+		break;
+	case CYW43_NET_WHY_LEASE_LOST:
+		tm_sprintf(dst, (UB *)" why=lease-lost");
+		break;
+	default:
+		dst[0] = '\0';
+		break;
+	}
+}
+
 LOCAL void wifi_status_task(INT stacd, void *exinf)
 {
-	T_CYW43_UTK_STATUS	st;
+	/* static: the snapshot is ~2.7 KB, too much of a 4 KB stack.  Only one
+	   instance of this task ever runs. */
+	static T_CYW43_UTK_STATUS	st;
+	UW			net_cursor = 0;	/* state changes printed so far */
 	UW			last_link = 0xffffffffU;
 	UW			cursor = 0;	/* echoes printed so far */
 	UB			ip[16];
@@ -290,6 +338,29 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 
 	while(1) {
 		cyw43_utk_get_status(&st);
+
+		/* Connection state changes.  The radio task logs every transition,
+		   so none is lost between these polls even though JOINING lasts
+		   less than WIFI_IDLE_MS.  join# / lease# / lost are the totals at
+		   the time of the change, t is ms since boot. */
+		if(st.net_log_seq - net_cursor > CYW43_NET_LOG) {
+			tm_printf((UB *)"[wifi] (%u state changes not shown)\n",
+				  st.net_log_seq - net_cursor - CYW43_NET_LOG);
+			net_cursor = st.net_log_seq - CYW43_NET_LOG;
+		}
+		while(net_cursor != st.net_log_seq) {
+			const T_CYW43_UTK_NET_EVENT *ev =
+				&st.net_log[net_cursor % CYW43_NET_LOG];
+			UB why[32];
+
+			fmt_net_why(why, ev);
+			tm_printf((UB *)"[wifi] state=%s%s join#=%u lease#=%u"
+				       " lost=%u t=%ums\n",
+				  net_state_name(ev->state), why,
+				  ev->join_attempts, ev->lease_attempts,
+				  ev->link_losses, ev->t_ms);
+			net_cursor++;
+		}
 
 		/* Link transitions, printed once each rather than every tick. */
 		if(st.link_up != last_link) {
