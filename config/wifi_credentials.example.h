@@ -40,6 +40,17 @@
 
 #define UTK_WIFI_SSID       "replace-with-ssid"
 #define UTK_WIFI_PASSWORD   "replace-with-password"
-#define UTK_WIFI_AUTH       CYW43_AUTH_WPA2_AES_PSK
+
+/*
+ * Auth mode the Pico requests (cyw43_ll.h).  The default joins WPA/WPA2,
+ * WPA2/WPA3 and WPA3-only networks: it loads both the WPA2 passphrase and the
+ * WPA3 (SAE) password, so it falls back to WPA2 when the AP has no WPA3.
+ * Tested on all three router modes, see
+ * docs/comms/resolve_feedback/results.md (F1.8).
+ *   CYW43_AUTH_WPA3_WPA2_AES_PSK  WPA2/WPA3 (default; covers all three)
+ *   CYW43_AUTH_WPA2_AES_PSK       WPA2 only (fails on a WPA3-only AP)
+ *   CYW43_AUTH_WPA3_SAE_AES_PSK   WPA3 only (fails on a WPA/WPA2 AP)
+ */
+#define UTK_WIFI_AUTH       CYW43_AUTH_WPA3_WPA2_AES_PSK
 
 #endif /* WIFI_CREDENTIALS_H */
