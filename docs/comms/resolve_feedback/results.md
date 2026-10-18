@@ -118,16 +118,17 @@ Wi-Fi-specific notes that stay here:
   all of it lwIP's ACD address check (`state=8`). ACD can be disabled
   (`LWIP_DHCP_DOES_ACD_CHECK 0` in `lwipopts.h`) to help NFR-09 (15 s
   recovery), at the cost of conflict detection. Decide in F1.2 / after F1.5.
-- **⚠ Address overlap:** the Pico is getting `192.168.50.8`, which is also the
-  broker address in `config/broker_config.h:37`. Before any MQTT build, either
-  reserve the Pico at another address or point `broker_config.h` at the
-  laptop's real IP.
+- **✅ Address overlap resolved (19 Oct 2026):** the Pico gets `192.168.50.8`,
+  which used to be the broker address. The broker is `192.168.50.11`, now set in
+  the local `config/broker_config.h:37` (gitignored).
 - **Diagnostic line still in the build:** `[wifi] waiting for lease: state=
   tries= t= addr= gw= dns= polls= stage= rd=` (`app_main.c`, plus the
   `dhcp_state` / `poll_stage` fields in `cyw43_utk.h` / `.c`). Committed as
   `3e40f08` (debug). Fold it into F1.4's retry counters or remove it there.
 
-- Success rate, Pico2_IoT: __ / 20
+- Success rate, Pico2_IoT: **8 / 8** on the timer-fixed firmware (boots 9-16).
+  Boots 17-20 skipped by decision (19 Oct 2026): F1.6 re-measures after the
+  fix anyway.
 - Success rate, hotspot: **6 / 11** first attempt (~55%), strictly alternating;
   none of the 5 failures recovered while watched (only boot 2 was watched past
   the 30 s join timeout)
@@ -188,17 +189,75 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
   so assume **no**, and keep F1.2's explicit rejoin.
 
 ### F1.2 Connection state machine
-- Date:
-- Commit:
-- Build result (DNS profile):
-- Notes:
+- Date: 19 Oct 2026
+- Commit: not yet committed
+- Build result: ✅ DNS, MQTT (full chain) and JOIN-only profiles all build
+  with 0 errors / 0 warnings. `cyw43_utk.c` also compiled with
+  `-Wall -Wextra -fsyntax-only` in all three profiles: 0 warnings before and
+  after (the normal build passes no warning flags).
+- What changed (`lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`):
+  - `NET_SCANNING → NET_JOINING → NET_WAIT_LEASE → NET_ONLINE`, plus
+    `NET_BACKOFF`, in `update_net_state()`. It replaces the one-shot join on
+    the scan-end edge and only checks timestamps and flags.
+  - Join error, join timeout, no lease, link down → BACKOFF → rejoin.
+    ONLINE → WAIT_LEASE if the lease is lost while the link stays up.
+  - Timeouts are now overridable (`#ifndef`): join **15 s**, lease **20 s**,
+    back-off **3 s**.
+- Deviations from `Actions.md` F1.2:
+  - **Lease timeout 20 s, not 10 s.** Router leases take up to ~12 s after
+    link UP (F1.0 boot 16, ACD), so 10 s would abort good leases.
+  - **`cyw43_wifi_leave()` on entering BACKOFF, not after the wait,** so a
+    slow association can't complete mid-back-off.
+  - WAIT_LEASE / ONLINE read the lease **from the netif** (new
+    `lease_valid()`, also used by `update_dhcp_status()`), not from
+    `dhcp_complete`. So the state machine already follows a lease across a
+    rejoin, even before F1.3 removes the latch.
+- **Known gap until F1.3 (now closed by F1.3, below):** the `dhcp_complete`
+  latch still fires 20 s after the *first* link up and is never cleared. A boot whose first **join** fails
+  (the hotspot alternation) is fully fixed, because the latch timer only starts
+  at the first link UP. A boot whose first **lease** fails gets back online, but
+  the console never prints `ip=`, DNS never runs, and MQTT is gated on the
+  stale latch.
+- Not yet run on hardware. No retry is printed yet (F1.4), so for now the
+  evidence is every boot reaching `ip=`. Expected time on a failed-first-join
+  boot: ~15 s join timeout + 3 s back-off + ~12 s join and lease ≈ 30 s.
 
 ### F1.3 DHCP latch replaced
-- Date:
-- Commit:
-- Build result (DNS profile):
-- Build result (MQTT profile):
-- Notes:
+- Date: 19 Oct 2026
+- Commit: not yet committed
+- Build result (DNS profile): ✅ 0 errors / 0 warnings
+- Build result (MQTT profile, full chain): ✅ 0 errors / 0 warnings
+- Also built: JOIN-only and DHCP-without-DNS (to cover the `#if` paths), both
+  clean. `cyw43_utk.c` with `-Wall -Wextra`: 0 warnings in all four profiles.
+- What changed (`cyw43_utk.c`):
+  - **`dhcp_complete` now means "holds a lease now".** New `lease_reset()`
+    clears `dhcp_complete` / `dhcp_result`, the copied addresses,
+    `dhcp_started_us`, `dhcp_ipv4_adopted` and all the DNS fields
+    (`dns_started`, `dns_complete`, results, `dns_started_us`). It runs on every
+    join attempt and when leaving ONLINE: immediately, so nothing gated on the
+    lease runs during the back-off.
+  - **The latch timeout is gone** from `update_dhcp_status()`. The state
+    machine's WAIT_LEASE timeout (20 s) rejoins instead. A timeout is
+    deliberately **not** reported through `dhcp_complete` / `ERR_TIMEOUT`,
+    because the console prints `ip=` on every `dhcp_complete` rising edge and
+    would print a bogus `ip=0.0.0.0`. Lease attempts get counted in F1.4.
+  - **`lease_valid()` requires the link to be up.** lwIP keeps the client BOUND
+    while the link is down, so without this a dropped link would re-adopt the
+    old lease on the next poll, mid-back-off. On link up lwIP moves BOUND →
+    REBOOTING (`dhcp_network_changed_link_up()` → `dhcp_reboot()`), so the old
+    lease only passes again once the AP confirms it. (Found by review before
+    any hardware run.)
+  - **DNS restarts per lease**, and `dns_found()` ignores a late answer when no
+    query is active, so a stale reply can't land on the next lease.
+  - **MQTT gate** is now `dhcp_complete && dhcp_result == ERR_OK`.
+  - No `dhcp_start()` / `dhcp_stop()` calls, per F1.1.
+- `lwip_utk_mqtt.c` checked, unchanged: it guards on
+  `netif_is_link_up()` and a non-zero address before doing anything, so a lost
+  lease stalls it rather than crashing it. Reconnect is FR-25 / M9.
+- Side effect for F1.4 step 3: the console's `[wifi] ip=` line keys on the
+  `dhcp_complete` rising edge, so it should now print on **every** new lease.
+  Check it on hardware.
+- Not yet run on hardware.
 
 ### F1.4 Retry visibility
 - Date:
@@ -211,11 +270,41 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 | Test | Date | Outcome | Evidence / timing |
 |---|---|---|---|
 | T1 AP off at boot | | | router-on → ip = __ s |
-| T2 AP drop while online | | | |
+| T2 AP drop while online | 2026-10-19 | ✅ 2 / 2 (hotspot) | link DOWN → link UP 9.0 s / 12.0 s, → new `ip=` 15.1 s / 21.1 s. Hotspot-off → `link DOWN` ≈ **8 s** (stopwatch). Off duration not timed. See note below |
 | T3 DHCP refused | | | |
 | T4 wrong password | | | |
 | T5 30 min soak | | | link_losses = __ |
-| T6 hotspot back-to-back power cycles | | | boots with ip= __ / 10, retries per boot __ |
+| T6 hotspot back-to-back power cycles | 2026-10-19 | ✅ 5 / 5 reached `ip=` (before: 6 / 11) | link UP at +6.0 s (boot 1), then +12.0 s on boots 2-5 → 1 retry each (inferred). `ip=` at 12.1 / 21.1 / 21.1 / 18.1 / ~18.1 s |
+
+Build for T2 / T6: F1.2 + F1.3, DNS profile, uncommitted tree on top of
+`f0bbf4c`, `Test1` + `CYW43_AUTH_WPA3_WPA2_AES_PSK`. Timings are from the
+`[wifi] link DOWN` line. Retries are inferred from timing; nothing prints them
+until F1.4.
+
+**T6: the alternation moved inside each boot.** Every boot after a successful
+one needs exactly one retry. The first join clears the phone's stale session,
+the retry succeeds, and the next boot finds a new stale entry. That fits the
+F1.0 stale-session hypothesis. The retry costs a constant +6.0 s: roughly a
+~3 s failed attempt plus the 3 s back-off, well inside the 15 s join timeout.
+So the phone most likely **rejects** the stale join (`link < 0`) rather than
+ignoring it. To confirm with F1.4 step 4's failure reason.
+
+**T2: the 8 s detection delay matters for NFR-09 (15 s).** Our code can't see
+an AP that simply vanishes until the CYW43 firmware declares the link lost,
+here after ≈ 8 s without its beacons. Recovery after a drop is therefore
+≈ 8 s detection + 9-21 s rejoin and lease, plus the AP's own off time. Levers:
+- Disable ACD (`LWIP_DHCP_DOES_ACD_CHECK 0`), about 5-6 s off every lease.
+  See F1.0 "Lease time".
+- Shorten the firmware's link-loss detection. Broadcom radios usually have a
+  beacon-timeout setting. Not yet checked for the CYW43439.
+
+Other observations:
+- `ip=` re-printed after every new lease: ✅. This is F1.4 step 3, now verified.
+- Cosmetic: after a drop, `waiting for lease` shows the **old** address
+  (`addr=10.151.89.211`), not `0.0.0.0`. lwIP stays BOUND while the link is down,
+  and `update_dhcp_status()` copies the address fields before the
+  link-up-gated `lease_valid()` check. Behaviour is unaffected: `dhcp_complete`
+  and MQTT stay gated. Fix in F1.4.
 
 ### F1.6 A1 re-measured (after the fix)
 - Date:
@@ -234,6 +323,9 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 - Test result (AP off → calibrate → start → drives):
 
 ### F1.8 Demo-day network
+- **Decision (19 Oct 2026): not asking the instructor.** With the WPA2/WPA3
+  default joining every security mode tested, the remaining risk is a 5 GHz-only
+  demo AP (the Pico W radio is 2.4 GHz only). Accepted.
 - Date asked / answered:
 - Band: · Security: · PMF:
 - Matches A1? ☐ yes ☐ no → action:

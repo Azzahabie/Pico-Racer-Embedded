@@ -18,7 +18,7 @@ The exact steps to close each feedback point in
 
 | Point | Topic | Steps planned | Status |
 |---|---|---|---|
-| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.1 done; F1.0 hotspot done, router boots 17-20 left |
+| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0, F1.1 done; F1.2 + F1.3 pass T2 + T6 on hardware |
 | F2 | MQTT interface doc + map versioning | not yet planned | ⬜ |
 | F3 | Queue sizing, command-full ≠ Fault | not yet planned | ⬜ |
 | F4 | Core 1 timing with Wi-Fi active | not yet planned | ⬜ |
@@ -47,7 +47,10 @@ live inside `cyw43_utk_task`'s poll loop. Nothing else may call lwIP or CYW43.
 
 ---
 
-### F1.0 Baseline: measure today's success rate ⬜
+### F1.0 Baseline: measure today's success rate ✅
+
+**Done 19 Oct 2026:** router 8 / 8 (boots 17-20 skipped by decision), hotspot
+6 / 11. See `results.md` → F1.0.
 
 Measure first, so the fix can be compared against real numbers.
 
@@ -108,7 +111,11 @@ it. lwIP retries forever and re-leases on every link-up, but its back-off grows
 to 60 s. So F1.3 only removes the latch, and F1.2's rejoin stays, to keep
 recovery fast. Details are in `results.md` → F1.1.
 
-### F1.2 Add a connection state machine in `cyw43_utk_task` ⬜
+### F1.2 Add a connection state machine in `cyw43_utk_task` 🟡
+
+**Status (19 Oct 2026):** built in the DNS, MQTT and JOIN-only profiles. Not
+yet tested on hardware. Two deviations from the steps below (20 s lease
+timeout; leave on entering BACKOFF) are explained in `results.md` → F1.2.
 
 Replace the one-shot join and latch with an explicit state, matching
 Statechart 6.1's WAITING FOR WI-FI.
@@ -144,7 +151,10 @@ Statechart 6.1's WAITING FOR WI-FI.
 **Done when:** it builds in the DNS profile (F1.0's command) with no warnings
 added.
 
-### F1.3 Replace the DHCP latch with "address valid now" ⬜
+### F1.3 Replace the DHCP latch with "address valid now" 🟡
+
+**Status (19 Oct 2026):** built in the DNS, MQTT, JOIN-only and DHCP-only
+profiles. Not yet tested on hardware. See `results.md` → F1.3.
 
 1. Stop treating `dhcp_complete` as permanent. Either:
    - **(preferred)** keep `dhcp_complete` but **clear it** (and `dns_complete`,
