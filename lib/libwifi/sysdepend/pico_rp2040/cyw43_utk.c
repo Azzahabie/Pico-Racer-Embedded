@@ -42,8 +42,19 @@
 /* Bounded so a reader can never wedge if the writer is starved; an exhausted
  * budget returns the last copy and is visible through status_retries. */
 #define CYW43_STATUS_READ_ATTEMPTS 16
-#define CYW43_JOIN_TIMEOUT_US 30000000ULL
-#define CYW43_DHCP_TIMEOUT_US 30000000ULL
+/* Connection state machine timing.  Overridable so they can be tuned from the
+ * build without touching the logic.  The lease timeout is not the 10 s first
+ * proposed: on Pico2_IoT a lease takes up to ~12 s after link up, nearly all
+ * of it lwIP's ACD address check. */
+#ifndef CYW43_JOIN_TIMEOUT_US
+#define CYW43_JOIN_TIMEOUT_US 15000000ULL
+#endif
+#ifndef CYW43_DHCP_TIMEOUT_US
+#define CYW43_DHCP_TIMEOUT_US 20000000ULL
+#endif
+#ifndef CYW43_RETRY_BACKOFF_US
+#define CYW43_RETRY_BACKOFF_US 3000000ULL
+#endif
 #define CYW43_DNS_TIMEOUT_US  30000000ULL
 
 #if TM_WIFI_JOIN
@@ -334,7 +345,9 @@ static void dns_found(const char *name, const ip_addr_t *address, void *arg)
 {
     (void)name;
     (void)arg;
-    if(radio_status.dns_complete) return;
+    /* !dns_started: a late answer to a query from a lease that has since been
+     * dropped (lease_reset) must not be reported against the next one. */
+    if(!radio_status.dns_started || radio_status.dns_complete) return;
 
     radio_status.dns_elapsed_ms =
             (uint32_t)((time_us_64() - dns_started_us) / 1000ULL);
@@ -426,6 +439,25 @@ static void copy_ip4(uint8_t dst[4], const ip4_addr_t *src)
     dst[3] = ip4_addr4(src);
 }
 
+/* True while lwIP holds a usable lease right now: link up, bound, with
+ * address, netmask, gateway and a DNS server all set.  Read from the netif
+ * rather than from dhcp_complete, so it follows the lease across a rejoin.
+ * The link check matters: lwIP keeps the client BOUND while the link is down
+ * (F1.1), so without it a dropped link would re-adopt the old lease during the
+ * back-off.  On link up lwIP leaves BOUND at once (REBOOTING), so the old lease
+ * cannot pass here until the AP confirms it again. */
+static int lease_valid(struct netif *netif)
+{
+    const ip_addr_t *dns = dns_getserver(0);
+
+    return netif_is_link_up(netif)
+        && dhcp_supplied_address(netif)
+        && !ip4_addr_isany_val(*netif_ip4_addr(netif))
+        && !ip4_addr_isany_val(*netif_ip4_netmask(netif))
+        && !ip4_addr_isany_val(*netif_ip4_gw(netif))
+        && dns != NULL && !ip4_addr_isany_val(*ip_2_ip4(dns));
+}
+
 static void update_dhcp_status(void)
 {
     struct netif *netif = &cyw43_state.netif[CYW43_ITF_STA];
@@ -453,10 +485,7 @@ static void update_dhcp_status(void)
         if(dns != NULL) {
             copy_ip4(radio_status.dhcp_dns, ip_2_ip4(dns));
         }
-        if(!ip4_addr_isany_val(*netif_ip4_addr(netif))
-           && !ip4_addr_isany_val(*netif_ip4_netmask(netif))
-           && !ip4_addr_isany_val(*netif_ip4_gw(netif))
-           && dns != NULL && !ip4_addr_isany_val(*ip_2_ip4(dns))) {
+        if(lease_valid(netif)) {
             if(!dhcp_ipv4_adopted) {
                 radio_status.ipv4_config_result =
                         lwip_utk_ipv4_adopt_netif(netif);
@@ -467,12 +496,176 @@ static void update_dhcp_status(void)
             radio_status.dhcp_complete = 1;
         }
     }
+    /* No timeout here any more: the connection state machine owns it, and a
+     * missed lease leads to a rejoin rather than a permanent ERR_TIMEOUT. */
+}
 
-    if(!radio_status.dhcp_complete && dhcp_started_us != 0
-       && now - dhcp_started_us >= CYW43_DHCP_TIMEOUT_US) {
-        radio_status.dhcp_result = ERR_TIMEOUT;
+/* Forget the current lease so the next one is timed, adopted, reported and
+ * resolved afresh.  dhcp_complete therefore means "holds a lease now", not
+ * "DHCP finished once".  Called on every join attempt and whenever the car
+ * leaves ONLINE.  lwIP's own DHCP client keeps running underneath and is not
+ * touched: it restarts discovery by itself on every link up (F1.1). */
+static void lease_reset(void)
+{
+    radio_status.dhcp_complete = 0;
+    radio_status.dhcp_result = -5;
+    radio_status.dhcp_elapsed_ms = 0;
+    for(unsigned int i = 0; i < 4; i++) {
+        radio_status.dhcp_address[i] = 0;
+        radio_status.dhcp_netmask[i] = 0;
+        radio_status.dhcp_gateway[i] = 0;
+        radio_status.dhcp_dns[i] = 0;
+    }
+    dhcp_started_us = 0;
+    dhcp_ipv4_adopted = 0;
+#if TM_WIFI_DNS
+    radio_status.dns_started = 0;
+    radio_status.dns_complete = 0;
+    radio_status.dns_request_result = -5;
+    radio_status.dns_result = -3;
+    radio_status.dns_elapsed_ms = 0;
+    for(unsigned int i = 0; i < 4; i++) radio_status.dns_address[i] = 0;
+    dns_started_us = 0;
+#endif
+}
+#endif
+
+#if TM_WIFI_JOIN
+/* Connection state machine (Statechart 6.1, WAITING FOR WI-FI).  Replaces the
+ * old one-shot join: any failure -- join error, join timeout, no lease, or the
+ * link dropping -- goes to BACKOFF, which leaves the AP and rejoins.  A full
+ * leave + rejoin also resets lwIP's DHCP back-off (tries = 0 on link up), which
+ * would otherwise grow to 60 s between DISCOVERs.  Only checks timestamps and
+ * flags; it never waits inside the poll loop. */
+typedef enum {
+    NET_SCANNING,       /* first scan still running; the first join follows */
+    NET_JOINING,
+    NET_WAIT_LEASE,
+    NET_ONLINE,
+    NET_BACKOFF,
+} net_state_t;
+
+static net_state_t net_state = NET_SCANNING;
+static uint64_t net_state_us;           /* when net_state was entered */
+
+#if !TM_WIFI_DHCP
+static void lease_reset(void) {}        /* no lease to forget */
+#endif
+
+static void net_enter(net_state_t next, uint64_t now)
+{
+    net_state = next;
+    net_state_us = now;
+}
+
+/* Leave on entry rather than after the wait, so a slow association cannot
+ * complete in the middle of the back-off.  Harmless when not associated. */
+static void net_backoff(uint64_t now)
+{
+    (void)cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+    net_enter(NET_BACKOFF, now);
+}
+
+static void join_start(uint64_t now)
+{
+    int32_t result;
+
+    lease_reset();
+    radio_status.join_started = 1;
+    radio_status.join_complete = 0;
+    radio_status.link_up = 0;
+    radio_status.link_status = CYW43_LINK_DOWN;
+    result = cyw43_wifi_join(&cyw43_state,
+                             sizeof(wifi_ssid) - 1, wifi_ssid,
+                             sizeof(wifi_password) - 1, wifi_password,
+                             UTK_WIFI_AUTH, NULL,
+                             CYW43_CHANNEL_NONE);
+    radio_status.join_request_result = result;
+    if(result != 0) {
+        radio_status.join_result = result;
         mp_memory_barrir();
-        radio_status.dhcp_complete = 1;
+        radio_status.join_complete = 1;
+        net_backoff(now);
+    } else {
+        net_enter(NET_JOINING, now);
+    }
+}
+
+static void join_finish(int32_t join_result, uint64_t now)
+{
+    radio_status.join_result = join_result;
+    mp_memory_barrir();
+    radio_status.join_complete = 1;
+    if(join_result != 0) net_backoff(now);
+}
+
+static void update_net_state(uint64_t now)
+{
+#if TM_WIFI_DHCP
+    struct netif *netif = &cyw43_state.netif[CYW43_ITF_STA];
+#endif
+
+    switch(net_state) {
+    case NET_SCANNING:
+        if(radio_status.scan_complete) join_start(now);
+        break;
+
+    case NET_JOINING: {
+        int32_t link = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+
+        radio_status.join_elapsed_ms = (uint32_t)
+                ((now - net_state_us) / 1000ULL);
+        radio_status.link_status = link;
+        if(radio_status.link_up) {
+            (void)cyw43_wifi_get_bssid(&cyw43_state, radio_status.bssid);
+            (void)cyw43_wifi_get_rssi(&cyw43_state,
+                                      (int32_t *)&radio_status.link_rssi);
+            join_finish(0, now);
+#if TM_WIFI_DHCP
+            net_enter(NET_WAIT_LEASE, now);
+#else
+            net_enter(NET_ONLINE, now);
+#endif
+        } else if(link < CYW43_LINK_DOWN) {
+            join_finish(link, now);
+        } else if(now - net_state_us >= CYW43_JOIN_TIMEOUT_US) {
+            join_finish(-CYW43_ETIMEDOUT, now);
+        }
+        break;
+    }
+
+#if TM_WIFI_DHCP
+    case NET_WAIT_LEASE:
+        if(!radio_status.link_up) {
+            net_backoff(now);
+        } else if(lease_valid(netif)) {
+            net_enter(NET_ONLINE, now);
+        } else if(now - net_state_us >= CYW43_DHCP_TIMEOUT_US) {
+            net_backoff(now);
+        }
+        break;
+#endif
+
+    case NET_ONLINE:
+        /* Clear the lease on the way out, not at the next join_start(), so
+         * nothing gated on dhcp_complete runs during the back-off. */
+        if(!radio_status.link_up) {
+            lease_reset();
+            net_backoff(now);
+#if TM_WIFI_DHCP
+        } else if(!lease_valid(netif)) {
+            lease_reset();
+            net_enter(NET_WAIT_LEASE, now);
+#endif
+        }
+        break;
+
+    case NET_BACKOFF:
+        if(now - net_state_us >= CYW43_RETRY_BACKOFF_US) join_start(now);
+        break;
+
+    default:
+        break;
     }
 }
 #endif
@@ -501,9 +694,6 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
     cyw43_wifi_scan_options_t options = {0};
     int32_t result;
     bool was_scanning;
-#if TM_WIFI_JOIN
-    uint64_t join_started_us = 0;
-#endif
 
     (void)stacd;
     (void)exinf;
@@ -598,11 +788,11 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         update_bulk_status();
 #endif
 #if TM_WIFI_MQTT
-        /* Gated on having an address rather than on the echo phases: MQTT is
+        /* Gated on holding a lease now rather than on the echo phases: MQTT is
          * the feature under test here, not another link check, so it should
          * not queue behind the UDP/TCP qualification traffic.  The module
          * guards on the netif state itself as well. */
-        if(radio_status.dhcp_complete) {
+        if(radio_status.dhcp_complete && radio_status.dhcp_result == ERR_OK) {
             lwip_utk_mqtt_poll(&cyw43_state.netif[CYW43_ITF_STA]);
         }
         update_mqtt_status();
@@ -618,51 +808,9 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         if(was_scanning && !radio_status.scan_active) {
             mp_memory_barrir();
             radio_status.scan_complete = 1;
-#if TM_WIFI_JOIN
-            radio_status.join_started = 1;
-            radio_status.join_complete = 0;
-            radio_status.link_up = 0;
-            radio_status.link_status = CYW43_LINK_DOWN;
-            join_started_us = time_us_64();
-            result = cyw43_wifi_join(&cyw43_state,
-                                     sizeof(wifi_ssid) - 1, wifi_ssid,
-                                     sizeof(wifi_password) - 1, wifi_password,
-                                     UTK_WIFI_AUTH, NULL,
-                                     CYW43_CHANNEL_NONE);
-            radio_status.join_request_result = result;
-            if(result != 0) {
-                radio_status.join_result = result;
-                radio_status.join_complete = 1;
-            }
-#endif
         }
 #if TM_WIFI_JOIN
-        if(radio_status.join_started && !radio_status.join_complete) {
-            uint64_t now = time_us_64();
-            int32_t link = cyw43_wifi_link_status(&cyw43_state,
-                                                  CYW43_ITF_STA);
-
-            radio_status.join_elapsed_ms = (uint32_t)
-                    ((now - join_started_us) / 1000ULL);
-            radio_status.link_status = link;
-            if(radio_status.link_up) {
-                (void)cyw43_wifi_get_bssid(&cyw43_state,
-                                           radio_status.bssid);
-                (void)cyw43_wifi_get_rssi(&cyw43_state,
-                                          (int32_t *)&radio_status.link_rssi);
-                radio_status.join_result = 0;
-                mp_memory_barrir();
-                radio_status.join_complete = 1;
-            } else if(link < CYW43_LINK_DOWN) {
-                radio_status.join_result = link;
-                mp_memory_barrir();
-                radio_status.join_complete = 1;
-            } else if(now - join_started_us >= CYW43_JOIN_TIMEOUT_US) {
-                radio_status.join_result = -CYW43_ETIMEDOUT;
-                mp_memory_barrir();
-                radio_status.join_complete = 1;
-            }
-        }
+        update_net_state(time_us_64());
 #endif
         status_publish_end();
         cyw43_utk_poll_requested = 0;
