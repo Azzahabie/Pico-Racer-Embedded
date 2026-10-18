@@ -44,25 +44,63 @@ give the date, and say plainly if something failed or was skipped.
 | 14   | yes      | -45  | yes | 18             | Ditto above                                                                                                      |
 | 15   | yes      | -60  | yes | 17             | Ditto above                                                                                                      |
 | 16   | yes      | -50  | yes | 18             | Ditto above                                                                                                      |
-| 17   |          |      |     |                |                                                                                                                  |
-| 18   |          |      |     |                |                                                                                                                  |
-| 19   |          |      |     |                |                                                                                                                  |
-| 20   |          |      |     |                |                                                                                                                  |
 
 **Phone hotspot (10 cold boots)**
 
+- Date: 19 Oct 2026
+- Build: `mtk3pico_smp1_usb_cdc_wifi_dns.uf2` @ `1c01d5a` (timer-fixed, diagnostic
+  line still in), credentials switched to the hotspot `Test1`
+- Hotspot: phone, 2.4 GHz channel 6, WPA2-Personal (AKM `00-0f-ac:02` PSK),
+  CCMP, 802.11n (read from a Windows laptop joined to the same hotspot)
+- Times are from the first `[wifi] link DOWN` line (~0.2 s after the banner),
+  not from power-on. USB enumeration adds a few seconds before that. Where the
+  banner was cut off, a new boot is recognised by the monitor `seq` restarting.
+
 | Boot | link UP? | RSSI | ip= | Time to ip (s) | Notes |
 |---|---|---|---|---|---|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
-| 6 | | | | | |
-| 7 | | | | | |
-| 8 | | | | | |
-| 9 | | | | | |
-| 10 | | | | | |
+| 1 | yes | -58 | yes | 12.0 | link UP +6.0 s, `ip=10.151.89.211` |
+| 2 | no | | no | | No link UP in ~54 s. Only failed boot watched past the 30 s join timeout; nothing printed when it expired |
+| 3 | yes | -45 | yes | 15.1 | link UP +6.0 s |
+| 4 | no | | no | | No link UP in ~18 s watched |
+| 5 | yes | -53 | yes | 12.1 | link UP +6.0 s |
+| 6 | no | | no | | No link UP in ~20 s watched |
+| 7 | yes | -47 | yes | 12.1 | link UP +6.0 s |
+| 8 | no | | no | | No link UP in ~20 s watched |
+| 9 | yes | -50 | yes | 12.1 | link UP +6.0 s |
+| 10 | no | | no | | No link UP in ~16 s watched |
+| 11 | yes | -51 | yes | 15.1 | link UP +6.0 s. Extra boot beyond the planned 10 |
+
+**Finding: hotspot boots strictly alternate success / failure (11 in a row).**
+- Every failure is at **association** (no `link UP`), never at DHCP. Every
+  success looks identical: link UP ~6 s after boot, then `ip=` 6 or 9 s later
+  (ACD, `state=8`), always the same address `10.151.89.211`.
+- Signal is not the cause (RSSI -45 to -58), and neither is the off time:
+  the gap between the last line of one boot and the next boot was 3-8 s
+  before both successes and failures. The only predictor is whether the
+  **previous** boot succeeded.
+- **Hypothesis (unconfirmed): stale session on the phone.** A power cut gives
+  the Pico no chance to disassociate, so the hotspot still lists its MAC
+  (`d8:3a:dd:ae:4b:eb`) as connected. The next join from the same MAC is
+  ignored or rejected, and that failed attempt clears the stale entry, so the
+  boot after it succeeds. The router (boots 9-16, 8/8 with equally quick power
+  cycles) doesn't show this.
+- **Hotspot-restart test (19 Oct 2026): 5 / 5 connected.** Each run: power
+  off the Pico, turn the hotspot off, turn the hotspot on, power on the Pico.
+  It associated every time, against strict alternation without the restart.
+  Per-boot RSSI / timings weren't logged. This puts the failure **on the phone
+  side**: restarting the hotspot wipes whatever state it held about the Pico.
+  It fits the stale-session hypothesis, but doesn't yet rule out another
+  phone-side cause (e.g. the phone temporarily blocking the MAC after a failed
+  attempt). Tests still open: (1) after a successful boot, cut power and check
+  the phone's connected-devices list for the Pico; (2) after a successful boot,
+  wait ~5 min (typical hotspot idle timeout) before the next boot.
+- **Consequence for F1.2:** today the join is one-shot and fails silently
+  (`cyw43_utk.c:660`, no console line), so every second hotspot boot stays
+  offline until power-cycled. A rejoin after back-off is exactly the "next
+  boot" in this pattern, so F1.2 should turn these into a one-retry success.
+  F1.5 T6 tests this.
+- Raw log: [`F1log.md`](F1log.md) → "Hotspot (Test1), 19 Oct 2026", boots
+  H1-H11.
 
 **Blocker found during F1.0: ✅ resolved by port fix PF-001.** Boots 2, 3,
 5, 6 and 8 (power cycles) associated but never got an IP. The cause was the
@@ -90,7 +128,9 @@ Wi-Fi-specific notes that stay here:
   `3e40f08` (debug). Fold it into F1.4's retry counters or remove it there.
 
 - Success rate, Pico2_IoT: __ / 20
-- Success rate, hotspot: __ / 10
+- Success rate, hotspot: **6 / 11** first attempt (~55%), strictly alternating;
+  none of the 5 failures recovered while watched (only boot 2 was watched past
+  the 30 s join timeout)
 
 ### F1.1 Where DHCP starts/stops
 - Date: 2026-10-16
@@ -175,6 +215,7 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 | T3 DHCP refused | | | |
 | T4 wrong password | | | |
 | T5 30 min soak | | | link_losses = __ |
+| T6 hotspot back-to-back power cycles | | | boots with ip= __ / 10, retries per boot __ |
 
 ### F1.6 A1 re-measured (after the fix)
 - Date:
@@ -196,6 +237,60 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 - Date asked / answered:
 - Band: · Security: · PMF:
 - Matches A1? ☐ yes ☐ no → action:
+
+**Auth-mode compatibility on Pico2_IoT (19 Oct 2026)**
+- Builds: DNS profile @ `1c01d5a`, one per `UTK_WIFI_AUTH` value in
+  `config/wifi_credentials.h` (`…_wifi_dns_pico2iot_<mode>.uf2`)
+- 5 boots per row. Per-boot RSSI / timings weren't logged.
+
+| Router security | Router cipher | Pico `UTK_WIFI_AUTH` | Joined + `ip=` |
+|---|---|---|---|
+| WPA/WPA2-Personal | TKIP+AES | `CYW43_AUTH_WPA2_AES_PSK` | ✅ 5 / 5 |
+| WPA2/WPA3-Personal | AES | `CYW43_AUTH_WPA3_WPA2_AES_PSK` | ✅ 5 / 5 |
+| WPA3-Personal | AES | `CYW43_AUTH_WPA3_SAE_AES_PSK` | ✅ 5 / 5 |
+| WPA2/WPA3-Personal | AES | `CYW43_AUTH_WPA2_AES_PSK` | ✅ 5 / 5 (joins through WPA2) |
+| WPA3-Personal | AES | `CYW43_AUTH_WPA2_AES_PSK` | ❌ 0 / 5 (negative case, as expected) |
+| WPA3-Personal | AES | `CYW43_AUTH_WPA3_WPA2_AES_PSK` | ✅ 5 / 5 |
+| WPA/WPA2-Personal | TKIP+AES | `CYW43_AUTH_WPA3_WPA2_AES_PSK` | ✅ 5 / 5 |
+| WPA/WPA2-Personal | TKIP+AES | `CYW43_AUTH_WPA3_SAE_AES_PSK` | ❌ 0 / 5 |
+
+Summary by build (router modes tested: WPA/WPA2, WPA2/WPA3, WPA3-only):
+
+| Pico build | WPA/WPA2 | WPA2/WPA3 | WPA3-only |
+|---|---|---|---|
+| `WPA2_AES_PSK` | ✅ | ✅ | ❌ |
+| `WPA3_WPA2_AES_PSK` | ✅ | ✅ | ✅ |
+| `WPA3_SAE_AES_PSK` | ❌ | ✅ | ✅ |
+
+- **WPA3 (SAE) works on the Pico W.** It only needs `UTK_WIFI_AUTH` set to a
+  WPA3 mode, and the driver then advertises PMF as capable (`cyw43_ll.c:2120`).
+  This contradicts A1's "no firmware can fix a WPA3-only / PMF-required AP":
+  it's a one-line config change, so a WPA3 demo AP is no longer a blocker.
+- **Why the two WPA3 settings differ** (`cyw43_ll_wifi_join()`, cyw43-driver
+  `dd75682`): both set the WPA auth mode to SAE (`cyw43_ll.c:2065-2066`) and
+  load the SAE password (`:2105-2110`), but only `WPA3_WPA2_AES_PSK` **also**
+  loads the WPA2 passphrase (`WLC_SET_WSEC_PMK`, `:2094-2102`, which skips only
+  `WPA3_SAE_AES_PSK`). With both keys, the radio firmware falls back to WPA2-PSK
+  on a WPA2-only AP. Which method it used on each join isn't visible on the
+  console. The fallback is inferred from the 5 / 5 result plus this code.
+- **The WPA2 build covers WPA/WPA2 and WPA2/WPA3 networks; only a WPA3-only
+  network needs the WPA3 build**, and on one the WPA2 build never joins.
+  (Superseded: the default is now `CYW43_AUTH_WPA3_WPA2_AES_PSK`, see below.)
+- **`WPA3_WPA2_AES_PSK` is the only build that joined every router mode tested
+  (15 / 15)**, which makes it the candidate default: one build regardless of
+  the demo AP's mode.
+- **Same build on the phone hotspot (`Test1`, WPA2-Personal):** back-to-back
+  Pico power cycles **still alternate** success / failure, exactly like the
+  WPA2 build in F1.0. With the hotspot restarted every time the Pico is
+  cycled, it joined **5 / 5**. So the WPA2 fallback works on the phone too, and
+  the auth setting neither causes nor fixes the stale-session alternation (that
+  stays F1.2's job).
+- **Decision (19 Oct 2026): `CYW43_AUTH_WPA3_WPA2_AES_PSK` is the default** in
+  `config/wifi_credentials.example.h`, so one build covers any demo AP mode.
+  Still to do: include it in the F1.6 re-measure.
+- This firmware prints nothing when a join fails (the reason is only added in
+  F1.4 step 4), so a wrong-auth build looks the same on the console as an AP
+  that's out of range.
 
 ### F1.9 Docs updated
 - ☐ Statechart 6.1 spec ☐ Report A1 ☐ Report §5 / FR-02 ☐ GLOSSARY *Latch* ☐ NETWORKING §5 ☐ README / Progress table

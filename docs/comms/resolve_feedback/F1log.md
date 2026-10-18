@@ -237,3 +237,197 @@ Power cycle (no reflash) of the attempt-7 build: the poll/stage diagnostic is in
 [21:15:15.503] [wifi] ip=192.168.50.8  gw=192.168.50.1  dns=8.8.8.8
 [21:15:59.532] [monitor] seq=124 produced=124 consumed=124 dropped=0  made_on=prc1 seen_on=prc2
 [21:16:01.553] [monitor] seq=128 produced=128 consumed=128 dropped=0  made_on=prc1 seen_on=prc2
+
+# Hotspot (Test1), 19 Oct 2026
+- Build: `mtk3pico_smp1_usb_cdc_wifi_dns.uf2` @ `1c01d5a`, credentials set to the phone hotspot `Test1` (2.4 GHz ch 6, WPA2-Personal, CCMP)
+- One continuous capture, split into boots H1-H11 here. Lines are unedited. Some boots lost their banner (and H4 its `link DOWN` line) while the USB-CDC port reconnected; a new boot shows as the monitor `seq` restarting.
+- Results table and analysis: `results.md` → F1.0, "Phone hotspot"
+## H1
+[00:15:00.678] === uT-Kernel 3.0 / RP2040 demo ===
+[00:15:00.684] SMP build: 2 processors
+[00:15:00.686] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[00:15:00.693] [monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:00.888] [wifi] link DOWN
+[00:15:02.706] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:04.714] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:06.732] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:06.909] [wifi] link UP  rssi=-58  mac=d8:3a:dd:ae:4b:eb
+[00:15:06.911] [wifi] waiting for lease: state=8 tries=0 t=1759ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=264 stage=7 rd=0
+[00:15:08.732] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:09.930] [wifi] waiting for lease: state=8 tries=0 t=4779ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=415 stage=7 rd=0
+[00:15:10.747] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:12.747] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:12.935] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:15:14.768] [monitor] seq=29 produced=29 consumed=29 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:16.775] [monitor] seq=33 produced=33 consumed=33 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:18.785] [monitor] seq=37 produced=37 consumed=37 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:20.791] [monitor] seq=41 produced=41 consumed=41 dropped=0  made_on=prc1 seen_on=prc2
+## H2 (no link UP)
+[00:15:28.543] [wifi] link DOWN
+[00:15:30.359] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:32.366] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:34.383] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:36.382] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:38.407] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:40.403] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:42.424] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:44.426] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:46.446] [monitor] seq=38 produced=38 consumed=38 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:48.438] [monitor] seq=42 produced=42 consumed=42 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:50.467] [monitor] seq=46 produced=46 consumed=46 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:52.465] [monitor] seq=50 produced=50 consumed=50 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:54.482] [monitor] seq=54 produced=54 consumed=54 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:56.479] [monitor] seq=57 produced=57 consumed=57 dropped=0  made_on=prc1 seen_on=prc2
+[00:15:58.506] [monitor] seq=61 produced=61 consumed=61 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:00.504] [monitor] seq=65 produced=65 consumed=65 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:02.522] [monitor] seq=69 produced=69 consumed=69 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:04.521] [monitor] seq=73 produced=73 consumed=73 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:06.547] [monitor] seq=77 produced=77 consumed=77 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:08.541] [monitor] seq=81 produced=81 consumed=81 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:10.563] [monitor] seq=85 produced=85 consumed=85 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:12.556] [monitor] seq=89 produced=89 consumed=89 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:14.587] [monitor] seq=93 produced=93 consumed=93 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:16.587] [monitor] seq=97 produced=97 consumed=97 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:18.606] [monitor] seq=101 produced=101 consumed=101 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:20.596] [monitor] seq=105 produced=105 consumed=105 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:22.623] [monitor] seq=109 produced=109 consumed=109 dropped=0  made_on=prc1 seen_on=prc2
+## H3
+[00:16:29.042] === uT-Kernel 3.0 / RP2040 demo ===
+[00:16:29.044] SMP build: 2 processors
+[00:16:29.045] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[00:16:29.055] [monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:29.240] [wifi] link DOWN
+[00:16:31.066] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:33.084] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:35.080] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:35.266] [wifi] link UP  rssi=-45  mac=d8:3a:dd:ae:4b:eb
+[00:16:35.268] [wifi] waiting for lease: state=8 tries=0 t=1959ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=278 stage=7 rd=1
+[00:16:37.100] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:38.287] [wifi] waiting for lease: state=8 tries=0 t=4979ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=429 stage=7 rd=2
+[00:16:39.106] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:41.120] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:41.297] [wifi] waiting for lease: state=8 tries=0 t=7979ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=579 stage=7 rd=2
+[00:16:43.118] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:44.296] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:16:45.143] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:47.143] [monitor] seq=38 produced=38 consumed=38 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:49.164] [monitor] seq=42 produced=42 consumed=42 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:51.161] [monitor] seq=46 produced=46 consumed=46 dropped=0  made_on=prc1 seen_on=prc2
+## H4 (no link UP)
+[00:16:55.911] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:57.918] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:16:59.937] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:01.932] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:03.951] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:05.956] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:07.973] [monitor] seq=29 produced=29 consumed=29 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:09.977] [monitor] seq=33 produced=33 consumed=33 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:11.995] [monitor] seq=37 produced=37 consumed=37 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:13.998] [monitor] seq=41 produced=41 consumed=41 dropped=0  made_on=prc1 seen_on=prc2
+## H5
+[00:17:27.430] [wifi] link DOWN
+[00:17:29.260] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:31.278] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:33.272] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:33.458] [wifi] link UP  rssi=-53  mac=d8:3a:dd:ae:4b:eb
+[00:17:33.459] [wifi] waiting for lease: state=8 tries=0 t=1959ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=278 stage=7 rd=1
+[00:17:35.300] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:36.472] [wifi] waiting for lease: state=8 tries=0 t=4979ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=429 stage=7 rd=2
+[00:17:37.293] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:39.311] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:39.498] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:17:41.311] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:43.339] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+## H6 (no link UP)
+[00:17:46.563] [wifi] link DOWN
+[00:17:48.390] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:50.392] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:52.404] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:54.405] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:56.429] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:17:58.427] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:00.449] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:02.447] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:04.466] [monitor] seq=38 produced=38 consumed=38 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:06.473] [monitor] seq=41 produced=41 consumed=41 dropped=0  made_on=prc1 seen_on=prc2
+## H7
+[00:18:10.237] === uT-Kernel 3.0 / RP2040 demo ===
+[00:18:10.239] SMP build: 2 processors
+[00:18:10.240] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[00:18:10.241] [monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:10.427] [wifi] link DOWN
+[00:18:12.249] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:14.265] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:16.273] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:16.449] [wifi] link UP  rssi=-47  mac=d8:3a:dd:ae:4b:eb
+[00:18:16.451] [wifi] waiting for lease: state=8 tries=0 t=1959ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=277 stage=7 rd=0
+[00:18:18.285] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:19.467] [wifi] waiting for lease: state=8 tries=0 t=4979ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=428 stage=7 rd=0
+[00:18:20.294] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:22.305] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:22.491] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:18:24.312] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:26.323] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:28.331] [monitor] seq=38 produced=38 consumed=38 dropped=0  made_on=prc1 seen_on=prc2
+## H8 (no link UP)
+[00:18:34.042] === uT-Kernel 3.0 / RP2040 demo ===
+[00:18:34.043] SMP build: 2 processors
+[00:18:34.044] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[00:18:34.059] [monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:34.246] [wifi] link DOWN
+[00:18:36.063] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:38.090] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:40.086] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:42.100] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:44.104] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:46.121] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:48.123] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:50.144] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:52.149] [monitor] seq=38 produced=38 consumed=38 dropped=0  made_on=prc1 seen_on=prc2
+[00:18:54.169] [monitor] seq=42 produced=42 consumed=42 dropped=0  made_on=prc1 seen_on=prc2
+## H9
+[00:19:00.055] rc2
+[00:19:00.252] [wifi] link DOWN
+[00:19:02.080] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:04.096] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:06.091] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:06.278] [wifi] link UP  rssi=-50  mac=d8:3a:dd:ae:4b:eb
+[00:19:06.279] [wifi] waiting for lease: state=8 tries=0 t=1999ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=278 stage=7 rd=1
+[00:19:08.119] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:09.298] [wifi] waiting for lease: state=8 tries=0 t=5019ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=429 stage=7 rd=2
+[00:19:10.112] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:12.140] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:12.316] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:19:14.137] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:16.151] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+## H10 (no link UP)
+[00:19:22.237] er -> [mbf] -> consumer, 2 credits, 500 ms period
+[00:19:22.238] [monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:22.445] [wifi] link DOWN
+[00:19:24.260] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:26.263] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:28.280] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:30.279] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:32.301] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:34.307] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:36.322] [monitor] seq=30 produced=30 consumed=30 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:38.327] [monitor] seq=34 produced=34 consumed=34 dropped=0  made_on=prc1 seen_on=prc2
+## H11
+[00:19:41.391] on=prc1 seen_on=prc2
+[00:19:41.577] [wifi] link DOWN
+[00:19:43.396] [monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:45.422] [monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:47.421] [monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:47.598] [wifi] link UP  rssi=-51  mac=d8:3a:dd:ae:4b:eb
+[00:19:47.600] [wifi] waiting for lease: state=8 tries=0 t=1719ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=265 stage=7 rd=1
+[00:19:49.437] [monitor] seq=18 produced=18 consumed=18 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:50.621] [wifi] waiting for lease: state=8 tries=0 t=4739ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=416 stage=7 rd=2
+[00:19:51.440] [monitor] seq=22 produced=22 consumed=22 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:53.457] [monitor] seq=26 produced=26 consumed=26 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:53.632] [wifi] waiting for lease: state=8 tries=0 t=7739ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=566 stage=7 rd=2
+[00:19:55.457] [monitor] seq=29 produced=29 consumed=29 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:56.636] [wifi] ip=10.151.89.211  gw=10.151.89.188  dns=10.151.89.188
+[00:19:57.472] [monitor] seq=33 produced=33 consumed=33 dropped=0  made_on=prc1 seen_on=prc2
+[00:19:59.477] [monitor] seq=37 produced=37 consumed=37 dropped=0  made_on=prc1 seen_on=prc2
+[00:20:01.500] [monitor] seq=41 produced=41 consumed=41 dropped=0  made_on=prc1 seen_on=prc2
+[00:20:03.502] [monitor] seq=45 produced=45 consumed=45 dropped=0  made_on=prc1 seen_on=prc2

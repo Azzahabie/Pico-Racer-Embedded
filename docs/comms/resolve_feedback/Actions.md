@@ -18,7 +18,7 @@ The exact steps to close each feedback point in
 
 | Point | Topic | Steps planned | Status |
 |---|---|---|---|
-| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.1 done |
+| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.1 done; F1.0 hotspot done, router boots 17-20 left |
 | F2 | MQTT interface doc + map versioning | not yet planned | ⬜ |
 | F3 | Queue sizing, command-full ≠ Fault | not yet planned | ⬜ |
 | F4 | Core 1 timing with Wi-Fi active | not yet planned | ⬜ |
@@ -66,6 +66,14 @@ Measure first, so the fix can be compared against real numbers.
 5. Save the raw logs to a folder you can cite in the report, e.g.
    `docs/comms/resolve_feedback/logs/`. Check them for secrets before
    committing: no SSID passwords.
+6. **Hotspot alternation (found 19 Oct 2026).** Hotspot boots strictly alternate
+   success / association failure (see `results.md` → F1.0). Confirm the
+   stale-session hypothesis before F1.5:
+   - ✅ Restart the hotspot between boots: 5 / 5 connected (19 Oct 2026). The
+     cause is on the phone side.
+   - After a successful boot, cut power and check the phone's connected-devices
+     list. Is the Pico still listed?
+   - After a successful boot, wait ~5 min before the next boot. Does it succeed?
 
 **Done when:** `results.md` F1.0 has per-boot rows and a success-rate line for
 each network.
@@ -178,9 +186,16 @@ Evidence needs counters, not silence.
 3. Make the existing `[wifi] ip=` line print again on **every** new lease, not
    only the first. It keys on `dhcp_complete` transitions, so F1.3's clearing
    makes this automatic. Check it.
+4. Print **why** a join failed. `radio_status.join_result` already holds the
+   cyw43 code (`CYW43_LINK_NONET`, `_BADAUTH`, `_FAIL`, or `-CYW43_ETIMEDOUT`
+   from `cyw43_utk.c:657-661`), but the console prints nothing on failure: the
+   F1.0 hotspot boots failed silently. Print it once per failed attempt, e.g.
+   `[wifi] join failed: result=NONET join#=1`. This tells the hotspot
+   alternation apart: ignored (timeout / `NONET`) vs rejected (`FAIL` /
+   `BADAUTH`).
 
 **Done when:** a boot with the AP off, then on, shows the state lines and
-ends in `ip=…`.
+ends in `ip=…`, and a failed join prints its reason.
 
 ### F1.5 Recovery tests on hardware ⬜
 
@@ -194,6 +209,7 @@ Flash the F1.3 DNS-profile build and run these, recording each in
 | T3: DHCP refused | Router on, but its DHCP pool full or disabled (or the hotspot in its "no lease" state from A1) | Repeated `lease#` increments, no crash, recovers when DHCP returns |
 | T4: wrong password | Build with a bad password in `config/wifi_credentials.h` | Repeated `join#` increments at the back-off rate. The rest of the system keeps running (LED/monitor alive) |
 | T5: soak | Leave it online for 30 min | Still online, no unexpected `link_losses` |
+| T6: hotspot back-to-back | 10 quick power cycles on the phone hotspot (the F1.0 alternation case) | Every boot reaches `ip=` without a power cycle, at most one join retry each |
 
 Restore the correct credentials after T4. Never commit
 `config/wifi_credentials.h`.
@@ -231,9 +247,17 @@ handed to the owner (note who and when).
 
 1. Ask the instructor for the demo AP's band, security mode, and whether PMF
    is required or optional. Record the answer and date in `results.md`.
-2. If it's WPA3-only or PMF-required, raise it immediately. A1 says no firmware
-   can fix that. `UTK_WIFI_AUTH` in `config/wifi_credentials.h` sets the auth
-   mode we request.
+2. **Tested 19 Oct 2026** (`results.md` → F1.8): with `UTK_WIFI_AUTH` set to
+   `CYW43_AUTH_WPA3_WPA2_AES_PSK` in `config/wifi_credentials.h`, the Pico
+   joined WPA/WPA2, WPA2/WPA3 and WPA3-only routers 5 / 5 each. The WPA2 setting
+   fails on WPA3-only, and the WPA3-only setting fails on WPA/WPA2. A WPA3-only
+   or PMF-required demo AP is therefore not a blocker. A1's "no firmware can
+   fix that" is out of date: update it in F1.9. On the phone hotspot it
+   behaves like the WPA2 build (alternates on back-to-back cycles, 5 / 5 with a
+   hotspot restart). **Made the default** in
+   `config/wifi_credentials.example.h` (19 Oct 2026). Teammates with an
+   existing `config/wifi_credentials.h` must change their `UTK_WIFI_AUTH` line
+   by hand.
 3. If possible, test on the real AP (or an identically configured one) before
    demo day.
 
@@ -247,7 +271,13 @@ Do this last, from the evidence:
    add the join/lease timeout → back-off → rejoin edges out of WAITING FOR
    WI-FI, and remove "the latch never clears / never returns to BOOT".
 2. **Report A1:** replace "~70%" with the F1.6 numbers and cite the logs.
-   Change the status from "Pending validation" to the result.
+   Change the status from "Pending validation" to the result. Also replace the
+   "WPA3-only / PMF-required can't be fixed in firmware" claim with the F1.8
+   auth-mode results. The same out-of-date claim is in `../NETWORKING.md`
+   (lines ~150-154, ~439), `../GLOSSARY.md` (*WPA2 / WPA3*, *PMF*),
+   `../WIFI_SUBSYSTEM_DESIGN.md` (~1004) and `../study_guide.html` (~1073,
+   ~1330, ~1393). The home-router failure there predates the
+   `WPA3_WPA2_AES_PSK` default.
 3. **Report Section 5 / FR-02:** add "Ready → Running does not depend on Wi-Fi".
 4. **[`../GLOSSARY.md`](../GLOSSARY.md):** the *Latch* entry cites
    `dhcp_complete` as never clearing. Update it.
