@@ -20,11 +20,15 @@ The exact steps to close each feedback point in
 > open decision (turn off DHCP address-conflict detection to save 6-9 s per
 > lease for NFR-09). Recommendation and steps are on that page. After it,
 > continue with F1.5 (T1, T3, T4, T5 still untested).
+>
+> **Updated from Tribunal 1 (2026-10-19):** after F1, follow the roadmap in
+> [`../Tribunal/README.md`](../Tribunal/README.md) §4. The connection-state
+> changes F1.4 logs are the trigger for the new Wi-Fi-loss fault bit.
 
 | Point | Topic | Steps planned | Status |
 |---|---|---|---|
 | F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0-F1.4 done. **Next: decide ACD ([`ACD_DECISION.md`](ACD_DECISION.md))**, then F1.5 |
-| F2 | MQTT interface doc + map versioning | not yet planned | ⬜ |
+| F2 | MQTT interface doc + map versioning | not yet planned. *Tribunal 1 (2026-10-19):* the doc is now binary schema v2 with a 4-bit `mv` ([`../MQTT_SCHEMA.md`](../MQTT_SCHEMA.md)) | ⬜ |
 | F3 | Queue sizing, command-full ≠ Fault | not yet planned | ⬜ |
 | F4 | Core 1 timing with Wi-Fi active | not yet planned | ⬜ |
 | F5 | End-of-course mechanism | not yet planned | ⬜ |

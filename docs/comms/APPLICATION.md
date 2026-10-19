@@ -4,8 +4,17 @@ Buddy 1's **application-layer** work: the tasks that live in `app_program/`, wha
 they consume, and how they hand work down to the network layer.
 
 - **Owner:** Buddy 1 (WiFi + Telemetry)
-- **Status:** seeded 2026-09-26 — the milestone roadmap below is the plan; the
-  code starts at M7.
+- **Status:** seeded 2026-09-26; **updated from Tribunal 1 (2026-10-19)** —
+  §3, §4, §6, §7, §8 and §9 now include Change Requirement 1 (minimum-bit data,
+  binary MQTT, shared fault bitmask). The code starts at M7.
+
+> **Updated from Tribunal 1 (2026-10-19).** The Week 8 requirement change in §8
+> has arrived: **Change Requirement 1, minimum-bit data representation.** For
+> this layer it means packed records in `messages.h`, packed binary MQTT
+> payloads with a laptop decoder ([`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) schema v2),
+> and setting the **Wi-Fi-loss** bit in the shared fault bitmask. The analysis,
+> the gap check against the submitted report, and the ordered roadmap are in
+> [`Tribunal/README.md`](Tribunal/README.md).
 - **Companions:** [`NETWORKING.md`](NETWORKING.md) covers everything *below* this
   layer (transport, protocol, config, build); [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md)
   covers the application layer's two cross-task seams and the options for each;
@@ -86,6 +95,15 @@ topics/payloads.
 
 And **outbound to Buddy 3:** the live letter→action remap command.
 
+*Added from Tribunal 1 (2026-10-19):*
+
+| Shared object | Owner | What this layer does with it |
+|---|---|---|
+| Shared fault bitmask (µT-Kernel event flag) | Buddy 5, `nav_ctrl_task` | sets/clears the **Wi-Fi-loss** bit; copies all five fault bits into each `S` record |
+| Packed record layouts in `messages.h` | Buddy 1 | defines them, with the pack/unpack helpers every producer calls |
+| Buddy 2's ~54-bit motion record (8 B on the queue) | Buddy 2 | receives it on `tele_mbf` and folds it into `S` (format to reconcile) |
+| Buddy 3's 2-bit action and 5-bit letter index | Buddy 3 | carries them in `S`, `E` and the 7-byte `map` |
+
 > **Grading note:** "clean interfaces and teamwork" is an explicit assessment
 > criterion, so `common/messages.h` is a shared file — route changes through a
 > pull request so nobody's build breaks silently (the file says so itself).
@@ -99,6 +117,12 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       map of the run ("moved forward 20 cm, then turned right").
 - [ ] Publish it on a regular cadence.
 - [ ] Collect from the four data sources in §3.
+- [ ] *(Tribunal 1)* Build a **JSON baseline first** and record its RAM and
+      message sizes, then switch to the **packed binary** records — Week 13
+      needs the before-and-after comparison.
+- [ ] *(Tribunal 1)* Write the **laptop decoder** (Python) for schema v2.
+- [ ] *(Tribunal 1)* Set the **Wi-Fi-loss fault bit** from the connection state
+      and publish the fault bitmask in every `S` record.
 
 ### M8 — Command channel
 - [ ] Subscribe to a command topic and dispatch by message type.
@@ -107,6 +131,8 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 - [ ] **Live barcode remap:** the command carries the letter→action mapping and
       updates a runtime table (Buddy 3 reads it). **Must not require
       recompiling** — this is the hard demo-day requirement.
+- [ ] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
+      (4-bit version + 26 × 2-bit actions). The laptop publisher packs them.
 
 ### M9 — Robustness
 - [ ] Reconnect / recover on Wi-Fi drop.
@@ -116,6 +142,9 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 ### M10 — Documentation
 - [ ] Topics, payload formats, broker setup walkthrough. This doubles as the
       integration contract for the other four buddies.
+- [ ] *(Tribunal 1)* Week 13 evidence: data-representation table, RAM
+      comparison, message-size comparison, correctness and timing on the packed
+      build.
 
 ---
 
@@ -145,6 +174,11 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 - [ ] **Config values, not constants** — the broker and network targets must stay
       in `config/*.h`.
 - [ ] **Commit regularly** — GitHub history is tracked; don't dump work late.
+- [ ] *(Tribunal 1)* **Minimum bits, masks and shifts.** Every field uses only
+      the bits its range needs; no C bit-fields on anything that leaves the chip.
+- [ ] *(Tribunal 1)* **No text on MQTT.** Debug text goes to the console only.
+- [ ] *(Tribunal 1)* **No race on shared packed data.** One writer per packed
+      word; cross-core bits through a kernel event flag.
 
 ---
 
@@ -158,13 +192,20 @@ And **outbound to Buddy 3:** the live letter→action remap command.
    MQTT client wholesale — port one you understand and can defend.
 4. **Live barcode remap** — the single requirement that cannot be hardcoded; if
    it is compiled in, the demo fails.
+5. *(Tribunal 1)* **Demo-day readability** — the instructor's generic client now
+   shows hex, so the decoder must be ready before demo day.
+6. *(Tribunal 1)* **`messages.h` drift** — a packed layout has no names to catch
+   a mismatch; change `messages.h` and `MQTT_SCHEMA.md` in one PR (NFR-17).
 
 ---
 
 ## 8. Grading reminders
 
-- [ ] **Week 8:** a requirements change will be issued — must actually be
-      implemented.
+- [x] **Week 8:** a requirements change will be issued — must actually be
+      implemented. **Issued: Change Requirement 1, minimum-bit data
+      representation (Tribunal 1, 2026-10-19).** Week 13 must include the
+      data-representation table, RAM and message-size comparisons, and
+      correctness/performance evidence.
 - [ ] **Week 13:** another requirements change — design/discussion only.
 - [ ] Demo day: **3 attempts, only the latest counts**.
 - [ ] Peer evaluation adjusts the group grade per person — carrying a weak
@@ -179,11 +220,11 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       format are already designed in
       [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4, §8 and §9; the
       schema document is that design written for the other buddies rather than
-      for you. (The wire format was revised to **JSON outbound** on 2026-09-28 —
-      see §8.1 there for why: on demo day the reader is the instructor's client,
-      not your own script.) **First draft now exists:**
+      for you. (The wire format was revised to **JSON outbound** on 2026-09-28,
+      then to **packed binary, schema v2, on 2026-10-19 (Tribunal 1)** —
+      see §8 there.) **Rewritten for v2:**
       [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) — its §12 lists the fields still
-      proposed.
+      proposed, including every field width to agree with the other buddies.
 - [ ] Reconcile the **task count, names and priorities** with the team document
       before writing `comms_task` — the team doc and the design disagree (see
       [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md); its §7
