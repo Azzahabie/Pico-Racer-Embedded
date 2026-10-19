@@ -48,6 +48,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
+#include "race_test/race_test.h"
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -638,6 +639,14 @@ EXPORT INT usermain(void)
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
 #if TM_WIFI_CYW43
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
+#endif
+
+#if TM_RACE_TEST
+	/* Two-core demonstration of the packed-word hazard.  Off by default:
+	   flip TM_RACE_TEST in race_test.h to build it in. */
+	if(race_test_start() < E_OK) {
+		tm_printf((UB *)"[init] race_test_start failed\n");
+	}
 #endif
 
 	/* The initial task has nothing left to do.  It must not return: on
