@@ -2,7 +2,7 @@
 # micro T-Kernel 3.0 BSP  makefile
 ################################################################################
 
-TEMP_SRCS = $(shell find ../app_program -name '*.c')
+TEMP_SRCS = $(shell find ../app_program -name '*.c' ! -name 'barcode_bringup.c')
 TEMP_OBJS = $(TEMP_SRCS:.c=.o)
 TEMP_DEPS = $(TEMP_SRCS:.c=.d)
 

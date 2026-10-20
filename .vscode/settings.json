@@ -1,4 +1,5 @@
 {
     "sonarlint.pathToCompileCommands": "${workspaceFolder}\\compile_commands.json",
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json"
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+    "cmake.sourceDirectory": "C:/Users/avani/Pico-Racer-Embedded/app_program/line_task"
 }
