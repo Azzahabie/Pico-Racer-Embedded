@@ -36,11 +36,21 @@ ER gpio_irq_attach(uint32_t m, uint32_t e, gpio_irq_cb_t cb)
 static const uint32_t FWD_A[4] = { 0u, 1u, 1u, 0u };
 static const uint32_t FWD_B[4] = { 0u, 0u, 1u, 1u };
 
+/* Like the dispatcher: the callback gets only the pins that changed. */
 static void step(uint32_t pin_a, uint32_t pin_b, int phase)
 {
-	uint32_t keep = g_gpio_in & ~((1u << pin_a) | (1u << pin_b));
+	uint32_t mask = (1u << pin_a) | (1u << pin_b);
+	uint32_t old = g_gpio_in;
+	uint32_t keep = g_gpio_in & ~mask;
 	g_gpio_in = keep | (FWD_A[phase & 3] << pin_a) | (FWD_B[phase & 3] << pin_b);
-	g_cb((1u << pin_a) | (1u << pin_b), g_gpio_in);
+	g_cb((old ^ g_gpio_in) & mask, g_gpio_in);
+}
+
+/* Toggle one pin only (a live phase while the other wire is unplugged). */
+static void toggle(uint32_t pin)
+{
+	g_gpio_in ^= 1u << pin;
+	g_cb(1u << pin, g_gpio_in);
 }
 
 int main(void)
@@ -73,6 +83,30 @@ int main(void)
 #endif
 	CHECK(motion_unpack_right(p) == (uint16_t)(0u - 6u));
 	CHECK(encoder_invalid_packed() == 0u);
+
+	/* Per-phase edges: each quadrature step moves exactly one phase. */
+#if TM_CONSOLE_USB_CDC
+	CHECK(motion_unpack_left(encoder_read_edges_left()) == 5u);	/* A */
+	CHECK(motion_unpack_right(encoder_read_edges_left()) == 5u);	/* B */
+#else
+	CHECK(encoder_read_edges_left() == 0u);		/* left is off */
+#endif
+	CHECK(motion_unpack_left(encoder_read_edges_right()) == 3u);
+	CHECK(motion_unpack_right(encoder_read_edges_right()) == 3u);
+
+	/* Right B wire unplugged: only A toggles.  Edges on A only, and the
+	   count just steps back and forth (no net movement). */
+	{
+		uint32_t e0 = encoder_read_edges_right();
+		uint16_t c0 = motion_unpack_right(encoder_read_packed());
+		for (i = 0; i < 20; i++) toggle(MOTION_PIN_ENC_R_A);
+		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_right())
+				 - motion_unpack_left(e0)) == 20u);
+		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_right())
+				 - motion_unpack_right(e0)) == 0u);
+		CHECK(motion_unpack_right(encoder_read_packed()) == c0);
+		CHECK(encoder_invalid_packed() == 0u);
+	}
 
 	/* Both right channels flip at once: one missed edge, count unchanged. */
 	g_gpio_in ^= (1u << MOTION_PIN_ENC_R_A) | (1u << MOTION_PIN_ENC_R_B);

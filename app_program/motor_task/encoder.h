@@ -27,4 +27,12 @@ uint32_t encoder_read_packed(void);    /* one load, both counts       */
 uint32_t encoder_invalid_packed(void); /* missed-edge counts, same packing */
 bool     encoder_left_enabled(void);
 
+/* Edges seen on each phase of one wheel: phase A in bits 15:0, phase B
+   in bits 31:16, both wrapping (16-bit).  Take the change since the last
+   read with (uint16_t)(now - prev) on each half.  The stall check uses
+   them to tell a dead encoder wire (edges on one phase only) from a
+   stopped wheel (no edges).  Written only by the interrupt, one store. */
+uint32_t encoder_read_edges_left(void);
+uint32_t encoder_read_edges_right(void);
+
 #endif /* ENCODER_H */
