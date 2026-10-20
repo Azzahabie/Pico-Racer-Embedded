@@ -40,17 +40,27 @@
  * TM_CONSOLE_USB_CDC is normally set by the build (CONSOLE=usb_cdc in
  * build_make/pico_rp2040.mk); these are the fallbacks.
  *
- * The UART sink is kept enabled alongside USB on purpose.  USB output needs
- * the scheduler and an enumerated host, so it can say nothing about early
- * boot, handler context, or a fault -- exactly the window in which the
- * Phase-0 startup HardFault had to be diagnosed by flashing GPIOs because no
- * console existed. UART0 costs two pins and covers that window.
+ * UART0 (GP0 TX / GP1 RX) is the early-boot, handler and fault console: USB
+ * output needs the scheduler and an enumerated host, so it says nothing
+ * about the Phase-0 startup window.
+ *
+ * On the car, GP0/GP1 are the left wheel encoder (approved pin map, Grove 1:
+ * "Console over USB CDC, so GP0/GP1 are free").  So the USB-CDC build leaves
+ * UART0 off: TX would drive GP0 against the encoder output, and the mirror
+ * waits ~87 us per character past the 32-byte FIFO with interrupts masked,
+ * which on the motion core delays the encoder interrupt.  For early-boot
+ * debugging, build the UART profile (CONSOLE=uart) with the left encoder
+ * unplugged.
  */
 #ifndef TM_CONSOLE_USB_CDC
 #define	TM_CONSOLE_USB_CDC	(0)	/* USB CDC-ACM console */
 #endif
 #ifndef TM_CONSOLE_UART
-#define	TM_CONSOLE_UART		(1)	/* UART0 early/panic mirror */
+#if TM_CONSOLE_USB_CDC
+#define	TM_CONSOLE_UART		(0)	/* GP0/GP1 belong to the encoder */
+#else
+#define	TM_CONSOLE_UART		(1)	/* UART0 console */
+#endif
 #endif
 
 #endif /* __TM_CONFIG_H__ */
