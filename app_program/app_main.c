@@ -48,6 +48,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
+#include "imu_task/imu_task.h"
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -465,6 +466,13 @@ LOCAL T_CTSK ctsk_led_test = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 };
 
+LOCAL T_CTSK ctsk_imu = {
+	.itskpri	= 8,
+	.stksz		= STACK_SZ,
+	.task		= imu_task,
+	.tskatr		= TA_HLNG | TA_RNG3,
+};
+
 LOCAL T_CMPF cmpf = {
 	.mpfatr		= TA_TFIFO | TA_RNG3,
 	.mpfcnt		= N_RECORDS,
@@ -521,6 +529,7 @@ EXPORT INT usermain(void)
 
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_led_test); if(made("tsk(led_test)", tid)) tk_sta_tsk(tid, 0);
+	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
