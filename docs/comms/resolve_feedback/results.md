@@ -359,9 +359,10 @@ yet; F1.5 T3 (DHCP refused) will exercise it.
 
 | Test | Date | Outcome | Evidence / timing |
 |---|---|---|---|
-| T1 AP off at boot | | | router-on → ip = __ s |
+| T1 AP off at boot | 2026-10-20 | ✅ 1 / 1 (router `pp_IoT`) | 18 `join-failed(NONET)` while the router was off, one join every ~4.0 s (fails in ~1.0 s + 3 s back-off). Join #19 succeeded with no reset. Router on (16:29:00) → ONLINE ≈ **24.5-25 s**, of which the router took ~11-15 s to start beaconing. Then join 3.2 s, lease 7.1 s. `[monitor]` kept running, `dropped=0` |
 | T2 AP drop while online | 2026-10-19 | ✅ 4 / 4 (hotspot; 2 more with F1.4 logging: link-lost → ONLINE 14.1 s with a brief drop, 33.0 s with the hotspot off long enough for 5 NONET retries over ~17 s, see F1.4) | link DOWN → link UP 9.0 s / 12.0 s, → new `ip=` 15.1 s / 21.1 s. Hotspot-off → `link DOWN` ≈ **8 s** (stopwatch). Off duration not timed. See note below |
-| T3 DHCP refused | | | |
+| T2 AP drop while online (router) | 2026-10-20 | ✅ 1 / 1 (router `pp_IoT`, off 30 s: 16:34:03-16:34:33) | `link-lost` ≈ **14-15 s** after power-off (hand-noted time, see note). 7 `NONET` joins, ONLINE on join #9 with no reset. First beacon → ONLINE ≈ 10-13 s (join 3.2 s, lease 7.2 s). Router on → ONLINE ≈ 25.7-26.5 s. Same run's boot: ONLINE at 13.6 s on join #1 |
+| T3 DHCP refused | 2026-10-20 | 🟡 refusal handled, **recovery not yet captured** (router `pp_IoT`, DHCP server disabled) | Joins succeed, then lwIP sits in `state=6` (`SELECTING`: DISCOVERs, no OFFER). `why=lease-timeout` exactly 20.0 s after each WAIT_LEASE, 3 s back-off, rejoin: `lease#` 1 → 2 → 3, ~26.2 s per cycle. No crash, `[monitor]` running, `dropped=0`. Log ends before DHCP was re-enabled |
 | T4 wrong password | | | |
 | T5 30 min soak | | | link_losses = __ |
 | T6 hotspot back-to-back power cycles (F1.4 re-run) | 2026-10-19 | ✅ 3 / 3, **every boot `join-failed(FAIL)` then success on join#2** | first join fails ~3.4 s after it starts (t≈5.6 s). ONLINE at 18.7 / 19.2 / 21.8 s. **The phone rejects the stale session** (not `join-timeout`): question closed |
@@ -371,6 +372,37 @@ Build for T2 / T6: F1.2 + F1.3, DNS profile, uncommitted tree on top of
 `f0bbf4c`, `Test1` + `CYW43_AUTH_WPA3_WPA2_AES_PSK`. Timings are from the
 `[wifi] link DOWN` line. Retries are inferred from timing; nothing prints them
 until F1.4.
+
+Build for the 2026-10-20 rows (T1, T2 router, T3):
+`mtk3pico_smp1_usb_cdc_wifi_dns.uf2`, DNS profile at `eed14e5`, 0 warnings,
+`pp_IoT` + `CYW43_AUTH_WPA3_WPA2_AES_PSK`. Raw console logs:
+[`F1-5_logs.md`](F1-5_logs.md). Durations come from the Pico's `t=` stamps,
+not the console times, because `[wifi]` lines are printed by a status task
+that can lag up to 3 s (`WIFI_IDLE_MS`). Router on/off times were noted by
+hand. They were mapped onto `t=` by bounding boot time from every `[wifi]`
+line (print time minus `t=`, allowing 0-3 s lag), which gives ranges of
+about ±0.5 s.
+
+**T2 (router): link loss took ≈ 14-15 s to detect, against ≈ 8 s on the
+hotspot.** Power-off was noted as 16:34:03, and `link-lost` is at `t=48875`,
+which works out to 14.1-14.9 s later. If the hand-noted time is right, the
+router's link loss is detected much more slowly than the hotspot's. That
+matters for NFR-09 when it is revisited ([`ACD_DECISION.md`](ACD_DECISION.md)
+§7). Next time, note the off time to the second or film the router and
+console together.
+
+**T1 / T2 (router): most of the "router on → ONLINE" time is the router
+booting.** Joins keep failing with `NONET` for ~11-16 s after power-on until
+the router beacons. From the first beacon, recovery is 10-13 s, the same as
+on the hotspot (F1.4 drop 2: 10.2-14.2 s).
+
+**T3: each rejoin resets lwIP's DHCP back-off, as F1.1 predicted.** Within one
+lease window `tries` climbs 2 → 4. After the rejoin it starts again at 1-2
+(third window: `tries=1` at 399 ms). Without the rejoin, lwIP's back-off
+would keep growing towards 60 s between DISCOVERs.
+**Still to do for T3:** re-enable DHCP mid-test and capture `state=ONLINE`
+plus the new `ip=` line. Expect ONLINE within one cycle (≤ ~26 s plus a
+lease).
 
 **T6: the alternation moved inside each boot.** Every boot after a successful
 one needs exactly one retry. The first join clears the phone's stale session,

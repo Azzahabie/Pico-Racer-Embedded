@@ -1,4 +1,4 @@
-# Actions: resolving the Week 6 feedback (Buddy 1)
+66# Actions: resolving the Week 6 feedback (Buddy 1)
 
 The exact steps to close each feedback point in
 [`../WEEK6_FEEDBACK.md`](../WEEK6_FEEDBACK.md). This file says **what to do**.
@@ -16,10 +16,10 @@ The exact steps to close each feedback point in
 
 ## Progress
 
-> **Next session, start here:** [`ACD_DECISION.md`](ACD_DECISION.md). It's an
-> open decision (turn off DHCP address-conflict detection to save 6-9 s per
-> lease for NFR-09). Recommendation and steps are on that page. After it,
-> continue with F1.5 (T1, T3, T4, T5 still untested).
+> **Next session, start here:** F1.5. T1 and T2 passed on 20 Oct; still to
+> do are T3 recovery (re-enable DHCP mid-test), T4 and T5. The
+> ACD question ([`ACD_DECISION.md`](ACD_DECISION.md), 6-9 s per lease,
+> NFR-09) is **deferred** to the optimisation pass near the end (20 Oct 2026).
 >
 > **Updated from Tribunal 1 (2026-10-19):** after F1, follow the roadmap in
 > [`../Tribunal/README.md`](../Tribunal/README.md) §4. The connection-state
@@ -27,7 +27,7 @@ The exact steps to close each feedback point in
 
 | Point | Topic | Steps planned | Status |
 |---|---|---|---|
-| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0-F1.4 done. **Next: decide ACD ([`ACD_DECISION.md`](ACD_DECISION.md))**, then F1.5 |
+| F1 | Wi-Fi/DHCP reliability, mission without Wi-Fi | F1.0-F1.9 | 🟡 F1.0-F1.4 done. **F1.5 in progress:** T1, T2, T6 ✅, T3 partial, T4 and T5 to do. ACD deferred ([`ACD_DECISION.md`](ACD_DECISION.md)) |
 | F2 | MQTT interface doc + map versioning | not yet planned. *Tribunal 1 (2026-10-19):* the doc is now binary schema v2 with a 4-bit `mv` ([`../MQTT_SCHEMA.md`](../MQTT_SCHEMA.md)) | ⬜ |
 | F3 | Queue sizing, command-full ≠ Fault | not yet planned | ⬜ |
 | F4 | Core 1 timing with Wi-Fi active | not yet planned | ⬜ |
@@ -222,7 +222,7 @@ Evidence needs counters, not silence.
 **Done when:** a boot with the AP off, then on, shows the state lines and
 ends in `ip=…`, and a failed join prints its reason.
 
-### F1.5 Recovery tests on hardware ⬜
+### F1.5 Recovery tests on hardware 🟡
 
 Flash the F1.3 DNS-profile build and run these, recording each in
 `results.md` → F1.5:

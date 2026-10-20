@@ -85,12 +85,13 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 > **Right now (19 Oct 2026): Week 6 feedback F1, Wi-Fi reliability.** F1.0-F1.4
 > are done: the car now rejoins and re-leases on its own and logs every
-> connection state change. **Next session, start at
-> [`resolve_feedback/ACD_DECISION.md`](resolve_feedback/ACD_DECISION.md)**, an
-> open decision on turning off DHCP address-conflict detection (6-9 s per
-> lease, NFR-09). Then continue F1.5 in
-> [`resolve_feedback/Actions.md`](resolve_feedback/Actions.md). M7 below
-> follows after F1.
+> connection state change. **Next: finish the F1.5 recovery tests** (T3 recovery, T4, T5; T1 and
+> T2 passed 20 Oct) in
+> [`resolve_feedback/Actions.md`](resolve_feedback/Actions.md). The DHCP
+> address-conflict detection question (6-9 s per lease, NFR-09) is
+> **deferred** until the optimisation pass near the end; findings are in
+> [`resolve_feedback/ACD_DECISION.md`](resolve_feedback/ACD_DECISION.md) §7.
+> M7 below follows after F1.
 >
 > **Updated from Tribunal 1 (2026-10-19):** after F1, the order is the
 > Tribunal roadmap in [`Tribunal/README.md`](Tribunal/README.md) §4 — agree the

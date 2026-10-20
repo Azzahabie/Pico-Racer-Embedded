@@ -1,12 +1,14 @@
 # Decision: turn off DHCP address-conflict detection (ACD)?
 
-**Status: ⏳ OPEN, decide first next session.** Recommendation: **turn it off**
-(option A). Raised 19 Oct 2026 from the F1.4 / T2 measurements. Part of F1
-(Week 6 feedback), and it feeds NFR-09.
+**Status: ⏸ DEFERRED (20 Oct 2026).** ACD stays **on** for now: functionality
+first, optimisation near the end. Option A is no longer the lead because the
+Pico has to be robust; the lead is **C2** (§7). Raised 19 Oct 2026 from the
+F1.4 / T2 measurements. Part of F1 (Week 6 feedback), and it feeds NFR-09.
 
-> **Next session, start here.** Read §1 (the numbers), pick an option in §4,
-> then do the steps in §6. Everything needed is on this page. The raw evidence
-> is in [`results.md`](results.md) (F1.0 "Lease time", F1.4, F1.5 T2 / T6).
+> **When we circle back, start at §7** (20 Oct findings: option C is possible
+> without patching the SDK, the NFR-09 fit, and the app-layer levers). Then
+> pick an option in §4 and do the steps in §6. The raw evidence is in
+> [`results.md`](results.md) (F1.0 "Lease time", F1.4, F1.5 T2 / T6).
 
 ---
 
@@ -135,6 +137,67 @@ These are not part of this decision, but they attack the same NFR-09 budget:
 **If B (keep):** set status to ✅ DECIDED (keep), and in F1.9 restate NFR-09
 or record it as a known miss with the §3 numbers.
 
+## 7. Findings, 20 Oct 2026 (option C explored, then deferred)
+
+**Option C doesn't need the SDK patched.** The makefile lists lwIP sources by
+name (`build_make/pico_rp2040.mk:405-413`, including `core/ipv4/acd.c`), so a
+modified copy of `acd.c` can live in the repo and be swapped in there. Guard
+it with a `$(error)` that fires if the SDK's `acd.c` changes. Pico SDK 2.2.0
+pins lwIP `77dcd25`, the version read here.
+
+**lwIP binds 2 s later than RFC 5227 requires.** RFC §2.3: "The host may begin
+legitimately using the IP address immediately after sending the first of the
+two ARP Announcements". lwIP calls `ACD_IP_OK` only after the second
+(`acd.c:304-314`). That last 2 s detects nothing.
+
+**The constants can't simply be lowered.** They are whole seconds used with
+`%` (`acd.c:95-100`), so `PROBE_WAIT 0` or `PROBE_MAX == PROBE_MIN` divides by
+zero. A real speed-up has to change the code (100 ms ticks).
+
+**Option A also loses ongoing detection** (RFC §2.4: defending the address
+after bind). C keeps it.
+
+| | C1: bind after the first announcement | C2: C1 + shorter windows |
+|---|---|---|
+| Change | `ACD_IP_OK` after announcement 1; announcement 2 sent asynchronously | Also: probe wait 0-0.2 s, 3 probes 0.2-0.4 s apart, announce wait 0.5 s |
+| ACD time | 6-9 s → 4-7 s | 6-9 s → ~0.9-1.5 s (estimate) |
+| RFC 5227 | compliant | non-standard timing (§1.1 says the constants are fixed; §2.2 says mixed timings cause no problems and §2.4 catches late conflicts) |
+
+C2's floor is about 1 s in total, because a Wi-Fi client in power save only
+gets broadcast ARP at DTIM beacons (typically 100-300 ms). That is reasoning,
+not a measurement. **Validate with a conflict test:** a laptop with a static
+IP equal to the Pico's next lease must make the Pico decline and lease another
+address, on both stock lwIP and C2.
+
+**NFR-09 fit from today's data (ACD on).** The exact NFR-09 wording is not in
+this repo (`docs/embedded .md` is missing), so the result depends on where the
+15 s starts:
+
+| Measured | Result | Within 15 s? |
+|---|---|---|
+| AP back → ONLINE (F1.4 drop 2) | 10.2-14.2 s | yes, narrowly |
+| `link-lost` → ONLINE, brief drop (F1.4 drop 1) | 14.1 s | yes, by 0.9 s |
+| `link DOWN` → `ip=` (T2, older build) | 15.1 / 21.1 s | no |
+| AP vanishes → ONLINE (+ ≈ 8 s firmware detection) | ≈ 22 s | no |
+| Power-on → ONLINE, hotspot stale session (T6) | 18.7-21.8 s | no, if NFR-09 covers boot |
+
+None of these include MQTT reconnect, which is not built (M9 / FR-25).
+
+**App-layer levers (no lwIP change).** ACD and the 8 s firmware detection
+can't be reached from the application. What can:
+1. `comms_task` polls the status seqlock every ~100 ms, not
+   `WIFI_IDLE_MS` 3000 ms (`app_main.c:255`): up to 3 s saved.
+2. Reconnect MQTT on the ONLINE edge with no delay, broker as an IP (no DNS):
+   part of M9.
+3. `-DCYW43_RETRY_BACKOFF_US=1000000ULL` (the `#ifndef` at `cyw43_utk.c:55`):
+   ~2 s off every brief drop and every T6 stale-session boot.
+4. Buffer telemetry while offline and set the Wi-Fi-loss fault bit at once.
+   This doesn't shorten recovery.
+
+Brief drop, `link-lost` → ONLINE: today 13-19 s, app levers only 11-14 s,
+app levers + C2 ~6.5-7 s (MQTT not included). **Recommendation when we
+circle back: C2 plus levers 1-4.**
+
 ---
 
 ## Decision log
@@ -142,3 +205,4 @@ or record it as a known miss with the §3 numbers.
 | Date | Decision | By | Notes |
 |---|---|---|---|
 | 2026-10-19 | Raised, recommendation A | Buddy 1 + Claude | from F1.4 / T2 / T6 measurements |
+| 2026-10-20 | **Deferred**, ACD stays on; lead option now C2 | Buddy 1 + Claude | A rejected for robustness; functionality first, optimise near the end. Findings in §7 |
