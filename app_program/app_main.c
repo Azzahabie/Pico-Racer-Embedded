@@ -33,7 +33,7 @@
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
 #include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
-
+#include "imu_task/imu_task.h" // buddy4: imu_task
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
@@ -384,6 +384,32 @@ LOCAL T_CTSK ctsk_blink = {
 };
 #endif
 
+/* buddy4: imu_task: reads the IMU, detects humps and abnormal motion, and raises
+ * STOP_IMU / IMU_FAULT (Buddy 4). Week 6 task table: priority 12, core 1. */
+LOCAL T_CTSK ctsk_imu = {
+	.itskpri	= 12,			/* Lower number = higher priority. Below
+						   ir_sense_task (10) and motion_task (11),
+						   above scan_task (13). Priorities only
+						   order tasks within one core. */
+	.stksz		= STACK_SZ,		/* Stack in bytes. Reuses master's shared
+						   constant; size it from the measured stack
+						   high-water mark later. */
+	.task		= imu_task,		/* Entry function, declared in imu_task.h. */
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG		/* Task is written in C. */
+			| TA_RNG3		/* Runs at protection level 3 (user task). */
+			| TA_ASSPRC,		/* Pin to a specific core. Unpinned tasks
+						   can land on core 0 and be preempted by
+						   the radio task. */
+	.assprc		= TP_PRC2,		/* Processor 2 = RP2040 core 1, where the
+						   control tasks and encoder/echo ISRs run.
+						   (TP_PRC1 is core 0: radio and console.) */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,	/* Single-core build: there is no second
+						   core, so no pinning. */
+#endif
+};
+
 // Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
 LOCAL T_CTSK ctsk_obstacle = {
 	.itskpri	= 13,
@@ -409,6 +435,7 @@ LOCAL T_CTSK ctsk_nav = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
+
 
 /* ------------------------------------------------------------------ *
  *  Entry point
@@ -474,6 +501,9 @@ EXPORT INT usermain(void)
 		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
 		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
 	}
+
+	/* Buddy 4: imu_task (priority 12, core 1). */
+	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
