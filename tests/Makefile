@@ -4,7 +4,7 @@
 # These live outside app_program/ because every .c under app_program/ is
 # compiled into the firmware.
 
-SUITES := motion_lib motor gpio_irq
+SUITES := motion_lib motor encoder gpio_irq
 
 .PHONY: test clean $(SUITES)
 test: $(SUITES)
