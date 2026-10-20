@@ -48,6 +48,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
+#include "motor_task/motor_task.h"
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -541,10 +542,16 @@ EXPORT INT usermain(void)
 	flgid = tk_cre_flg(&cflg); if(!made("flg", flgid)) return 1;
 
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_led_test); if(made("tsk(led_test)", tid)) tk_sta_tsk(tid, 0);
+	/* led_test is not started: it drives GP10, which is now the right
+	   motor's M2A input, so it would spin that wheel whenever GP21 reads
+	   high.  motion_task owns GP8-GP11 (approved pin map). */
 	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
+	{
+		ER ercd = motor_task_start();	/* Buddy 2: motors + encoders */
+		if(ercd < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", ercd);
+	}
 #if TM_WIFI_CYW43
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
 #endif
