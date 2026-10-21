@@ -21,8 +21,9 @@ is *detail behind a link* — open one only when you need it.
 > baseline [`Tribunal/completed_in_trib.md`](Tribunal/completed_in_trib.md).
 
 > **Not in this folder:** Buddy 1's progress tracking, hardware test logs,
-> feedback write-ups and study notes are kept in a separate private repo.
-> Anything another subsystem needs to build against stays here.
+> feedback write-ups and study notes are kept in a separate private repo,
+> <https://forgejo.azzahabie.com/azzahabie/Embedded_Docs> (Buddy 1 access
+> only). Anything another subsystem needs to build against stays here.
 
 ---
 
