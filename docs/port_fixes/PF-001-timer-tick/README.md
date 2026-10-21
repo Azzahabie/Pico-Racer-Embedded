@@ -1,14 +1,15 @@
 # PF-001: Microsecond timer runs ~43× slow after a power-on
 
-- **Status:** 🟡 Fix applied (uncommitted) and verified for Wi-Fi/DHCP. Drill-down
-  open ([`DRILLDOWN.md`](DRILLDOWN.md)).
+- **Status:** 🟡 Fix committed (`993ebc7`, branch `buddy_1`) and verified for Wi-Fi/DHCP. Cause
+  confirmed at register level (D1), fix measured exact (D2), boot paths mapped (D3), published figures assessed (D4), origin traced (D5). D6 pending team replies
+  ([`DRILLDOWN.md`](DRILLDOWN.md)).
 - **Found:** 2026-10-16, by Buddy 1 during Week 6 feedback step F1.0 (Wi-Fi
   baseline).
 - **File changed:** `kernel/sysdepend/pico_rp2040/cpu_clock.c`
   (`startup_clock()`).
 - **Docs:** [`INVESTIGATION.md`](INVESTIGATION.md) ·
   [`FIX.md`](FIX.md) · [`DRILLDOWN.md`](DRILLDOWN.md). The raw console logs
-  are in [`../../comms/resolve_feedback/F1log.md`](../../comms/resolve_feedback/F1log.md).
+  are in [`logs/F1log-2026-10-16.md`](logs/F1log-2026-10-16.md).
 
 ## Symptom
 
@@ -28,9 +29,15 @@ it.**
 
 - After a reflash, the boot ROM has already programmed it, and the reboot into
   the application doesn't reset it, so the timer is correct.
-- After a power-on, it keeps its reset value. The timer was measured running at
-  **23.5 ms per real second (~43× slow)**, consistent with one tick per 512
-  `clk_ref` cycles instead of 12.
+- After a power-on **or a reset-button (RUN pin) press** (D3), it keeps its
+  reset value (CYCLES = 0). The timer was
+  measured at **23.4375 µs per real ms (~43× slow), exactly 12 MHz ÷ 512**
+  (D2). That is one tick per 512 `clk_ref` cycles instead of 12.
+- **Confirmed directly (D1):** the register read at boot, before our fix
+  writes it, held `0x600` (enabled, running, **CYCLES = 0**) on 6 / 6
+  power-on boots, and `0x60c` (**CYCLES = 12**) after a reflash, where the watchdog reason
+  showed the boot ROM's watchdog reboot. See [`DRILLDOWN.md`](DRILLDOWN.md)
+  D1.
 
 Kernel scheduling uses SysTick, not the TIMER, so tasks, delays and the
 monitor were unaffected. That's why the fault was invisible except through
@@ -45,7 +52,8 @@ is what the Pico SDK's `clocks_init()` does. Details in [`FIX.md`](FIX.md).
 ## Who is affected
 
 Everything that reads the TIMER (`0x40054000`) ran 43× slow on any power-on
-boot before the fix:
+boot before the fix. That applies to **every build profile**, not just Wi-Fi:
+D2 reproduced it in the base profile with no Wi-Fi code at all.
 
 | User | Where | Effect before the fix |
 |---|---|---|
@@ -74,4 +82,15 @@ each run started after a reflash or debugger load, not after a power-on. See
 | After the fix (boots 10-16) | **7 / 7** | ~3020 ms per 3 s |
 
 The full table and boot notes are in
-[`../../comms/resolve_feedback/results.md`](../../comms/resolve_feedback/results.md) F1.0.
+[`logs/F1.0-results-2026-10-16.md`](logs/F1.0-results-2026-10-16.md).
+
+TIMER rate against the kernel clock, 60 s per run, base profile without
+Wi-Fi ([`DRILLDOWN.md`](DRILLDOWN.md) D2):
+
+| Image | Power cycle | Reflash |
+|---|---|---|
+| Without the fix | **23.436 µs/ms** (fault) | 999.956 µs/ms (hidden by the boot ROM) |
+| With the fix | 999.956 µs/ms | 999.956 µs/ms |
+
+(999.956 is a 2.6 ms measurement-start offset in the first window. The
+steady-state windows read 1.000 MHz, −1 ppm.)

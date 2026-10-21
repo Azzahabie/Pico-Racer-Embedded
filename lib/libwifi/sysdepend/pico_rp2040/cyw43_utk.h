@@ -21,6 +21,41 @@
 #define CYW43_MQTT_TOPIC_MAX    48
 #define CYW43_MQTT_PAYLOAD_MAX  48
 
+/* Topic indices, session states and queue geometry. */
+#include "cyw43_utk_mqtt_ids.h"
+
+/* Connection state machine in cyw43_utk.c (net_state, and the state of each
+   net_log entry). */
+#define CYW43_NET_SCANNING      0   /* first scan still running */
+#define CYW43_NET_JOINING       1
+#define CYW43_NET_WAIT_LEASE    2
+#define CYW43_NET_ONLINE        3
+#define CYW43_NET_BACKOFF       4
+
+/* Why a state was entered (net_log why); NONE for the normal forward path. */
+#define CYW43_NET_WHY_NONE          0
+#define CYW43_NET_WHY_JOIN_REQUEST  1   /* cyw43_wifi_join() refused; code = its result */
+#define CYW43_NET_WHY_JOIN_FAILED   2   /* code = CYW43_LINK_FAIL / _NONET / _BADAUTH */
+#define CYW43_NET_WHY_JOIN_TIMEOUT  3
+#define CYW43_NET_WHY_LEASE_TIMEOUT 4
+#define CYW43_NET_WHY_LINK_LOST     5   /* link dropped after association */
+#define CYW43_NET_WHY_LEASE_LOST    6   /* lease gone while the link stayed up */
+
+#define CYW43_NET_LOG   8
+
+/* One state transition.  The counters are the totals at the moment of the
+   transition, so a reader that drains the log late still prints them as they
+   were. */
+typedef struct {
+    uint32_t t_ms;              /* since boot */
+    uint32_t state;             /* CYW43_NET_* entered */
+    uint32_t why;               /* CYW43_NET_WHY_* */
+    int32_t  code;              /* driver result for JOIN_REQUEST / JOIN_FAILED */
+    uint32_t join_attempts;
+    uint32_t lease_attempts;
+    uint32_t link_losses;
+} T_CYW43_UTK_NET_EVENT;
+
 typedef struct {
     volatile int32_t init_result;
     volatile uint32_t init_complete;
@@ -42,6 +77,16 @@ typedef struct {
     volatile uint32_t join_elapsed_ms;
     volatile int32_t link_rssi;
     uint8_t bssid[6];
+    /* Connection state machine.  Counters are totals since boot. */
+    volatile uint32_t net_state;        /* CYW43_NET_* */
+    volatile uint32_t join_attempts;
+    volatile uint32_t lease_attempts;   /* times WAIT_LEASE was entered */
+    volatile uint32_t link_losses;
+    /* Every transition, because the console polls slower than JOINING lasts
+       and would otherwise miss states.  net_log_seq is the total ever written;
+       a reader tracks its own cursor against it, as with the UDP ring. */
+    T_CYW43_UTK_NET_EVENT net_log[CYW43_NET_LOG];
+    uint32_t net_log_seq;
     volatile uint32_t lwip_initialized;
     volatile uint32_t netif_initialized;
     volatile uint32_t netif_up;
@@ -57,6 +102,10 @@ typedef struct {
     volatile int32_t dhcp_result;
     volatile uint32_t dhcp_elapsed_ms;
     volatile uint32_t dhcp_tries;
+    volatile uint32_t dhcp_state;       /* lwIP dhcp_state_enum_t: 6 SELECTING,
+                                           1 REQUESTING, 8 CHECKING, 10 BOUND */
+    volatile uint32_t poll_stage;       /* last step the radio loop entered
+                                           (see cyw43_utk_task); diagnostic */
     uint8_t dhcp_address[4];
     uint8_t dhcp_netmask[4];
     uint8_t dhcp_gateway[4];
@@ -167,30 +216,32 @@ typedef struct {
     volatile uint32_t bulk_throughput_bps;
     uint8_t bulk_target[4];
     uint16_t bulk_port;
-    /* MQTT publish qualification (Phase 9).  Written only when WIFI_MQTT is on;
-       the fields exist in every build so readers need no conditional. */
+    /* MQTT client session.  Written only when WIFI_MQTT is on; the fields
+       exist in every build so readers need no conditional. */
     volatile uint32_t mqtt_enabled;
     volatile int32_t  mqtt_init_result;
     volatile int32_t  mqtt_connect_request;
     volatile int32_t  mqtt_connection_result;
     volatile int32_t  mqtt_publish_result;
     volatile int32_t  mqtt_publish_ack;
-    volatile int32_t  mqtt_result;
-    volatile uint32_t mqtt_initialized;
-    volatile uint32_t mqtt_started;
-    volatile uint32_t mqtt_connected;
-    volatile uint32_t mqtt_published;
-    volatile uint32_t mqtt_complete;
+    volatile uint32_t mqtt_state;          /* CYW43_MQTT_* */
+    volatile uint32_t mqtt_state_changes;
     volatile uint32_t mqtt_connect_attempts;
+    volatile uint32_t mqtt_connects;
+    volatile uint32_t mqtt_sessions_lost;
     volatile uint32_t mqtt_publish_attempts;
+    volatile uint32_t mqtt_published;
+    volatile uint32_t mqtt_publish_errors;
     volatile uint32_t mqtt_poll_calls;
     volatile uint32_t mqtt_guard_blocked;
     volatile uint32_t mqtt_connect_ms;
-    volatile uint32_t mqtt_elapsed_ms;
+    volatile uint32_t mqtt_backoff_ms;
+    volatile uint32_t mqtt_queue_dropped;  /* sends refused: queue full / not ready */
     uint8_t mqtt_broker[4];
     uint16_t mqtt_port;
-    char mqtt_topic[CYW43_MQTT_TOPIC_MAX];
-    char mqtt_payload[CYW43_MQTT_PAYLOAD_MAX];
+    uint8_t mqtt_payload_len;
+    char mqtt_topic[CYW43_MQTT_TOPIC_MAX];        /* last publish */
+    uint8_t mqtt_payload[CYW43_MQTT_PAYLOAD_MAX]; /* last publish, binary */
     volatile int32_t ipv4_config_result;
     volatile uint32_t ipv4_configured;
     volatile uint32_t arp_resolved;
@@ -214,5 +265,12 @@ int32_t cyw43_utk_start(void);
 void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status);
 void cyw43_utk_task(int32_t stacd, void *exinf);
 void cyw43_utk_link_state_changed(int up);
+
+/* Queue one packed record for publication on topic CYW43_MQTT_TOPIC_*.
+   Callable from any task; never blocks and never touches lwIP.  Returns 0
+   (E_OK) when queued, or a negative kernel error: E_TMOUT when the queue is
+   full, E_NOEXS when MQTT is not built in, E_PAR for a bad topic or length. */
+int32_t cyw43_utk_mqtt_send(uint32_t topic, const uint8_t *payload,
+                            uint32_t length);
 
 #endif

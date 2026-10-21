@@ -110,16 +110,24 @@ so an up-to-date tree yields a near-empty database.
 
 ## 6. Not implemented — do not assume it exists
 
-- **No HTTP or CoAP layer.** MQTT itself is implemented and verified on hardware
-  (M6, gated by `WIFI_MQTT`); what is *not* built is the application layer on top
-  of it — the `comms_task` telemetry framework and command channel (M7–M10, see
-  `docs/comms/APPLICATION.md`). The `docs/GETTING_STARTED.md:596` and
-  `docs/PORT_RP2040.md:119` notes predate M6.
-- `app_program/{motor_task,line_task,obstacle_task,imu_task,comms_task}/` are
-  empty team stubs, as is `app_program/common/messages.h`.
-- The working Wi-Fi driver lives in `lib/`, not the app:
-  `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`. `app_program/comms_task/` is
-  a separate, still-empty scaffold.
+- **No HTTP or CoAP layer.** MQTT is implemented and verified on hardware
+  (gated by `WIFI_MQTT`): a persistent client with reconnect, and `comms_task`
+  publishing the packed `H` heartbeat. What is *not* built yet is the rest of the
+  application layer — the `S`/`E`/`D` records, the inbound command channel, and
+  the `tele_mbf` intake from other tasks (M7–M10, see
+  `docs/comms/APPLICATION.md`). The `docs/GETTING_STARTED.md` §7 and
+  `docs/PORT_RP2040.md:119` notes predate MQTT.
+- `app_program/{motor_task,line_task,obstacle_task,imu_task}/` are empty team
+  stubs. `app_program/common/messages.h` holds only the MQTT record header and
+  the `H` packer so far.
+- The Wi-Fi driver and the MQTT client live in `lib/`, not the app:
+  `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` and
+  `lib/libnet/lwip/lwip_utk_mqtt.c`. App code publishes only through
+  `cyw43_utk_mqtt_send()`, which queues for the radio task.
+- **No demo tasks.** The producer/consumer/monitor demo and `led_test` were
+  removed from `app_main.c` (2026-10-21). `blink_task` is built only with
+  `TM_BLINK_LED=1`, and `wifi_status_task` (the `[wifi]`/`[mqtt]` console) only
+  with `TM_WIFI_REPORT=1`, which is the default but is turned off for demo day.
 
 ## 7. Gotchas that cause real bugs
 
@@ -134,8 +142,10 @@ so an up-to-date tree yields a near-empty database.
 - **`tm_printf` is atomic per call, not per line.** Compose the message with
   `tm_sprintf`, then emit it with exactly one `tm_printf`, or concurrent tasks
   will interleave mid-line.
-- **Docs drift**: `GETTING_STARTED.md` §6b lists four tasks, but
-  `app_program/app_main.c` actually starts five — the extra is `led_test`.
+- **Pin every task.** The SMP kernel has one ready queue shared by both cores
+  (`kernel/tkernel/ready_queue.h:51`), so an unpinned task can run on core 1 and
+  interfere with the time-critical tasks there. Create tasks with `TA_ASSPRC`;
+  Buddy 1's tasks use `TP_PRC1` (core 0).
 
 ## 8. Do not commit generated files
 

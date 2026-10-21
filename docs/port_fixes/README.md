@@ -19,4 +19,4 @@ So each port fix gets its own folder here, with a fixed set of documents:
 
 | ID | Title | Area | Status |
 |---|---|---|---|
-| [PF-001](PF-001-timer-tick/README.md) | Microsecond timer runs ~43× slow after a power-on | `kernel/sysdepend/pico_rp2040/cpu_clock.c` | 🟡 Fix applied and verified for Wi-Fi; drill-down open |
+| [PF-001](PF-001-timer-tick/README.md) | Microsecond timer runs ~43× slow after a power-on or reset-button press | `kernel/sysdepend/pico_rp2040/cpu_clock.c` | 🟡 Cause confirmed (D1), fix measured exact (D2), boot paths mapped (D3), published figures assessed (D4), origin traced (D5); D6 pending team replies |

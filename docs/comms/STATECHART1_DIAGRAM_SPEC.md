@@ -8,6 +8,9 @@ agent; it contains every string, colour, arrow and layout rule needed.
 - **Status:** corrected 2026-10-10 to match the **Option A** decision (one
   application task, `comms_task`; the radio task `cyw43_utk_task` is unchanged).
 - **Supersedes:** the previous raster ("radio task + wifi_task" in its NOTES).
+- **Updated from Tribunal 1 (2026-10-19):** the `APPLYING MAP` check is now a
+  7-byte binary table, and the Wi-Fi-loss fault bit is shown on the transitions
+  (§3 note). Redraw with these strings.
 - **Source of truth for behaviour:** `docs/comms/WIFI_SUBSYSTEM_DESIGN.md` §7, §9, §10,
   §16; `docs/comms/RTOS_INTERFACES.md` §7. If the diagram and those disagree, they win.
 
@@ -70,8 +73,15 @@ owns which states.
 | CONNECTING | **CONNECTING** | (New MQTT client · clean session) | • Waiting for the broker's CONNACK | pale yellow — connecting |
 | SUBSCRIBING | **SUBSCRIBING** | (To `…/cmd` and `…/map`) | • Retained map arrives → applied<br>• SUBACK verdict logged<br>• Refused → log + retry | orange — joining |
 | STREAMING | **STREAMING** | (Normal operation) | • `S` line every 1 s (+ heartbeat)<br>• `E` line the moment an event happens<br>• Commands from the laptop handled | green — online |
-| APPLYING MAP | **APPLYING MAP** | (Barcode remap from laptop) | • Check 26 letters + version<br>• Send table to `barcode_task`  ⟵ *see §7 note*<br>• Report `mpv = v` in the next `S` line | purple — command handling |
+| APPLYING MAP | **APPLYING MAP** | (Barcode remap from laptop) | • Check 7 bytes: version + 26 × 2-bit codes<br>• Send table to `barcode_task`  ⟵ *see §7 note*<br>• Report `mpv = mv` in the next `S` line | purple — command handling |
 | RETRY BACKOFF | **RETRY BACKOFF** | (Connection lost) | • Disconnect + free the client<br>• Wait 2–5 s (only 6 TCP slots)<br>• Lost lines show as an `s=` gap | red/pink — recovery |
+
+> **Updated from Tribunal 1 (2026-10-19) — the Wi-Fi-loss fault bit.** Add one
+> annotation to the diagram: entering **WAITING FOR WI-FI** or **RETRY
+> BACKOFF** from a connected state **sets the Wi-Fi-loss bit** in the shared
+> fault bitmask; reaching **STREAMING** again **clears it** (after the first
+> `S` line has carried it). `S` and `E` records are packed binary (schema v2),
+> so the STREAMING bullets stay as they are.
 
 Topic placeholders `…/cmd`, `…/map`, `…/state` may be written in full as
 `robocar/<id>/cmd` etc. if space allows (`<id>` = the car's client id).
