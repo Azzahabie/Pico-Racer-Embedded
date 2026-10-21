@@ -422,6 +422,13 @@ EXPORT INT usermain(void)
 	ID	tid;
 
 	(void)tid;		/* unused when no task below is built in */
+
+	/* Kernel objects that cross app tasks first, before any task starts
+	   (design section 6.3).  tele_mbf: every task -> comms_task. */
+	if(comms_tele_init() < E_OK) {
+		tm_printf((UB *)"[init] comms_tele_init failed\n");
+	}
+
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 #endif

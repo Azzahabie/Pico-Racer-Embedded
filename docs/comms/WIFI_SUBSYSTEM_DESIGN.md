@@ -254,8 +254,36 @@ interface *they* write against. Option **A** was chosen this session
 
 ### 4.1 The record
 
+> **Updated for schema v3 (2026-10-22) — this is what is built.** The intake
+> message is the **event body alone**: `kind` in bits 0–2 (0-based, as
+> `MQTT_SCHEMA.md` §5.1 — motion 0, line 1, barcode 2, imu 3, obstacle 4,
+> mission 5; 6 and 7 rejected), then that kind's fields at their minimum
+> widths. It is variable length, ⌈body bits / 8⌉ = 1–7 bytes, so a queued
+> message costs 8 B (12 B for motion) in the µT-Kernel message buffer.
+>
+> - The producer packs it with its `comm_w_pack_<kind>()` helper from
+>   `app_program/common/messages.h` (clamping and offset-encoding inside; no
+>   shifts or masks in the producer) and posts it with `comms_tele_send()`
+>   (`app_program/comms_task/comms_task.h`), which uses `TMO_POL`.
+> - There is **no `t_ms` field**: `comms_task` stamps `up` when it takes the
+>   body off the queue, and `s` when it publishes. Bodies wait on the queue
+>   for well under a tick, so the stamp is within a few ms of the event.
+> - `comms_task` checks the length against the kind, unpacks with
+>   `comm_w_unpack_body()` to fold the `S` cache, and publishes the **same
+>   bytes** after the header as record `E` (`comm_w_copy_body()`), so nothing
+>   is remapped between a producer and the laptop.
+> - `tele_mbf` holds 16 records (192 B) and is created by `comms_tele_init()`
+>   first in `usermain()`. Its ID `tele_mbfid` is declared in `comms_task.h`
+>   rather than `messages.h`, so `messages.h` stays plain C for the PC test.
+> - `ovf` (clamped) is now a field of the motion body only (PLACEHOLDER); other
+>   kinds clamp silently, and `S.drp` counts queue drops.
+>
+> The original v1 design follows, kept as the **unpacked baseline** for the
+> Week 13 before-and-after comparison. Its `EVT_*` enum numbered the kinds
+> from 1; the built code numbers them from 0.
+
 ```c
-/* app_program/common/messages.h */
+/* app_program/common/messages.h — v1 baseline, superseded */
 typedef enum {
     EVT_MOTION = 1,   /* Buddy 2 — motion control   */
     EVT_LINE,         /* Buddy 3 — line state       */
@@ -274,7 +302,8 @@ typedef struct {
 extern ID tele_mbfid;   /* created once in usermain() */
 ```
 
-> **Updated from Tribunal 1 (2026-10-19) — the record is packed.** The
+> **Updated from Tribunal 1 (2026-10-19) — the record is packed.** *Superseded
+> by schema v3 above; kept for the record.* The
 > requirement names inter-task queue messages, so the 16-byte struct above
 > (four 32-bit fields) is the **unpacked baseline** kept for the Week 13
 > before-and-after comparison. The packed record is **one 64-bit word** built
@@ -311,13 +340,15 @@ where it belongs.
 
 ### 4.2 What a teammate has to write
 
-Three lines, inside their own task:
+Two lines, inside their own task (schema v3):
 
 ```c
-T_TELEMETRY_EVENT e = { .t_ms = tele_now_ms(), .kind = EVT_MOTION,
-                        .a = MOTION_LEFT, .b = 0 };
-tk_snd_mbf(tele_mbfid, &e, (INT)sizeof e, TMO_POL);
+UB body[COMM_W_INTAKE_SIZE_LINE];
+comms_tele_send(body, (INT)comm_w_pack_line(body, LINE_LOST, deviation_tenths));
 ```
+
+*(v1 baseline: a `T_TELEMETRY_EVENT` struct filled in and sent with
+`tk_snd_mbf(tele_mbfid, &e, sizeof e, TMO_POL)`.)*
 
 `TMO_POL` means "do not block, just check and return". A full queue returns an
 error immediately; the buddy counts a dropped event and carries on.
@@ -360,23 +391,30 @@ for (;;) {
 
 ### 4.4 The event catalogue
 
-Meaning comes from `kind`, which keeps the record small and fixed-size. This
-table is the contract; it is the one thing to agree with the other four buddies
-before anyone writes code.
+Meaning comes from `kind`. This table is the contract; it is the one thing to
+agree with the other four buddies before anyone writes code.
 
-| `kind` | Producer | `a` (unit) | `b` (unit) |
-|---|---|---|---|
-| `EVT_MOTION` | Buddy 2 | state: 0 stop / 1 straight / 2 left / 3 right | distance since last event (cm) |
-| `EVT_LINE` | Buddy 3 | state: 0 on-line / 1 lost / 2 crossing | deviation (tenths of a sensor unit) |
-| `EVT_BARCODE` | Buddy 3 | decoded letter as an index, 0 = `A` … 25 = `Z`, 31 = unreadable | action code, 2 bits (0–3) |
-| `EVT_IMU` | Buddy 4 | hump count | hump height (mm) |
-| `EVT_OBSTACLE` | Buddy 5 | obstacle width (cm) | bypass: 1 left / 2 right |
-| `EVT_MISSION` | Vehicle Controller | mission state | 0 |
+*Updated for schema v3 (2026-10-22):* each kind has its own body, every field at
+its minimum width, so every field of every event reaches the laptop. The full
+field tables are [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §5.1, and **each body is
+owned by its producer** — how an owner asks for a change is
+[`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §5.2.
 
-*Updated from Tribunal 1 (2026-10-19):* `EVT_BARCODE` no longer carries the
-letter's ASCII code (7 bits) but a 5-bit index (the reader adds 65), and the
-action is Buddy 3's 2-bit code. Every `a`/`b` fits 8 bits; out-of-range values
-are clamped and flagged with `ovf` (§4.1).
+| `kind` | Name | Producer | Body fields after `kind` | Body bits | Intake / wire bytes |
+|---|---|---|---|---|---|
+| 0 | motion | Buddy 2 | state 4, speed_l 8\*, speed_r 8\*, dist_mm 15 (wraps), turn_rate 10 (+512), fault 2, ovf 1\* | 51 | 7 / 13 |
+| 1 | line | Buddy 3 | state 2, deviation 8 (+128) | 13 | 2 / 9 |
+| 2 | barcode | Buddy 3 | letter 5 (0–25, 31 unreadable), action 2 | 10 | 2 / 8 |
+| 3 | imu | Buddy 4 | class 3 (FR-27), hump_count 4, hump_height_mm 8 | 18 | 3 / 9 |
+| 4 | obstacle | Buddy 5 | width_cm 8, bypass 2 | 13 | 2 / 9 |
+| 5 | mission | Vehicle Controller | state 3 | 6 | 1 / 8 |
+
+\* PLACEHOLDER until Buddy 2 confirms the unit and range.
+
+*v1/v2 history:* the kinds were `EVT_MOTION` … `EVT_MISSION` numbered from 1,
+each carrying two 8-bit values `a` and `b`; at Tribunal 1 the barcode moved from
+an ASCII code to a 5-bit letter index (the reader adds 65) and Buddy 3's 2-bit
+action.
 
 ### 4.5 The shared fault bitmask — *new, from Tribunal 1 (2026-10-19)*
 
@@ -652,8 +690,8 @@ first byte. Fields are packed LSB-first, little-endian, in table order
 
 | Record | Topic | Size | Contents |
 |---|---|---|---|
-| `S` | `…/telemetry`, 1 Hz | **15 B** (118 bits) | header + fault bitmask (5) + the latest-state table: `mot` 2, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4 |
-| `E` | `…/telemetry`, on the event | **9 B** (72 bits) | header + `k` 3 + `a` 8 + `b` 8 |
+| `S` | `…/telemetry`, 1 Hz | **15 B** (120 bits, v3) | header + fault bitmask (5) + the latest-state table: `mot` 4, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4 |
+| `E` | `…/telemetry`, on the event | **8–13 B** per kind (v3) | header + the producer's event body: `k` 3 + that kind's fields (`MQTT_SCHEMA.md` §5.1) |
 | `H` | `…/heartbeat` | **7 B** (53 bits) | header only |
 | `D` | `…/state`, on `snap` | **21 B** (162 bits) | `S` + `rssi` 7, `ip` 32, `qd` 3, `mqv` 2 |
 | `cmd` | `…/cmd` | **1 B** | `op` 3 (1 snap, 2 ping) + 5 reserved zero bits |
@@ -1036,7 +1074,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
       decoder shows `k = B`, and an `EVT_IMU` and it shows `k = I`.
 - [ ] **Gate (updated from Tribunal 1, 2026-10-19):** the laptop decoder
       decodes every record type, and every payload has the fixed length of its
-      type (S 15 B, E 9 B, H 7 B, D 21 B). This replaces the JSON-era gate
+      type (S 15 B, H 7 B, D 21 B; E 8–13 B by kind, schema v3). This replaces the JSON-era gate
       "a generic client renders the JSON as a tree" (§8.1).
 - [ ] **Gate (Tribunal 1):** pack/unpack round trip on a PC for every field at
       its minimum, maximum and one past (clamped, `ovf` set).
