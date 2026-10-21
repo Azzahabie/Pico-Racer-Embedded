@@ -158,15 +158,17 @@ Two rules, both enforced by the repo:
 
 | Tool | Detail |
 |---|---|
-| Broker | **`amqtt` 0.12.1**, installed into the global Python 3.13 |
-| Client / listener | **`paho-mqtt` 2.1.0** |
+| Broker | **`amqtt` 0.12.1**, installed into the global Python 3.13; start it with `py tools\run_broker.py` |
+| Client / listener | **`paho-mqtt` 2.1.0**; `python tools\telemetry_decode.py` decodes the packed records |
 | Echo server (UDP/TCP tests) | `python tools\linux_echo.py` (pure stdlib) |
 
 ⚠ **Run the broker via `python.exe`, never `amqtt.exe`.** The Windows firewall
 inbound allow-rule is bound to `python.exe` (TCP + UDP, any port, Private +
 Public) and this Wi-Fi is classified `Public`. `amqtt.exe` is a different
 executable and would be **silently blocked over the LAN**. `python -m amqtt` is
-unsupported (no `__main__`), so a small launcher shim is used.
+unsupported (no `__main__`), so a small launcher shim is used:
+`tools/run_broker.py` (moved there from an untracked scratch folder on
+2026-10-21; the M6 log in §8 shows its old path).
 
 ---
 
