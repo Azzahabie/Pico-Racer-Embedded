@@ -9,7 +9,7 @@
   (`startup_clock()`).
 - **Docs:** [`INVESTIGATION.md`](INVESTIGATION.md) ·
   [`FIX.md`](FIX.md) · [`DRILLDOWN.md`](DRILLDOWN.md). The raw console logs
-  are in [`../../comms/resolve_feedback/F1log.md`](../../comms/resolve_feedback/F1log.md).
+  are in [`logs/F1log-2026-10-16.md`](logs/F1log-2026-10-16.md).
 
 ## Symptom
 
@@ -82,7 +82,7 @@ each run started after a reflash or debugger load, not after a power-on. See
 | After the fix (boots 10-16) | **7 / 7** | ~3020 ms per 3 s |
 
 The full table and boot notes are in
-[`../../comms/resolve_feedback/results.md`](../../comms/resolve_feedback/results.md) F1.0.
+[`logs/F1.0-results-2026-10-16.md`](logs/F1.0-results-2026-10-16.md).
 
 TIMER rate against the kernel clock, 60 s per run, base profile without
 Wi-Fi ([`DRILLDOWN.md`](DRILLDOWN.md) D2):

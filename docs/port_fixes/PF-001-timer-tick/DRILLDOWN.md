@@ -404,7 +404,7 @@ power-on before this fix.
    timing in a non-Wi-Fi build will likely read `0x40054028` directly, and
    that is correct **only with PF-001 in place**.
 
-5. **Planned uses, from the Week 6 design** ([`Week6Report.md`](../../comms/Week6Report.md)):
+5. **Planned uses, from the Week 6 design report:**
 
    | Buddy / task | Planned timing | Uses the TIMER? | Pre-fix effect on power-on | Risk |
    |---|---|---|---|---|

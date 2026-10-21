@@ -19,8 +19,8 @@ proving each piece on hardware.
 > bitmask, held in a µT-Kernel event flag owned by Buddy 5; (3) every record in
 > `messages.h` is packed with masks and shifts; (4) packed data shared across
 > cores is never a plain variable. Sections changed are marked *Updated from
-> Tribunal 1*. Analysis and roadmap: [`Tribunal/README.md`](Tribunal/README.md);
-> submitted decisions: [`Tribunal/completed_in_trib.md`](Tribunal/completed_in_trib.md).
+> Tribunal 1*. Submitted
+> decisions: [`Tribunal/completed_in_trib.md`](Tribunal/completed_in_trib.md).
 - **Scope:** the whole subsystem as one picture — radio, protocol, application
   task, and the contract the other four buddies code against.
 - **Companions:** [`NETWORKING.md`](NETWORKING.md) is the reference for

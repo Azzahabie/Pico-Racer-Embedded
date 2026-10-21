@@ -3,8 +3,8 @@
 All boots on router `Pico2_IoT`, profile
 `SMP=1 CONSOLE=usb_cdc WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1`
 (`mtk3pico_smp1_usb_cdc_wifi_dns.uf2`). The boot numbers refer to
-[`F1log.md`](../../comms/resolve_feedback/F1log.md) and the F1.0 table in
-[`results.md`](../../comms/resolve_feedback/results.md).
+[`F1log-2026-10-16.md`](logs/F1log-2026-10-16.md) and the F1.0 table in
+[`F1.0-results-2026-10-16.md`](logs/F1.0-results-2026-10-16.md).
 
 ## Timeline
 

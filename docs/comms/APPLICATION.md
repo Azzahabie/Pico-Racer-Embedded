@@ -13,8 +13,8 @@ they consume, and how they hand work down to the network layer.
 > this layer it means packed records in `messages.h`, packed binary MQTT
 > payloads with a laptop decoder ([`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) schema v2),
 > and setting the **Wi-Fi-loss** bit in the shared fault bitmask. The analysis,
-> the gap check against the submitted report, and the ordered roadmap are in
-> [`Tribunal/README.md`](Tribunal/README.md).
+> the gap check against the submitted report, and the ordered roadmap are kept
+> in Buddy 1's working notes.
 - **Companions:** [`NETWORKING.md`](NETWORKING.md) covers everything *below* this
   layer (transport, protocol, config, build); [`RTOS_INTERFACES.md`](RTOS_INTERFACES.md)
   covers the application layer's two cross-task seams and the options for each;

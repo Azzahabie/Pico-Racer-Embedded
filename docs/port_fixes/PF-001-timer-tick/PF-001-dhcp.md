@@ -883,7 +883,7 @@ Attempts after the first powercycle it would be sequential, there is no reflash 
 - Router `Pico2_IoT`, the same network as the original F1.0 / PF-001 verification
   (0/5 before the fix, 7/7 after, on our firmware)
 - Moved here from the phone hotspot because the hotspot rejects every second
-  join (see F1.0 "Phone hotspot" in `docs/comms/resolve_feedback/results.md`),
+  join (see "Phone hotspot" in `logs/F1.0-results-2026-10-16.md`),
   which hides the DHCP result on half of the boots
 
 ## Build
