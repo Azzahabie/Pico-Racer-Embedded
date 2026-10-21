@@ -179,13 +179,15 @@ packet. That is precisely what the mailboxes in §3.2 exist to prevent.
 | Task | Entry | Priority | Stack | Affinity | Created by |
 |---|---|---|---|---|---|
 | `cyw43_utk_task` — exists | `cyw43_utk.c:496` | 4 | 6 KB | `TP_PRC1` (SMP) | kernel device init, `devinit.c:107` |
-| `comms_task` — **new** | `app_program/comms_task/comms_task.c` | 8 (proposed) | 4 KB | unpinned (proposed) | `usermain()`, `app_main.c` |
+| `comms_task` — **new** | `app_program/comms_task/comms_task.c` | **16** | 4 KB | `TP_PRC1` (core 0, proposed) | `usermain()`, `app_main.c` |
 
 Priority: in µT-Kernel a **smaller number is a higher priority**. The radio task
 sits at 4, the console at 3 (`cyw43_utk_kernel.c:14` explains that ordering —
-the USB console must drain first). Putting `comms_task` at 8 — the same level as
-the existing read-only reporter — means it can never delay the radio or the
-console, which is exactly what a best-effort telemetry producer should be.
+the USB console must drain first). `comms_task` sits at **16**, one below
+`nav_ctrl_task` (15), as set by the Week 6 report (the earlier placeholder 8 is
+withdrawn: in µT-Kernel it would have outranked every control task, 10 to 15).
+It can never delay the radio, the console or the control tasks, which is exactly
+what a best-effort telemetry producer should be.
 
 `comms_task` must be gated with the same `#if` its objects are (`TM_WIFI_MQTT`),
 so **a non-MQTT radio build compiles and behaves exactly as it does today**. That
@@ -1161,7 +1163,7 @@ recommendation for each so a decision is a yes/no rather than new analysis.
 | 5 | Producer send: never block (+ drop counter) or a bounded block? | never block, count drops (§4.2) | 10 ms bound, as `RTOS_INTERFACES.md` §4 |
 | 6 | Heartbeat: fold into the periodic line, or its own topic? | **own topic** — changed 2026-09-27: M9's requirement says "**heartbeat topic** so liveness is visible" in writing, and a topic name is a string literal, not code. Fold was the earlier recommendation | fold into the periodic line; cheaper, and the absence of a line is still the signal |
 | 7 | The reporter: keep `wifi_status_task` as-is, rename it, or fold it into `comms_task`? | keep it as a read-only reporter and **rename** it `wifi_report_task` | fold — one task, but it then prints radio internals it does not own |
-| 8 | `comms_task` affinity: unpinned, or pinned to processor 2? | unpinned; priority 8 already keeps it out of the radio's way | `TP_PRC2` keeps it off the radio+USB core entirely |
+| 8 | `comms_task` affinity: unpinned, or pinned to processor 2? | **Updated 2026-10-21:** pin to processor 1 (core 0, with the radio), priority 16 per the Week 6 report; the team is pinning every task (Buddy 2's request). Being agreed with Buddy 2. *Superseded:* unpinned at priority 8 | `TP_PRC2` would put it on the control core |
 | 9 | **Outbound** wire format: JSON, key=value, or compact positional? | **Taken 2026-10-19 (Tribunal 1): packed binary, schema v2 (§8).** Change Requirement 1 requires compact binary MQTT payloads; recorded as Major redesign in the tribunal change log. *Superseded:* changed 2026-09-28: JSON (§8). The reader may be the instructor's client, and every generic MQTT tool renders JSON with no help; producing it costs one `tm_sprintf`. The earlier `key=value` recommendation assumed you own the reader, which you do not | key=value saves ~35% of the bytes; positional saves more, but neither is readable by the instructor's client |
 | 10 | Payload maximum: 256 bytes, or larger? | **Updated 2026-10-19 (Tribunal 1): keep 48** — the largest packed record is 21 B (§6.4). *Superseded:* changed 2026-09-28: 256 (was 192), **plus** raising the client's ring buffer to 512 and its receive buffer to 256 (§6.4) — the JSON state line is 141 B and the diagnostic snapshot is longer (§8.3) | smaller forces shorter lines and breaks the snapshot; larger costs RAM in the lib's queues |
 | 11 | QoS on the wire: QoS 0 everywhere, or QoS 1 for the remap? | **changed 2026-09-27: QoS 0 for telemetry *and* for `…/cmd`; QoS 1 on the `…/map` *subscription* only.** lwIP never retransmits a QoS 1 publish — the request just expires with `ERR_TIMEOUT` (`mqtt.c:390-413`) — so QoS 1 outbound buys detection, not delivery. QoS 1 *inbound* is acknowledged by the library (`mqtt.c:776-783`), so subscribing at QoS 1 costs no application code | QoS 1 outbound on `cmd`; costs a request slot and a callback for a signal the design does not act on |

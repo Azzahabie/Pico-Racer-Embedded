@@ -94,7 +94,7 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 | Decision | Where | Recommendation |
 |---|---|---|
 | One app task or two | [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md) §7 row 1 | **A** (one `comms_task`); split deferred |
-| `comms_task` priority + core | §7 rows 5, 7 | placeholder **8**; unpinned |
+| `comms_task` priority + core | §7 rows 5, 7 | priority **16** (set by the Week 6 report; placeholder 8 withdrawn); core 0 proposed, agreeing with Buddy 2 |
 | Team doc: add a core/pin column | §7 row 6, paste-ready in §8 | yes |
 | Wire schema fields 1–14 (binary v2) | [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §12 | every width agreed with its producer before `messages.h` is frozen |
 | Fault-bit positions and who clears each bit | [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §4.1 | requirement order; agree with Buddy 5 |

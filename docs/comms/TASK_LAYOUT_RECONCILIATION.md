@@ -24,7 +24,7 @@ code is the tie-breaker, because it is the only source actually running.
 | Role | Team doc (`embedded .md`) | Design (& this record) | Firmware today |
 |---|---|---|---|
 | Radio / MQTT client owner | `cyw43_utk_task` — "Low (20)" *(wrong)* | `cyw43_utk_task` — **4, fixed** | **4**, `TP_PRC1` — `cyw43_utk_kernel.c:17`, `:36` |
-| Outbound telemetry | `comms_task` — (21) | **`comms_task`** — 8 (provisional) | does not exist yet |
+| Outbound telemetry | `comms_task` — (21) | **`comms_task`** — **16** (Week 6 report) | does not exist yet |
 | Inbound commands | `wifi_task` — (19) | **merged into `comms_task`** | does not exist yet |
 | Existing reporter | not listed | keep, rename `wifi_report_task` | `wifi_status_task` **8** — `app_main.c:266` |
 
@@ -65,7 +65,8 @@ numbers. **Affinity decides which queue a task joins.**
 |---|---|
 | **core 0** | USB console (3), `cyw43_utk_task` (radio, **4**, `TP_PRC1`), demo producer (5) |
 | **core 1** | demo consumer (6, `TP_PRC2`) |
-| **either (unpinned)** | monitor (7), `wifi_status_task` (8), led_test (9), blink (10), `comms_task` |
+| **either (unpinned)** | monitor (7), `wifi_status_task` (8), led_test (9), blink (10) |
+| **core 0 (proposed)** | `comms_task` (**16**) — agreeing with Buddy 2 |
 
 > **Rule of thumb:** before asking "does X outrank Y?", ask **"same core?"** If
 > not, the numbers are irrelevant — affinity already settled it.
@@ -88,7 +89,7 @@ than by fighting the radio's fixed number.
 | 2 | Source of truth for the task table? | [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §3 |
 | 3 | `cyw43_utk_task` priority | **4** — fixed, library, core 0 |
 | 4 | Keep + rename `wifi_status_task` → `wifi_report_task`? | **yes** (design §16 item 7) |
-| 5 | `comms_task` priority | **8 (provisional)** — deferred until measured |
+| 5 | `comms_task` priority | **16** — set by the Week 6 report (one below `nav_ctrl_task`, 15); the provisional 8 is withdrawn |
 | 6 | Add a **core / pin** column to the team doc? | **yes** (§6) |
 | 7 | Core for the latency-sensitive tasks? | **core 1** (§3.1) |
 
