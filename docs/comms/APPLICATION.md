@@ -31,15 +31,14 @@ task, plus a shared contract file.
 
 | Path | Owner | State |
 |---|---|---|
-| `app_program/app_main.c` | base repo | the producer/consumer demo + the Wi-Fi status reporter task |
-| `app_program/demo_tasks.c` | base repo | the demo tasks (blink, monitor, …) |
-| `app_program/led_test/` | base repo | GPIO loopback test |
+| `app_program/app_main.c` | base repo | `usermain()`, the boot banner, and the Wi-Fi status reporter (development only, `TM_WIFI_REPORT`). *The producer/consumer demo and `led_test` were removed 2026-10-21* |
+| `app_program/demo_tasks.c` | base repo | the optional blink task (`TM_BLINK_LED`, off by default) |
 | `app_program/motor_task/` | Buddy 2 | **empty stub** |
 | `app_program/line_task/` | Buddy 3 | **empty stub** |
 | `app_program/imu_task/` | Buddy 4 | **empty stub** |
 | `app_program/obstacle_task/` | Buddy 5 | **empty stub** |
-| **`app_program/comms_task/`** | **Buddy 1** | **empty stub — this is ours** |
-| `app_program/common/messages.h` | shared | **empty** — the integration contract |
+| **`app_program/comms_task/`** | **Buddy 1** | **started** — publishes the `H` heartbeat (2026-10-21) |
+| `app_program/common/messages.h` | shared | the integration contract — so far the MQTT record header and the `H` packer |
 
 > **What it means:** the stubs are placeholders deliberately shipped so each
 > person has a home for their code. They are *compiled* even while empty (every
@@ -62,15 +61,15 @@ drains it.
    ────────────────────                     ────────────────
    gather telemetry from other buddies
    build the message
-   tk_snd_mbf(...)  ──── message buffer ───▶  drains the buffer
-                                              lwip_utk_mqtt_publish(...)
+   cyw43_utk_mqtt_send(...) ── message buffer ──▶  drains the buffer
+                                              lwip_utk_mqtt_offer(...)
 ```
 
-> **What it means:** a classic producer/consumer queue — and this repo already
-> demonstrates it. `app_program/app_main.c` has a producer task and a consumer
-> task passing records through a message buffer, guarded by a mutex and a
-> semaphore. Our telemetry task is another producer; the network task is the
-> consumer.
+> **What it means:** a classic producer/consumer queue. Our telemetry task is
+> the producer; the radio task is the consumer. *Built 2026-10-21:*
+> `cyw43_utk_mqtt_send()` (`lib/libwifi/sysdepend/pico_rp2040/cyw43_utk_kernel.c`)
+> posts to a lib-owned message buffer with `TMO_POL`, and the radio task hands
+> one record per poll to `lwip_utk_mqtt_offer()`.
 
 **The "Communication API" deliverable** is exactly this interface: the message
 structs and kernel-object IDs in `app_program/common/messages.h`, plus the MQTT
@@ -229,9 +228,10 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       before writing `comms_task` — the team doc and the design disagree (see
       [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md); its §7
       decision log is the blank to fill).
-- [ ] Define the kernel-object hand-off between `comms_task` and the radio task.
-- [ ] (Optional, low priority) Reconcile `GETTING_STARTED.md` §6b task table with
-      the actual five tasks — `led_test` is missing from the doc.
+- [x] Define the kernel-object hand-off between `comms_task` and the radio task.
+      *Done 2026-10-21:* `cyw43_utk_mqtt_send()` and a lib-owned message buffer.
+- [x] Reconcile `GETTING_STARTED.md` §6b task table with the running tasks.
+      *Done 2026-10-21:* `led_test` and the demo tasks were removed instead.
 
 ---
 

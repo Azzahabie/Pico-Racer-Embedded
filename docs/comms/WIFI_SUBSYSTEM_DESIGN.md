@@ -143,9 +143,9 @@ decided by affinity, not by priority alone:
 
 | Processor | Tasks that run there |
 |---|---|
-| 1 (physical core 0) | USB console service (priority 3), the radio task (4, pinned `TP_PRC1` — `cyw43_utk_kernel.c:36`), the demo producer (5, pinned `TP_PRC1` — `app_main.c:450`) |
-| 2 (physical core 1) | the demo consumer (6, pinned `TP_PRC2` — `app_main.c:462`) |
-| either | the unpinned tasks: monitor (7), `wifi_status_task` (8), `led_test` (9), blink (10) |
+| 1 (physical core 0) | USB console service (priority 3), the radio task (4, pinned `TP_PRC1` — `cyw43_utk_kernel.c:36`), `comms_task` (16, pinned `TP_PRC1`), `wifi_status_task` (17, pinned `TP_PRC1`, development only) |
+| 2 (physical core 1) | the other buddies' time-critical sensing/control tasks |
+| either | none — *updated 2026-10-21:* the demo tasks and `led_test` were removed and every remaining task is pinned, because the kernel's ready queue is shared by both cores (`TASK_LAYOUT_RECONCILIATION.md` §3.1) |
 
 Because the radio task is **pinned** (`TA_ASSPRC`, `cyw43_utk_kernel.c:28`,
 `:36`), it can only ever run on processor 1. A task running on processor 2 is

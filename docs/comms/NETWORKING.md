@@ -19,7 +19,7 @@ constraints, and the captured evidence.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Application        app_program/                            │
-│  "what the car does"  producer/consumer demo, LED test,     │
+│  "what the car does"  comms_task (MQTT), usermain,          │
 │                       + stubs for motor / line / imu / ...  │
 ├─────────────────────────────────────────────────────────────┤
 │  Kernel (RTOS)      kernel/, lib/libtk, lib/libtm           │
