@@ -11,7 +11,8 @@
  *	body is length-checked for its kind; a malformed one gets one console line
  *	and changes nothing.  A valid one updates the S cache and is published as
  *	record E: the header is stamped with s and up, and the body is copied
- *	unchanged (MQTT_SCHEMA.md section 5).  Once a second it publishes H.  It
+ *	unchanged (MQTT_SCHEMA.md section 5).  Once a second it publishes H and
+ *	then S, the S cache as a record (section 4; faults is 0 for now).  It
  *	never touches lwIP: records go to the radio task through
  *	cyw43_utk_mqtt_send(), and a full queue drops the record and says so.
  *
@@ -79,13 +80,16 @@ EXPORT ER comms_tele_send(const UB *body, INT length)
 /* A wire E must fit the radio's outbound record. */
 typedef char comms_e_fits[(COMM_W_E_SIZE_LIMIT <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
 
-/* The latest value per source, for record S.  Fields are stored as on the
-   wire (MQTT_SCHEMA.md section 4).  Only comms_task touches it. */
-LOCAL struct {
-	UB	mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, drp;
-	BOOL	have_dist;
-	UH	dist_at_change;		/* dist_mm when mot last changed */
-} s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE };
+/* A wire S must fit too. */
+typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
+
+/* The latest value per source, published as record S once a second.  Fields
+   are stored as on the wire (MQTT_SCHEMA.md section 4).  Only comms_task
+   touches it.  faults stays 0 until Buddy 5's fault flag exists (schema
+   section 12), and mpv stays 0 until the map command (M8) is built. */
+LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE };
+LOCAL BOOL	have_dist;
+LOCAL UH	dist_at_change;		/* dist_mm when mot last changed */
 
 LOCAL UW	malformed;
 
@@ -107,12 +111,12 @@ LOCAL void fold(const T_COMM_W_BODY *b)
 	case COMM_W_KIND_MOTION:
 		/* dst is cm since the last motion change, derived from the
 		   wrapping dist_mm counter (handles one wrap), clamped to 8 bits. */
-		if(!s_cache.have_dist || b->motion_state != s_cache.mot) {
-			s_cache.dist_at_change = b->dist_mm;
-			s_cache.have_dist = TRUE;
+		if(!have_dist || b->motion_state != s_cache.mot) {
+			dist_at_change = b->dist_mm;
+			have_dist = TRUE;
 		}
 		s_cache.mot = b->motion_state;
-		cm = comm_w_dist_delta_mm(b->dist_mm, s_cache.dist_at_change) / 10U;
+		cm = comm_w_dist_delta_mm(b->dist_mm, dist_at_change) / 10U;
 		s_cache.dst = (UB)((cm > 255U) ? 255U : cm);
 		break;
 	case COMM_W_KIND_LINE:
@@ -211,7 +215,7 @@ LOCAL void selftest_inject(UW n)
 
 LOCAL void comms_task(INT stacd, void *exinf)
 {
-	UB	rec[COMM_W_H_SIZE];
+	UB	rec[COMM_W_S_SIZE];		/* H or S */
 	UB	body[COMM_W_INTAKE_SIZE_MAX];
 	UH	seq = 0;	/* s: one counter for every record this run */
 	UW	next, up, len, beats = 0;
@@ -245,6 +249,13 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		print_record("H", seq, up, rec, len, er);
 		/* s advances even when the record was dropped: a gap in s with
 		   the drop counter rising says the car lost it, not the network. */
+		seq++;
+
+		/* S, the fold of the latest value per source (NFR-10), on the same
+		   tick and the same s counter. */
+		len = comm_w_pack_s(rec, seq, up, &s_cache);
+		er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_TELEMETRY, rec, len);
+		print_record("S", seq, up, rec, len, er);
 		seq++;
 
 #if TM_COMMS_E_SELFTEST

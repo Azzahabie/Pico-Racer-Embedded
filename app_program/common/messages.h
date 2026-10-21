@@ -274,6 +274,68 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 }
 
 /* ------------------------------------------------------------------ *
+ *  Record S -- the periodic state line (schema section 4), 15 bytes
+ * ------------------------------------------------------------------ */
+
+#define COMM_W_S_FAULTS_BITS    5U   /* shared fault bitmask, section 4.1   */
+#define COMM_W_S_MOT_BITS       4U   /* motion state                        */
+#define COMM_W_S_DST_BITS       8U   /* cm since the last motion change     */
+#define COMM_W_S_LIN_BITS       2U   /* line state                          */
+#define COMM_W_S_DEV_BITS       8U   /* line deviation, stored +128         */
+#define COMM_W_S_BAR_BITS       5U   /* letter index, 31 = none yet         */
+#define COMM_W_S_ACT_BITS       2U   /* action code                         */
+#define COMM_W_S_HUM_BITS       4U   /* humps detected                      */
+#define COMM_W_S_HGT_BITS       8U   /* last hump height, mm                */
+#define COMM_W_S_OBS_BITS       8U   /* last obstacle width, cm             */
+#define COMM_W_S_BYP_BITS       2U   /* bypass taken                        */
+#define COMM_W_S_MIS_BITS       3U   /* mission state                       */
+#define COMM_W_S_MPV_BITS       4U   /* barcode table version running       */
+#define COMM_W_S_DRP_BITS       4U   /* intake drops, saturating            */
+#define COMM_W_S_BITS          (COMM_W_HDR_BITS + COMM_W_S_FAULTS_BITS        \
+                                + COMM_W_S_MOT_BITS + COMM_W_S_DST_BITS       \
+                                + COMM_W_S_LIN_BITS + COMM_W_S_DEV_BITS       \
+                                + COMM_W_S_BAR_BITS + COMM_W_S_ACT_BITS       \
+                                + COMM_W_S_HUM_BITS + COMM_W_S_HGT_BITS       \
+                                + COMM_W_S_OBS_BITS + COMM_W_S_BYP_BITS       \
+                                + COMM_W_S_MIS_BITS + COMM_W_S_MPV_BITS       \
+                                + COMM_W_S_DRP_BITS)                  /* 120 */
+#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 15 */
+
+/* The latest value per source, as stored on the wire (offset-encoded fields
+   keep their offset).  comms_task keeps one and folds every event into it. */
+typedef struct {
+    uint8_t faults, mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, mpv, drp;
+} T_COMM_W_S;
+
+/* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
+   Returns the length. */
+static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
+                                     uint32_t up, const T_COMM_W_S *st)
+{
+    const T_COMM_W_HEADER h = { COMM_W_REC_S, COMM_W_SCHEMA_VERSION, s, up };
+    uint8_t clamped = 0;
+    uint32_t pos = 0;
+
+    comm_w_zero(out, COMM_W_S_SIZE);
+    comm_w_put_header(out, &pos, &h);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->faults, COMM_W_S_FAULTS_BITS, &clamped), COMM_W_S_FAULTS_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->mot, COMM_W_S_MOT_BITS, &clamped), COMM_W_S_MOT_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->dst, COMM_W_S_DST_BITS, &clamped), COMM_W_S_DST_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->lin, COMM_W_S_LIN_BITS, &clamped), COMM_W_S_LIN_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->dev, COMM_W_S_DEV_BITS, &clamped), COMM_W_S_DEV_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->bar, COMM_W_S_BAR_BITS, &clamped), COMM_W_S_BAR_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->act, COMM_W_S_ACT_BITS, &clamped), COMM_W_S_ACT_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->hum, COMM_W_S_HUM_BITS, &clamped), COMM_W_S_HUM_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->hgt, COMM_W_S_HGT_BITS, &clamped), COMM_W_S_HGT_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->obs, COMM_W_S_OBS_BITS, &clamped), COMM_W_S_OBS_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->byp, COMM_W_S_BYP_BITS, &clamped), COMM_W_S_BYP_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->mis, COMM_W_S_MIS_BITS, &clamped), COMM_W_S_MIS_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->mpv, COMM_W_S_MPV_BITS, &clamped), COMM_W_S_MPV_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->drp, COMM_W_S_DRP_BITS, &clamped), COMM_W_S_DRP_BITS);
+    return COMM_W_S_SIZE;
+}
+
+/* ------------------------------------------------------------------ *
  *  Per-kind size tables
  * ------------------------------------------------------------------ */
 

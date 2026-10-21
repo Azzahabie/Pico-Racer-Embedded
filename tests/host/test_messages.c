@@ -82,6 +82,32 @@ static void test_s_v3(void)
     check_bytes("S v3 example", rec, len, s_v3_bytes, sizeof s_v3_bytes);
 }
 
+/* 2b. The firmware S packer agrees with the field list, and clamps. */
+static void test_pack_s(void)
+{
+    const uint32_t *v = s_v3_values;   /* t, v, s, up, then the 14 fields */
+    T_COMM_W_S st = {
+        (uint8_t)v[4], (uint8_t)v[5], (uint8_t)v[6], (uint8_t)v[7], (uint8_t)v[8],
+        (uint8_t)v[9], (uint8_t)v[10], (uint8_t)v[11], (uint8_t)v[12], (uint8_t)v[13],
+        (uint8_t)v[14], (uint8_t)v[15], (uint8_t)v[16], (uint8_t)v[17],
+    };
+    uint8_t rec[COMM_W_S_SIZE];
+    uint8_t ref[COMM_W_S_SIZE];
+    T_COMM_W_S big = st;
+    uint32_t len;
+
+    ok(COMM_W_S_BITS == 120U && COMM_W_S_SIZE == 15U, "S is 120 bits, 15 B", "S size");
+    len = comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
+    check_bytes("comm_w_pack_s, S v3 example", rec, len, s_v3_bytes, sizeof s_v3_bytes);
+
+    /* mot 20 does not fit 4 bits: stored 15, every other field unchanged. */
+    big.mot = 20;
+    st.mot = 15;
+    comm_w_pack_s(rec, (uint16_t)v[2], v[3], &big);
+    comm_w_pack_s(ref, (uint16_t)v[2], v[3], &st);
+    check_bytes("comm_w_pack_s clamps mot 20 -> 15", rec, sizeof rec, ref, sizeof ref);
+}
+
 /* 3. H, schema v3. */
 static void test_h(void)
 {
@@ -227,6 +253,7 @@ int main(void)
 {
     test_s_v2_sanity();
     test_s_v3();
+    test_pack_s();
     test_h();
     test_vectors();
     test_reject();

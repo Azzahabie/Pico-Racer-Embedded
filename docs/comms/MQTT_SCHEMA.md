@@ -130,6 +130,13 @@ Published on `robocar/<id>/telemetry` once per second (NFR-10). It is a **fold
 of the latest value per source**, so a late subscriber waits at most one second
 for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 
+> **Built 2026-10-22** (`comm_w_pack_s()`, published by `comms_task` right after
+> each `H`, on the same `s` counter). Until the sources exist, two fields are
+> fixed: **`faults` is 0** — including the Wi-Fi-loss bit — until Buddy 5's
+> fault flag exists (§12 item 19), and **`mpv` is 0** until the `map` command
+> (M8) is built. A field no event has reported yet keeps its initial value:
+> `bar` 31 (none), `dev` 128 (0 tenths), everything else 0.
+
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
 | 5 | `faults` | bitmask | the **shared fault bitmask** — §4.1 |
@@ -489,6 +496,7 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 16 | **Tilt and encoder counts** | §5.1 | *new (v3).* Pending range from owner (FR-23, FR-29); not in any body yet |
 | 17 | **Motion `fault` vs. `S.faults`** | §4.1, §5.1 | *new (v3).* The motion event's `fault` bits record the faults **at the moment of that event**; the `S` fault bitmask is the **current state**. They can differ, and both are kept |
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |
+| 19 | **`S.faults` is published as 0** | §4, §4.1 | *new (2026-10-22).* Until Buddy 5's fault event flag exists, `comms_task` has no bitmask to copy; the Wi-Fi-loss bit (item 12) is added with it |
 
 ---
 
