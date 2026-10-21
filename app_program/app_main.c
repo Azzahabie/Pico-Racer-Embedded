@@ -49,6 +49,7 @@
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
 #include "race_test/race_test.h"
+#include "comms_task/comms_task.h"
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -274,6 +275,18 @@ LOCAL const char *net_state_name(UW state)
 	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
 }
 
+#if TM_WIFI_MQTT
+/* Names for the MQTT session state (CYW43_MQTT_* in cyw43_utk.h). */
+LOCAL const char *mqtt_state_name(UW state)
+{
+	static const char *const name[] = {
+		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED"
+	};
+
+	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
+}
+#endif
+
 /* " why=..." for a log entry, or "" on the normal forward path.  The link
    codes are CYW43_LINK_FAIL / _NONET / _BADAUTH from cyw43.h, which this file
    cannot include. */
@@ -394,20 +407,20 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		}
 
 #if TM_WIFI_MQTT
-		/* MQTT is one-shot, so report the verdict once on the completion
-		   edge -- including the broker and what was published, because
-		   unlike the echo phases nothing else on this console proves it. */
-		if(st.mqtt_complete != last_mqtt) {
-			last_mqtt = st.mqtt_complete;
-			if(st.mqtt_complete) {
-				UB broker[16];
-				fmt_ipv4(broker, st.mqtt_broker);
-				tm_printf((UB *)"[mqtt] %s:%u  topic=%s  payload=%s"
-					       "  result=%d  published=%u\n",
-					  broker, st.mqtt_port, st.mqtt_topic,
-					  st.mqtt_payload, st.mqtt_result,
-					  st.mqtt_published);
-			}
+		/* One line per session state change.  Changes faster than this
+		   task polls are collapsed, but the counters still show them:
+		   conn# counts CONNACKs and lost counts sessions that ended. */
+		if(st.mqtt_state_changes != last_mqtt) {
+			UB broker[16];
+			last_mqtt = st.mqtt_state_changes;
+			fmt_ipv4(broker, st.mqtt_broker);
+			tm_printf((UB *)"[mqtt] state=%s  %s:%u  conn#=%u lost=%u"
+				       "  pub=%u err=%u drop=%u  last=%d/%d\n",
+				  mqtt_state_name(st.mqtt_state), broker,
+				  st.mqtt_port, st.mqtt_connects,
+				  st.mqtt_sessions_lost, st.mqtt_published,
+				  st.mqtt_publish_errors, st.mqtt_queue_dropped,
+				  st.mqtt_connect_request, st.mqtt_connection_result);
 		}
 #endif
 
@@ -639,6 +652,12 @@ EXPORT INT usermain(void)
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
 #if TM_WIFI_CYW43
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
+#endif
+#if TM_WIFI_MQTT
+	{
+		ER er = comms_task_start();
+		if(er < E_OK) tm_printf((UB *)"[init] comms_task_start failed, er=%d\n", er);
+	}
 #endif
 
 #if TM_RACE_TEST

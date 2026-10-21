@@ -251,13 +251,42 @@ static void update_tcp_status(void)
 #endif
 
 #if TM_WIFI_MQTT
-/* The mirror in cyw43_utk.h duplicates the topic/payload capacity for the same
-   reason as the UDP ring geometry: that header is seen by code which cannot
-   include the lwIP headers.  Catch drift here rather than silently truncating
-   a published message. */
+/* The mirror in cyw43_utk.h duplicates the topic/payload capacity, the topic
+   indices and the session states for the same reason as the UDP ring
+   geometry: that header is seen by code which cannot include the lwIP
+   headers.  Catch drift here rather than silently misrouting a record. */
 typedef char cyw43_mqtt_size_matches[
 	(LWIP_UTK_MQTT_TOPIC_MAX == CYW43_MQTT_TOPIC_MAX
-	 && LWIP_UTK_MQTT_PAYLOAD_MAX == CYW43_MQTT_PAYLOAD_MAX) ? 1 : -1];
+	 && LWIP_UTK_MQTT_PAYLOAD_MAX == CYW43_MQTT_PAYLOAD_MAX
+	 && CYW43_MQTT_RECORD_MAX <= CYW43_MQTT_PAYLOAD_MAX) ? 1 : -1];
+typedef char cyw43_mqtt_ids_match[
+	(LWIP_UTK_MQTT_TOPIC_TELEMETRY == CYW43_MQTT_TOPIC_TELEMETRY
+	 && LWIP_UTK_MQTT_TOPIC_HEARTBEAT == CYW43_MQTT_TOPIC_HEARTBEAT
+	 && LWIP_UTK_MQTT_TOPIC_STATE == CYW43_MQTT_TOPIC_STATE
+	 && LWIP_UTK_MQTT_WAIT_ADDR == CYW43_MQTT_WAIT_ADDR
+	 && LWIP_UTK_MQTT_CONNECTING == CYW43_MQTT_CONNECTING
+	 && LWIP_UTK_MQTT_CONNECTED == CYW43_MQTT_CONNECTED
+	 && LWIP_UTK_MQTT_BACKOFF == CYW43_MQTT_BACKOFF
+	 && LWIP_UTK_MQTT_FAILED == CYW43_MQTT_FAILED) ? 1 : -1];
+
+/* The queue lives in cyw43_utk_kernel.c, which can see the kernel API. */
+extern int32_t cyw43_utk_mqtt_take(uint32_t *topic, uint8_t *payload);
+extern uint32_t cyw43_utk_mqtt_dropped(void);
+
+/* Hand at most one queued record to the client per poll.  While the session
+   is down the records stay queued; producers see a full queue and drop. */
+static void drain_mqtt_queue(void)
+{
+    uint8_t payload[CYW43_MQTT_RECORD_MAX];
+    uint32_t topic;
+    int32_t length;
+
+    if(!lwip_utk_mqtt_ready()) return;
+    length = cyw43_utk_mqtt_take(&topic, payload);
+    if(length > 0) {
+        (void)lwip_utk_mqtt_offer(topic, payload, (uint32_t)length);
+    }
+}
 
 static void update_mqtt_status(void)
 {
@@ -270,19 +299,21 @@ static void update_mqtt_status(void)
     radio_status.mqtt_connection_result = status.connection_result;
     radio_status.mqtt_publish_result = status.publish_result;
     radio_status.mqtt_publish_ack = status.publish_ack;
-    radio_status.mqtt_result = status.result;
-    radio_status.mqtt_initialized = status.initialized;
-    radio_status.mqtt_started = status.started;
-    radio_status.mqtt_connected = status.connected;
-    radio_status.mqtt_published = status.published;
-    radio_status.mqtt_complete = status.complete;
+    radio_status.mqtt_state = status.state;
+    radio_status.mqtt_state_changes = status.state_changes;
     radio_status.mqtt_connect_attempts = status.connect_attempts;
+    radio_status.mqtt_connects = status.connects;
+    radio_status.mqtt_sessions_lost = status.sessions_lost;
     radio_status.mqtt_publish_attempts = status.publish_attempts;
+    radio_status.mqtt_published = status.published;
+    radio_status.mqtt_publish_errors = status.publish_errors;
     radio_status.mqtt_poll_calls = status.poll_calls;
     radio_status.mqtt_guard_blocked = status.guard_blocked;
     radio_status.mqtt_connect_ms = status.connect_ms;
-    radio_status.mqtt_elapsed_ms = status.elapsed_ms;
+    radio_status.mqtt_backoff_ms = status.backoff_ms;
+    radio_status.mqtt_queue_dropped = cyw43_utk_mqtt_dropped();
     radio_status.mqtt_port = status.port;
+    radio_status.mqtt_payload_len = status.payload_len;
     for(unsigned int i = 0; i < sizeof(status.broker); i++) {
         radio_status.mqtt_broker[i] = status.broker[i];
     }
@@ -804,13 +835,13 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         update_bulk_status();
 #endif
 #if TM_WIFI_MQTT
-        /* Gated on holding a lease now rather than on the echo phases: MQTT is
-         * the feature under test here, not another link check, so it should
-         * not queue behind the UDP/TCP qualification traffic.  The module
-         * guards on the netif state itself as well. */
-        if(radio_status.dhcp_complete && radio_status.dhcp_result == ERR_OK) {
-            lwip_utk_mqtt_poll(&cyw43_state.netif[CYW43_ITF_STA]);
-        }
+        /* Polled every pass, not gated on the lease: the client must see the
+         * address disappear to drop its session, and see it return to
+         * reconnect.  It guards on the netif state itself.  Not sequenced
+         * behind the UDP/TCP echo phases either -- MQTT is a client for the
+         * whole run, not another link check. */
+        lwip_utk_mqtt_poll(&cyw43_state.netif[CYW43_ITF_STA]);
+        drain_mqtt_queue();
         update_mqtt_status();
 #endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP

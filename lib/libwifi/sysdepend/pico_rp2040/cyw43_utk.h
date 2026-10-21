@@ -21,6 +21,9 @@
 #define CYW43_MQTT_TOPIC_MAX    48
 #define CYW43_MQTT_PAYLOAD_MAX  48
 
+/* Topic indices, session states and queue geometry. */
+#include "cyw43_utk_mqtt_ids.h"
+
 /* Connection state machine in cyw43_utk.c (net_state, and the state of each
    net_log entry). */
 #define CYW43_NET_SCANNING      0   /* first scan still running */
@@ -213,30 +216,32 @@ typedef struct {
     volatile uint32_t bulk_throughput_bps;
     uint8_t bulk_target[4];
     uint16_t bulk_port;
-    /* MQTT publish qualification (Phase 9).  Written only when WIFI_MQTT is on;
-       the fields exist in every build so readers need no conditional. */
+    /* MQTT client session.  Written only when WIFI_MQTT is on; the fields
+       exist in every build so readers need no conditional. */
     volatile uint32_t mqtt_enabled;
     volatile int32_t  mqtt_init_result;
     volatile int32_t  mqtt_connect_request;
     volatile int32_t  mqtt_connection_result;
     volatile int32_t  mqtt_publish_result;
     volatile int32_t  mqtt_publish_ack;
-    volatile int32_t  mqtt_result;
-    volatile uint32_t mqtt_initialized;
-    volatile uint32_t mqtt_started;
-    volatile uint32_t mqtt_connected;
-    volatile uint32_t mqtt_published;
-    volatile uint32_t mqtt_complete;
+    volatile uint32_t mqtt_state;          /* CYW43_MQTT_* */
+    volatile uint32_t mqtt_state_changes;
     volatile uint32_t mqtt_connect_attempts;
+    volatile uint32_t mqtt_connects;
+    volatile uint32_t mqtt_sessions_lost;
     volatile uint32_t mqtt_publish_attempts;
+    volatile uint32_t mqtt_published;
+    volatile uint32_t mqtt_publish_errors;
     volatile uint32_t mqtt_poll_calls;
     volatile uint32_t mqtt_guard_blocked;
     volatile uint32_t mqtt_connect_ms;
-    volatile uint32_t mqtt_elapsed_ms;
+    volatile uint32_t mqtt_backoff_ms;
+    volatile uint32_t mqtt_queue_dropped;  /* sends refused: queue full / not ready */
     uint8_t mqtt_broker[4];
     uint16_t mqtt_port;
-    char mqtt_topic[CYW43_MQTT_TOPIC_MAX];
-    char mqtt_payload[CYW43_MQTT_PAYLOAD_MAX];
+    uint8_t mqtt_payload_len;
+    char mqtt_topic[CYW43_MQTT_TOPIC_MAX];        /* last publish */
+    uint8_t mqtt_payload[CYW43_MQTT_PAYLOAD_MAX]; /* last publish, binary */
     volatile int32_t ipv4_config_result;
     volatile uint32_t ipv4_configured;
     volatile uint32_t arp_resolved;
@@ -260,5 +265,12 @@ int32_t cyw43_utk_start(void);
 void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status);
 void cyw43_utk_task(int32_t stacd, void *exinf);
 void cyw43_utk_link_state_changed(int up);
+
+/* Queue one packed record for publication on topic CYW43_MQTT_TOPIC_*.
+   Callable from any task; never blocks and never touches lwIP.  Returns 0
+   (E_OK) when queued, or a negative kernel error: E_TMOUT when the queue is
+   full, E_NOEXS when MQTT is not built in, E_PAR for a bad topic or length. */
+int32_t cyw43_utk_mqtt_send(uint32_t topic, const uint8_t *payload,
+                            uint32_t length);
 
 #endif
