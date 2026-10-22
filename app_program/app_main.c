@@ -19,7 +19,7 @@
  *	                      development only, off for demo day)
  *	    comms_task        MQTT telemetry, Buddy 1    (WIFI_MQTT=1)
  *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
- *	    race_test tasks   Tribunal 1 race test       (TM_RACE_TEST=1 only)
+ *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
  */
 
 #include <tk/tkernel.h>
@@ -30,6 +30,9 @@
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
 #include "comms_task/comms_task.h"
+#include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
+#include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
+#include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -381,6 +384,32 @@ LOCAL T_CTSK ctsk_blink = {
 };
 #endif
 
+// Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
+LOCAL T_CTSK ctsk_obstacle = {
+	.itskpri	= 13,
+	.stksz		= STACK_SZ,
+	.task		= obstacle_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+
+// Buddy 5 nav_ctrl_task (mission state, buttons, buzzer): priority 15, core 0
+LOCAL T_CTSK ctsk_nav = {
+	.itskpri	= 15,
+	.stksz		= STACK_SZ,
+	.task		= nav_ctrl_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+
 /* ------------------------------------------------------------------ *
  *  Entry point
  * ------------------------------------------------------------------ */
@@ -427,6 +456,23 @@ EXPORT INT usermain(void)
 	   (design section 6.3).  tele_mbf: every task -> comms_task. */
 	if(comms_tele_init() < E_OK) {
 		tm_printf((UB *)"[init] comms_tele_init failed\n");
+	}
+
+	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
+	 * and nav_flg are. motion IDs stay 0 until Buddy 2 adds them (scan_task
+	 * then simulates motion_task's replies). A failure here only prints:
+	 * usermain() must not return (see the end of this function). */
+	if(E_OK != nav_ctrl_init()) {
+		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
+	} else {
+		scan_if_bind_t scan_bind = {
+			.nav_flgid		= nav_flag(),
+			.p_mission_running	= nav_mission_running,
+		};
+		scan_if_bind(&scan_bind);
+
+		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
+		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
 	}
 
 #if TM_BLINK_LED
