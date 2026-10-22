@@ -12,6 +12,10 @@
  *	  level 1500    -> 1.5 ms pulse = centre
  *	Slice 6 is the servo's own slice, so 50 Hz here cannot change the
  *	motors' PWM frequency (slices 4 and 5).
+ *
+ *	Barr-C (safety subset): braces on every body, constant on the left of
+ *	==/!=, names of 3+ characters. TRUE is the kernel BOOL used by the BSP
+ *	call pwm_set_enabled(). Tabs/brace placement follow the repo.
  */
 
 #include <tk/tkernel.h>
@@ -32,7 +36,7 @@ EXPORT void servo_init(void)
 	 * set it. Release it here. Clear only -- never pulse the reset -- so a
 	 * PWM another task already configured (e.g. the motors) is not wiped. */
 	clr_w(RESETS_RESET, RESETS_RESET_PWM);
-	while((in_w(RESETS_RESET_DONE) & RESETS_RESET_PWM) == 0) {
+	while(0U == (in_w(RESETS_RESET_DONE) & RESETS_RESET_PWM)) {
 		;
 	}
 
@@ -47,15 +51,23 @@ EXPORT UW servo_set_angle(INT angle_deg)
 {
 	INT pulse_us;
 
-	if(angle_deg >  SERVO_LIMIT_DEG) angle_deg =  SERVO_LIMIT_DEG;
-	if(angle_deg < -SERVO_LIMIT_DEG) angle_deg = -SERVO_LIMIT_DEG;
+	if(angle_deg > SERVO_LIMIT_DEG) {
+		angle_deg = SERVO_LIMIT_DEG;
+	}
+	if(angle_deg < -SERVO_LIMIT_DEG) {
+		angle_deg = -SERVO_LIMIT_DEG;
+	}
 
 	/* Negative angle = car's LEFT, positive = car's RIGHT (after SERVO_DIR). */
 	pulse_us = SERVO_CENTRE_US + SERVO_TRIM_US
 		 + (SERVO_DIR * angle_deg * SERVO_US_PER_DEG);
 
-	if(pulse_us < SERVO_MIN_US) pulse_us = SERVO_MIN_US;
-	if(pulse_us > SERVO_MAX_US) pulse_us = SERVO_MAX_US;
+	if(pulse_us < SERVO_MIN_US) {
+		pulse_us = SERVO_MIN_US;
+	}
+	if(pulse_us > SERVO_MAX_US) {
+		pulse_us = SERVO_MAX_US;
+	}
 
 	pwm_set_cc(SERVO_PIN, (UW)pulse_us);
 	return (UW)pulse_us;

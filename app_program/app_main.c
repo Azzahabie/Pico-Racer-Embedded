@@ -48,7 +48,14 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
-#include "obstacle_task/obstacle_task.h" // buddy 5 ultrasonic sensor
+#include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
+#include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
+#include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
+
+/* Car build: do NOT start the demo tasks. led_test drives the right motor
+ * (GP10) from button GP21 (the pause button), and the producer/consumer/
+ * monitor demo floods the USB console. Set to 1 only on the bench. */
+#define START_DEMO_TASKS	0
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -466,12 +473,30 @@ LOCAL T_CTSK ctsk_led_test = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 };
 
-// Buddy 5 ultrasonic sensor task definition
+// Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
 LOCAL T_CTSK ctsk_obstacle = {
-	.itskpri	= 15,
+	.itskpri	= 13,
 	.stksz		= STACK_SZ,
 	.task		= obstacle_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
+#else
 	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+
+// Buddy 5 nav_ctrl_task (mission state, buttons, buzzer): priority 15, core 0
+LOCAL T_CTSK ctsk_nav = {
+	.itskpri	= 15,
+	.stksz		= STACK_SZ,
+	.task		= nav_ctrl_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
 };
 
 LOCAL T_CMPF cmpf = {
@@ -528,12 +553,38 @@ EXPORT INT usermain(void)
 	semid = tk_cre_sem(&csem); if(!made("sem", semid)) return 1;
 	flgid = tk_cre_flg(&cflg); if(!made("flg", flgid)) return 1;
 
+	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
+	 * and nav_flg are. motion/telemetry IDs stay 0 until Buddies 1-2 add
+	 * theirs (scan_task then simulates motion_task's replies). */
+	if(E_OK != nav_ctrl_init()) {
+		tm_printf((UB *)"[init] nav_flg failed\n");
+		return 1;
+	}
+	{
+		scan_if_bind_t scan_bind = {
+			.nav_flgid		= nav_flag(),
+			.p_mission_running	= nav_mission_running,
+		};
+		scan_if_bind(&scan_bind);
+	}
+
+#if START_DEMO_TASKS
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_led_test); if(made("tsk(led_test)", tid)) tk_sta_tsk(tid, 0);
+#endif
+	tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
 	tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 ultrasonic sensor
+#if START_DEMO_TASKS
 	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
+#else
+	(void)ctsk_blink;	/* kept for bench builds; silences unused warnings */
+	(void)ctsk_led_test;
+	(void)ctsk_monitor;
+	(void)ctsk_consumer;
+	(void)ctsk_producer;
+#endif
 #if TM_WIFI_CYW43
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
 #endif
