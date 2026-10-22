@@ -34,11 +34,6 @@
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
 #include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
 
-/* Car build: do NOT start the demo tasks. led_test drives the right motor
- * (GP10) from button GP21 (the pause button), and the producer/consumer/
- * monitor demo floods the USB console. Set to 1 only on the bench. */
-#define START_DEMO_TASKS	0
-
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
@@ -387,27 +382,7 @@ LOCAL T_CTSK ctsk_blink = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
-
-LOCAL T_CTSK ctsk_monitor = {
-	.itskpri	= 7,
-	.stksz		= STACK_SZ,
-	.task		= monitor_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_blink = {
-	.itskpri	= 10,
-	.stksz		= STACK_SZ,
-	.task		= blink_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_led_test = {
-	.itskpri	= 9,
-	.stksz		= STACK_SZ,
-	.task		= led_test_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
+#endif
 
 // Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
 LOCAL T_CTSK ctsk_obstacle = {
@@ -433,35 +408,6 @@ LOCAL T_CTSK ctsk_nav = {
 #else
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
-};
-
-LOCAL T_CMPF cmpf = {
-	.mpfatr		= TA_TFIFO | TA_RNG3,
-	.mpfcnt		= N_RECORDS,
-	.blfsz		= sizeof(RECORD),
-	.bufptr		= mpf_buf,
-};
-
-LOCAL T_CMTX cmtx = {
-	.mtxatr		= TA_TFIFO | TA_INHERIT,
-};
-
-LOCAL T_CMBF cmbf = {
-	.mbfatr		= TA_TFIFO,
-	.bufsz		= sizeof mbf_buf,
-	.maxmsz		= sizeof(RECORD),
-	.bufptr		= mbf_buf,
-};
-
-LOCAL T_CSEM csem = {
-	.sematr		= TA_TFIFO,
-	.isemcnt	= CREDITS,
-	.maxsem		= CREDITS,
-};
-
-LOCAL T_CFLG cflg = {
-	.flgatr		= TA_TFIFO | TA_WMUL,
-	.iflgptn	= 0,
 };
 
 /* ------------------------------------------------------------------ *
@@ -512,40 +458,27 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] comms_tele_init failed\n");
 	}
 
-#if TM_BLINK_LED
 	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
-	 * and nav_flg are. motion/telemetry IDs stay 0 until Buddies 1-2 add
-	 * theirs (scan_task then simulates motion_task's replies). */
+	 * and nav_flg are. motion IDs stay 0 until Buddy 2 adds them (scan_task
+	 * then simulates motion_task's replies). A failure here only prints:
+	 * usermain() must not return (see the end of this function). */
 	if(E_OK != nav_ctrl_init()) {
-		tm_printf((UB *)"[init] nav_flg failed\n");
-		return 1;
-	}
-	{
+		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
+	} else {
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
 		};
 		scan_if_bind(&scan_bind);
+
+		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
+		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
 	}
 
-#if START_DEMO_TASKS
+#if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_led_test); if(made("tsk(led_test)", tid)) tk_sta_tsk(tid, 0);
 #endif
-	tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
-	tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 ultrasonic sensor
-#if START_DEMO_TASKS
-	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
-#else
-	(void)ctsk_blink;	/* kept for bench builds; silences unused warnings */
-	(void)ctsk_led_test;
-	(void)ctsk_monitor;
-	(void)ctsk_consumer;
-	(void)ctsk_producer;
-#endif
-#if TM_WIFI_CYW43
+#if TM_WIFI_CYW43 && TM_WIFI_REPORT
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
 #endif
 #if TM_WIFI_MQTT
