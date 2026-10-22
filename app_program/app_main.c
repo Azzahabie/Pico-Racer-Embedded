@@ -19,7 +19,7 @@
  *	                      development only, off for demo day)
  *	    comms_task        MQTT telemetry, Buddy 1    (WIFI_MQTT=1)
  *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
- *	    race_test tasks   Tribunal 1 race test       (TM_RACE_TEST=1 only)
+ *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
  */
 
 #include <tk/tkernel.h>
