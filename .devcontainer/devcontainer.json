@@ -6,7 +6,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "build",
   "workspaceFolder": "/workspace",
-
+  "overrideCommand": true,
   "customizations": {
     "vscode": {
       "extensions": [
