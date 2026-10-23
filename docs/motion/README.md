@@ -85,7 +85,7 @@ your car's numbers will differ.
 ### Step 0: boot line
 
 ```
-[motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop
+[motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop, MOTION_PACKED=1
 ```
 
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
@@ -277,7 +277,8 @@ Found while writing this; each needs its owner.
 - RP2040 hardware watchdog fed each tick (proposed 30 ms).
 - Distance, straight-line correction, encoder turns.
 - Minimum-bit command and telemetry formats, once `common/messages.h` is
-  agreed with Buddy 1. The 52-byte report record here is the unpacked
-  "before" baseline.
+  agreed with Buddy 1. The 52-byte report record here is a bench test
+  channel, the same in both MOTION_PACKED settings; it is not the Week 13
+  "before" (see week13/baseline.md).
 - `motion_task` waits for nothing but its event flag, but this version
   has not been timed on the car yet: fill the table above.

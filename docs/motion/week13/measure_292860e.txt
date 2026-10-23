@@ -1,0 +1,87 @@
+commit 292860e, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
+
+==== MOTION_PACKED=1 (0 warnings)
+-- whole image, static RAM (bytes):
+  .data 124
+  .bss 29104
+-- motion objects (bytes; RAM = data + bss):
+     text	   data	    bss	    dec	    hex	filename
+      616	      0	     53	    669	    29d	encoder.o
+      840	      0	      0	    840	    348	motion_lib.o
+      436	     32	      0	    468	    1d4	motor.o
+     5313	      0	   8884	  14197	   3775	motor_task.o
+     7205	     32	   8937	  16174	   3f2e	(TOTALS)
+-- every motion RAM variable (bytes, name):
+  4 g_edges_l encoder.o
+  2 g_edges_la encoder.o
+  2 g_edges_lb encoder.o
+  4 g_edges_r encoder.o
+  2 g_edges_ra encoder.o
+  2 g_edges_rb encoder.o
+  4 g_invalid_packed encoder.o
+  4 g_irq_count encoder.o
+  4 g_irq_last_us encoder.o
+  4 g_irq_max_us encoder.o
+  4 g_packed encoder.o
+  6 g_quad_l encoder.o
+  6 g_quad_r encoder.o
+  1 gb_left_on encoder.o
+  32 g_motor motor.o
+  236 g_ctx motor_task.o
+  4 g_flgid motor_task.o
+  4 g_mbfid motor_task.o
+  4096 g_motion_stack motor_task.o
+  448 g_report_buf motor_task.o
+  4096 g_report_stack motor_task.o
+-- message sizes from the ARM compiler (bytes, name):
+  12 msg_tele_motion_in_mbf
+  13 msg_tele_motion_on_wire
+  7 msg_tele_motion_payload
+-- default profile (make -j8) builds too, 0 warnings
+
+==== MOTION_PACKED=0 (0 warnings)
+-- whole image, static RAM (bytes):
+  .data 124
+  .bss 29112
+-- motion objects (bytes; RAM = data + bss):
+     text	   data	    bss	    dec	    hex	filename
+      612	      0	     57	    669	    29d	encoder.o
+      840	      0	      0	    840	    348	motion_lib.o
+      436	     32	      0	    468	    1d4	motor.o
+     5309	      0	   8884	  14193	   3771	motor_task.o
+     7197	     32	   8941	  16170	   3f2a	(TOTALS)
+-- every motion RAM variable (bytes, name):
+  4 g_count_l encoder.o
+  4 g_count_r encoder.o
+  4 g_edges_l encoder.o
+  2 g_edges_la encoder.o
+  2 g_edges_lb encoder.o
+  4 g_edges_r encoder.o
+  2 g_edges_ra encoder.o
+  2 g_edges_rb encoder.o
+  4 g_invalid_packed encoder.o
+  4 g_irq_count encoder.o
+  4 g_irq_last_us encoder.o
+  4 g_irq_max_us encoder.o
+  6 g_quad_l encoder.o
+  6 g_quad_r encoder.o
+  1 gb_left_on encoder.o
+  32 g_motor motor.o
+  236 g_ctx motor_task.o
+  4 g_flgid motor_task.o
+  4 g_mbfid motor_task.o
+  4096 g_motion_stack motor_task.o
+  448 g_report_buf motor_task.o
+  4096 g_report_stack motor_task.o
+-- message sizes from the ARM compiler (bytes, name):
+  12 msg_tele_motion_in_mbf
+  13 msg_tele_motion_on_wire
+  7 msg_tele_motion_payload
+-- default profile (make -j8) builds too, 0 warnings
+
+==== RAM variables that differ (< packed, > unpacked):
+0a1,2
+>   4 g_count_l encoder.o
+>   4 g_count_r encoder.o
+11d12
+<   4 g_packed encoder.o
