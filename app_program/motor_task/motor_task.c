@@ -226,6 +226,10 @@ static UW g_report_buf[(REPORT_QUEUE_LEN
    8-byte aligned, as the ARM calling standard needs for a stack. */
 static _Alignas(8) UW g_motion_stack[MOTION_TASK_STACK / sizeof(UW)];
 static _Alignas(8) UW g_report_stack[REPORT_TASK_STACK / sizeof(UW)];
+/* With TA_USERBUF the kernel no longer rounds the size, so the stack top
+   stays 8-byte aligned only if each size is a multiple of 8. */
+_Static_assert((0 == (MOTION_TASK_STACK % 8)) && (0 == (REPORT_TASK_STACK % 8)),
+               "task stack sizes must be multiples of 8");
 
 static void motion_cyclic_isr(void *exinf);
 static void motion_report_task(INT stacd, void *exinf);

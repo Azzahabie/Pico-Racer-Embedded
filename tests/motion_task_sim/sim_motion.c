@@ -19,6 +19,8 @@
 
 /* The unit under test, statics included. */
 #include "../../app_program/motor_task/motor_task.c"
+_Static_assert((__alignof__(g_motion_stack) >= 8) && (__alignof__(g_report_stack) >= 8),
+	       "task stacks must be 8-byte aligned (AAPCS)");
 
 /* ------------------------------------------------------------------ */
 
@@ -232,8 +234,10 @@ ER tk_wai_flg(ID id, UINT ptn, UINT mode, UINT *p_ptn, TMO tmo)
 }
 ID tk_cre_mbf(CONST T_CMBF *p)
 {
-	/* The real buffer must hold REPORT_QUEUE_LEN records exactly. */
+	/* The real buffer must hold REPORT_QUEUE_LEN records exactly, and be
+	   ours (TA_USERBUF), not the kernel heap's: Week 13 RAM evidence. */
 	CHECK(p->bufsz == (SZ)(REPORT_QUEUE_LEN * (sizeof(motion_report_t) + 4u)));
+	CHECK(((p->mbfatr & TA_USERBUF) != 0u) && (p->bufptr != NULL));
 	CHECK(p->maxmsz == (INT)sizeof(motion_report_t));
 	return 2;
 }
@@ -249,6 +253,9 @@ ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 INT tk_rcv_mbf(ID id, void *msg, TMO tmo) { (void)id; (void)msg; (void)tmo; return E_TMOUT; }
 ID tk_cre_tsk(CONST T_CTSK *p)
 {
+	CHECK((p->tskatr & TA_USERBUF) != 0u);	/* stack is ours, not the heap */
+	CHECK((p->bufptr != NULL) && (((uintptr_t)p->bufptr % 8u) == 0u));
+	CHECK((p->stksz % 8) == 0);
 	if (p->task == (FP)motor_task) {
 		CHECK(p->itskpri == 11);
 		CHECK((p->tskatr & TA_ASSPRC) != 0u);

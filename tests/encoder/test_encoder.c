@@ -11,9 +11,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* "Both counts from the same moment" checks.  DI/EI are counted, and the
+   published count variables are renamed below to small functions, so the
+   test sees every read of them:
+   - packed: the reader loads the one word exactly once;
+   - unpacked: every read outside the interrupt happens with DI held.
+   g_in_isr is set by dispatch() while a callback runs. */
 static int g_di_calls;	/* the unpacked reader must mask interrupts */
-#define DI(s)	((s) = 0u, g_di_calls++)
-#define EI(s)	((void)(s))
+static int g_masked, g_in_isr, g_bare;
+#define DI(s)	((s) = 0u, g_di_calls++, g_masked++)
+#define EI(s)	((void)(s), g_masked--)
+#if TEST_EXPECT_PACKED
+#include <stdint.h>
+static int g_word_loads;
+static volatile uint32_t g_word;
+static volatile uint32_t *word_slot(void) { if (!g_in_isr) g_word_loads++; return &g_word; }
+#define g_packed (*word_slot())
+#endif
+#if !TEST_EXPECT_PACKED
+/* Every access to the Week 6 counters must be in the ISR or under DI. */
+#include <stdint.h>
+static volatile uint32_t g_cnt_l, g_cnt_r;
+static volatile uint32_t *cnt_l(void) { if (!g_masked && !g_in_isr) g_bare++; return &g_cnt_l; }
+static volatile uint32_t *cnt_r(void) { if (!g_masked && !g_in_isr) g_bare++; return &g_cnt_r; }
+#define g_count_l (*cnt_l())
+#define g_count_r (*cnt_r())
+#endif
 
 #include "../../app_program/motor_task/encoder.c"
 
@@ -87,7 +110,9 @@ static void dispatch(uint32_t old)
 	for (pin = 0u; pin < NUM_PINS; pin++) {
 		if ((changed & (1u << pin)) != 0u) {
 			UW ev = ((g_gpio_in >> pin) & 1u) ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL;
+			g_in_isr = 1;
 			g_isr[pin](pin, ev, g_now_us);
+			g_in_isr = 0;
 		}
 	}
 }
@@ -149,6 +174,9 @@ int main(void)
 	di0 = g_di_calls;
 	encoder_read_counts(&l, &r);
 	CHECK(g_di_calls - di0 == ((MOTION_PACKED != 0) ? 0 : 1));
+#if TEST_EXPECT_PACKED
+	{ int n0 = g_word_loads; encoder_read_counts(&l, &r); CHECK(g_word_loads - n0 == 1); }
+#endif
 
 	/* Left forward 10 steps, right backward 6 steps. */
 	for (i = 1; i <= 10; i++) step(MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B, i);
@@ -230,6 +258,7 @@ int main(void)
 		CHECK(encoder_irq_count() - n0 == 1u);
 	}
 
+	CHECK(g_bare == 0);
 	printf("encoder (%s console, %s): %d checks, %d failures\n",
 	       TM_CONSOLE_USB_CDC ? "USB" : "UART",
 	       MOTION_PACKED ? "packed" : "unpacked", g_checks, g_failures);
