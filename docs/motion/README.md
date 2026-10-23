@@ -124,12 +124,45 @@ ends as a stall fault, not a runaway.
 
 ### Stall check (FR-30)
 
-Hold one wheel still with your hand during a `fwd` step (gently). Within
-about 300 ms:
+The check judges **net** movement: a driven wheel must move at least 3
+counts in one direction within 300 ms (`MOTION_STALL_TICKS`,
+`MOTION_STALL_MIN_COUNTS`, both still proposed values). It also counts the
+edges on each encoder phase, which separates the two FR-30 faults:
+
+| What happened | Fault |
+|---|---|
+| No edges at all (wheel blocked, or the whole encoder dead) | `wheel stalled` (motor stall) |
+| One phase keeps switching, the other never does, count goes nowhere (one signal wire unplugged) | `encoder fault` |
+
+A fully dead encoder (power or ground unplugged) shows up as a motor stall:
+without current sensing the board cannot tell it from a blocked wheel.
+
+Each phase's edges are counted only since the other phase last moved, so a
+wire that comes off while the wheel is turning is still reported as an
+encoder fault. Known limit: a held wheel whose encoder rests exactly on a
+phase edge and chatters on that one phase also reads as an encoder fault.
+`MOTION_STALL_ENC_EDGES` (proposed 3) is the number of one-phase edges
+needed; if test 1 below ever reports `encoder fault`, raise it above the
+chatter you see and note it in the results table.
+
+**Test 1, wheel held.** Hold one wheel still with your hand during a `fwd`
+step (gently). Within about 300 ms:
 
 ```
 [motion] FAULT 0x01: left wheel stalled  motors braked. Fix, then press the button to run again.
 ```
+
+**Test 2, one wire unplugged** (FR-30's own test). Switch off, unplug only
+the A wire (or only the B wire) of one encoder at the jumper, switch on,
+press the button. On that wheel's first `fwd` step, within about 300 ms:
+
+```
+[motion] FAULT 0x10: left encoder fault  motors braked. Fix, then press the button to run again.
+[motion]   encoder fault: one phase kept switching but the count went nowhere. Check the A and B wires of that encoder.
+```
+
+(0x10 is the left encoder fault bit, 0x20 the right one.) Repeat with the
+encoder's power wire unplugged: that one reports `wheel stalled`.
 
 ### Timing evidence (every 5 s)
 
@@ -149,7 +182,10 @@ encoder interrupt rate and its longest run.
 | `MOTION_ENC_x_INVERT` | | |
 | Dead band (per-mille) | | |
 | Speed at 350 per-mille (counts per tick) | | |
-| Stall fault time with the wheel held (ms) | | |
+| Stall fault time with the wheel held (ms), and which fault | | |
+| Encoder fault with the A wire unplugged (yes/no, ms) | | |
+| Encoder fault with the B wire unplugged (yes/no, ms) | | |
+| Fault with the encoder power wire unplugged (which one) | | |
 | Tick period min..max (us), work max (us) | | |
 | Encoder interrupt longest (us), rate at 350 (per s) | | |
 
