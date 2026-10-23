@@ -221,6 +221,12 @@ static UW g_report_buf[(REPORT_QUEUE_LEN
                         * (sizeof(motion_report_t) + MBF_HEADER_BYTES))
                        / sizeof(UW)];
 
+/* Both task stacks are ours (TA_USERBUF), not taken from the kernel heap,
+   so the linker map and nm show all of motion's RAM (Week 13 evidence 2).
+   8-byte aligned, as the ARM calling standard needs for a stack. */
+static _Alignas(8) UW g_motion_stack[MOTION_TASK_STACK / sizeof(UW)];
+static _Alignas(8) UW g_report_stack[REPORT_TASK_STACK / sizeof(UW)];
+
 static void motion_cyclic_isr(void *exinf);
 static void motion_report_task(INT stacd, void *exinf);
 
@@ -245,25 +251,27 @@ static T_CCYC const g_ccyc = {
 
 static T_CTSK const g_ctsk_motion = {
     .itskpri = MOTION_TASK_PRI,
-    .stksz   = MOTION_TASK_STACK,
+    .stksz   = sizeof(g_motion_stack),
+    .bufptr  = g_motion_stack,
     .task    = (FP)motor_task,
 #if TK_SUPPORT_SMP
-    .tskatr = TA_HLNG | TA_RNG3 | TA_ASSPRC,
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF | TA_ASSPRC,
     .assprc = TP_PRC2, /* core 1 */
 #else
-    .tskatr = TA_HLNG | TA_RNG3,
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF,
 #endif
 };
 
 static T_CTSK const g_ctsk_report = {
     .itskpri = REPORT_TASK_PRI,
-    .stksz   = REPORT_TASK_STACK,
+    .stksz   = sizeof(g_report_stack),
+    .bufptr  = g_report_stack,
     .task    = (FP)motion_report_task,
 #if TK_SUPPORT_SMP
-    .tskatr = TA_HLNG | TA_RNG3 | TA_ASSPRC,
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF | TA_ASSPRC,
     .assprc = TP_PRC1, /* core 0 */
 #else
-    .tskatr = TA_HLNG | TA_RNG3,
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF,
 #endif
 };
 
