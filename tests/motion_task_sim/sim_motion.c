@@ -66,7 +66,15 @@ static int32_t		g_duty_max_abs;
 static int		g_enc_swap;	/* left encoder plugged into right port */
 static uint32_t		g_time_us;
 static uint32_t		g_gpio_in;
+static int		g_gpio_in_reads;	/* times firmware read GPIO_IN   */
+static int		g_gp20_setups;	/* times firmware configured GP20  */
 static int		g_fail_ticks;	/* tk_wai_flg times out this many times */
+
+/* The Robo Pico user button is on GP20 whether or not motion uses it. */
+#define SIM_PIN_GP20	(20u)
+#if MOTION_BENCH
+_Static_assert(MOTION_PIN_BUTTON == SIM_PIN_GP20, "bench button is GP20");
+#endif
 static UINT		g_flag;
 
 /* Pin levels for an encoder position: forward is 00 10 11 01 (A leads),
@@ -193,13 +201,18 @@ UW in_w(UW addr)
 {
 	UW v = 0u;
 	if (addr == TIMER_RAWL) { v = g_time_us; }
-	else if (addr == GPIO_IN) { v = g_gpio_in; }
+	else if (addr == GPIO_IN) { g_gpio_in_reads++; v = g_gpio_in; }
 	return v;
 }
 void out_w(UW a, UW d) { (void)a; (void)d; }
 void set_w(UW a, UW d) { (void)a; (void)d; }
 void clr_w(UW a, UW d) { (void)a; (void)d; }
-ER gpio_set_pin(UINT no, UINT mode) { (void)no; (void)mode; return E_OK; }
+ER gpio_set_pin(UINT no, UINT mode)
+{
+	(void)mode;
+	if (no == SIM_PIN_GP20) { g_gp20_setups++; }
+	return E_OK;
+}
 
 #define SIM_QUEUE_LEN	((int)REPORT_QUEUE_LEN)
 
@@ -328,7 +341,7 @@ sim_ticks (int n)
 	while (n-- > 0) { sim_tick(); }
 }
 
-#define BUTTON_BIT	(1u << MOTION_PIN_BUTTON)
+#define BUTTON_BIT	(1u << SIM_PIN_GP20)
 
 static void
 press_button (void)
@@ -357,6 +370,8 @@ sim_reset (const char *p_name)
 	g_tick = 0;
 	g_first_drive = -1;
 	g_gpio_in = 0xFFFFFFFFu;		/* pull-ups: button released */
+	g_gpio_in_reads = 0;
+	g_gp20_setups = 0;
 	CHECK(motion_init(&g_ctx) == E_OK);
 	report_event(&g_ctx, EVT_READY, E_OK, 2);
 	drain_reports();
@@ -457,6 +472,28 @@ scenario_hand_turn (void)
 		CHECK((p != NULL) && (p->val_l >= 180) && (p->val_r == 0));
 	}
 }
+
+#if !MOTION_BENCH
+/* Integration build: GP20 is Buddy 5's start button, so motion must
+   never configure or read it, and no press may drive a motor. */
+static void
+scenario_bench_off (void)
+{
+	sim_reset("bench off: GP20 never touched, the button cannot start a motor");
+	CHECK(strstr(g_log, "bench OFF (MOTION_BENCH=0): motors stay braked") != NULL);
+	press_button();
+	press_button();
+	g_gpio_in &= ~BUTTON_BIT;		/* held down */
+	sim_ticks(300);
+	g_gpio_in |= BUTTON_BIT;
+	sim_ticks(10);
+	CHECK(g_gp20_setups == 0);
+	CHECK(g_gpio_in_reads == 0);
+	CHECK(count_kind(REP_EVENT, EVT_START) == 0);
+	CHECK(g_duty_max_abs == 0);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+}
+#endif
 
 static void
 scenario_button_held_at_boot (void)
@@ -732,7 +769,11 @@ main (int argc, char **argv)
 	CHECK(motor_task_start() == E_OK);
 	CHECK(sizeof(motion_report_t) == 52u);
 
-#if !MOTION_TEST_PID
+#if !MOTION_BENCH
+	scenario_idle();
+	scenario_hand_turn();
+	scenario_bench_off();
+#elif !MOTION_TEST_PID
 	scenario_idle();
 	scenario_hand_turn();
 	scenario_button_held_at_boot();
@@ -754,6 +795,8 @@ main (int argc, char **argv)
 #endif
 
 	printf("motion_task sim (%s): %d checks, %d failures\n",
-	       MOTION_TEST_PID ? "closed-loop" : "open-loop", g_checks, g_failures);
+	       !MOTION_BENCH ? "bench off"
+	                     : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
+	       g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -16,10 +16,12 @@
  *                 for the whole line in the USB-CDC build, which on core 1
  *                 would delay the encoder interrupt and lose counts.
  *
- *  Bench test (wheels off the ground): press the Robo Pico button on
- *  MOTION_PIN_BUTTON to start, press again to abort.  Without a press the
- *  motors stay braked; turning a wheel by hand still prints its count.
- *  Steps and how to read the output: docs/motion/README.md.
+ *  Bench test (MOTION_BENCH = 1 only, wheels off the ground): press the
+ *  Robo Pico button on MOTION_PIN_BUTTON to start, press again to abort.
+ *  With MOTION_BENCH = 0 (the default) the button code is not built, GP20
+ *  is never touched and the motors stay braked.  Either way, turning a
+ *  wheel by hand prints its count.  Steps and how to read the output:
+ *  docs/motion/README.md.
  */
 
 #include <stdint.h>
@@ -60,10 +62,8 @@
 #define TICKS_PER_S     (MS_PER_S / (INT)MOTION_TICK_MS)
 #define TIMING_REPORT_TICKS                                                    \
     ((TIMING_REPORT_S * (uint32_t)MS_PER_S) / MOTION_TICK_MS)
-#define BUTTON_DEBOUNCE_TICKS (3u) /* 30 ms                   */
 #define MS_PER_S              (1000)
 #define CROSSTALK_RATIO       (4) /* other wheel > 1/4 of driven */
-#define BUTTON_SETTLE_MS      (2) /* new pull-up lifts the pin   */
 #define MOTION_PRC_SINGLE     (1) /* processor number, 1 core    */
 #define CROSSTALK_MIN_COUNTS  (20)
 
@@ -185,10 +185,12 @@ typedef struct
     motion_stall_t stall_r;
     uint8_t        faults;
 
+#if MOTION_BENCH
     /* button */
     bool     b_btn_raw;
     bool     b_btn_down;
     uint32_t btn_same;
+#endif
 
     /* timing */
     uint32_t ticks;
@@ -339,8 +341,13 @@ report_event (motion_ctx_t *p_ctx, report_event_t evt, int32_t val_l,
 }
 
 /* ------------------------------------------------------------------ *
- *  Button (polled, debounced, active low)
+ *  Button (polled, debounced, active low).  Bench images only.
  * ------------------------------------------------------------------ */
+
+#if MOTION_BENCH
+
+#define BUTTON_DEBOUNCE_TICKS (3u) /* 30 ms                   */
+#define BUTTON_SETTLE_MS      (2)  /* new pull-up lifts the pin */
 
 static bool
 button_raw (void)
@@ -393,6 +400,8 @@ button_pressed (motion_ctx_t *p_ctx)
     return b_press;
 }
 
+#endif /* MOTION_BENCH */
+
 /* ------------------------------------------------------------------ *
  *  Bench test
  * ------------------------------------------------------------------ */
@@ -426,6 +435,8 @@ bench_stop (motion_ctx_t *p_ctx, report_event_t evt)
     report_send(p_ctx, &rep);
 }
 
+#if MOTION_BENCH
+/* The only way out of PHASE_IDLE, so without it the motors stay braked. */
 static void
 bench_start (motion_ctx_t *p_ctx)
 {
@@ -443,6 +454,7 @@ bench_start (motion_ctx_t *p_ctx)
     report_event(p_ctx, EVT_START, 0, 0);
 #endif
 }
+#endif /* MOTION_BENCH */
 
 static void
 bench_steps (motion_ctx_t *p_ctx)
@@ -729,6 +741,7 @@ motion_tick (motion_ctx_t *p_ctx)
     tick_timing(p_ctx, t_start);
     tick_encoders(p_ctx);
 
+#if MOTION_BENCH
     if (button_pressed(p_ctx))
     {
         if (PHASE_IDLE == p_ctx->phase)
@@ -740,6 +753,7 @@ motion_tick (motion_ctx_t *p_ctx)
             bench_stop(p_ctx, EVT_ABORT);
         }
     }
+#endif
 
     stall_check(p_ctx);
 
@@ -804,7 +818,9 @@ motion_init (motion_ctx_t *p_ctx)
     {
         ercd = encoder_init();
     }
+#if MOTION_BENCH
     button_init(p_ctx);
+#endif
 
     motion_pid_init(&p_ctx->pid_l, MOTION_PID_KP_Q8, MOTION_PID_KI_Q8,
                     MOTION_PID_KD_Q8, MOTION_PID_OUT_LIMIT);
@@ -990,6 +1006,7 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
 {
     bool b_init_ok = (0 == p_rep->val_l);
 
+#if MOTION_BENCH
     (void)tm_sprintf(p_line,
                      (UB *)"[motion] ready on processor %d, init %s (er=%d)."
                            " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
@@ -1009,6 +1026,18 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
                          " button to start. Turn a wheel by hand to see"
                          " its count.");
     }
+#else
+    (void)tm_sprintf(p_line,
+                     (UB *)"[motion] ready on processor %d, init %s (er=%d)."
+                           " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
+                           " bench OFF (MOTION_BENCH=0): motors stay braked",
+                     (INT)p_rep->val_r, b_init_ok ? "OK" : "FAILED",
+                     (INT)p_rep->val_l, (UINT)MOTION_PWM_HZ,
+                     (UINT)MOTION_PIN_M1A, (UINT)MOTION_PIN_M2B,
+                     (UINT)MOTION_PIN_ENC_L_A, (UINT)MOTION_PIN_ENC_R_B,
+                     encoder_left_enabled() ? "" : " (LEFT OFF: UART console)");
+    print_line(p_line);
+#endif
 }
 
 static void

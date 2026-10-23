@@ -24,9 +24,22 @@
 #define MOTION_PIN_ENC_R_A (2u) /* Grove 2 */
 #define MOTION_PIN_ENC_R_B (3u)
 
+/* Bench test switch.
+   0 (the default, and the only value ever committed): integration build.
+     GP20 is never read or configured (it is Buddy 5's start button) and
+     nothing can start the motors.  Encoders, the stall check and the
+     status lines still run.
+   1: bench image for the tests in docs/motion/README.md, wheels off the
+     ground.  Set it here locally, rebuild, and never commit it. */
+#ifndef MOTION_BENCH
+#define MOTION_BENCH (0)
+#endif
+
+#if MOTION_BENCH
 /* Robo Pico user button, used only by the bench test: press to start a
    test, press again to abort.  Read by polling, never by interrupt. */
 #define MOTION_PIN_BUTTON (20u)
+#endif
 
 /* ------------------------------------------------------------------ *
  *  Polarity  (set these from bench test steps 1 and 2)
@@ -83,7 +96,8 @@
  *  Bench test  (wheels off the ground!)
  * ------------------------------------------------------------------ */
 
-/* 0: open-loop sequence (start here).
+/* Used only when MOTION_BENCH is 1.
+   0: open-loop sequence (start here).
    1: closed-loop speed test, only after the open-loop test passes and
       the four INVERT flags above are right. */
 #ifndef MOTION_TEST_PID

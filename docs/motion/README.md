@@ -32,6 +32,15 @@ constant on the left of `==`, `for (;;)`, ISR names end `_isr`) through
 
 ## Build and flash
 
+**Bench image or integration image.** The bench test below is built only
+when `MOTION_BENCH` is 1 in `motion_cfg.h`. The committed value is 0: that
+build never reads or configures GP20 (Buddy 5's start button), nothing can
+start the motors, and the ready line ends with
+`bench OFF (MOTION_BENCH=0): motors stay braked`. For the bench procedure,
+set it to 1 locally, rebuild, and set it back to 0 before committing.
+Both images have the same file name, so check the ready line before the
+car ever goes on the floor.
+
 The car uses the USB console (approved pin map: GP0/GP1 are the left
 encoder), so build the USB-CDC profile:
 
@@ -49,8 +58,8 @@ Output: `build_make/mtk3pico_smp1_usb_cdc.uf2`.
    (`screen /dev/ttyACM0 115200`; the baud rate does not matter for USB).
 5. Switch on the car's battery so the motors have power.
 
-Motors stay braked until you press the button on **GP20**. Pressing it
-again aborts. Any fault brakes both motors.
+In a bench image, the motors stay braked until you press the button on
+**GP20**. Pressing it again aborts. Any fault brakes both motors.
 
 ## Bench procedure
 

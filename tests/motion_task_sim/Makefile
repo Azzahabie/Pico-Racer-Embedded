@@ -11,17 +11,22 @@ FLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-function -Werror $(SAN) \
 RUNARG := $(if $(V),-v,)
 
 .PHONY: test clean
-test: sim_open sim_pid
+test: sim_off sim_open sim_pid
+	./sim_off $(RUNARG)
 	./sim_open $(RUNARG)
 	./sim_pid $(RUNARG)
 
+# Integration build (the committed default): no bench code at all.
+sim_off: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
+
 sim_open: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
-	$(CC) $(FLAGS) -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
+	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
 sim_pid: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
-	$(CC) $(FLAGS) -DMOTION_TEST_PID=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
+	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
 clean:
-	rm -f sim_open sim_pid
+	rm -f sim_off sim_open sim_pid
 
 .DEFAULT_GOAL := test
