@@ -100,7 +100,6 @@ EXPORT ER gpio_irq_attach(UINT pin, UW edges, gpio_isr_t p_isr)
 	UINT	core = this_core();
 	UINT	reg_idx = pin / PINS_PER_REG;
 	UINT	shift = 4 * (pin % PINS_PER_REG);
-	UW	inte;
 
 	if((pin >= NUM_PINS) || (NULL == p_isr)) {
 		return E_PAR;
@@ -109,9 +108,11 @@ EXPORT ER gpio_irq_attach(UINT pin, UW edges, gpio_isr_t p_isr)
 	g_pin_isr[pin] = p_isr;
 	out_w(IOB_INTR(reg_idx), 0xCU << shift);		/* drop stale edges */
 
-	inte = in_w(IOB_INTE(core, reg_idx));
-	inte &= ~(0xFU << shift);
-	inte |= (edges & 0xCU) << shift;
-	out_w(IOB_INTE(core, reg_idx), inte);
+	/* Two single writes to the atomic clear and set aliases, not a
+	 * read-modify-write: another task attaching a pin in the same
+	 * register on this core can preempt us between any two lines
+	 * without losing its enables (or ours). */
+	clr_w(IOB_INTE(core, reg_idx), 0xFU << shift);
+	set_w(IOB_INTE(core, reg_idx), (edges & 0xCU) << shift);
 	return E_OK;
 }
