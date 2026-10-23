@@ -24,8 +24,15 @@ must write a subscriber or a publisher **without reading any C**.
 > the requirement also covers. `S` widens `mot` to 4 bits and stays 15 bytes.
 > `H`, `D`, `cmd` and `map` change only `v`.
 
+> **Schema v4 (2026-10-23) — six fault bits.** The fault-bit positions are
+> agreed with Buddy 5, who owns the flag: Buddy 3's line sensor takes bit 4 and
+> Wi-Fi loss moves to bit 5, which is **report-only** (§4.1). `S.faults` grows
+> from 5 to 6 bits, so `S` is **16 bytes**; `D` stays 21. `E`, `H`, `cmd` and
+> `map` change only `v`.
+
 - **Owner:** Buddy 1 (WiFi + Telemetry)
-- **Status:** contract, schema **v3**, revised 2026-10-22. Schema v2 was
+- **Status:** contract, schema **v4**, revised 2026-10-23. Schema v3 was
+  2026-10-22; v2 was
   2026-10-19 (Tribunal 1); first written 2026-09-28 as JSON schema v1. Derived from
   [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4, §7, §8, §9, §12 —
   that document holds the reasoning; this one is the flat statement of *what
@@ -87,10 +94,10 @@ wins and this one is the bug.
 ## 3. Rules that apply to every payload
 
 *Rewritten for schema v2 (Tribunal 1, 2026-10-19); rules 1, 4 and 5 updated
-for v3 (2026-10-22).*
+for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23).*
 
 1. **One record per MQTT message**, no batching. The payload length is fixed per
-   record type — S 15 B, H 7 B, D 21 B — and for `E` per event kind, 8–13 B
+   record type — S 16 B, H 7 B, D 21 B — and for `E` per event kind, 8–13 B
    (§5.1); a reader rejects any other length.
 2. **Bit order: LSB-first, little-endian.** Fields are packed in the order of
    each table. The first field starts at bit 0 of byte 0; bit *n* of the record
@@ -114,7 +121,7 @@ for v3 (2026-10-22).*
 | Bits | Field | Range | Meaning |
 |---|---|---|---|
 | 2 | `t` | 0–3 | record type: 0 `S`, 1 `E`, 2 `H`, 3 `D` |
-| 3 | `v` | 0–7 | schema version. **3** = this layout (2 = Tribunal 1 binary, 1 = JSON) |
+| 3 | `v` | 0–7 | schema version. **4** = this layout (3 = five fault bits, 2 = Tribunal 1 binary, 1 = JSON) |
 | 16 | `s` | 0–65535 | sequence number for the run, shared by every record on `telemetry` |
 | 32 | `up` | ms | milliseconds since boot (`tk_get_otm()` low word, design §4.1) |
 
@@ -124,7 +131,7 @@ for v3 (2026-10-22).*
 
 ---
 
-## 4. Record `S` — the periodic state line (15 bytes)
+## 4. Record `S` — the periodic state line (16 bytes)
 
 Published on `robocar/<id>/telemetry` once per second (NFR-10). It is a **fold
 of the latest value per source**, so a late subscriber waits at most one second
@@ -139,7 +146,7 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
-| 5 | `faults` | bitmask | the **shared fault bitmask** — §4.1 |
+| 6 | `faults` | bitmask | the **shared fault bitmask** — §4.1. *v4: was 5 bits* |
 | 4 | `mot` | 0–15 | motion state, as the motion event's `state` (Buddy 2). *v3: was 2 bits* |
 | 8 | `dst` | 0–255 cm | distance since the last motion change, clamped. `comms_task` derives it from the motion event's wrapping `dist_mm` (Buddy 2) |
 | 2 | `lin` | 0–2 | line state: 0 on-line, 1 lost, 2 crossing (Buddy 3) |
@@ -154,37 +161,56 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 4 | `mpv` | 0–15 | barcode-table version the car is **actually running** (§8.3), wraps |
 | 4 | `drp` | 0–15 | records dropped at the intake queue, cumulative, **saturates at 15** |
 
-**120 bits → exactly 15 bytes** (v3 used the 2 padding bits of v2 to widen
-`mot`). The measured JSON line of schema v1 was 141 bytes, so this is **9.4×
-smaller (estimated until measured on the link)**.
+**121 bits → 16 bytes** (v3 was exactly 120 bits, so v4's sixth fault bit
+costs one byte; the last 7 bits are padding). The measured JSON line of schema
+v1 was 141 bytes, so this is **8.8× smaller**. (v3's 15-byte `S` was measured
+on the link on 2026-10-22; v4's 16 bytes is calculated until re-checked.)
 
 > **Sentinels, revised.** `bar` now has its own "none" code (31), so `act` no
 > longer needs a `0 = not yet` sentinel and all four of its codes are real
 > actions. `hgt`, `obs` and `byp` keep `0` = "not reported yet".
 
-### 4.1 The shared fault bitmask (new in v2)
+### 4.1 The shared fault bitmask (new in v2; positions agreed in v4)
 
 The requirement folds fault conditions into one shared word. On the car it is a
 **µT-Kernel event flag owned by Buddy 5** (`nav_ctrl_task`), agreed at Tribunal 1:
-each task sets its own bit with `tk_set_flg`, which the kernel makes atomic
-across both cores, so no task does a plain read-modify-write. `comms_task` reads
-the flag once per `S` line and copies these five bits:
+each task sets and clears **only its own bit** with `tk_set_flg` / `tk_clr_flg`,
+which the kernel makes atomic across both cores, so no task does a plain
+read-modify-write. A bit says *which part of the car has detected a fault*, not
+whose fault it is. `comms_task` reads the flag once per `S` line and copies these
+six bits:
 
-| Bit | Fault | Set by | Core |
-|---|---|---|---|
-| 0 | motor stall | Buddy 2, `motion_task` | 1 |
-| 1 | encoder fault | Buddy 2, `motion_task` | 1 |
-| 2 | IMU fault | Buddy 4, `imu_task` | 1 |
-| 3 | no echo | Buddy 5, `scan_task` | 1 |
-| 4 | **Wi-Fi loss** | **Buddy 1, `comms_task`** | 0 |
+| Bit | Fault | `messages.h` name | Set and cleared by | Core | Stops the mission? |
+|---|---|---|---|---|---|
+| 0 | motor stall | `FAULT_MOTOR_STALL` | Buddy 2, `motion_task` | 1 | yes |
+| 1 | encoder fault | `FAULT_ENCODER` | Buddy 2, `motion_task` | 1 | yes |
+| 2 | IMU fault | `FAULT_IMU` | Buddy 4, `imu_task` | 1 | yes |
+| 3 | no echo (sensor lost) | `FAULT_SCAN_SENSOR_LOST` | Buddy 5, `scan_task` | 1 | yes |
+| 4 | line sensor | `FAULT_LINE_SENSOR` | Buddy 3, `ir_sense_task` | 1 | yes |
+| 5 | **Wi-Fi loss** | `FAULT_WIFI_LOSS` | **Buddy 1, `comms_task`** | 0 | **no — report-only** |
 
-Bit positions are **proposed** (requirement order) until agreed with Buddy 5.
+**Agreed 2026-10-23** with Buddy 5 (bits 0–4 as Buddy 5 proposed to the team on
+22 Oct, Wi-Fi loss at bit 5). The names and positions live in one block of
+`app_program/common/messages.h` that Buddy 5 owns; **moving a bit or adding
+one changes this record, so it comes to Buddy 1 as a pull request** that bumps
+`v` (§5.2, §11).
+
+> **Wi-Fi loss is report-only (agreed with Buddy 5, 2026-10-23).** The bit is
+> in the shared word because the requirement names it, and it is there for the
+> laptop. `nav_ctrl_task` decides the Fault transition with
+> `FAULT_STOP_MASK` (every bit except `FAULT_WIFI_LOSS`), never with "any bit
+> set", so a Wi-Fi drop never stops the car: a mission never waits on Wi-Fi.
+
+> **Which bits are wired.** A bit reads 0 until its owner's code sets it, so
+> `faults = 0` means "no fault reported", not "every subsystem checked". As of
+> 2026-10-23 **none are wired**: the flag itself does not exist yet (§12
+> item 19).
 
 > **The Wi-Fi-loss bit and the wire.** An `S` line cannot be published while
 > Wi-Fi is down, so a live "Wi-Fi lost" bit would never reach the laptop.
-> **Proposed:** `comms_task` keeps bit 4 set in its published copy until the
+> **Proposed:** `comms_task` keeps bit 5 set in its published copy until the
 > first `S` after reconnect has carried it, then clears it. The bit on the
-> kernel flag itself follows the link state in real time, for `nav_ctrl_task`.
+> kernel flag itself follows the link state in real time.
 
 ---
 
@@ -331,7 +357,8 @@ laptop:
 | 3 | `qd` | 0–7 | publish-queue depth at the moment of the reply |
 | 2 | `mqv` | 0–2 | MQTT verdict: 0 disconnected, 1 connecting, 2 connected |
 
-**164 bits → 21 bytes** (162 in v2; the wider `mot` came out of the padding).
+**165 bits → 21 bytes** (162 in v2, 164 in v3; the wider `mot` and v4's sixth
+fault bit both came out of the padding).
 `ip` and `mqv` were the only strings in schema v1; both are now integers.
 
 > **Proposed:** the diagnostics set and widths.
@@ -429,24 +456,24 @@ live in the same script, because hand-typing 7 packed bytes is error-prone.
 
 ## 10. A worked run — what the bytes look like
 
-Generated by `packed_size.py` (schema v3, 2026-10-22), so the bytes are checked
+Generated by `packed_size.py` (schema v4, 2026-10-23), so the bytes are checked
 rather than typed; the same records are in the shared test vectors.
 
 | Record | Values | Payload (hex) |
 |---|---|---|
-| `S` | v 3, s 137, up 41230, faults 0, mot 2, dst 20, lin 1, dev 3, bar 4 (`E`), act 2, hum 3, hgt 12, obs 0, byp 0, mis 1, mpv 3, drp 0 | `2c 11 c0 21 14 00 00 08 45 83 c4 61 00 20 03` |
-| `E` motion | v 3, s 138, up 41310, k 0, state 2, speed_l 20, speed_r 24, dist_mm 1500, turn_rate −30, fault 0, ovf 0 | `4d 11 c0 2b 14 00 00 42 89 c9 5d 10 0f` |
-| `E` line | v 3, s 139, up 41320, k 1, state 1, deviation −12 | `6d 11 00 2d 14 00 20 d1 01` |
-| `E` barcode | v 3, s 140, up 41330, k 2, letter 4 (`E`), action 2 | `8d 11 40 2e 14 00 40 44` |
-| `E` imu | v 3, s 141, up 41340, k 3, class 2, hump_count 1, hump_height_mm 12 | `ad 11 80 2f 14 00 60 0a 06` |
-| `E` obstacle | v 3, s 142, up 41350, k 4, width_cm 18, bypass 1 | `cd 11 c0 30 14 00 80 12 01` |
-| `E` mission | v 3, s 143, up 41360, k 5, state 1 | `ed 11 00 32 14 00 a0 01` |
-| `H` | v 3, s 144, up 42000 | `0e 12 00 82 14 00 00` |
+| `S` | v 4, s 137, up 41230, faults 0, mot 2, dst 20, lin 1, dev 3, bar 4 (`E`), act 2, hum 3, hgt 12, obs 0, byp 0, mis 1, mpv 3, drp 0 | `30 11 c0 21 14 00 00 10 8a 06 89 c3 00 40 06 00` |
+| `E` motion | v 4, s 138, up 41310, k 0, state 2, speed_l 20, speed_r 24, dist_mm 1500, turn_rate −30, fault 0, ovf 0 | `51 11 c0 2b 14 00 00 42 89 c9 5d 10 0f` |
+| `E` line | v 4, s 139, up 41320, k 1, state 1, deviation −12 | `71 11 00 2d 14 00 20 d1 01` |
+| `E` barcode | v 4, s 140, up 41330, k 2, letter 4 (`E`), action 2 | `91 11 40 2e 14 00 40 44` |
+| `E` imu | v 4, s 141, up 41340, k 3, class 2, hump_count 1, hump_height_mm 12 | `b1 11 80 2f 14 00 60 0a 06` |
+| `E` obstacle | v 4, s 142, up 41350, k 4, width_cm 18, bypass 1 | `d1 11 c0 30 14 00 80 12 01` |
+| `E` mission | v 4, s 143, up 41360, k 5, state 1 | `f1 11 00 32 14 00 a0 01` |
+| `H` | v 4, s 144, up 42000 | `12 12 00 82 14 00 00` |
 | `cmd` | `snap` | `01` |
 | `map` | mv 3, `E` → 3, `L` → 1, everything else 0 | `03 30 00 04 00 00 00` |
 
-Read the first byte of the `S` line: `0x2c` = `0010 1100`. Bits 0–1 are `00`
-(`t` = S), bits 2–4 are `011` (`v` = 3), and bits 5–7 are the low three bits of
+Read the first byte of the `S` line: `0x30` = `0011 0000`. Bits 0–1 are `00`
+(`t` = S), bits 2–4 are `100` (`v` = 4), and bits 5–7 are the low three bits of
 `s`. Every other field follows the same way. In an `E`, `k` sits at bits 53–55,
 the top three bits of byte 6 (`0x40` in the barcode line: `k` = 2).
 
@@ -457,14 +484,16 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 
 ## 11. Versioning and compatibility
 
-*Rewritten for schema v2 (Tribunal 1); updated for v3 (2026-10-22).*
+*Rewritten for schema v2 (Tribunal 1); updated for v3 (2026-10-22) and v4
+(2026-10-23).*
 
 - **Positional format, so no change is free.** In JSON a new key was additive;
   in a packed layout position is meaning, and a version skew looks like
   corruption. **Any** layout change — including a change to one event kind's
-  body (§5.2) — bumps `v`, and a reader that sees a `v` it does not know rejects
-  the record instead of misreading it. v3 changed `E` (per-kind bodies) and
-  `S`/`D` (`mot` 2 → 4 bits).
+  body (§5.2) or to a fault-bit position (§4.1) — bumps `v`, and a reader that
+  sees a `v` it does not know rejects the record instead of misreading it. v3
+  changed `E` (per-kind bodies) and `S`/`D` (`mot` 2 → 4 bits); v4 changed
+  `S`/`D` (`faults` 5 → 6 bits, bit 4 now line sensor, Wi-Fi loss bit 5).
 - **The fixed length per (`t`, `v`), and per `k` for `E`, is the second
   check.** A record of the wrong length is rejected.
 - **`messages.h` and this document change in the same pull request** (NFR-17),
@@ -488,8 +517,8 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 8 | Barcode alphabet assumed **A–Z** | §4, §8.3 | 26 letters, 5-bit index with 31 = none |
 | 9 | A compiled-in default table | §8.3 | to specify with Buddy 3 |
 | 10 | **Every field range and width** | §4–§8 | *new (Tribunal 1).* Proposed in `packed_size.py`; agree with each producer (Tribunal roadmap step 2). *v3:* Buddy 2's motion record is now the motion body (§5.1); owners change their own kind through §5.2 |
-| 11 | **Fault-bit positions** | §4.1 | *new (Tribunal 1).* Requirement order; agree with Buddy 5, who owns the flag |
-| 12 | **Wi-Fi-loss bit latched until reported** | §4.1 | *new (Tribunal 1).* Latch in `comms_task`'s published copy |
+| 11 | ~~**Fault-bit positions**~~ | §4.1 | **closed by v4 (2026-10-23):** agreed with Buddy 5 — bits 0–4 as Buddy 5 proposed, Wi-Fi loss at bit 5 and report-only; names in `messages.h` |
+| 12 | **Wi-Fi-loss bit latched until reported** | §4.1 | *new (Tribunal 1).* Latch bit 5 in `comms_task`'s published copy |
 | 13 | **`up` as ms since boot (32 bits) or since run start (19 bits)** | §3 | *new (Tribunal 1).* Keep 32; 19 saves a byte but changes meaning |
 | 14 | **`dst`, `hgt`, `obs` at 8 bits** | §4 | *new (Tribunal 1).* Clamped; widen if a measured range exceeds 255 |
 | 15 | **Motion `speed_l`, `speed_r`, `ovf`** | §5.1 | *new (v3).* **PLACEHOLDER** widths (8, 8, 1) proposed by Buddy 1; pending unit and range from Buddy 2 |

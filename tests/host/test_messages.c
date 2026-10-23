@@ -72,20 +72,20 @@ static void test_s_v2_sanity(void)
     check_bytes("S v2 sanity (MQTT_SCHEMA v2 section 10)", rec, len, want, sizeof want);
 }
 
-/* 2. S v3: mot widened to 4 bits, still 15 bytes. */
-static void test_s_v3(void)
+/* 2. S v4: 6 fault bits (v3 had 5), 16 bytes. */
+static void test_s_v4(void)
 {
-    static const uint8_t widths[] = {2, 3, 16, 32, 5, 4, 8, 2, 8, 5, 2, 4, 8, 8, 2, 3, 4, 4};
-    uint8_t rec[15];
-    uint32_t len = pack_fields(rec, sizeof rec, widths, s_v3_values, sizeof widths);
+    static const uint8_t widths[] = {2, 3, 16, 32, 6, 4, 8, 2, 8, 5, 2, 4, 8, 8, 2, 3, 4, 4};
+    uint8_t rec[16];
+    uint32_t len = pack_fields(rec, sizeof rec, widths, s_example_values, sizeof widths);
 
-    check_bytes("S v3 example", rec, len, s_v3_bytes, sizeof s_v3_bytes);
+    check_bytes("S v4 example", rec, len, s_example_bytes, sizeof s_example_bytes);
 }
 
 /* 2b. The firmware S packer agrees with the field list, and clamps. */
 static void test_pack_s(void)
 {
-    const uint32_t *v = s_v3_values;   /* t, v, s, up, then the 14 fields */
+    const uint32_t *v = s_example_values;   /* t, v, s, up, then the 14 fields */
     T_COMM_W_S st = {
         (uint8_t)v[4], (uint8_t)v[5], (uint8_t)v[6], (uint8_t)v[7], (uint8_t)v[8],
         (uint8_t)v[9], (uint8_t)v[10], (uint8_t)v[11], (uint8_t)v[12], (uint8_t)v[13],
@@ -96,9 +96,9 @@ static void test_pack_s(void)
     T_COMM_W_S big = st;
     uint32_t len;
 
-    ok(COMM_W_S_BITS == 120U && COMM_W_S_SIZE == 15U, "S is 120 bits, 15 B", "S size");
+    ok(COMM_W_S_BITS == 121U && COMM_W_S_SIZE == 16U, "S is 121 bits, 16 B", "S size");
     len = comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
-    check_bytes("comm_w_pack_s, S v3 example", rec, len, s_v3_bytes, sizeof s_v3_bytes);
+    check_bytes("comm_w_pack_s, S v4 example", rec, len, s_example_bytes, sizeof s_example_bytes);
 
     /* mot 20 does not fit 4 bits: stored 15, every other field unchanged. */
     big.mot = 20;
@@ -106,14 +106,44 @@ static void test_pack_s(void)
     comm_w_pack_s(rec, (uint16_t)v[2], v[3], &big);
     comm_w_pack_s(ref, (uint16_t)v[2], v[3], &st);
     check_bytes("comm_w_pack_s clamps mot 20 -> 15", rec, sizeof rec, ref, sizeof ref);
+
+    /* Fault bits: Wi-Fi loss is bit 5, the sixth bit after the 53-bit
+       header, i.e. record bit 58 = byte 7 bit 2. */
+    st.mot = (uint8_t)v[5];
+    st.faults = 0;
+    comm_w_pack_s(ref, (uint16_t)v[2], v[3], &st);
+    st.faults = (uint8_t)FAULT_WIFI_LOSS;
+    comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
+    ok((rec[7] ^ ref[7]) == 0x04U && memcmp(rec, ref, 7) == 0
+       && memcmp(rec + 8, ref + 8, sizeof rec - 8) == 0,
+       "only record bit 58 changes", "S Wi-Fi-loss bit");
+
+    /* All six faults fit; a seventh bit is clamped to the six. */
+    st.faults = (uint8_t)FAULT_ALL;
+    comm_w_pack_s(ref, (uint16_t)v[2], v[3], &st);
+    st.faults = 0x7FU;
+    comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
+    check_bytes("comm_w_pack_s clamps faults 0x7f -> 0x3f", rec, sizeof rec, ref, sizeof ref);
 }
 
-/* 3. H, schema v3. */
+/* 2c. The fault-bit contract with Buddy 5 (schema section 4.1). */
+static void test_fault_bits(void)
+{
+    ok(FAULT_COUNT == 6U && FAULT_ALL == 0x3FU, "six bits, 0x3f", "fault count");
+    ok(FAULT_WIFI_LOSS == 0x20U && FAULT_LINE_SENSOR == 0x10U, "bit 5 Wi-Fi, bit 4 line",
+       "fault positions");
+    ok((FAULT_STOP_MASK & FAULT_WIFI_LOSS) == 0U, "Wi-Fi loss never stops the mission",
+       "fault stop mask");
+    ok(FAULT_STOP_MASK == 0x1FU, "every other fault does", "fault stop mask");
+    ok(COMM_W_S_FAULTS_BITS == FAULT_COUNT, "S carries every fault bit", "S faults width");
+}
+
+/* 3. H, schema v4. */
 static void test_h(void)
 {
-    static const uint8_t h_min[] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    static const uint8_t h_ex[]  = {0x0e, 0x12, 0x00, 0x82, 0x14, 0x00, 0x00};
-    static const uint8_t h_max[] = {0xee, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f};
+    static const uint8_t h_min[] = {0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    static const uint8_t h_ex[]  = {0x12, 0x12, 0x00, 0x82, 0x14, 0x00, 0x00};
+    static const uint8_t h_max[] = {0xf2, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f};
     uint8_t rec[COMM_W_H_SIZE];
     T_COMM_W_HEADER h;
     uint32_t pos = 0;
@@ -123,7 +153,7 @@ static void test_h(void)
                 h_ex, sizeof h_ex);
     check_bytes("H max", rec, comm_w_pack_h(rec, 65535, 0xffffffffUL), h_max, sizeof h_max);
     comm_w_get_header(rec, &pos, &h);
-    ok(h.t == COMM_W_REC_H && h.v == 3 && h.s == 65535 && h.up == 0xffffffffUL
+    ok(h.t == COMM_W_REC_H && h.v == 4 && h.s == 65535 && h.up == 0xffffffffUL
        && pos == COMM_W_HDR_BITS, "header round trip", "H max");
 }
 
@@ -252,8 +282,9 @@ static void test_sizes_and_wrap(void)
 int main(void)
 {
     test_s_v2_sanity();
-    test_s_v3();
+    test_s_v4();
     test_pack_s();
+    test_fault_bits();
     test_h();
     test_vectors();
     test_reject();

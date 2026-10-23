@@ -56,15 +56,15 @@ def main():
         ok(values == want, f"{ev['name']}: fields {values} != {want}")
         rejects(wire + b"\x00", f"{ev['name']}: one byte long")
         rejects(wire[:-1], f"{ev['name']}: one byte short")
-        rejects(with_v(wire, 2), f"{ev['name']}: v=2")
-        rejects(with_v(wire, 4), f"{ev['name']}: v=4")
+        rejects(with_v(wire, 3), f"{ev['name']}: v=3")
+        rejects(with_v(wire, 5), f"{ev['name']}: v=5")
 
     for rec in vectors["records"]:
         wire = bytes.fromhex(rec["wire"])
         name, values = td.decode(wire)
         ok(values == rec["values"], f"{rec['name']}: fields {values} != {rec['values']}")
         rejects(wire + b"\x00", f"{rec['name']}: one byte long")
-        rejects(with_v(wire, 2), f"{rec['name']}: v=2")
+        rejects(with_v(wire, 3), f"{rec['name']}: v=3")
 
     # Reserved kinds 6 and 7, at every length a real E can have.
     for k in (6, 7):
@@ -72,6 +72,11 @@ def main():
         for length in (8, 9, 13):
             rejects(word.to_bytes(length, "little"), f"kind {k}, {length} B")
     rejects(b"", "empty payload")
+
+    # Fault names in bit order (MQTT_SCHEMA.md section 4.1).
+    ok(td.describe({"faults": 0x20}) == "faults=wifi_loss", "faults bit 5 is wifi_loss")
+    ok(td.describe({"faults": 0x11}) == "faults=motor_stall|line_sensor", "faults bits 0 and 4")
+    ok(td.describe({"faults": 0}) == "faults=0", "faults none")
 
     print(f"{passes} checks passed, {failures} failed")
     return 1 if failures else 0
