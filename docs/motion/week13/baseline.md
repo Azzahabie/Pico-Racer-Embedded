@@ -38,8 +38,10 @@ compiler line (motion_cfg.h is never edited for this), and prints:
 - the whole image's `.data` and `.bss` (`arm-none-eabi-size -A`);
 - the size of each motion object in `app_program/motor_task/`;
 - every RAM variable in those objects (`nm -S`), and which ones differ;
-- message sizes compiled by the car's ARM compiler (`tests/week13/sizes.c`;
-  a PC's `sizeof` can differ, since this ABI stores an enum in one byte).
+- message sizes worked out by the car's ARM compiler (`tests/week13/sizes.c`).
+  Today's entries are plain constant expressions, so they are calculated
+  (C); `sizes.c` matters once it holds structs or enums, where a PC's
+  `sizeof` can differ (this ABI stores an enum in one byte).
 
 **Counting rule.** Motion's RAM is the `.data` plus `.bss` of its own
 objects. Both task stacks and the report queue are static arrays
@@ -63,14 +65,18 @@ Raw output: [measure_292860e.txt](measure_292860e.txt).
 |---|---|---|---|
 | Encoder counts | `g_packed` 4 B | `g_count_l` + `g_count_r` 8 B | 8 -> 4 B |
 | Motion RAM (data + bss of its objects) | 8969 B | 8973 B | -4 B |
-| Motion code (text) | 7205 B | 7197 B | +8 B |
+| Motion code (text), all objects | 7205 B | 7197 B | +8 B |
+| of which encoder.o (the packing) | 616 B | 612 B | +4 B |
+| of which motor_task.o (the ready line's `MOTION_PACKED` stamp, not packing) | 5313 B | 5309 B | +4 B |
 | Whole image `.bss` | 29104 B | 29112 B | -8 B (alignment) |
 | Builds, car and default profile | 0 warnings | 0 warnings | |
 
-So packing the counts saves 4 B of RAM and costs 8 B of code, plus a
-read that needs no interrupt masking. The motion RAM total is dominated by
-the two 4096 B task stacks and the 448 B bench report queue, which are the
-same in both builds.
+So packing the counts saves 4 B of RAM and costs 4 B of code (the
+interrupt calls `motion_pack_counts`), and the reader needs no interrupt
+masking. The other 4 B of code is the ready line printing which build it
+is. The motion RAM total is dominated by the two 4096 B task stacks and
+motion's 448 B print queue (motion_task to motion_report on core 0, in
+every build), which are the same in both builds.
 
 Before the stacks were made static (commit 3998a8d), motion's static RAM
 was 777 B, and the kernel took another 8464 B from its heap for the two
@@ -82,11 +88,12 @@ show those.
 
 | Message | Before | After |
 |---|---|---|
-| Motion telemetry event (Buddy 1's schema v3, not switched by motion) | Buddy 1 measures v1 | 7 B payload, 12 B in the message buffer, 13 B on the wire (M, sizes.c) |
-| Bench report record (test channel only) | 52 B, 448 B queue | the same |
+| Motion telemetry event (Buddy 1's schema v3, not switched by motion) | Buddy 1 measures v1 | 7 B payload, 12 B in the message buffer, 13 B on the wire (C: `COMM_W_BYTES(51)` = 7; 4 B header + 7 rounded to 8 = 12; `COMM_W_BYTES(53 + 51)` = 13, all in messages.h) |
+| Motion print record (motion_task to motion_report, every build) | 52 B, 448 B queue | the same |
 
-The bench report record is a test channel, the same in both builds; it is
-not the Week 13 "before".
+The print record is motion's console channel, present in every build
+including the integration image, and the same in both settings, so it is
+not a "before" for anything. With its 4096 B stack it costs 4544 B.
 
 ## To be added as features land
 
@@ -110,8 +117,16 @@ where it is a message, and a row update in
   line, which ends with `MOTION_PACKED=0` or `=1`, in each log.
 - **NFR-18 stop time on both builds,** once the STOP bits exist.
 - **With Wi-Fi on,** which needs the Wi-Fi profile with motion integrated.
-- **Expected difference (E):** about 35 against 38 CPU cycles per encoder
-  read, and about 11 cycles with interrupts off in the unpacked build (from
-  the disassembly, not measured). The timing line's encoder "longest" cannot
-  show that interrupts-off window, because it starts at the dispatcher's
-  entry; compare the tick work maximum and the stop test instead.
+- **Expected difference (E, from the disassembly, not measured):**
+  - Reader: about 35 CPU cycles per read packed against 38 unpacked, at
+    100 reads a second, so about 300 cycles a second in packing's favour.
+  - Interrupt: publishing is about 13 cycles packed (it calls
+    `motion_pack_counts`) against 8 unpacked (two stores), about 5 cycles
+    more per edge. At about 6800 edges a second (both wheels at
+    350 per-mille, results.md) that is about 34,000 cycles a second, so
+    overall the packed build is expected to use slightly more CPU (about
+    0.03 % of a 125 MHz core), not less.
+  - The unpacked read keeps interrupts off for about 11 cycles, which can
+    only delay an encoder interrupt, not cost CPU. The timing line's
+    encoder "longest" cannot show that, because it starts at the
+    dispatcher's entry; compare the tick work maximum and the stop test.

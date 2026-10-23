@@ -2,8 +2,9 @@
  *  sizes.c
  *  Never part of the firmware or the host tests.  tests/week13/measure.sh
  *  compiles it with the car's ARM compiler (not host gcc: enums and padding
- *  differ) and prints each array's size with nm -S.  So every number is a
- *  message size exactly as the car's compiler works it out.
+ *  differ) and prints each array's size with nm -S.  Today's entries are
+ *  plain constant expressions (calculated, not measured); the ARM compiler
+ *  matters once structs or enums are added here.
  */
 
 #include <stdint.h>
