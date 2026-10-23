@@ -15,15 +15,19 @@ STOP_IMU and the hardware watchdog come next.
 | `app_program/motor_task/encoder.c/.h` | Quadrature (x4) on GP0..GP3 with pull-ups. Both counts published as one packed 32-bit word. |
 | `app_program/motor_task/motion_lib.c/.h` | Pure arithmetic, no kernel calls: quadrature table, packed counts, wrap-safe delta, stall detector, integer PID with anti-windup. |
 | `app_program/motor_task/motion_cfg.h` | Every pin, flag and tunable in one place. |
-| `app_program/common/gpio_irq.c/.h` | The one owner of the GPIO bank interrupt (see "For the team"). |
+| `app_program/common/gpio_irq.c/.h` | Buddy 5's shared GPIO dispatcher, the one owner of the GPIO bank interrupt. Motion attaches GP0..GP3 one pin at a time on core 1 (see "For the team"). |
 | `tests/motion_lib/` | Host unit tests for `motion_lib` (UBSan/ASan). |
-| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car. |
+| `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
+| `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
+| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on. |
 
-Run the host tests (plain `gcc`, no Docker, no board):
+Run the host tests in the build container (on macOS the host compiler's
+AddressSanitizer aborts at start-up):
 
 ```sh
-make -C tests                         # all suites
-make -C tests/motion_task_sim V=1     # also show the simulated console
+docker compose run --rm build bash -lc "make -C tests"   # all suites
+make -C tests/motion_task_sim V=1         # (in the container) show the simulated console
+make -C tests/encoder_dispatch race       # (in the container) the open dispatcher race, see "For the team"
 ```
 
 Layout follows Barr-C 2018 (spaces not tabs, 4-space indent, 80 columns,
@@ -39,7 +43,10 @@ start the motors, and the ready line ends with
 `bench OFF (MOTION_BENCH=0): motors stay braked`. For the bench procedure,
 set it to 1 locally, rebuild, and set it back to 0 before committing.
 Both images have the same file name, so check the ready line before the
-car ever goes on the floor.
+car ever goes on the floor. In a bench image GP20 is also nav_ctrl_task's
+start button, so one press starts both the bench test and nav's mission
+(scan_task then runs its scans); another reason bench images are wheels-off
+only.
 
 The car uses the USB console (approved pin map: GP0/GP1 are the left
 encoder), so build the USB-CDC profile:
@@ -182,6 +189,14 @@ encoder's power wire unplugged: that one reports `wheel stalled`.
 This is the core 1 timing evidence: tick jitter, the longest tick, the
 encoder interrupt rate and its longest run.
 
+- `encoder irq N/s` counts GPIO interrupts that reached the encoder
+  callback. Callbacks from one interrupt share the dispatcher's entry
+  timestamp, so two pins changing together count once.
+- `longest` runs from the dispatcher's timer read (the first thing its
+  handler does) to the end of the encoder callback. It is a lower bound:
+  it leaves out the exception entry, the kernel's interrupt wrapper and any
+  later callback in the same interrupt, such as Buddy 5's ECHO pin.
+
 ## Record the results
 
 | Item | Left | Right |
@@ -209,26 +224,37 @@ Found while writing this; each needs its owner.
    GP0 against the encoder from boot, and every `tm_printf` waits about
    87 us for each character past the 32-byte UART FIFO, with interrupts
    masked on that core.
-2. **One GPIO interrupt for the whole chip.** All GPIO edge interrupts are
-   one interrupt number with one vector slot, shared by both cores. A second
-   `tk_def_int(13, ...)` silently replaces the first. Anyone who needs a
-   GPIO edge interrupt (Buddy 5's echo pin, a start button on core 0) calls
-   `gpio_irq_init()` once on their core and then `gpio_irq_attach()`, from
-   `app_program/common/gpio_irq.h`.
+2. **One GPIO interrupt for the whole chip (Buddy 5).** All GPIO edge
+   interrupts are one interrupt number with one vector slot, shared by both
+   cores; a second `tk_def_int(13, ...)` silently replaces the first. The
+   car uses Buddy 5's dispatcher in `app_program/common/gpio_irq.h`:
+   `gpio_irq_init()` on each core, then `gpio_irq_attach()` per pin.
+   Open proposal: `gpio_irq_attach()` updates `PROCx_INTE` with a
+   read-modify-write while interrupts are on. If scan_task (GP5) is
+   preempted there by motion_task attaching GP0..GP3 on the same core, the
+   encoder enables are lost; `make -C tests/encoder_dispatch race` shows it.
+   Writing the bits with `clr_w()` then `set_w()` (the RP2040's atomic
+   clear and set aliases) fixes it, and the race test then passes.
 3. **Print from core 0 only.** In the USB-CDC build `tm_printf` masks
    interrupts on its core for the whole line. Any task that prints should
    be pinned to core 0 (`TP_PRC1`), or the encoder interrupt on core 1 is
-   delayed. The demo `monitor` and `blink` tasks are not pinned.
-4. **GP16 (Buddy 4).** `BOARD_LED_PIN` is 16 and the demo `blink` task
-   toggles it, but GP16 is the IMU's Grove 4 pin.
+   delayed. scan_task prints on core 1; the timing line above will show
+   whether that matters once both run on the car.
+4. **GP16 (Buddy 4).** `BOARD_LED_PIN` is 16: `hw_setting.c` makes it an
+   output at boot and `blink_task` (`TM_BLINK_LED=1` only) toggles it, but
+   GP16 is the IMU's Grove 4 pin.
 5. **GP8/GP9 I2C (Buddy 4).** `hw_setting.c` (sample driver,
    `USE_SDEV_DRV`) puts I2C0 on GP8/GP9, which are the left motor pins.
    `motor_init()` takes them back for PWM at start-up; the IMU's I2C needs
    to move to GP16/GP17.
-6. **led_test** drove GP10 (right motor M2A). It is no longer started.
+6. **led_test** drove GP10 (right motor M2A). Buddy 1 removed it on
+   master (21 Oct).
 
 ## Not done yet
 
+- Motion's kernel objects (motion_flg, avoid_cmd_mbf, nav_cmd_mbf) are not
+  created or bound yet, so scan_task still simulates motion's replies and
+  a STOP_SCAN brakes nothing.
 - Command interface from `nav_ctrl_task` (CMD bit), STOP_SCAN / STOP_IMU,
   Motion Fault exit on FAULT_CLEAR(MOTION).
 - RP2040 hardware watchdog fed each tick (proposed 30 ms).
