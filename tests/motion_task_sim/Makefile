@@ -9,6 +9,8 @@ SAN   := -fsanitize=undefined,address -fno-sanitize-recover=all
 FLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-function -Werror $(SAN) \
          -Istubs -I$(SRC)
 RUNARG := $(if $(V),-v,)
+DEPS   := sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c \
+          $(wildcard $(SRC)/*.h $(SRC)/../common/*.h stubs/*/*.h)
 
 .PHONY: test clean
 test: sim_off sim_open sim_pid
@@ -17,13 +19,13 @@ test: sim_off sim_open sim_pid
 	./sim_pid $(RUNARG)
 
 # Integration build (the committed default): no bench code at all.
-sim_off: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
+sim_off: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
-sim_open: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
+sim_open: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
-sim_pid: sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h stubs/*/*.h)
+sim_pid: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
 clean:

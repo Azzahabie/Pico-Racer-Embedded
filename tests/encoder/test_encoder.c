@@ -156,6 +156,24 @@ int main(void)
 	CHECK(motion_unpack_left(encoder_read_edges_right()) == 3u);
 	CHECK(motion_unpack_right(encoder_read_edges_right()) == 3u);
 
+#if TM_CONSOLE_USB_CDC
+	/* Left B wire unplugged: only A toggles.  Edges on left A only, the
+	   left count goes nowhere, and the right wheel is untouched. */
+	{
+		uint32_t e0 = encoder_read_edges_left();
+		uint32_t r0 = encoder_read_edges_right();
+		uint16_t c0 = motion_unpack_left(encoder_read_packed());
+		for (i = 0; i < 20; i++) toggle(MOTION_PIN_ENC_L_A);
+		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_left())
+				 - motion_unpack_left(e0)) == 20u);
+		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_left())
+				 - motion_unpack_right(e0)) == 0u);
+		CHECK(motion_unpack_left(encoder_read_packed()) == c0);
+		CHECK(encoder_read_edges_right() == r0);
+		CHECK(encoder_invalid_packed() == 0u);
+	}
+#endif
+
 	/* Right B wire unplugged: only A toggles.  Edges on A only, and the
 	   count just steps back and forth (no net movement). */
 	{

@@ -8,8 +8,13 @@
  *
  *	Opt-in, not part of make -C tests: -DTEST_ATTACH_RACE (make race)
  *	shows that gpio_irq_attach() can lose motion's encoder enables when
- *	scan_task is preempted inside its own attach.  It fails until the
- *	attach updates PROCx_INTE without a read-modify-write.
+ *	scan_task is preempted inside its own attach.  Each run preempts after
+ *	a different PROC1_INTE access (1 to 4), never while DI is held, so
+ *	only an attach that is safe at every point passes them all.  It fails
+ *	until the attach stops doing an unprotected read-modify-write.
+ *
+ *	This build also reads motion_cfg.h with no -DMOTION_BENCH, so it is
+ *	where the committed value of MOTION_BENCH is checked.
  */
 
 #include <stdio.h>
@@ -20,6 +25,9 @@
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "encoder.h"
+
+_Static_assert(MOTION_BENCH == 0,
+	       "motion_cfg.h: MOTION_BENCH is committed as 1; bench images only, never commit it");
 
 static int g_checks, g_failures;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_failures++; \
@@ -57,18 +65,36 @@ static int	reg_of(UW addr, UW base)
 }
 
 #ifdef TEST_ATTACH_RACE
-static int	g_race_armed;
+static int	g_in_scan_attach;	/* scan_task is inside its attach */
+static int	g_preempt_at;		/* preempt after this PROC1_INTE access */
+static int	g_inte1_accesses;
+static int	g_masked;		/* DI nesting (race_hooks.h) */
+static int	g_pending;		/* preemption held off by DI */
+static int	g_motion_done;
 static void	motion_attach_now(void);
+
+void race_di(void) { g_masked++; }
+void race_ei(void)
+{
+	g_masked--;
+	if ((0 == g_masked) && g_pending) {	/* motion runs when DI ends */
+		g_pending = 0;
+		motion_attach_now();
+	}
+}
 #endif
 
-/* Race test only: scan_task is preempted by motion_task right after its
-   first access to PROC1_INTE, whatever kind of access that is. */
+/* Race test only: motion_task preempts scan_task right after scan's
+   g_preempt_at-th access to PROC1_INTE, or at its EI if DI is held. */
 static void after_inte1_access(void)
 {
 #ifdef TEST_ATTACH_RACE
-	if (g_race_armed) {
-		g_race_armed = 0;
-		motion_attach_now();
+	if (g_in_scan_attach && (++g_inte1_accesses == g_preempt_at)) {
+		if (g_masked > 0) {
+			g_pending = 1;
+		} else {
+			motion_attach_now();
+		}
 	}
 #endif
 }
@@ -191,28 +217,41 @@ static void step(unsigned pin_a, unsigned pin_b, int phase)
 
 static void motion_attach_now(void)
 {
+	int in_scan = g_in_scan_attach;
+
+	g_in_scan_attach = 0;		/* motion's own accesses do not count */
 	CHECK(gpio_irq_init() == E_OK);
 	CHECK(encoder_init() == E_OK);
+	g_motion_done = 1;
+	g_in_scan_attach = in_scan;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-	/* scan_task (priority 13) starts its attach of GP5 on core 1, and
-	   motion_task (priority 11) preempts it between the read and the
-	   write of PROC1_INTE0 to attach GP0-GP3. */
+	/* scan_task (priority 13) attaches GP5 on core 1, and motion_task
+	   (priority 11) preempts it after its k-th PROC1_INTE access to
+	   attach GP0-GP3.  If the attach makes fewer than k accesses, motion
+	   simply attaches afterwards. */
+	g_preempt_at = (argc > 1) ? atoi(argv[1]) : 1;
 	g_core = 1u;
 	CHECK(gpio_irq_init() == E_OK);
-	g_race_armed = 1;
+	g_in_scan_attach = 1;
 	CHECK(gpio_irq_attach(5u, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, echo_isr) == E_OK);
+	g_in_scan_attach = 0;
+	if (!g_motion_done) {
+		motion_attach_now();
+	}
+	CHECK(0 == g_masked);
 	CHECK(((g_inte[1][0] >> 20) & 0xFu) == 0xCu);		/* ECHO enabled */
 	if ((g_inte[1][0] & 0xFFFFu) != 0xCCCCu) {
-		printf("attach race: motion's encoder enables were lost "
-		       "(PROC1_INTE0 = 0x%08x); needs gpio_irq_attach() without "
-		       "a read-modify-write\n", (unsigned)g_inte[1][0]);
+		printf("attach race (preempted after INTE access %d): motion's "
+		       "encoder enables were lost (PROC1_INTE0 = 0x%08x)\n",
+		       g_preempt_at, (unsigned)g_inte[1][0]);
 	}
 	CHECK((g_inte[1][0] & 0xFFFFu) == 0xCCCCu);
 
-	printf("encoder_dispatch attach race: %d checks, %d failures\n", g_checks, g_failures);
+	printf("encoder_dispatch attach race, preempt at %d: %d checks, %d failures\n",
+	       g_preempt_at, g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

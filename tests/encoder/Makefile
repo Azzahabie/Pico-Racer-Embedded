@@ -6,7 +6,8 @@ CC    ?= gcc
 FLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Werror \
          -fsanitize=undefined,address -fno-sanitize-recover=all \
          -I../motion_task_sim/stubs -I$(SRC)
-DEPS  := test_encoder.c $(SRC)/encoder.c $(SRC)/motion_lib.c $(wildcard $(SRC)/*.h)
+DEPS  := test_encoder.c $(SRC)/encoder.c $(SRC)/motion_lib.c \
+         $(wildcard $(SRC)/*.h $(SRC)/../common/*.h ../motion_task_sim/stubs/*/*.h)
 
 .PHONY: test clean
 test: test_encoder_usb test_encoder_uart

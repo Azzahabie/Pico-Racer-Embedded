@@ -92,8 +92,13 @@ void out_w(UW addr, UW data);
 void set_w(UW addr, UW data);
 void clr_w(UW addr, UW data);
 
+/* A test may define its own DI/EI first (tests/encoder_dispatch race). */
+#ifndef DI
 #define DI(s)	((s) = 0u)
+#endif
+#ifndef EI
 #define EI(s)	((void)(s))
+#endif
 
 ID  tk_cre_flg(CONST T_CFLG *p);
 ER  tk_set_flg(ID id, UINT ptn);
