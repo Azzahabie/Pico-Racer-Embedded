@@ -80,6 +80,25 @@ Core 1 timing during the motor runs (5 s windows): tick period
 2960 per second, longest encoder callback 27 us (measured from the
 dispatcher's entry stamp, a lower bound), no lost ticks.
 
+### Closed-loop speed (bench test step 4, no load)
+
+Bench image with `MOTION_TEST_PID` 1 and `MOTION_PID_TARGET` 16 counts per
+tick (1600 counts/s, about half the 350 per-mille speed), gains as
+committed (Kp 2048 and Ki 256 in Q8, Kd 0, output cap 600 per-mille).
+11 runs of 3 s, all ended `DONE` with no fault.
+
+| Item | Left | Right |
+|---|---|---|
+| Mean speed after the first second (109 samples, 200 ms each) | 1598.8 counts/s | 1600.3 counts/s |
+| Standard deviation of those samples | 9.3 counts/s | 3.8 counts/s |
+| Time to reach 97.5 % of target | 0.6 to 0.8 s | 0.6 to 0.8 s |
+| Highest sample in any run | 1640 (2.5 % over, one run) | 1615 |
+| Duty needed once settled | 158 to 180 per-mille | 154 to 184 per-mille |
+
+No surging or oscillation was seen. These gains are a starting point for
+the floor, where the load is higher; the PID tuning report needs logged
+step responses on the floor too.
+
 ### Findings for teammates
 
 - **Buddy 1, `EnableInt`.** Read on core 0 after nav started:
