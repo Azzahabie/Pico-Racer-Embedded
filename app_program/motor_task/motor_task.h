@@ -21,10 +21,12 @@
 #define MOTION_EVT_TICK (1u << 0)
 
 /* Motion fault bitmask: one bit per fault, packed in one byte. */
-#define MOTION_FAULT_STALL_L (1u << 0) /* FR-30, left wheel   */
-#define MOTION_FAULT_STALL_R (1u << 1) /* FR-30, right wheel  */
-#define MOTION_FAULT_TICK    (1u << 2) /* 10 ms tick missing  */
-#define MOTION_FAULT_INIT    (1u << 3) /* hardware set-up failed */
+#define MOTION_FAULT_STALL_L (1u << 0) /* FR-30 motor stall, left    */
+#define MOTION_FAULT_STALL_R (1u << 1) /* FR-30 motor stall, right   */
+#define MOTION_FAULT_TICK    (1u << 2) /* 10 ms tick missing         */
+#define MOTION_FAULT_INIT    (1u << 3) /* hardware set-up failed     */
+#define MOTION_FAULT_ENC_L   (1u << 4) /* FR-30 encoder fault, left  */
+#define MOTION_FAULT_ENC_R   (1u << 5) /* FR-30 encoder fault, right */
 
 /* Task entry, kernel task signature. */
 void motor_task(INT stacd, void *exinf);

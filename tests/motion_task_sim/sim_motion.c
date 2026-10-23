@@ -49,8 +49,14 @@ typedef struct
 	double		pos;		/* physical position in counts         */
 	int		b_motor_inv;	/* + duty turns this wheel backward    */
 	int		b_enc_inv;	/* encoder counts down going forward   */
-	int		b_enc_dead;
+	int		b_enc_dead;	/* whole encoder dead: no edges at all */
+	int		dead_phase;	/* 1 = A wire, 2 = B wire unplugged    */
 	int		b_blocked;
+	long		enc_pos;	/* position the encoder has followed   */
+	uint8_t		ab;		/* (A << 1) | B seen on the pins       */
+	motion_quad_t	quad;		/* the real decoder, as in encoder.c   */
+	uint16_t	edges_a;	/* edges seen on each phase            */
+	uint16_t	edges_b;
 	uint16_t	count;		/* what its encoder reports            */
 } sim_wheel_t;
 
@@ -62,6 +68,20 @@ static uint32_t		g_time_us;
 static uint32_t		g_gpio_in;
 static int		g_fail_ticks;	/* tk_wai_flg times out this many times */
 static UINT		g_flag;
+
+/* Pin levels for an encoder position: forward is 00 10 11 01 (A leads),
+   as in motion_lib.c.  An unplugged wire reads high (pull-up). */
+static uint8_t
+sim_ab (long c, int dead_phase)
+{
+	unsigned m = (unsigned)(c & 3L);
+	uint32_t a = ((m == 1u) || (m == 2u)) ? 1u : 0u;
+	uint32_t b = ((m == 2u) || (m == 3u)) ? 1u : 0u;
+
+	if (dead_phase == 1) { a = 1u; }
+	if (dead_phase == 2) { b = 1u; }
+	return motion_quad_ab(a, b, false);
+}
 
 static void
 plant_step (void)
@@ -89,9 +109,38 @@ plant_step (void)
 		sim_wheel_t *p_enc = &g_wheel[w];
 		long c = lround(p_src->pos) * (p_enc->b_enc_inv ? -1 : 1);
 
-		if (!p_enc->b_enc_dead) {
-			p_enc->count = (uint16_t)((unsigned long)c & 0xFFFFu);
+		/* Walk the quadrature signals one count at a time, as the
+		   real pins would change, through the real decoder. */
+		while (!p_enc->b_enc_dead && (p_enc->enc_pos != c)) {
+			uint8_t ab;
+			p_enc->enc_pos += (c > p_enc->enc_pos) ? 1 : -1;
+			ab = sim_ab(p_enc->enc_pos, p_enc->dead_phase);
+			if (ab != p_enc->ab) {
+				if (((ab ^ p_enc->ab) & 2u) != 0u) { p_enc->edges_a++; }
+				if (((ab ^ p_enc->ab) & 1u) != 0u) { p_enc->edges_b++; }
+				p_enc->ab = ab;
+				(void)motion_quad_step(&p_enc->quad, ab);
+			}
 		}
+		p_enc->count = p_enc->quad.count;
+	}
+}
+
+/* Unplug one encoder signal wire: the pin's pull-up takes it high, which
+   is one more edge (and one decoder step) if the pin was low. */
+static void
+sim_unplug_phase (int w, int phase)
+{
+	sim_wheel_t *p = &g_wheel[w];
+	uint8_t ab = sim_ab(p->enc_pos, phase);
+
+	p->dead_phase = phase;
+	if (ab != p->ab) {
+		if (((ab ^ p->ab) & 2u) != 0u) { p->edges_a++; }
+		if (((ab ^ p->ab) & 1u) != 0u) { p->edges_b++; }
+		p->ab = ab;
+		(void)motion_quad_step(&p->quad, ab);
+		p->count = p->quad.count;
 	}
 }
 
@@ -117,8 +166,19 @@ uint32_t encoder_read_packed(void)
 {
 	return motion_pack_counts(g_wheel[0].count, g_wheel[1].count);
 }
-uint32_t encoder_invalid_packed(void) { return 0u; }
+uint32_t encoder_invalid_packed(void)
+{
+	return motion_pack_counts(g_wheel[0].quad.invalid, g_wheel[1].quad.invalid);
+}
 bool encoder_left_enabled(void) { return true; }
+uint32_t encoder_read_edges_left(void)
+{
+	return motion_pack_counts(g_wheel[0].edges_a, g_wheel[0].edges_b);
+}
+uint32_t encoder_read_edges_right(void)
+{
+	return motion_pack_counts(g_wheel[1].edges_a, g_wheel[1].edges_b);
+}
 
 ER gpio_irq_init(INT level) { (void)level; return E_OK; }
 ER gpio_irq_attach(uint32_t m, uint32_t e, gpio_irq_cb_t cb) { (void)m; (void)e; (void)cb; return E_OK; }
@@ -246,12 +306,19 @@ drain_reports (void)
 	g_q_count = 0;
 }
 
+static int	g_tick;			/* ticks since sim_reset          */
+static int	g_first_drive;		/* first tick with a duty, or -1  */
+
 static void
 sim_tick (void)
 {
 	g_time_us += 10000u;
+	g_tick++;
 	plant_step();
 	motion_cycle(&g_ctx);
+	if ((g_first_drive < 0) && ((g_duty[0] != 0) || (g_duty[1] != 0))) {
+		g_first_drive = g_tick;
+	}
 	drain_reports();
 }
 
@@ -275,7 +342,7 @@ press_button (void)
 static void
 sim_reset (const char *p_name)
 {
-	printf("-- %s\n", p_name);
+	if (p_name != NULL) { printf("-- %s\n", p_name); }
 	memset(&g_ctx, 0, sizeof g_ctx);
 	memset(g_wheel, 0, sizeof g_wheel);
 	g_duty[0] = g_duty[1] = 0;
@@ -287,10 +354,19 @@ sim_reset (const char *p_name)
 	g_n_seen = 0;
 	g_log_len = 0;
 	g_log[0] = '\0';
+	g_tick = 0;
+	g_first_drive = -1;
 	g_gpio_in = 0xFFFFFFFFu;		/* pull-ups: button released */
 	CHECK(motion_init(&g_ctx) == E_OK);
 	report_event(&g_ctx, EVT_READY, E_OK, 2);
 	drain_reports();
+}
+
+/* The same, for scenarios that run many short cases. */
+static void
+sim_reset_quiet (void)
+{
+	sim_reset(NULL);
 }
 
 static int
@@ -332,6 +408,19 @@ run_until_event (report_event_t evt, int limit)
 		if (count_kind(REP_EVENT, (int)evt) > 0) { return t; }
 	}
 	return -1;
+}
+
+/* A stall must be called exactly [t_stall] after the motors were first
+   driven (the stall check judges the duty of the tick it measures, so
+   one extra tick is allowed).  Printed as a simulation result. */
+static void
+check_stall_delay (void)
+{
+	int ticks = g_tick - g_first_drive;
+
+	printf("   fault after %d ms of driving (simulation)\n", ticks * 10);
+	CHECK(g_first_drive > 0);
+	CHECK(ticks >= (int)MOTION_STALL_TICKS && ticks <= (int)MOTION_STALL_TICKS + 1);
 }
 
 /* ------------------------------------------------------------------ *
@@ -435,12 +524,60 @@ scenario_dead_encoder (void)
 	g_wheel[0].b_enc_dead = 1;
 	press_button();
 	t = run_until_event(EVT_FAULT, 400);
-	printf("   fault after %d ms of driving\n", (t + 6) * 10);
-	CHECK(t > 0 && (t + 6) <= (int)MOTION_STALL_TICKS + 3);
+	CHECK(t > 0);
+	check_stall_delay();
 	CHECK((g_ctx.faults & MOTION_FAULT_STALL_L) != 0u);
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 	CHECK(g_ctx.phase == PHASE_IDLE);
 	CHECK(strstr(g_log, "left wheel stalled") != NULL);
+}
+
+/* FR-30's own test: one encoder signal wire unplugged.  The other phase
+   keeps toggling, so the count only steps back and forth. */
+static void
+scenario_unplugged_phase (void)
+{
+	int t;
+
+	sim_reset("left encoder A wire unplugged: encoder fault within [t_stall]");
+	sim_unplug_phase(0, 1);
+	press_button();
+	t = run_until_event(EVT_FAULT, 400);
+	CHECK(t > 0);
+	check_stall_delay();
+	CHECK(g_ctx.faults == MOTION_FAULT_ENC_L);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+	CHECK(g_ctx.phase == PHASE_IDLE);
+	CHECK(strstr(g_log, "left encoder fault") != NULL);
+	CHECK(strstr(g_log, "Check the A and B wires") != NULL);
+}
+
+/* The wire comes off while the wheel is turning: the window already holds
+   edges from before, and the pull-up adds one more edge if the pin was
+   low.  Still an encoder fault, every time. */
+static void
+scenario_unplug_mid_run (void)
+{
+	static const int offsets[] = { 3, 8, 17, 26, 41, 59 };
+	int phase, i, t, n = 0, n_enc = 0;
+
+	printf("-- left encoder wire pulled mid-step (A and B, 6 moments each)\n");
+	for (phase = 1; phase <= 2; phase++) {
+		for (i = 0; i < (int)(sizeof offsets / sizeof offsets[0]); i++) {
+			sim_reset_quiet();
+			press_button();
+			sim_ticks(offsets[i]);
+			CHECK(g_duty[0] != 0);			/* still in L fwd */
+			sim_unplug_phase(0, phase);
+			t = run_until_event(EVT_FAULT, 400);
+			CHECK(t > 0 && t <= (int)MOTION_STALL_TICKS + 2);
+			CHECK(g_ctx.faults == MOTION_FAULT_ENC_L);
+			CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+			n++;
+			if (g_ctx.faults == MOTION_FAULT_ENC_L) { n_enc++; }
+		}
+	}
+	printf("   encoder fault in %d of %d runs\n", n_enc, n);
 }
 
 static void
@@ -549,6 +686,42 @@ scenario_pid_wrong_polarity (void)
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 }
 
+/* The dangerous case: closed loop with one wire unplugged.  The PID sees
+   no speed and pushes that wheel to its limit; the stall check must end
+   it within [t_stall], not let it run. */
+static void
+scenario_pid_unplugged_phase (void)
+{
+	int t;
+
+	sim_reset("closed loop, right encoder B wire unplugged: encoder fault, no runaway");
+	sim_unplug_phase(1, 2);
+	press_button();
+	t = run_until_event(EVT_FAULT, 300);
+	CHECK(t > 0);
+	check_stall_delay();
+	CHECK(g_ctx.faults == MOTION_FAULT_ENC_R);
+	CHECK(g_duty_max_abs <= MOTION_PID_OUT_LIMIT);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+}
+
+/* Closed loop, wire pulled mid-run at the bench target speed. */
+static void
+scenario_pid_unplug_mid_run (void)
+{
+	int t;
+
+	sim_reset("closed loop, right encoder A wire pulled mid-run: encoder fault, no runaway");
+	press_button();
+	sim_ticks(120);
+	sim_unplug_phase(1, 1);
+	t = run_until_event(EVT_FAULT, 300);
+	CHECK(t > 0 && t <= (int)MOTION_STALL_TICKS + 2);
+	CHECK(g_ctx.faults == MOTION_FAULT_ENC_R);
+	CHECK(g_duty_max_abs <= MOTION_PID_OUT_LIMIT);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+}
+
 #endif
 
 int
@@ -565,6 +738,8 @@ main (int argc, char **argv)
 	scenario_button_held_at_boot();
 	scenario_open_loop();
 	scenario_dead_encoder();
+	scenario_unplugged_phase();
+	scenario_unplug_mid_run();
 	scenario_blocked_right();
 	scenario_abort();
 	scenario_tick_lost();
@@ -574,6 +749,8 @@ main (int argc, char **argv)
 #else
 	scenario_pid();
 	scenario_pid_wrong_polarity();
+	scenario_pid_unplugged_phase();
+	scenario_pid_unplug_mid_run();
 #endif
 
 	printf("motion_task sim (%s): %d checks, %d failures\n",

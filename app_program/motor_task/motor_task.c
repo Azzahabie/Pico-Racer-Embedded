@@ -161,6 +161,12 @@ typedef struct
     int32_t  pos_r;
     int32_t  d_l;
     int32_t  d_r;
+    uint32_t prev_edges_l; /* packed per-phase edge counts */
+    uint32_t prev_edges_r;
+    uint32_t e_la;         /* phase edges in the last tick  */
+    uint32_t e_lb;
+    uint32_t e_ra;
+    uint32_t e_rb;
 
     /* bench test */
     motion_phase_t phase;
@@ -539,11 +545,10 @@ bench_pid (motion_ctx_t *p_ctx)
    known yet); closed loop counts only net movement in the commanded
    direction, so a wrong INVERT flag also ends as a stall instead of a
    runaway.  Net movement (not summed steps) also catches an encoder with
-   one dead wire, whose count only steps back and forth.  Phase edges are
-   not passed in yet, so every stall is reported as a motor stall. */
-static bool
+   one dead wire, whose count only steps back and forth. */
+static motion_stall_result_t
 stall_wheel (motion_stall_t *p_stall, motor_side_t side, int32_t delta,
-             bool b_directional)
+             uint32_t edges_a, uint32_t edges_b, bool b_directional)
 {
     int32_t duty     = motor_get_duty(side);
     bool    b_driven = (motion_abs(duty) >= MOTION_DEADBAND_DUTY);
@@ -554,26 +559,53 @@ stall_wheel (motion_stall_t *p_stall, motor_side_t side, int32_t delta,
         dir = (duty >= 0) ? 1 : -1;
     }
 
-    return (MOTION_STALL_NONE
-            != motion_stall_update(p_stall, b_driven, dir, delta, 0u, 0u));
+    return motion_stall_update(p_stall, b_driven, dir, delta, edges_a,
+                               edges_b);
+}
+
+/* Fault bit for a stall result: motor stall or encoder fault. */
+static uint8_t
+stall_fault_bit (motion_stall_result_t result, uint8_t motor_bit,
+                 uint8_t encoder_bit)
+{
+    uint8_t bit = 0u;
+
+    if (MOTION_STALL_MOTOR == result)
+    {
+        bit = motor_bit;
+    }
+    else if (MOTION_STALL_ENCODER == result)
+    {
+        bit = encoder_bit;
+    }
+    else
+    {
+        /* No stall. */
+    }
+
+    return bit;
 }
 
 static void
 stall_check (motion_ctx_t *p_ctx)
 {
-    bool b_dir = (PHASE_PID == p_ctx->phase);
+    bool                  b_dir = (PHASE_PID == p_ctx->phase);
+    motion_stall_result_t result;
 
     if ((PHASE_STEPS == p_ctx->phase) || (PHASE_PID == p_ctx->phase))
     {
-        if (encoder_left_enabled()
-            && stall_wheel(&p_ctx->stall_l, MOTOR_LEFT, p_ctx->d_l, b_dir))
+        if (encoder_left_enabled())
         {
-            p_ctx->faults |= MOTION_FAULT_STALL_L;
+            result = stall_wheel(&p_ctx->stall_l, MOTOR_LEFT, p_ctx->d_l,
+                                 p_ctx->e_la, p_ctx->e_lb, b_dir);
+            p_ctx->faults |= stall_fault_bit(result,
+                                             (uint8_t)MOTION_FAULT_STALL_L,
+                                             (uint8_t)MOTION_FAULT_ENC_L);
         }
-        if (stall_wheel(&p_ctx->stall_r, MOTOR_RIGHT, p_ctx->d_r, b_dir))
-        {
-            p_ctx->faults |= MOTION_FAULT_STALL_R;
-        }
+        result = stall_wheel(&p_ctx->stall_r, MOTOR_RIGHT, p_ctx->d_r,
+                             p_ctx->e_ra, p_ctx->e_rb, b_dir);
+        p_ctx->faults |= stall_fault_bit(result, (uint8_t)MOTION_FAULT_STALL_R,
+                                         (uint8_t)MOTION_FAULT_ENC_R);
         if (p_ctx->faults != 0u)
         {
             bench_stop(p_ctx, EVT_FAULT);
@@ -606,12 +638,21 @@ tick_timing (motion_ctx_t *p_ctx, uint32_t t_now)
     p_ctx->ticks++;
 }
 
+/* Edges on one 16-bit half since the last read (wrapping). */
+static uint32_t
+edges_since (uint16_t now, uint16_t prev)
+{
+    return (uint32_t)(uint16_t)(now - prev);
+}
+
 static void
 tick_encoders (motion_ctx_t *p_ctx)
 {
-    uint32_t packed = encoder_read_packed(); /* both, one load */
-    uint16_t now_l  = motion_unpack_left(packed);
-    uint16_t now_r  = motion_unpack_right(packed);
+    uint32_t packed  = encoder_read_packed(); /* both, one load */
+    uint16_t now_l   = motion_unpack_left(packed);
+    uint16_t now_r   = motion_unpack_right(packed);
+    uint32_t edges_l = encoder_read_edges_left();
+    uint32_t edges_r = encoder_read_edges_right();
 
     p_ctx->d_l    = motion_count_delta(now_l, p_ctx->prev_l);
     p_ctx->d_r    = motion_count_delta(now_r, p_ctx->prev_r);
@@ -619,6 +660,17 @@ tick_encoders (motion_ctx_t *p_ctx)
     p_ctx->prev_r = now_r;
     p_ctx->pos_l += p_ctx->d_l;
     p_ctx->pos_r += p_ctx->d_r;
+
+    p_ctx->e_la = edges_since(motion_unpack_left(edges_l),
+                              motion_unpack_left(p_ctx->prev_edges_l));
+    p_ctx->e_lb = edges_since(motion_unpack_right(edges_l),
+                              motion_unpack_right(p_ctx->prev_edges_l));
+    p_ctx->e_ra = edges_since(motion_unpack_left(edges_r),
+                              motion_unpack_left(p_ctx->prev_edges_r));
+    p_ctx->e_rb = edges_since(motion_unpack_right(edges_r),
+                              motion_unpack_right(p_ctx->prev_edges_r));
+    p_ctx->prev_edges_l = edges_l;
+    p_ctx->prev_edges_r = edges_r;
 }
 
 static void
@@ -763,9 +815,11 @@ motion_init (motion_ctx_t *p_ctx)
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
 
-    packed            = encoder_read_packed();
-    p_ctx->prev_l     = motion_unpack_left(packed);
-    p_ctx->prev_r     = motion_unpack_right(packed);
+    packed              = encoder_read_packed();
+    p_ctx->prev_l       = motion_unpack_left(packed);
+    p_ctx->prev_r       = motion_unpack_right(packed);
+    p_ctx->prev_edges_l = encoder_read_edges_left();
+    p_ctx->prev_edges_r = encoder_read_edges_right();
     p_ctx->per_min_us = UINT32_MAX;
     p_ctx->phase      = PHASE_IDLE;
 
@@ -859,11 +913,13 @@ print_faults (UB *p_line, motion_report_t const *p_rep)
 
     (void)tm_sprintf(
         p_line,
-        (UB *)"[motion] FAULT 0x%02x:%s%s%s%s  motors braked."
+        (UB *)"[motion] FAULT 0x%02x:%s%s%s%s%s%s  motors braked."
               " Fix, then press the button to run again.",
         (UINT)faults,
         ((faults & MOTION_FAULT_STALL_L) != 0u) ? " left wheel stalled" : "",
         ((faults & MOTION_FAULT_STALL_R) != 0u) ? " right wheel stalled" : "",
+        ((faults & MOTION_FAULT_ENC_L) != 0u) ? " left encoder fault" : "",
+        ((faults & MOTION_FAULT_ENC_R) != 0u) ? " right encoder fault" : "",
         ((faults & MOTION_FAULT_TICK) != 0u) ? " tick lost" : "",
         ((faults & MOTION_FAULT_INIT) != 0u) ? " init failed" : "");
     print_line(p_line);
@@ -875,6 +931,13 @@ print_faults (UB *p_line, motion_report_t const *p_rep)
         (INT)p_rep->duty_l, (INT)p_rep->duty_r, (INT)p_rep->val_l,
         (INT)p_rep->val_r);
     print_line(p_line);
+
+    if (0u != (faults & (MOTION_FAULT_ENC_L | MOTION_FAULT_ENC_R)))
+    {
+        print_line((UB *)"[motion]   encoder fault: one phase kept switching"
+                         " but the count went nowhere. Check the A and B"
+                         " wires of that encoder.");
+    }
     print_step_hints(p_line, p_rep);
 }
 
