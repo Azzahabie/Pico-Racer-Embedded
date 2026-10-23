@@ -170,9 +170,10 @@ void motor_brake_all(void) { g_duty[0] = g_duty[1] = 0; }
 int32_t motor_get_duty(motor_side_t side) { return g_duty[side]; }
 
 ER encoder_init(void) { return E_OK; }
-uint32_t encoder_read_packed(void)
+void encoder_read_counts(uint16_t *p_left, uint16_t *p_right)
 {
-	return motion_pack_counts(g_wheel[0].count, g_wheel[1].count);
+	*p_left = g_wheel[0].count;
+	*p_right = g_wheel[1].count;
 }
 uint32_t encoder_invalid_packed(void)
 {

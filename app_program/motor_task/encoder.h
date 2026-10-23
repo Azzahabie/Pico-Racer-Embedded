@@ -2,11 +2,15 @@
  *  encoder.h
  *  Both wheel encoders: quadrature, x4 decoding, GPIO edge interrupts.
  *
- *  Counts are published as one packed 32-bit word (left in bits 15:0,
- *  right in bits 31:16), written only by the GPIO interrupt with a single
- *  store.  Any task on either core reads both counts with one load, so
- *  there is no lock and no torn pair.  Use motion_unpack_left/right() and
- *  motion_count_delta() from motion_lib.h.
+ *  Both wheel counts are 16-bit, wrapping; take changes with
+ *  motion_count_delta() from motion_lib.h.  How the interrupt hands them
+ *  to motion_task depends on MOTION_PACKED (motion_cfg.h):
+ *    1  one 32-bit word (left bits 15:0, right bits 31:16), one store by
+ *       the interrupt, one load by the reader: no lock, no torn pair.
+ *    0  Week 6 form: one 32-bit counter per wheel, copied by the reader
+ *       with interrupts briefly disabled.  Correct only because the
+ *       interrupt and motion_task both run on core 1.
+ *  encoder_read_counts() hides the difference from motion_task.
  */
 
 #ifndef ENCODER_H
@@ -24,8 +28,9 @@
    which).  The approved pin map uses the USB console for this reason. */
 ER encoder_init(void);
 
-uint32_t encoder_read_packed(void);    /* one load, both counts       */
-uint32_t encoder_invalid_packed(void); /* missed-edge counts, same packing */
+/* Both counts, taken at the same moment.  Call from core 1 only. */
+void     encoder_read_counts(uint16_t *p_left, uint16_t *p_right);
+uint32_t encoder_invalid_packed(void); /* missed edges: left 15:0, right 31:16 */
 bool     encoder_left_enabled(void);
 
 /* Edges seen on each phase of one wheel: phase A in bits 15:0, phase B

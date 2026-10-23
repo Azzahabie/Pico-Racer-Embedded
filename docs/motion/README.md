@@ -36,6 +36,15 @@ constant on the left of `==`, `for (;;)`, ISR names end `_isr`) through
 
 ## Build and flash
 
+**Packed or unpacked (Week 13 evidence).** `MOTION_PACKED` in
+`motion_cfg.h` is committed as 1: the packed layouts. 0 builds the Week 6
+(unpacked) layouts on the same code, only to measure the Week 13 "before".
+Today it switches only the encoder counts (one packed word against two
+32-bit counters copied with interrupts off). `sh tests/week13/measure.sh`
+builds HEAD both ways and prints motion's RAM; `make -C tests` tests both.
+Every ready line ends with `MOTION_PACKED=1` or `=0`, so keep it in each
+timing log. Method and numbers: `week13/baseline.md`.
+
 **Bench image or integration image.** The bench test below is built only
 when `MOTION_BENCH` is 1 in `motion_cfg.h`. The committed value is 0: that
 build never reads or configures GP20 (Buddy 5's start button), nothing can

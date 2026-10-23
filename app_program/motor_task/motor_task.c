@@ -6,7 +6,7 @@
  *
  *    motion_task  core 1, priority 11.  Woken every 10 ms by a cyclic
  *                 handler through an event flag.  Reads both encoder
- *                 counts with one load, runs the bench test and the stall
+ *                 counts together, runs the bench test and the stall
  *                 check, writes the motors.  Never prints and never waits
  *                 on anything except its event flag.
  *
@@ -668,11 +668,14 @@ edges_since (uint16_t now, uint16_t prev)
 static void
 tick_encoders (motion_ctx_t *p_ctx)
 {
-    uint32_t packed  = encoder_read_packed(); /* both, one load */
-    uint16_t now_l   = motion_unpack_left(packed);
-    uint16_t now_r   = motion_unpack_right(packed);
-    uint32_t edges_l = encoder_read_edges_left();
-    uint32_t edges_r = encoder_read_edges_right();
+    uint16_t now_l;
+    uint16_t now_r;
+    uint32_t edges_l;
+    uint32_t edges_r;
+
+    encoder_read_counts(&now_l, &now_r); /* both from the same moment */
+    edges_l = encoder_read_edges_left();
+    edges_r = encoder_read_edges_right();
 
     p_ctx->d_l    = motion_count_delta(now_l, p_ctx->prev_l);
     p_ctx->d_r    = motion_count_delta(now_r, p_ctx->prev_r);
@@ -814,8 +817,7 @@ motion_cyclic_isr (void *exinf)
 static ER
 motion_init (motion_ctx_t *p_ctx)
 {
-    ER       ercd;
-    uint32_t packed;
+    ER ercd;
 
     ercd = motor_init();
     if (E_OK == ercd)
@@ -839,9 +841,7 @@ motion_init (motion_ctx_t *p_ctx)
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
 
-    packed              = encoder_read_packed();
-    p_ctx->prev_l       = motion_unpack_left(packed);
-    p_ctx->prev_r       = motion_unpack_right(packed);
+    encoder_read_counts(&p_ctx->prev_l, &p_ctx->prev_r);
     p_ctx->prev_edges_l = encoder_read_edges_left();
     p_ctx->prev_edges_r = encoder_read_edges_right();
     p_ctx->per_min_us = UINT32_MAX;
@@ -1018,14 +1018,15 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
     (void)tm_sprintf(p_line,
                      (UB *)"[motion] ready on processor %d, init %s (er=%d)."
                            " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
-                           " button GP%u, test=%s",
+                           " button GP%u, test=%s, MOTION_PACKED=%d",
                      (INT)p_rep->val_r, b_init_ok ? "OK" : "FAILED",
                      (INT)p_rep->val_l, (UINT)MOTION_PWM_HZ,
                      (UINT)MOTION_PIN_M1A, (UINT)MOTION_PIN_M2B,
                      (UINT)MOTION_PIN_ENC_L_A, (UINT)MOTION_PIN_ENC_R_B,
                      encoder_left_enabled() ? "" : " (LEFT OFF: UART console)",
                      (UINT)MOTION_PIN_BUTTON,
-                     (0 != MOTION_TEST_PID) ? "closed-loop" : "open-loop");
+                     (0 != MOTION_TEST_PID) ? "closed-loop" : "open-loop",
+                     (INT)MOTION_PACKED);
     print_line(p_line);
 
     if (b_init_ok)
@@ -1038,12 +1039,14 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
     (void)tm_sprintf(p_line,
                      (UB *)"[motion] ready on processor %d, init %s (er=%d)."
                            " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
-                           " bench OFF (MOTION_BENCH=0): motors stay braked",
+                           " bench OFF (MOTION_BENCH=0): motors stay braked,"
+                           " MOTION_PACKED=%d",
                      (INT)p_rep->val_r, b_init_ok ? "OK" : "FAILED",
                      (INT)p_rep->val_l, (UINT)MOTION_PWM_HZ,
                      (UINT)MOTION_PIN_M1A, (UINT)MOTION_PIN_M2B,
                      (UINT)MOTION_PIN_ENC_L_A, (UINT)MOTION_PIN_ENC_R_B,
-                     encoder_left_enabled() ? "" : " (LEFT OFF: UART console)");
+                     encoder_left_enabled() ? "" : " (LEFT OFF: UART console)",
+                     (INT)MOTION_PACKED);
     print_line(p_line);
 #endif
 }

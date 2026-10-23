@@ -35,6 +35,15 @@
 #define MOTION_BENCH (0)
 #endif
 
+/* Minimum-bit switch (changed requirement, Tribunal 1).
+   1 (the default, and the only value ever committed): packed layouts.
+   0: the Week 6 (unpacked) layouts, kept only to measure the Week 13
+     "before" (RAM, message sizes, timing) on the same code.
+     tests/week13/measure.sh builds both; make -C tests tests both. */
+#ifndef MOTION_PACKED
+#define MOTION_PACKED (1)
+#endif
+
 #if MOTION_BENCH
 /* Robo Pico user button, used only by the bench test: press to start a
    test, press again to abort.  Read by polling, never by interrupt. */

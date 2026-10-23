@@ -31,8 +31,18 @@ static uint16_t g_edges_lb;
 static uint16_t g_edges_ra;
 static uint16_t g_edges_rb;
 
+_Static_assert((0 == MOTION_PACKED) || (1 == MOTION_PACKED),
+               "MOTION_PACKED must be 0 or 1");
+
+/* Published counts: single writer (the interrupt). */
+#if MOTION_PACKED
+static volatile uint32_t g_packed; /* left 15:0, right 31:16 */
+#else
+static volatile uint32_t g_count_l; /* Week 6: one word per wheel */
+static volatile uint32_t g_count_r;
+#endif
+
 /* Published words: single writer (the interrupt), single 32-bit store. */
-static volatile uint32_t g_packed;
 static volatile uint32_t g_invalid_packed;
 static volatile uint32_t g_edges_l;
 static volatile uint32_t g_edges_r;
@@ -104,7 +114,12 @@ encoder_edge_isr (UINT pin, UW events, UW now_us)
         g_edges_rb = encoder_count_edge(g_edges_rb, pin, MOTION_PIN_ENC_R_B);
     }
 
-    g_packed         = motion_pack_counts(g_quad_l.count, g_quad_r.count);
+#if MOTION_PACKED
+    g_packed  = motion_pack_counts(g_quad_l.count, g_quad_r.count);
+#else
+    g_count_l = g_quad_l.count;
+    g_count_r = g_quad_r.count;
+#endif
     g_invalid_packed = motion_pack_counts(g_quad_l.invalid, g_quad_r.invalid);
     g_edges_l        = motion_pack_counts(g_edges_la, g_edges_lb);
     g_edges_r        = motion_pack_counts(g_edges_ra, g_edges_rb);
@@ -184,7 +199,12 @@ encoder_init (void)
     motion_quad_init(&g_quad_r,
                      encoder_ab(gpio_in, MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B,
                                 (MOTION_ENC_R_INVERT != 0)));
-    g_packed         = 0u;
+#if MOTION_PACKED
+    g_packed  = 0u;
+#else
+    g_count_l = 0u;
+    g_count_r = 0u;
+#endif
     g_invalid_packed = 0u;
     g_edges_la       = 0u;
     g_edges_lb       = 0u;
@@ -220,10 +240,29 @@ encoder_take_irq_max_us (void)
     return max_us;
 }
 
-uint32_t
-encoder_read_packed (void)
+void
+encoder_read_counts (uint16_t *p_left, uint16_t *p_right)
 {
-    return g_packed;
+#if MOTION_PACKED
+    uint32_t packed = g_packed; /* one load: both from the same edge */
+
+    *p_left  = motion_unpack_left(packed);
+    *p_right = motion_unpack_right(packed);
+#else
+    UINT     intsts;
+    uint32_t left;
+    uint32_t right;
+
+    /* Week 6 form: no encoder interrupt between the two loads.  DI masks
+       this core only; the encoder interrupt is on this core (core 1). */
+    DI(intsts);
+    left  = g_count_l;
+    right = g_count_r;
+    EI(intsts);
+
+    *p_left  = (uint16_t)left;
+    *p_right = (uint16_t)right;
+#endif
 }
 
 uint32_t

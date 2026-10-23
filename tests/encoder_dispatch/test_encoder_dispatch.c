@@ -26,6 +26,9 @@
 #include "motion_lib.h"
 #include "encoder.h"
 
+static uint16_t count_l(void) { uint16_t l, r; encoder_read_counts(&l, &r); return l; }
+static uint16_t count_r(void) { uint16_t l, r; encoder_read_counts(&l, &r); return r; }
+
 _Static_assert(MOTION_BENCH == 0,
 	       "motion_cfg.h: MOTION_BENCH is committed as 1; bench images only, never commit it");
 
@@ -307,16 +310,16 @@ int main(void)
 	for (i = 1; i <= 10; i++) step(MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B, i);
 	for (i = 1; i <= 6; i++) step(MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B, 4 - (i % 4));
 #if TM_CONSOLE_USB_CDC
-	CHECK(motion_unpack_left(encoder_read_packed()) == (uint16_t)(L_SIGN * 10));
+	CHECK(count_l() == (uint16_t)(L_SIGN * 10));
 	CHECK(encoder_irq_count() == 16u);
 	CHECK((g_intr[0] & 0xFFFFu) == 0u);			/* all edges cleared */
 #else
-	CHECK(motion_unpack_left(encoder_read_packed()) == 0u);
+	CHECK(count_l() == 0u);
 	CHECK(encoder_irq_count() == 6u);
 	CHECK((g_intr[0] & 0x00FFu) != 0u);		/* GP0/GP1 not ours: left latched */
 	CHECK((g_intr[0] & 0xFF00u) == 0u);
 #endif
-	CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(R_SIGN * -6));
+	CHECK(count_r() == (uint16_t)(R_SIGN * -6));
 	CHECK(encoder_invalid_packed() == 0u);
 	CHECK(motion_unpack_left(encoder_read_edges_right()) == 3u);
 	CHECK(motion_unpack_right(encoder_read_edges_right()) == 3u);
@@ -324,7 +327,7 @@ int main(void)
 	/* 5. Encoder and ECHO edges in one interrupt: both delivered, and the
 	   entry timestamp is taken before any callback. */
 	n0 = encoder_irq_count();
-	c0 = motion_unpack_right(encoder_read_packed());
+	c0 = count_r();
 	t0 = g_timer;
 	/* The right wheel ended case 4 at phase 2; one step forward is 3. */
 	set_pins(with_step(g_gpio_in, MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B, 3) ^ (1u << 5));
@@ -332,7 +335,7 @@ int main(void)
 	CHECK(g_echo_calls == 1);
 	CHECK(g_echo_now == t0 + 1u);			/* the first timer read */
 	CHECK(encoder_irq_count() - n0 == 1u);
-	CHECK(motion_unpack_right(encoder_read_packed()) != c0);	/* moved one step */
+	CHECK(count_r() != c0);	/* moved one step */
 	CHECK(((g_intr[0] >> 8) & 0xFFu) == 0u);	/* GP2, GP3 cleared */
 	CHECK(((g_intr[0] >> 20) & 0xFu) == 0u);	/* GP5 cleared */
 
@@ -340,11 +343,11 @@ int main(void)
 	   unchanged, one interrupt, two callbacks (longest run 2 us here). */
 	(void)encoder_take_irq_max_us();
 	n0 = encoder_irq_count();
-	c0 = motion_unpack_right(encoder_read_packed());
+	c0 = count_r();
 	set_pins(g_gpio_in ^ ((1u << MOTION_PIN_ENC_R_A) | (1u << MOTION_PIN_ENC_R_B)));
 	fire(1u);
 	CHECK(motion_unpack_right(encoder_invalid_packed()) == 1u);
-	CHECK(motion_unpack_right(encoder_read_packed()) == c0);
+	CHECK(count_r() == c0);
 	CHECK(encoder_irq_count() - n0 == 1u);
 
 	/* 8. Longest run: entry stamp to the end of the second callback. */
@@ -361,8 +364,9 @@ int main(void)
 	CHECK(g_btn_calls == 1);
 	CHECK(((g_intr[2] >> 16) & 0xFu) == 0u);
 
-	printf("encoder_dispatch (%s console): %d checks, %d failures\n",
-	       TM_CONSOLE_USB_CDC ? "USB" : "UART", g_checks, g_failures);
+	printf("encoder_dispatch (%s console, %s): %d checks, %d failures\n",
+	       TM_CONSOLE_USB_CDC ? "USB" : "UART",
+	       MOTION_PACKED ? "packed" : "unpacked", g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

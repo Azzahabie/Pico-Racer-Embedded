@@ -11,7 +11,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static int g_di_calls;	/* the unpacked reader must mask interrupts */
+#define DI(s)	((s) = 0u, g_di_calls++)
+#define EI(s)	((void)(s))
+
 #include "../../app_program/motor_task/encoder.c"
+
+/* The Makefile says which layout each binary must have; a committed
+   MOTION_PACKED 0 fails the default (packed) builds here. */
+_Static_assert(MOTION_PACKED == TEST_EXPECT_PACKED,
+	       "MOTION_PACKED is not the layout this test binary expects");
+
+static uint16_t count_l(void) { uint16_t l, r; encoder_read_counts(&l, &r); return l; }
+static uint16_t count_r(void) { uint16_t l, r; encoder_read_counts(&l, &r); return r; }
 
 static int g_checks, g_failures;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_failures++; \
@@ -102,7 +114,8 @@ static void toggle(uint32_t pin)
 
 int main(void)
 {
-	uint32_t p;
+	uint16_t l, r;
+	int di0;
 	uint32_t enc_pins;
 	UINT pin;
 	int i;
@@ -129,22 +142,27 @@ int main(void)
 			CHECK(g_isr[pin] == encoder_edge_isr);
 		}
 	}
-	CHECK(encoder_read_packed() == 0u);
+	CHECK(count_l() == 0u && count_r() == 0u);
 	CHECK(encoder_irq_count() == 0u);
+
+	/* Packed: one load, interrupts untouched.  Unpacked: one DI/EI pair. */
+	di0 = g_di_calls;
+	encoder_read_counts(&l, &r);
+	CHECK(g_di_calls - di0 == ((MOTION_PACKED != 0) ? 0 : 1));
 
 	/* Left forward 10 steps, right backward 6 steps. */
 	for (i = 1; i <= 10; i++) step(MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B, i);
 	for (i = 1; i <= 6; i++) step(MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B, 4 - (i % 4));
-	p = encoder_read_packed();
+	encoder_read_counts(&l, &r);
 #if TM_CONSOLE_USB_CDC
-	CHECK(motion_unpack_left(p) == (uint16_t)(L_SIGN * 10));
+	CHECK(l == (uint16_t)(L_SIGN * 10));
 	CHECK(encoder_irq_count() == 16u);
 #else
-	CHECK(motion_unpack_left(p) == 0u);
+	CHECK(l == 0u);
 	CHECK(encoder_irq_count() == 6u);	/* left pins never interrupt */
 #endif
 	CHECK(encoder_irq_count() == g_dispatches);
-	CHECK(motion_unpack_right(p) == (uint16_t)(R_SIGN * -6));
+	CHECK(r == (uint16_t)(R_SIGN * -6));
 	CHECK(encoder_invalid_packed() == 0u);
 
 	/* Longest run: timer read at the end of the callback minus now_us. */
@@ -167,13 +185,13 @@ int main(void)
 	{
 		uint32_t e0 = encoder_read_edges_left();
 		uint32_t r0 = encoder_read_edges_right();
-		uint16_t c0 = motion_unpack_left(encoder_read_packed());
+		uint16_t c0 = count_l();
 		for (i = 0; i < 20; i++) toggle(MOTION_PIN_ENC_L_A);
 		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_left())
 				 - motion_unpack_left(e0)) == 20u);
 		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_left())
 				 - motion_unpack_right(e0)) == 0u);
-		CHECK(motion_unpack_left(encoder_read_packed()) == c0);
+		CHECK(count_l() == c0);
 		CHECK(encoder_read_edges_right() == r0);
 		CHECK(encoder_invalid_packed() == 0u);
 	}
@@ -183,14 +201,14 @@ int main(void)
 	   count just steps back and forth (no net movement). */
 	{
 		uint32_t e0 = encoder_read_edges_right();
-		uint16_t c0 = motion_unpack_right(encoder_read_packed());
+		uint16_t c0 = count_r();
 		uint32_t n0 = encoder_irq_count();
 		for (i = 0; i < 20; i++) toggle(MOTION_PIN_ENC_R_A);
 		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_right())
 				 - motion_unpack_left(e0)) == 20u);
 		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_right())
 				 - motion_unpack_right(e0)) == 0u);
-		CHECK(motion_unpack_right(encoder_read_packed()) == c0);
+		CHECK(count_r() == c0);
 		CHECK(encoder_invalid_packed() == 0u);
 		CHECK(encoder_irq_count() - n0 == 20u);
 	}
@@ -204,7 +222,7 @@ int main(void)
 		g_gpio_in ^= (1u << MOTION_PIN_ENC_R_A) | (1u << MOTION_PIN_ENC_R_B);
 		dispatch(old);
 		CHECK(motion_unpack_right(encoder_invalid_packed()) == 1u);
-		CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(R_SIGN * -6));
+		CHECK(count_r() == (uint16_t)(R_SIGN * -6));
 		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_right())
 				 - motion_unpack_left(e0)) == 1u);
 		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_right())
@@ -212,7 +230,8 @@ int main(void)
 		CHECK(encoder_irq_count() - n0 == 1u);
 	}
 
-	printf("encoder (%s console): %d checks, %d failures\n",
-	       TM_CONSOLE_USB_CDC ? "USB" : "UART", g_checks, g_failures);
+	printf("encoder (%s console, %s): %d checks, %d failures\n",
+	       TM_CONSOLE_USB_CDC ? "USB" : "UART",
+	       MOTION_PACKED ? "packed" : "unpacked", g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -14,15 +14,19 @@ DEPS  := $(UNITS) race_hooks.h \
          $(wildcard $(SRC)/motor_task/*.h $(SRC)/common/*.h ../motion_task_sim/stubs/*/*.h)
 
 .PHONY: test race clean
-test: test_dispatch_usb test_dispatch_uart
+test: test_dispatch_usb test_dispatch_uart test_dispatch_usb_unpacked
 	./test_dispatch_usb
 	./test_dispatch_uart
+	./test_dispatch_usb_unpacked
 
 test_dispatch_usb: $(DEPS)
 	$(CC) $(FLAGS) -DTM_CONSOLE_USB_CDC=1 -o $@ $(UNITS)
 
 test_dispatch_uart: $(DEPS)
 	$(CC) $(FLAGS) -DTM_CONSOLE_USB_CDC=0 -o $@ $(UNITS)
+
+test_dispatch_usb_unpacked: $(DEPS)
+	$(CC) $(FLAGS) -DTM_CONSOLE_USB_CDC=1 -DMOTION_PACKED=0 -o $@ $(UNITS)
 
 # Expected to fail until gpio_irq_attach() stops doing an unprotected
 # read-modify-write of PROCx_INTE (a proposal to Buddy 5).  One run per
@@ -35,6 +39,6 @@ test_dispatch_race: $(DEPS)
 	    -DTM_CONSOLE_USB_CDC=1 -DTEST_ATTACH_RACE -o $@ $(UNITS)
 
 clean:
-	rm -f test_dispatch_usb test_dispatch_uart test_dispatch_race
+	rm -f test_dispatch_usb test_dispatch_uart test_dispatch_usb_unpacked test_dispatch_race
 
 .DEFAULT_GOAL := test
