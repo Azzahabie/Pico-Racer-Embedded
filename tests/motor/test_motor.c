@@ -67,6 +67,13 @@ int main(void)
 	CHECK(g_pwm[4][0] == PWM_CH_CSR_EN && g_pwm[5][0] == PWM_CH_CSR_EN);
 	CHECK(g_pwm[6][0] == 0u);			/* servo slice untouched */
 
+	/* The configured polarity is loaded.  The layout checks below are
+	   about the uninverted mapping, so they start with inversion off. */
+	CHECK(g_motor[MOTOR_LEFT].b_invert == (MOTION_MOTOR_L_INVERT != 0));
+	CHECK(g_motor[MOTOR_RIGHT].b_invert == (MOTION_MOTOR_R_INVERT != 0));
+	g_motor[MOTOR_LEFT].b_invert = false;
+	g_motor[MOTOR_RIGHT].b_invert = false;
+
 	/* Forward = A (low half), reverse = B (high half), 0 = brake. */
 	motor_set(MOTOR_LEFT, 350);
 	CHECK(CC(4) == 4375u);
@@ -90,6 +97,10 @@ int main(void)
 	motor_set(MOTOR_LEFT, 200);
 	CHECK(CC(4) == (2500u << 16));
 	CHECK(motor_get_duty(MOTOR_LEFT) == 200);
+	g_motor[MOTOR_RIGHT].b_invert = true;
+	motor_set(MOTOR_RIGHT, 200);
+	CHECK(CC(5) == (2500u << 16));
+	CHECK(motor_get_duty(MOTOR_RIGHT) == 200);
 
 	motor_brake_all();
 	CHECK(CC(4) == 0u && CC(5) == 0u);

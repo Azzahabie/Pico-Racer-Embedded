@@ -17,6 +17,11 @@ static int g_checks, g_failures;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_failures++; \
 	printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
+/* The steps below turn each wheel in its encoder's own (uninverted)
+   sense; the configured INVERT flag flips the sign of the count. */
+#define L_SIGN	((MOTION_ENC_L_INVERT != 0) ? -1 : 1)
+#define R_SIGN	((MOTION_ENC_R_INVERT != 0) ? -1 : 1)
+
 #define NUM_PINS	30u
 #define RUN_US		3u	/* fake callback run time */
 
@@ -132,14 +137,14 @@ int main(void)
 	for (i = 1; i <= 6; i++) step(MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B, 4 - (i % 4));
 	p = encoder_read_packed();
 #if TM_CONSOLE_USB_CDC
-	CHECK(motion_unpack_left(p) == 10u);
+	CHECK(motion_unpack_left(p) == (uint16_t)(L_SIGN * 10));
 	CHECK(encoder_irq_count() == 16u);
 #else
 	CHECK(motion_unpack_left(p) == 0u);
 	CHECK(encoder_irq_count() == 6u);	/* left pins never interrupt */
 #endif
 	CHECK(encoder_irq_count() == g_dispatches);
-	CHECK(motion_unpack_right(p) == (uint16_t)(0u - 6u));
+	CHECK(motion_unpack_right(p) == (uint16_t)(R_SIGN * -6));
 	CHECK(encoder_invalid_packed() == 0u);
 
 	/* Longest run: timer read at the end of the callback minus now_us. */
@@ -199,7 +204,7 @@ int main(void)
 		g_gpio_in ^= (1u << MOTION_PIN_ENC_R_A) | (1u << MOTION_PIN_ENC_R_B);
 		dispatch(old);
 		CHECK(motion_unpack_right(encoder_invalid_packed()) == 1u);
-		CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(0u - 6u));
+		CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(R_SIGN * -6));
 		CHECK((uint16_t)(motion_unpack_left(encoder_read_edges_right())
 				 - motion_unpack_left(e0)) == 1u);
 		CHECK((uint16_t)(motion_unpack_right(encoder_read_edges_right())

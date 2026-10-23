@@ -49,9 +49,9 @@
  * ------------------------------------------------------------------ */
 
 #define MOTION_MOTOR_L_INVERT (0)
-#define MOTION_MOTOR_R_INVERT (0)
+#define MOTION_MOTOR_R_INVERT (1)
 #define MOTION_ENC_L_INVERT   (0)
-#define MOTION_ENC_R_INVERT   (0)
+#define MOTION_ENC_R_INVERT   (1)
 
 /* ------------------------------------------------------------------ *
  *  PWM  (CONFIRMED: clk_sys 125 MHz in cpu_clock.c; driver limit 20 kHz)

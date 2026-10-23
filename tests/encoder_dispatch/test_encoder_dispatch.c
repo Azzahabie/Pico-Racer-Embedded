@@ -29,6 +29,11 @@
 _Static_assert(MOTION_BENCH == 0,
 	       "motion_cfg.h: MOTION_BENCH is committed as 1; bench images only, never commit it");
 
+/* The steps below turn each wheel in its encoder's own (uninverted)
+   sense; the configured INVERT flag flips the sign of the count. */
+#define L_SIGN	((MOTION_ENC_L_INVERT != 0) ? -1 : 1)
+#define R_SIGN	((MOTION_ENC_R_INVERT != 0) ? -1 : 1)
+
 static int g_checks, g_failures;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_failures++; \
 	printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
@@ -302,7 +307,7 @@ int main(void)
 	for (i = 1; i <= 10; i++) step(MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B, i);
 	for (i = 1; i <= 6; i++) step(MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B, 4 - (i % 4));
 #if TM_CONSOLE_USB_CDC
-	CHECK(motion_unpack_left(encoder_read_packed()) == 10u);
+	CHECK(motion_unpack_left(encoder_read_packed()) == (uint16_t)(L_SIGN * 10));
 	CHECK(encoder_irq_count() == 16u);
 	CHECK((g_intr[0] & 0xFFFFu) == 0u);			/* all edges cleared */
 #else
@@ -311,7 +316,7 @@ int main(void)
 	CHECK((g_intr[0] & 0x00FFu) != 0u);		/* GP0/GP1 not ours: left latched */
 	CHECK((g_intr[0] & 0xFF00u) == 0u);
 #endif
-	CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(0u - 6u));
+	CHECK(motion_unpack_right(encoder_read_packed()) == (uint16_t)(R_SIGN * -6));
 	CHECK(encoder_invalid_packed() == 0u);
 	CHECK(motion_unpack_left(encoder_read_edges_right()) == 3u);
 	CHECK(motion_unpack_right(encoder_read_edges_right()) == 3u);
