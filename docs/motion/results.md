@@ -28,9 +28,13 @@ laptop through a hub, serial output logged on the laptop.
 
 | Item | Left | Right | Method |
 |---|---|---|---|
-| Counts per wheel revolution | 2535 | 2533 | 10 slow hand turns against a tyre mark, change in count / 10, 1 trial each (A2 asks for 3) |
+| Counts per wheel revolution, trial 1 | 2535 | 2533 | 10 slow hand turns against a tyre mark, change in count / 10 |
+| Counts per wheel revolution, trial 2 | 2535.6 | 2536.8 | the same, after the flags were set (25,356 and 25,368 counts) |
 | Count when the wheel turns forward, before flags | up | down | hand turn |
 | Missed transitions while turning by hand | 0 | 13 in 25,334 | `missed` in the status line |
+
+A third trial (A2 asks for 3) was lost when the USB link dropped; it is
+still to do. The two trials agree to within 0.15 %.
 
 The right encoder's few missed transitions followed it when its cable
 moved from Grove 1 to Grove 2, so they come from that encoder or its cable,
@@ -47,6 +51,19 @@ but the cable should be checked.
 So `MOTION_MOTOR_R_INVERT` and `MOTION_ENC_R_INVERT` are 1 (the right motor
 and its encoder are both mounted mirrored); the left flags stay 0. Check
 run: every `fwd` step turns its wheel forward with the count going up.
+
+### Stall check (FR-30), wheel held by hand
+
+| Wheel held | Result |
+|---|---|
+| Left, during `L fwd` (two runs) | `FAULT 0x01: left wheel stalled`, motors braked; the wheel crept 63 and 36 counts before the grip stopped it |
+| Right, during `R fwd` (left steps ran normally first) | `FAULT 0x02: right wheel stalled`, motors braked; it crept 95 counts first |
+
+Both were reported as a motor stall, not an encoder fault, so a held wheel
+is not mistaken for a dead encoder wire. The fault comes 300 ms
+(`MOTION_STALL_TICKS`, proposed) after the wheel stops making progress; the
+log cannot time it more finely than that. Still to do: the one-wire
+unplugged test (README, test 2).
 
 ### Open loop, dead band and timing (no load, wheels off the ground)
 
