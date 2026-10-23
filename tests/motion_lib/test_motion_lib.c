@@ -197,61 +197,264 @@ static void test_delta_random_walk(void)
 
 /* ------------------------------------------------------------------ */
 
-static void test_stall(void)
+#define S_NONE	MOTION_STALL_NONE
+#define S_MOTOR	MOTION_STALL_MOTOR
+#define S_ENC	MOTION_STALL_ENCODER
+
+/* Tick of the first non-NONE result (or 0) and the result itself. */
+static int stall_first(motion_stall_t *p, bool b_driven, int32_t dir,
+		       int ticks, int32_t delta, uint32_t ea, uint32_t eb,
+		       motion_stall_result_t *p_res)
 {
-	motion_stall_t s;
 	int i;
 
-	motion_stall_init(&s, 30u, 3);
+	*p_res = S_NONE;
+	for (i = 1; i <= ticks; i++) {
+		*p_res = motion_stall_update(p, b_driven, dir, delta, ea, eb);
+		if (*p_res != S_NONE) {
+			return i;
+		}
+	}
+	return 0;
+}
+
+static void test_stall_basics(void)
+{
+	motion_stall_t s;
+	motion_stall_result_t r;
+	int i;
+
+	motion_stall_init(&s, 30u, 3, 3u);
 
 	/* Not driven: never a stall, however long. */
-	for (i = 0; i < 1000; i++) {
-		CHECK(!motion_stall_update(&s, false, 0));
-	}
+	CHECK_EQ(stall_first(&s, false, 1, 1000, 0, 0u, 0u, &r), 0);
 
-	/* Driven with no movement: stall on exactly the 30th tick. */
-	for (i = 1; i < 30; i++) {
-		CHECK(!motion_stall_update(&s, true, 0));
-	}
-	CHECK(motion_stall_update(&s, true, 0));
-
-	/* Moving well: never a stall. */
+	/* Driven with no movement and no edges: motor stall on tick 30. */
 	motion_stall_reset(&s);
-	for (i = 0; i < 1000; i++) {
-		CHECK(!motion_stall_update(&s, true, 5));
-	}
+	CHECK_EQ(stall_first(&s, true, 1, 40, 0, 0u, 0u, &r), 30);
+	CHECK(r == S_MOTOR);
 
-	/* One count per 10 ticks reaches 3 counts by tick 21 < 30: no stall. */
+	/* Progress starts a fresh window: net and both edge counts clear. */
+	motion_stall_reset(&s);
+	CHECK(motion_stall_update(&s, true, 1, 3, 3u, 0u) == S_NONE);
+	CHECK_EQ(s.net, 0);
+	CHECK_EQ(s.edges_a, 0);
+	CHECK_EQ(s.edges_b, 0);
+	CHECK_EQ(s.idle_ticks, 0);
+
+	/* Moving well, either mode: never a stall. */
+	motion_stall_reset(&s);
+	CHECK_EQ(stall_first(&s, true, 1, 1000, 5, 3u, 2u, &r), 0);
+	motion_stall_reset(&s);
+	CHECK_EQ(stall_first(&s, true, 0, 1000, -5, 3u, 2u, &r), 0);
+
+	/* One count per 10 ticks reaches 3 counts by tick 30: no stall. */
 	motion_stall_reset(&s);
 	for (i = 1; i <= 300; i++) {
-		CHECK(!motion_stall_update(&s, true, (i % 10 == 0) ? 1 : 0));
+		bool b_step = (i % 10 == 0);
+		CHECK(motion_stall_update(&s, true, 1, b_step ? 1 : 0,
+					  (b_step && (i % 20 == 0)) ? 1u : 0u,
+					  (b_step && (i % 20 != 0)) ? 1u : 0u) == S_NONE);
 	}
 
-	/* One count per 15 ticks needs 45 ticks for 3 counts: stalls. */
+	/* One count per 15 ticks: only 2 counts by tick 30, a motor stall
+	   (two edges, one per phase: too few to call it an encoder fault). */
 	motion_stall_reset(&s);
-	{
-		bool b_hit = false;
-		for (i = 1; i <= 45 && !b_hit; i++) {
-			b_hit = motion_stall_update(&s, true, (i % 15 == 0) ? 1 : 0);
-		}
-		CHECK(b_hit);
-		CHECK_EQ(i - 1, 30);
+	for (i = 1, r = S_NONE; i <= 45 && r == S_NONE; i++) {
+		bool b_step = (i % 15 == 0);
+		r = motion_stall_update(&s, true, 1, b_step ? 1 : 0,
+					(b_step && i == 15) ? 1u : 0u,
+					(b_step && i == 30) ? 1u : 0u);
 	}
+	CHECK_EQ(i - 1, 30);
+	CHECK(r == S_MOTOR);
 
-	/* Negative progress (wrong direction) is not progress. */
+	/* Closed loop: moving the wrong way is not progress (a wrong INVERT
+	   flag ends as a motor stall, not a runaway). */
 	motion_stall_reset(&s);
-	for (i = 1; i < 30; i++) {
-		CHECK(!motion_stall_update(&s, true, -50));
-	}
-	CHECK(motion_stall_update(&s, true, -50));
+	CHECK_EQ(stall_first(&s, true, 1, 40, -50, 25u, 25u, &r), 30);
+	CHECK(r == S_MOTOR);
+	/* Open loop: either way counts. */
+	motion_stall_reset(&s);
+	CHECK_EQ(stall_first(&s, true, 0, 1000, -50, 25u, 25u, &r), 0);
 
 	/* Stopping the drive clears the window. */
 	motion_stall_reset(&s);
-	for (i = 1; i < 30; i++) {
-		(void)motion_stall_update(&s, true, 0);
+	CHECK_EQ(stall_first(&s, true, 1, 29, 0, 0u, 0u, &r), 0);
+	CHECK(motion_stall_update(&s, false, 1, 0, 0u, 0u) == S_NONE);
+	CHECK(motion_stall_update(&s, true, 1, 0, 0u, 0u) == S_NONE);
+
+	/* A new commanded direction restarts the window: 20 ticks forward,
+	   then reverse, stalls 30 ticks after the change, not 10. */
+	motion_stall_reset(&s);
+	CHECK_EQ(stall_first(&s, true, 1, 20, 0, 0u, 0u, &r), 0);
+	CHECK_EQ(stall_first(&s, true, -1, 40, 0, 0u, 0u, &r), 30);
+	CHECK(r == S_MOTOR);
+
+	/* Edges on one phase but fewer than enc_edges: still a motor stall. */
+	motion_stall_reset(&s);
+	CHECK(motion_stall_update(&s, true, 1, 0, 2u, 0u) == S_NONE);
+	CHECK_EQ(stall_first(&s, true, 1, 40, 0, 0u, 0u, &r), 29);
+	CHECK(r == S_MOTOR);
+
+	/* The encoder-fault threshold is its own setting, not min_counts:
+	   with enc_edges 8, 5 edges on one phase is a motor stall, 8 is an
+	   encoder fault. */
+	motion_stall_init(&s, 30u, 3, 8u);
+	CHECK(motion_stall_update(&s, true, 1, 0, 5u, 0u) == S_NONE);
+	CHECK_EQ(stall_first(&s, true, 1, 40, 0, 0u, 0u, &r), 29);
+	CHECK(r == S_MOTOR);
+	motion_stall_reset(&s);
+	CHECK(motion_stall_update(&s, true, 1, 0, 8u, 0u) == S_NONE);
+	CHECK_EQ(stall_first(&s, true, 1, 40, 0, 0u, 0u, &r), 29);
+	CHECK(r == S_ENC);
+
+	/* Each phase counts only since the other last moved: a stray edge
+	   on the quiet phase early on does not hide a dead wire later. */
+	motion_stall_init(&s, 30u, 3, 3u);
+	CHECK(motion_stall_update(&s, true, 1, 0, 0u, 1u) == S_NONE); /* B once */
+	CHECK_EQ(stall_first(&s, true, 1, 40, 0, 1u, 0u, &r), 29);    /* then A */
+	CHECK(r == S_ENC);
+
+	/* min_counts below 2 is raised to 2 (a single dithering count is
+	   never enough progress); enc_edges 0 is raised to 1. */
+	motion_stall_init(&s, 30u, 1, 0u);
+	CHECK_EQ(s.min_counts, MOTION_STALL_MIN_COUNTS_LOW);
+	CHECK_EQ(s.enc_edges, 1);
+}
+
+/* Pins of an encoder at position c (forward 00 10 11 01, A leads), with
+   the B wire unplugged (held high by the pull-up) when b_dead_b. */
+static uint8_t quad_pins(long c, bool b_dead_b)
+{
+	unsigned m = (unsigned)(c & 3L);
+	uint32_t a = ((m == 1u) || (m == 2u)) ? 1u : 0u;
+	uint32_t b = ((m == 2u) || (m == 3u)) ? 1u : 0u;
+
+	if (b_dead_b) {
+		b = 1u;
 	}
-	CHECK(!motion_stall_update(&s, false, 0));
-	CHECK(!motion_stall_update(&s, true, 0));
+	return motion_quad_ab(a, b, false);
+}
+
+/* The B wire comes off while the wheel is turning, at several speeds and
+   moments: the window then already holds edges from before the failure,
+   and the pull-up makes one more B edge when B was low.  It must still
+   be an encoder fault, within one stall window of the failure. */
+static void test_stall_wire_comes_off(void)
+{
+	int speed, fail_tick;
+
+	for (speed = 1; speed <= 20; speed++) {
+		for (fail_tick = 10; fail_tick < 18; fail_tick++) {
+			motion_quad_t q;
+			motion_stall_t s;
+			motion_stall_result_t r = S_NONE;
+			bool b_dead = false;
+			long pos = 0;
+			uint8_t ab = quad_pins(0, false);
+			uint16_t prev;
+			int tick, k;
+
+			motion_quad_init(&q, ab);
+			motion_stall_init(&s, 30u, 3, 3u);
+			prev = q.count;
+			for (tick = 1; tick <= 200 && r == S_NONE; tick++) {
+				uint32_t ea = 0u, eb = 0u;
+				uint8_t now;
+
+				if (tick == fail_tick) {
+					b_dead = true;		/* wire pulled */
+					now = quad_pins(pos, true);
+					if (now != ab) {
+						eb++;		/* the pull-up's edge */
+						(void)motion_quad_step(&q, now);
+						ab = now;
+					}
+				}
+				for (k = 0; k < speed; k++) {
+					pos++;
+					now = quad_pins(pos, b_dead);
+					if (now != ab) {
+						if (((now ^ ab) & 2u) != 0u) ea++;
+						if (((now ^ ab) & 1u) != 0u) eb++;
+						(void)motion_quad_step(&q, now);
+						ab = now;
+					}
+				}
+				r = motion_stall_update(&s, true, 1,
+							motion_count_delta(q.count, prev), ea, eb);
+				prev = q.count;
+			}
+			CHECK(r == S_ENC);
+			CHECK((tick - 1) - fail_tick <= 32);
+		}
+	}
+}
+
+/* A healthy run first (the window restarts many times), then a dead
+   wire on the same detector, without re-initialising it. */
+static void test_stall_healthy_then_dead(void)
+{
+	motion_stall_t s;
+	motion_stall_result_t r;
+	int i;
+
+	motion_stall_init(&s, 30u, 3, 3u);
+	for (i = 0; i < 100; i++) {
+		CHECK(motion_stall_update(&s, true, 1, 4, 2u, 2u) == S_NONE);
+	}
+	/* Dead B: A toggles twice a tick, the count rocks +1/-1. */
+	for (i = 1, r = S_NONE; i <= 40 && r == S_NONE; i++) {
+		r = motion_stall_update(&s, true, 1, (i % 2 == 1) ? 1 : -1, 2u, 0u);
+	}
+	CHECK_EQ(i - 1, 30);
+	CHECK(r == S_ENC);
+}
+
+/* One encoder wire unplugged: the pull-up holds that phase at a fixed
+   level while the other phase keeps toggling.  Run it through the real
+   decoder at many speeds, both modes, every stuck pattern: it must be an
+   encoder fault on exactly the 30th tick, never 'moving'. */
+static void test_stall_dead_phase(void)
+{
+	int stuck, edges_per_tick, mode;
+
+	for (stuck = 0; stuck < 4; stuck++) {	/* A=0, A=1, B=0, B=1 */
+		for (mode = 0; mode < 2; mode++) {
+			for (edges_per_tick = 1; edges_per_tick <= 40; edges_per_tick++) {
+				motion_quad_t q;
+				motion_stall_t s;
+				motion_stall_result_t r = S_NONE;
+				bool b_dead_a = (stuck < 2);
+				uint8_t level = (uint8_t)(stuck & 1);
+				uint8_t live = 0u;
+				uint16_t prev;
+				int tick, e;
+
+				motion_quad_init(&q, b_dead_a ? motion_quad_ab(level, live, false)
+							      : motion_quad_ab(live, level, false));
+				motion_stall_init(&s, 30u, 3, 3u);
+				prev = q.count;
+				for (tick = 1; tick <= 100 && r == S_NONE; tick++) {
+					for (e = 0; e < edges_per_tick; e++) {
+						live ^= 1u;
+						(void)motion_quad_step(&q, b_dead_a
+							? motion_quad_ab(level, live, false)
+							: motion_quad_ab(live, level, false));
+					}
+					r = motion_stall_update(&s, true, (mode == 0) ? 0 : 1,
+								motion_count_delta(q.count, prev),
+								b_dead_a ? 0u : (uint32_t)edges_per_tick,
+								b_dead_a ? (uint32_t)edges_per_tick : 0u);
+					prev = q.count;
+				}
+				CHECK_EQ(tick - 1, 30);
+				CHECK(r == S_ENC);
+				CHECK_EQ(q.invalid, 0);
+			}
+		}
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -395,7 +598,10 @@ int main(void)
 	test_pack();
 	test_delta();
 	test_delta_random_walk();
-	test_stall();
+	test_stall_basics();
+	test_stall_dead_phase();
+	test_stall_wire_comes_off();
+	test_stall_healthy_then_dead();
 	test_pid_basic();
 	test_pid_antiwindup();
 	test_pid_extremes();

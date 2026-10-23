@@ -150,12 +150,19 @@ motion_count_delta (uint16_t now, uint16_t prev)
  *  Stall detector
  * ------------------------------------------------------------------ */
 
+#define STALL_DELTA_MAX ((int32_t)0x8000)   /* one tick, as from _delta() */
+#define STALL_NET_MAX   ((int32_t)0x100000) /* keeps the window sum bounded */
+
 void
 motion_stall_init (motion_stall_t *p_stall, uint16_t window_ticks,
-                   int32_t min_counts)
+                   int32_t min_counts, uint16_t enc_edges)
 {
     p_stall->window_ticks = window_ticks;
-    p_stall->min_counts   = min_counts;
+    p_stall->min_counts =
+        (min_counts < MOTION_STALL_MIN_COUNTS_LOW) ? MOTION_STALL_MIN_COUNTS_LOW
+                                                   : min_counts;
+    p_stall->enc_edges = (0u == enc_edges) ? 1u : enc_edges;
+    p_stall->dir       = 0;
     motion_stall_reset(p_stall);
 }
 
@@ -163,13 +170,48 @@ void
 motion_stall_reset (motion_stall_t *p_stall)
 {
     p_stall->idle_ticks = 0u;
-    p_stall->progress   = 0;
+    p_stall->edges_a    = 0u;
+    p_stall->edges_b    = 0u;
+    p_stall->net        = 0;
 }
 
-bool
-motion_stall_update (motion_stall_t *p_stall, bool b_driven, int32_t progress)
+/* Saturating add for the per-window edge counts. */
+static uint16_t
+stall_add_edges (uint16_t total, uint32_t edges)
 {
-    bool b_stalled = false;
+    uint32_t sum = UINT16_MAX;
+
+    if (edges < UINT16_MAX)
+    {
+        sum = (uint32_t)total + edges; /* both below 2^16: cannot wrap */
+    }
+
+    return (sum > UINT16_MAX) ? (uint16_t)UINT16_MAX : (uint16_t)sum;
+}
+
+/* Which fault a window without enough progress means (see the header). */
+static motion_stall_result_t
+stall_classify (motion_stall_t const *p_stall)
+{
+    motion_stall_result_t result = MOTION_STALL_MOTOR;
+    uint16_t              need   = p_stall->enc_edges;
+
+    if (((p_stall->edges_a >= need) && (0u == p_stall->edges_b))
+        || ((p_stall->edges_b >= need) && (0u == p_stall->edges_a)))
+    {
+        result = MOTION_STALL_ENCODER;
+    }
+
+    return result;
+}
+
+motion_stall_result_t
+motion_stall_update (motion_stall_t *p_stall, bool b_driven, int32_t dir,
+                     int32_t delta, uint32_t edges_a, uint32_t edges_b)
+{
+    motion_stall_result_t result = MOTION_STALL_NONE;
+    int32_t               way;
+    int32_t               progress;
 
     if (!b_driven)
     {
@@ -177,12 +219,39 @@ motion_stall_update (motion_stall_t *p_stall, bool b_driven, int32_t progress)
     }
     else
     {
-        if (progress > 0)
+        way = (dir > 0) ? 1 : ((dir < 0) ? -1 : 0);
+        if (way != p_stall->dir)
         {
-            p_stall->progress += progress;
+            /* A new commanded direction starts a fresh window. */
+            motion_stall_reset(p_stall);
+            p_stall->dir = way;
         }
 
-        if (p_stall->progress >= p_stall->min_counts)
+        p_stall->net = motion_clamp(
+            p_stall->net + motion_clamp(delta, -STALL_DELTA_MAX, STALL_DELTA_MAX),
+            -STALL_NET_MAX, STALL_NET_MAX);
+        /* Each phase counts only since the other phase last moved. */
+        p_stall->edges_a = (0u != edges_b)
+                               ? 0u
+                               : stall_add_edges(p_stall->edges_a, edges_a);
+        p_stall->edges_b = (0u != edges_a)
+                               ? 0u
+                               : stall_add_edges(p_stall->edges_b, edges_b);
+
+        if (0 == way)
+        {
+            progress = motion_abs(p_stall->net);
+        }
+        else if (way > 0)
+        {
+            progress = p_stall->net;
+        }
+        else
+        {
+            progress = -p_stall->net;
+        }
+
+        if (progress >= p_stall->min_counts)
         {
             /* Enough movement: start a fresh window. */
             motion_stall_reset(p_stall);
@@ -195,12 +264,12 @@ motion_stall_update (motion_stall_t *p_stall, bool b_driven, int32_t progress)
             }
             if (p_stall->idle_ticks >= p_stall->window_ticks)
             {
-                b_stalled = true;
+                result = stall_classify(p_stall);
             }
         }
     }
 
-    return b_stalled;
+    return result;
 }
 
 /* ------------------------------------------------------------------ *

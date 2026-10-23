@@ -80,29 +80,67 @@ int32_t motion_count_delta(uint16_t now, uint16_t prev);
 /* ------------------------------------------------------------------ *
  *  Stall detector (FR-30)
  *
- *  A driven wheel must make at least min_counts of progress within
- *  window_ticks, otherwise it is stalled (blocked wheel or dead
- *  encoder).  Progress restarts the window.
+ *  A driven wheel must make at least min_counts of NET progress within
+ *  window_ticks, otherwise it has stalled.  Net means the signed sum of
+ *  the counts since the window started.  An encoder with one dead phase
+ *  steps +1, -1, +1 ... and never gets anywhere, so it is caught; summing
+ *  only the forward steps would miss it.  Progress restarts the window,
+ *  and so does a change of commanded direction.
+ *
+ *  The phase edges tell the two FR-30 faults apart.  Each phase's edges
+ *  are counted only since the other phase last moved, so edges from
+ *  before a wire came off (and the one edge its pull-up makes) do not
+ *  hide the fault:
+ *    one phase toggled at least enc_edges times, the other stayed still
+ *                                  -> encoder fault (one wire dead)
+ *    anything else                 -> motor stall (blocked wheel, a wheel
+ *                                     turning the wrong way, or an encoder
+ *                                     with no power: without current
+ *                                     sensing these look the same)
+ *  Known limit: a blocked wheel whose encoder rests on a phase edge and
+ *  chatters on that one phase also reads as an encoder fault.  enc_edges
+ *  is set from the bench test to stay above that chatter.
  * ------------------------------------------------------------------ */
+
+#define MOTION_STALL_MIN_COUNTS_LOW (2) /* a dead phase can leave +1 */
+
+typedef enum
+{
+    MOTION_STALL_NONE = 0,
+    MOTION_STALL_MOTOR,  /* motor-stall fault bit                  */
+    MOTION_STALL_ENCODER /* encoder-fault bit                      */
+} motion_stall_result_t;
 
 typedef struct
 {
     uint16_t window_ticks; /* [t_stall] in ticks                   */
-    uint16_t idle_ticks;   /* ticks since the last progress        */
-    int32_t  min_counts;   /* [N_min]                              */
-    int32_t  progress;     /* counts gathered in this window       */
+    uint16_t idle_ticks;   /* ticks since the window started       */
+    uint16_t edges_a;      /* A edges since B last moved, saturates */
+    uint16_t edges_b;      /* B edges since A last moved, saturates */
+    uint16_t enc_edges;    /* live-phase edges for an encoder fault */
+    int32_t  min_counts;   /* [N_min], never below the _LOW value  */
+    int32_t  net;          /* signed counts since the window started */
+    int32_t  dir;          /* +1 / -1 commanded, 0 = either way    */
 } motion_stall_t;
 
+/* enc_edges: edges one phase must make, with the other still, before a
+   stall is called an encoder fault (at least 1). */
 void motion_stall_init(motion_stall_t *p_stall, uint16_t window_ticks,
-                       int32_t min_counts);
+                       int32_t min_counts, uint16_t enc_edges);
 void motion_stall_reset(motion_stall_t *p_stall);
 
-/* Call once per tick.  b_driven: the wheel is commanded above the dead
-   band.  progress: counts moved this tick that count as progress (the
-   caller decides: absolute value, or only the commanded direction).
-   Returns true when the wheel is stalled. */
-bool motion_stall_update(motion_stall_t *p_stall, bool b_driven,
-                         int32_t progress);
+/* Call once per tick.
+   b_driven: the wheel is commanded above its dead band.
+   dir:      > 0 or < 0: only movement in that direction is progress
+             (closed loop); 0: movement either way is progress (open loop,
+             while the wheel's polarity is not known yet).
+   delta:    signed counts moved this tick.
+   edges_a, edges_b: edges seen on each encoder phase this tick.
+   Returns MOTION_STALL_NONE, or which fault has been detected. */
+motion_stall_result_t motion_stall_update(motion_stall_t *p_stall,
+                                          bool b_driven, int32_t dir,
+                                          int32_t delta, uint32_t edges_a,
+                                          uint32_t edges_b);
 
 /* ------------------------------------------------------------------ *
  *  Integer PID speed controller

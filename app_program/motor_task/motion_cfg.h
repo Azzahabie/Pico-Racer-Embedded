@@ -70,6 +70,11 @@
 #define MOTION_STALL_TICKS      (30u)
 #define MOTION_STALL_MIN_COUNTS (3)
 
+/* Edges one phase must make while the other stays still before a stall is
+   called an encoder fault rather than a motor stall.  PROPOSED: raise it
+   above any chatter seen with the wheel held (bench test 1). */
+#define MOTION_STALL_ENC_EDGES (3u)
+
 /* Below this duty a wheel may legitimately not move (dead band), so the
    stall check is skipped.  PROPOSED: replace with the ramp-test result. */
 #define MOTION_DEADBAND_DUTY (150)

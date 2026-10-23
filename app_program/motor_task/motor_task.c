@@ -535,23 +535,27 @@ bench_pid (motion_ctx_t *p_ctx)
 }
 
 /* FR-30.  Judged on the duty that was applied during the tick just
-   measured.  Open loop counts movement either way (polarity is not known
-   yet); closed loop counts only movement in the commanded direction, so
-   a wrong INVERT flag also ends as a stall instead of a runaway. */
+   measured.  Open loop counts net movement either way (polarity is not
+   known yet); closed loop counts only net movement in the commanded
+   direction, so a wrong INVERT flag also ends as a stall instead of a
+   runaway.  Net movement (not summed steps) also catches an encoder with
+   one dead wire, whose count only steps back and forth.  Phase edges are
+   not passed in yet, so every stall is reported as a motor stall. */
 static bool
 stall_wheel (motion_stall_t *p_stall, motor_side_t side, int32_t delta,
              bool b_directional)
 {
     int32_t duty     = motor_get_duty(side);
     bool    b_driven = (motion_abs(duty) >= MOTION_DEADBAND_DUTY);
-    int32_t progress = motion_abs(delta);
+    int32_t dir      = 0;
 
     if (b_directional)
     {
-        progress = (duty >= 0) ? delta : -delta;
+        dir = (duty >= 0) ? 1 : -1;
     }
 
-    return motion_stall_update(p_stall, b_driven, progress);
+    return (MOTION_STALL_NONE
+            != motion_stall_update(p_stall, b_driven, dir, delta, 0u, 0u));
 }
 
 static void
@@ -755,9 +759,9 @@ motion_init (motion_ctx_t *p_ctx)
     motion_pid_init(&p_ctx->pid_r, MOTION_PID_KP_Q8, MOTION_PID_KI_Q8,
                     MOTION_PID_KD_Q8, MOTION_PID_OUT_LIMIT);
     motion_stall_init(&p_ctx->stall_l, MOTION_STALL_TICKS,
-                      MOTION_STALL_MIN_COUNTS);
+                      MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
-                      MOTION_STALL_MIN_COUNTS);
+                      MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
 
     packed            = encoder_read_packed();
     p_ctx->prev_l     = motion_unpack_left(packed);
