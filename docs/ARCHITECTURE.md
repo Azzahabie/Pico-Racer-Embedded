@@ -44,7 +44,7 @@ running on bare metal:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Application        app_program/                            │
-│  "what the car does"  producer/consumer demo, LED test,     │
+│  "what the car does"  comms_task (MQTT), usermain,          │
 │                       + stubs for motor / line / imu / ...  │
 ├─────────────────────────────────────────────────────────────┤
 │  Kernel (RTOS)      kernel/, lib/libtk, lib/libtm           │
@@ -113,9 +113,12 @@ This distinction matters, because "custom kernel" is only half true.
 | IPI | Inter-Processor Interrupt — one core poking the other to say "you have work" |
 | Task affinity (`TA_ASSPRC`) | Pinning a task to a specific core |
 
-That last one is used by the demo: the producer task is pinned to core 1 and
-the consumer to core 2, so every message crosses a core boundary on purpose
-(`app_program/app_main.c`, and [`GETTING_STARTED.md` §6b](GETTING_STARTED.md)).
+That last one matters because the ready queue is global: an unpinned task can
+land on either core. Every application task is therefore pinned — the radio,
+the console reporter and `comms_task` to processor 1 (core 0), leaving
+processor 2 (core 1) for the time-critical control tasks
+([`GETTING_STARTED.md` §6b](GETTING_STARTED.md),
+[`comms/TASK_LAYOUT_RECONCILIATION.md`](comms/TASK_LAYOUT_RECONCILIATION.md) §3.1).
 
 ---
 
@@ -265,19 +268,19 @@ real.
 
 - **The kernel port** — rigorously tested, per [`PORT_RP2040.md`](PORT_RP2040.md)
   (SMP 58/58, single-core regression 11/11, measured latencies recorded).
-- **The demo application** (`app_program/app_main.c`) — a small
-  producer/consumer pipeline that exercises every IPC primitive the kernel
-  offers. `GETTING_STARTED.md` calls it *"meant to be read and modified, not
-  just run."*
-- **A GPIO loopback test** (`app_program/led_test/`) — mirrors an input pin
-  onto an output pin, validating that the folder-per-task build structure works.
+- **`usermain()`** (`app_program/app_main.c`) — starts the application
+  tasks and prints the boot banner. The kernel-port demo pipeline and the
+  `led_test` GPIO loopback that used to live here were removed on 2026-10-21
+  (`led_test` drove GP10, the right motor input); they are in the git history.
+- **MQTT telemetry** (`app_program/comms_task/`) — a persistent MQTT client
+  publishing the packed `H` heartbeat, verified on hardware (`docs/comms/`).
 - **The networking paths** — UDP and TCP clients on the radio profile, TCP
   explicitly marked as *not* fully unvalidated in the README's own open items.
 
 ### Not yet written — the racing-car subsystems
 
-The five subsystem tasks are **empty stubs**. Each contains only includes and a
-`TODO` comment:
+Four of the five subsystem tasks are **empty stubs**. Each contains only
+includes and a `TODO` comment:
 
 | File | Contents today |
 |---|---|
@@ -285,11 +288,11 @@ The five subsystem tasks are **empty stubs**. Each contains only includes and a
 | `app_program/line_task/line_task.c` | same |
 | `app_program/obstacle_task/obstacle_task.c` | same |
 | `app_program/imu_task/imu_task.c` | same |
-| `app_program/comms_task/comms_task.c` | same |
+| `app_program/comms_task/comms_task.c` | **implemented** — the `H` heartbeat (Buddy 1, 2026-10-21) |
 
 The shared contract they will communicate through,
-`app_program/common/messages.h`, is also empty — its own comment states the
-intent: *"Shared message structs, mailbox/queue IDs, and pin assignments. Every
+`app_program/common/messages.h`, so far holds only the packed MQTT record
+header and the `H` packer; its own comment states the intent: *"Shared message structs, mailbox/queue IDs, and pin assignments. Every
 buddy's task depends on this file — route changes through a pull request so
 nobody's build breaks silently."*
 
@@ -308,15 +311,16 @@ layout.
 >    The working radio driver is `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`
 >    plus `lib/libnet/lwip/*`. The app-level WiFi reporter is
 >    `wifi_status_task` inside `app_main.c` (compiled only when
->    `TM_WIFI_CYW43` is set). The `app_program/comms_task/` folder is a separate,
->    still-empty team scaffold.
+>    `TM_WIFI_CYW43` and `TM_WIFI_REPORT` are set; a development console, off
+>    for demo day). `app_program/comms_task/` is the application side: it queues
+>    packed records for the radio task and never calls lwIP itself.
 
 ### Documentation drift found
 
-`GETTING_STARTED.md` §6b documents the running application as *four tasks plus
-a fifth in radio builds*. The code actually starts **five** unconditionally —
-the extra one is the `led_test` task, added at priority 9 in `app_main.c` but
-absent from that table. Worth reconciling if the docs are graded.
+*Resolved 2026-10-21.* `GETTING_STARTED.md` §6b used to document *four tasks
+plus a fifth in radio builds* while the code started a fifth, `led_test`,
+unconditionally. `led_test` and the demo tasks are now removed, and §6b lists
+the tasks `app_main.c` actually starts.
 
 ---
 

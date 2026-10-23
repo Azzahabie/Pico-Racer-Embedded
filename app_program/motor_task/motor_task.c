@@ -313,7 +313,7 @@ report_fill (motion_ctx_t const *p_ctx, motion_report_t *p_rep,
     p_rep->per_min_us  = p_ctx->per_min_us;
     p_rep->per_max_us  = p_ctx->per_max_us;
     p_rep->work_max_us = p_ctx->work_max_us;
-    p_rep->irq_count   = gpio_irq_count();
+    p_rep->irq_count   = encoder_irq_count();
     p_rep->isr_max_us  = 0u;
 }
 
@@ -717,12 +717,12 @@ tick_report (motion_ctx_t *p_ctx)
     /* Timing evidence every 5 s, then restart the min/max window. */
     if (0u == (p_ctx->ticks % TIMING_REPORT_TICKS))
     {
-        irq_now = gpio_irq_count();
+        irq_now = encoder_irq_count();
         report_fill(p_ctx, &rep, REP_TIMING, 0u);
         rep.val_l      = (int32_t)p_ctx->lost_ticks;
         rep.val_r      = (int32_t)p_ctx->rep_dropped;
         rep.irq_count  = irq_now - p_ctx->irq_mark;
-        rep.isr_max_us = gpio_irq_take_max_us();
+        rep.isr_max_us = encoder_take_irq_max_us();
         report_send(p_ctx, &rep);
 
         p_ctx->irq_mark    = irq_now;
@@ -812,7 +812,7 @@ motion_init (motion_ctx_t *p_ctx)
     ercd = motor_init();
     if (E_OK == ercd)
     {
-        ercd = gpio_irq_init(INTPRI_MAX_EXTINT_PRI);
+        ercd = gpio_irq_init();
     }
     if (E_OK == ercd)
     {

@@ -8,7 +8,9 @@ with the other buddies".
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Status:** design settled 2026-09-27 — both decisions in §7 are **taken**
   (**A + 1**). The subsystem design that follows from them is
-  [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md).
+  [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md). **Updated from
+  Tribunal 1 (2026-10-19):** the A + 1 decisions stand; the record in §4 is now
+  packed (see the note there), and a shared fault bitmask is added.
 - **Scope:** the *shape* of the application layer. Everything **below** it
   (transport, protocol, config, build) is in [`NETWORKING.md`](NETWORKING.md);
   the app-layer roadmap and deliverables are in [`APPLICATION.md`](APPLICATION.md);
@@ -176,6 +178,24 @@ deadline. Ours must be much shorter.)
 | **Pros** | Ordered — the log reconstructs the run ("moved forward 20 cm, *then* turned right"), which is exactly the M7 deliverable. No shared memory between buddies, so no locks to forget. `comms_task` is the *only* writer of the latest-state table, so the M8 snapshot needs no lock at all. Backpressure is explicit and countable. Matches the repo's existing producer/consumer demo, so it is a pattern you can point at and explain. |
 | **Cons** | Every buddy must learn the record and add a send call (about three lines each). One fixed record size for everyone, and each queued record costs RAM. |
 | **What a teammate has to get right** | Build the record, send it, do not block on the send. That is the entire contract. |
+
+> **Updated from Tribunal 1 (2026-10-19).** Option A stands, with three changes
+> from Change Requirement 1:
+>
+> 1. **The record is packed** into one 64-bit word (`t_ms` 32, `kind` 3, `a` 8,
+>    `b` 8, `ovf` 1, spare 12) with masks and shifts; the struct above is the
+>    unpacked baseline for the Week 13 comparison
+>    ([`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4.1).
+> 2. **The send is `TMO_POL`, not a 10 ms cap** — already the decision in the
+>    design (§16 decision 5), confirmed at the tribunal: a full buffer drops the
+>    record and counts it in `drp`.
+> 3. **`build_payload` packs bytes, not text** — the `tm_sprintf` in the loop
+>    above is replaced by a pack helper (`MQTT_SCHEMA.md` schema v2).
+>
+> A fourth kernel object joins the picture: the **shared fault bitmask**, an
+> event flag owned by Buddy 5. `comms_task` sets the Wi-Fi-loss bit and reads
+> the flag once per `S` line; it never keeps a copy as a shared global
+> (design §4.5).
 
 ### Option B — one shared state struct behind a mutex
 
@@ -347,7 +367,9 @@ in the demo. The rejected alternatives (B, 2) are summarized in §6.
 ## 9. Don't redo
 
 - Don't call any `lwip_*` function from `comms_task` — §1.
-- Don't share a plain global between two tasks — §3.
+- Don't share a plain global between two tasks — §3. *Tribunal 1:* this now
+  includes packed words; two fields in one word written from two cores lost 50%
+  of updates in the race test.
 - Don't re-argue the transport: M4, M5 and M6 are proven (`NETWORKING.md` §5).
 - Don't put the real networking code in `app_program/comms_task/` — it lives in
   `lib/libwifi/` and `lib/libnet/`. This folder is only the application task.

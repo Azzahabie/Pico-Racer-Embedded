@@ -14,8 +14,8 @@
 #include "motion_lib.h"
 #include "encoder.h"
 
-#define ENC_L_PINS ((1u << MOTION_PIN_ENC_L_A) | (1u << MOTION_PIN_ENC_L_B))
-#define ENC_R_PINS ((1u << MOTION_PIN_ENC_R_A) | (1u << MOTION_PIN_ENC_R_B))
+/* Both edges on every encoder pin (Buddy 5's gpio_irq.h has no EDGE_BOTH). */
+#define ENC_EDGES (GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE)
 
 /* Time for the new pull-ups to lift the inputs (pads reset with pull-down). */
 #define ENC_SETTLE_MS (2)
@@ -37,15 +37,22 @@ static volatile uint32_t g_invalid_packed;
 static volatile uint32_t g_edges_l;
 static volatile uint32_t g_edges_r;
 
+/* Timing evidence, written only by the interrupt: interrupts that reached
+   the encoder callback, and the longest time from the dispatcher's entry
+   timestamp to the end of the callback. */
+static uint32_t          g_irq_last_us;
+static volatile uint32_t g_irq_count;
+static volatile uint32_t g_irq_max_us;
+
 static bool gb_left_on = false;
 
-/* One more edge on a phase if its pin is in this interrupt's pin set. */
+/* One more edge on a phase if this callback is for its pin. */
 static uint16_t
-encoder_count_edge (uint16_t edges, uint32_t pins, uint32_t pin)
+encoder_count_edge (uint16_t edges, UINT pin, uint32_t phase_pin)
 {
     uint16_t result = edges;
 
-    if (0u != (pins & (1u << pin)))
+    if (phase_pin == pin)
     {
         result = (uint16_t)(edges + 1u);
     }
@@ -60,31 +67,69 @@ encoder_ab (uint32_t gpio_in, uint32_t pin_a, uint32_t pin_b, bool b_swap)
                           b_swap);
 }
 
-/* GPIO dispatcher callback, interrupt context.  Decoding both wheels from
-   one snapshot is cheaper than working out which pin moved.  pins (the
-   pins that had an edge) only feeds the per-phase edge counts. */
+/* Buddy 5's GPIO dispatcher calls this once per encoder pin that had an
+   edge, in interrupt context on core 1, after it has cleared that pin's
+   edge bits, so reading GPIO_IN here sees every later change.  Only the
+   wheel that owns the pin is decoded; if both of its pins changed in one
+   interrupt, the first call counts one missed edge and the second sees no
+   change. */
 static void
-encoder_edge_isr (uint32_t pins, uint32_t gpio_in)
+encoder_edge_isr (UINT pin, UW events, UW now_us)
 {
-    if (gb_left_on)
+    uint32_t gpio_in = in_w(GPIO_IN);
+    uint32_t run_us;
+
+    (void)events; /* rise, fall or both: the levels say which */
+
+    if ((MOTION_PIN_ENC_L_A == pin) || (MOTION_PIN_ENC_L_B == pin))
     {
         (void)motion_quad_step(&g_quad_l,
                                encoder_ab(gpio_in, MOTION_PIN_ENC_L_A,
                                           MOTION_PIN_ENC_L_B,
                                           (MOTION_ENC_L_INVERT != 0)));
-        g_edges_la = encoder_count_edge(g_edges_la, pins, MOTION_PIN_ENC_L_A);
-        g_edges_lb = encoder_count_edge(g_edges_lb, pins, MOTION_PIN_ENC_L_B);
+        g_edges_la = encoder_count_edge(g_edges_la, pin, MOTION_PIN_ENC_L_A);
+        g_edges_lb = encoder_count_edge(g_edges_lb, pin, MOTION_PIN_ENC_L_B);
     }
-    (void)motion_quad_step(&g_quad_r, encoder_ab(gpio_in, MOTION_PIN_ENC_R_A,
-                                                 MOTION_PIN_ENC_R_B,
-                                                 (MOTION_ENC_R_INVERT != 0)));
-    g_edges_ra = encoder_count_edge(g_edges_ra, pins, MOTION_PIN_ENC_R_A);
-    g_edges_rb = encoder_count_edge(g_edges_rb, pins, MOTION_PIN_ENC_R_B);
+    else
+    {
+        (void)motion_quad_step(&g_quad_r,
+                               encoder_ab(gpio_in, MOTION_PIN_ENC_R_A,
+                                          MOTION_PIN_ENC_R_B,
+                                          (MOTION_ENC_R_INVERT != 0)));
+        g_edges_ra = encoder_count_edge(g_edges_ra, pin, MOTION_PIN_ENC_R_A);
+        g_edges_rb = encoder_count_edge(g_edges_rb, pin, MOTION_PIN_ENC_R_B);
+    }
 
     g_packed         = motion_pack_counts(g_quad_l.count, g_quad_r.count);
     g_invalid_packed = motion_pack_counts(g_quad_l.invalid, g_quad_r.invalid);
     g_edges_l        = motion_pack_counts(g_edges_la, g_edges_lb);
     g_edges_r        = motion_pack_counts(g_edges_ra, g_edges_rb);
+
+    /* Callbacks from one interrupt share now_us: count interrupts. */
+    if (now_us != g_irq_last_us)
+    {
+        g_irq_last_us = now_us;
+        g_irq_count   = g_irq_count + 1u;
+    }
+    run_us = in_w(TIMER_TIMERAWL) - now_us;
+    if (run_us > g_irq_max_us)
+    {
+        g_irq_max_us = run_us;
+    }
+}
+
+/* Attach both pins of one wheel to the dispatcher. */
+static ER
+encoder_attach_pair (UINT pin_a, UINT pin_b)
+{
+    ER ercd = gpio_irq_attach(pin_a, ENC_EDGES, encoder_edge_isr);
+
+    if (E_OK == ercd)
+    {
+        ercd = gpio_irq_attach(pin_b, ENC_EDGES, encoder_edge_isr);
+    }
+
+    return ercd;
 }
 
 static void
@@ -98,9 +143,8 @@ encoder_input (uint32_t pin)
 ER
 encoder_init (void)
 {
-    ER       ercd;
+    ER       ercd = E_OK;
     UINT     intsts;
-    uint32_t pins = ENC_R_PINS;
     uint32_t gpio_in;
 
 #if TM_CONSOLE_USB_CDC
@@ -113,7 +157,6 @@ encoder_init (void)
     {
         encoder_input(MOTION_PIN_ENC_L_A);
         encoder_input(MOTION_PIN_ENC_L_B);
-        pins |= ENC_L_PINS;
     }
     encoder_input(MOTION_PIN_ENC_R_A);
     encoder_input(MOTION_PIN_ENC_R_B);
@@ -122,7 +165,14 @@ encoder_init (void)
     /* Attach and take the starting state with interrupts off on this
        core, so the first edge is decoded against the right state. */
     DI(intsts);
-    ercd    = gpio_irq_attach(pins, GPIO_IRQ_EDGE_BOTH, encoder_edge_isr);
+    if (gb_left_on)
+    {
+        ercd = encoder_attach_pair(MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B);
+    }
+    if (E_OK == ercd)
+    {
+        ercd = encoder_attach_pair(MOTION_PIN_ENC_R_A, MOTION_PIN_ENC_R_B);
+    }
     gpio_in = in_w(GPIO_IN);
     motion_quad_init(&g_quad_l,
                      encoder_ab(gpio_in, MOTION_PIN_ENC_L_A, MOTION_PIN_ENC_L_B,
@@ -138,9 +188,32 @@ encoder_init (void)
     g_edges_rb       = 0u;
     g_edges_l        = 0u;
     g_edges_r        = 0u;
+    g_irq_last_us    = 0u;
+    g_irq_count      = 0u;
+    g_irq_max_us     = 0u;
     EI(intsts);
 
     return ercd;
+}
+
+uint32_t
+encoder_irq_count (void)
+{
+    return g_irq_count;
+}
+
+uint32_t
+encoder_take_irq_max_us (void)
+{
+    UINT     intsts;
+    uint32_t max_us;
+
+    DI(intsts);
+    max_us       = g_irq_max_us;
+    g_irq_max_us = 0u;
+    EI(intsts);
+
+    return max_us;
 }
 
 uint32_t

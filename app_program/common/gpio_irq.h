@@ -1,60 +1,38 @@
 /*
- *  gpio_irq.h
- *  The one owner of the RP2040 GPIO bank interrupt (IO_IRQ_BANK0).
+ *	gpio_irq.h
+ *	One shared GPIO interrupt dispatcher (IO_IRQ_BANK0).
  *
- *  Owner: Buddy 2 (motion).  Agreed in the Week 6 design: "one core 1
- *  GPIO dispatcher owned by Buddy 2, agreed with Buddy 5".
+ *	The RP2040 has ONE interrupt line for all GPIO edges per core. If two
+ *	drivers each install a handler, the last one wins and the other driver
+ *	silently stops working. This dispatcher owns the line and calls a
+ *	per-pin callback instead.
  *
- *  Why a dispatcher: every GPIO edge interrupt on the chip arrives as the
- *  same interrupt number, which has one slot in the vector table, and
- *  both cores share that table.  If two tasks each call tk_def_int() for
- *  it, the second silently replaces the first and the first subsystem
- *  stops seeing edges.  So nobody calls tk_def_int(13, ...) directly:
- *  register a callback here instead.
+ *	Design (Week 6 + Tribunal 1, shared-resource row "GPIO interrupt
+ *	callback on core 1"): one dispatcher on core 1 for ENC_ISR (GP0-GP3,
+ *	Buddy 2) and ECHO_ISR (GP5, Buddy 5); the timer is read FIRST so a
+ *	burst on another pin cannot delay the timestamp. BTN_ISR stays on
+ *	core 0. Owner: Buddy 2 (motion side), agreed with Buddy 5.
  *
- *  Per core: each core that wants GPIO interrupts calls gpio_irq_init()
- *  once from one of its tasks, and a callback runs on the core whose task
- *  attached it.  motion_task (core 1) does this for the encoders; a core 0
- *  button handler would call gpio_irq_init() and gpio_irq_attach() from a
- *  core 0 task.
+ *	Call gpio_irq_init() and gpio_irq_attach() FROM A TASK RUNNING ON THE
+ *	CORE THAT SHOULD HANDLE THE INTERRUPT (core 1 for ENC/ECHO).
  *
- *  Callbacks run in interrupt context: keep them short (read pins, store
- *  a timestamp, tk_set_flg) and never block.
+ *	Barr-C (safety subset): braces on every body, constant on the left of
+ *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
+ *	_isr suffix, bool from stdbool.h. Tabs/brace placement follow the repo.
  */
 
 #ifndef GPIO_IRQ_H
 #define GPIO_IRQ_H
 
-#include <stdint.h>
 #include <tk/tkernel.h>
 
-/* Edge selection for gpio_irq_attach(). */
-#define GPIO_IRQ_EDGE_FALL (0x4u)
-#define GPIO_IRQ_EDGE_RISE (0x8u)
-#define GPIO_IRQ_EDGE_BOTH (GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE)
+#define GPIO_IRQ_EDGE_FALL	0x4U	/* RP2040 event bits, per pin */
+#define GPIO_IRQ_EDGE_RISE	0x8U
 
-#define GPIO_IRQ_MAX_CLIENTS (4u) /* per core */
+/* now_us = microsecond timer, read once at entry, before any callback. */
+typedef void (*gpio_isr_t)(UINT pin, UW events, UW now_us);
 
-/* pins: bit n set = GPn had an enabled edge (only this client's pins).
-   gpio_in: all pin levels, read after the edges were acknowledged. */
-typedef void (*gpio_irq_cb_t)(uint32_t pins, uint32_t gpio_in);
-
-/* Take the GPIO interrupt on the calling core.  level is the NVIC
-   priority (INTPRI_MAX_EXTINT_PRI is the highest allowed).  Once per
-   core, from a task.  E_OBJ if this core already did it. */
-ER gpio_irq_init(INT level);
-
-/* Deliver edges on the pins in pin_mask (bit n = GPn) to p_callback, on the
-   calling core.  Each pin can belong to one client only (E_OBJ
-   otherwise).  Call from task context at start-up, after gpio_irq_init()
-   on the same core, with the pins already set up as inputs. */
-ER gpio_irq_attach(uint32_t pin_mask, uint32_t edges, gpio_irq_cb_t p_callback);
-
-/* Number of times the interrupt has run on the calling core. */
-uint32_t gpio_irq_count(void);
-
-/* Longest single run of the handler on the calling core since the last
-   call, in us (1 us resolution, so a 2-3 us handler reads as 2..4). */
-uint32_t gpio_irq_take_max_us(void);
+IMPORT ER gpio_irq_init(void);					/* once per core */
+IMPORT ER gpio_irq_attach(UINT pin, UW edges, gpio_isr_t p_isr);	/* per pin */
 
 #endif /* GPIO_IRQ_H */

@@ -66,17 +66,26 @@ Use a Wi-Fi DHCP build with the F1 diagnostic line (or any code that prints
 3. Fail (the old behaviour): `t=` rises ~70 ms per line, and DHCP never
    completes.
 
-Results so far: 7/7 power-cycle boots pass ([`README.md`](README.md)). A
-profile-independent check is planned in [`DRILLDOWN.md`](DRILLDOWN.md) D2.
+Results: 7/7 Wi-Fi power-cycle boots pass ([`README.md`](README.md)). The
+profile-independent check ([`DRILLDOWN.md`](DRILLDOWN.md) D2/D3) measured
+1.000 MHz (−1 ppm) with the fix on power-on, reflash and reset-button boots,
+against 23.4375 µs/ms without it on power-on.
 
 ## How to revert
 
-Remove the two hunks above (or `git checkout -- kernel/sysdepend/pico_rp2040/cpu_clock.c`
-before it's committed). Reverting brings back the power-on fault.
+`git revert 993ebc7`, or remove the two hunks above. Reverting brings back
+the power-on and reset-button fault.
 
 ## Status and ownership
 
-- Uncommitted on branch `buddy_1` as of 2026-10-16.
+- Committed as `993ebc7` on branch `buddy_1` (2026-10-16), pushed to
+  `origin/buddy_1`. Not yet on `master`.
+- The D1-D3 test code (WATCHDOG `SCRATCH0`/`SCRATCH1` capture, the
+  `PF001_APPLY_FIX` switch and the `[pf001]` console prints) was never
+  committed. It was removed after the drill-down, and both the base and the
+  DNS profiles were rebuilt from `HEAD` (no warnings). Disassembly confirms
+  `startup_clock()` writes `WATCHDOG_TICK` (`0x4005802c`) and no longer
+  touches the scratch registers.
 - It's a **shared kernel-port change**: agree it with the team before it lands
   on `master`. It changes the timing seen by Wi-Fi, USB and the kernel's lock
   statistics on every power-on boot.

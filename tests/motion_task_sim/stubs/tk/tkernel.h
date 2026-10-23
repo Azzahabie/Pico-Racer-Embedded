@@ -64,6 +64,7 @@ typedef struct { ATR intatr; FP inthdr; } T_DINT;
 
 /* Registers the code under test touches. */
 #define TIMER_BASE		0x40054000u
+#define TIMER_TIMERAWL		(TIMER_BASE + 0x28u)	/* sysdef.h on target */
 #define SIO_BASE		0xD0000000u
 #define GPIO_IN			(SIO_BASE + 0x004u)
 #define SIO_CPUID_ADDR		0xd0000000u

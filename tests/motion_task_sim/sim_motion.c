@@ -153,7 +153,7 @@ sim_unplug_phase (int w, int phase)
 }
 
 /* ------------------------------------------------------------------ *
- *  Fakes: motor.h, encoder.h, gpio_irq.h
+ *  Fakes: motor.h, encoder.h, gpio_irq.h (Buddy 5's dispatcher)
  * ------------------------------------------------------------------ */
 
 ER motor_init(void) { g_duty[0] = g_duty[1] = 0; return E_OK; }
@@ -188,10 +188,9 @@ uint32_t encoder_read_edges_right(void)
 	return motion_pack_counts(g_wheel[1].edges_a, g_wheel[1].edges_b);
 }
 
-ER gpio_irq_init(INT level) { (void)level; return E_OK; }
-ER gpio_irq_attach(uint32_t m, uint32_t e, gpio_irq_cb_t cb) { (void)m; (void)e; (void)cb; return E_OK; }
-uint32_t gpio_irq_count(void) { return 0u; }
-uint32_t gpio_irq_take_max_us(void) { return 3u; }
+ER gpio_irq_init(void) { return E_OK; }
+uint32_t encoder_irq_count(void) { return 0u; }
+uint32_t encoder_take_irq_max_us(void) { return 3u; }
 
 /* ------------------------------------------------------------------ *
  *  Fakes: registers, kernel, monitor

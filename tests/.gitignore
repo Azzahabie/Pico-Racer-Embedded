@@ -3,7 +3,6 @@ motion_lib/test_motion_lib
 motor/test_motor
 encoder/test_encoder_usb
 encoder/test_encoder_uart
-gpio_irq/test_gpio_irq
 motion_task_sim/sim_off
 motion_task_sim/sim_open
 motion_task_sim/sim_pid

@@ -24,9 +24,9 @@ code is the tie-breaker, because it is the only source actually running.
 | Role | Team doc (`embedded .md`) | Design (& this record) | Firmware today |
 |---|---|---|---|
 | Radio / MQTT client owner | `cyw43_utk_task` — "Low (20)" *(wrong)* | `cyw43_utk_task` — **4, fixed** | **4**, `TP_PRC1` — `cyw43_utk_kernel.c:17`, `:36` |
-| Outbound telemetry | `comms_task` — (21) | **`comms_task`** — 8 (provisional) | does not exist yet |
+| Outbound telemetry | `comms_task` — (21) | **`comms_task`** — **16** (Week 6 report) | **16**, `TP_PRC1` — `comms_task.c` (H heartbeat only so far) |
 | Inbound commands | `wifi_task` — (19) | **merged into `comms_task`** | does not exist yet |
-| Existing reporter | not listed | keep, rename `wifi_report_task` | `wifi_status_task` **8** — `app_main.c:266` |
+| Existing reporter | not listed | keep for development, **off for demo day** (decision 8) | `wifi_status_task` **17**, `TP_PRC1`, gated by `TM_WIFI_REPORT` — `app_main.c` |
 
 **Resolution (Option A).** Buddy 1 runs **one** application task, **`comms_task`**
 (renamed from `wifi_task`), which both prepares outbound telemetry/heartbeat and
@@ -50,22 +50,33 @@ against it (smaller number = higher priority):
 |---|---|---|
 | 3 | USB console service | `usb_console.c:40` |
 | **4** | `cyw43_utk_task` (radio, core 0) | `cyw43_utk_kernel.c:17` |
-| 5–10 | demo tasks (producer, consumer, monitor, reporter, led_test, blink) | `app_main.c` |
+| 10 | `blink_task` — only with `TM_BLINK_LED=1`, off by default (GP16 is the IMU's SDA) | `app_main.c`, `demo_tasks.h` |
+| **16** | `comms_task` | `comms_task.c` |
+| 17 | `wifi_status_task` — development reporter, off for demo day | `app_main.c` |
+
+*Updated 2026-10-21:* the kernel-port demo tasks (producer 5, consumer 6,
+monitor 7) and `led_test` (9, drove GP10, the right motor input) were removed
+from `app_main.c`; see the git history for them.
 
 Legal range `1 … CNF_MAX_TSKPRI` = 32 (`config/config.h:39`).
 
 ### 3.1 One numbering, two queues — affinity, not priority, is what protects teammates
 
-There is **one priority numbering** (1–32): every task has a single number. But
-µT-Kernel under SMP keeps **one ready-queue per core**, and **preemption happens
-only within a queue** — two tasks on different cores never compare, whatever their
-numbers. **Affinity decides which queue a task joins.**
+There is **one priority numbering** (1–32): every task has a single number.
+*Corrected 2026-10-21:* µT-Kernel under SMP keeps **one ready queue shared by
+both cores** (`knl_ready_queue`, `kernel/tkernel/ready_queue.h:51`), not one per
+core as this section first said. On every reschedule the kernel walks that queue
+in priority order and gives each core the highest-priority ready task **allowed
+to run there** (`knl_ready_queue_assign`, `ready_queue_smp.c`). **Affinity
+decides where a task may run**: a task pinned to core 1 can only be displaced by
+a higher-priority task that may also run on core 1, and an unpinned task can
+land on either core — which is why every task is now pinned (Buddy 2's request).
 
 | Core | Tasks |
 |---|---|
-| **core 0** | USB console (3), `cyw43_utk_task` (radio, **4**, `TP_PRC1`), demo producer (5) |
-| **core 1** | demo consumer (6, `TP_PRC2`) |
-| **either (unpinned)** | monitor (7), `wifi_status_task` (8), led_test (9), blink (10), `comms_task` |
+| **core 0** | USB console (3), `cyw43_utk_task` (radio, **4**, `TP_PRC1`), `comms_task` (**16**, `TP_PRC1`, core proposed — agreeing with Buddy 2), `wifi_status_task` (17, `TP_PRC1`, development only), blink (10, `TP_PRC1`, off by default) |
+| **core 1** | the latency-sensitive sensing/control tasks (other buddies) |
+| **either (unpinned)** | none |
 
 > **Rule of thumb:** before asking "does X outrank Y?", ask **"same core?"** If
 > not, the numbers are irrelevant — affinity already settled it.
@@ -87,10 +98,11 @@ than by fighting the radio's fixed number.
 | 1 | One app task (`comms_task`, A) or two (A + `wifi_task`, B)? | **A** — one `comms_task`; B kept as a follow-up (§5) |
 | 2 | Source of truth for the task table? | [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §3 |
 | 3 | `cyw43_utk_task` priority | **4** — fixed, library, core 0 |
-| 4 | Keep + rename `wifi_status_task` → `wifi_report_task`? | **yes** (design §16 item 7) |
-| 5 | `comms_task` priority | **8 (provisional)** — deferred until measured |
+| 4 | Keep + rename `wifi_status_task` → `wifi_report_task`? | keep: **yes** (design §16 item 7); the rename is not done yet. Superseded in part by decision 8 |
+| 5 | `comms_task` priority | **16** — set by the Week 6 report (one below `nav_ctrl_task`, 15); the provisional 8 is withdrawn |
 | 6 | Add a **core / pin** column to the team doc? | **yes** (§6) |
 | 7 | Core for the latency-sensitive tasks? | **core 1** (§3.1) |
+| 8 | `wifi_status_task` on demo day? | **Off.** *Taken 2026-10-21.* It is a development console that came with the kernel port in the first commit (`75eeb0f`), not part of the team design, and the Week 6 task table does not list it. It stays in the source for development and testing — every `[wifi]`/`[mqtt]` console line, and with them the F1 and MQTT hardware evidence, comes from it — and is built only while `TM_WIFI_REPORT` is 1 (the default, `app_main.c`). **The demo-day build sets `TM_WIFI_REPORT` to 0.** Meanwhile it runs at priority **17**, below `comms_task`, pinned to core 0 |
 
 ## 5. Build guidance carried forward
 

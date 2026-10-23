@@ -6,49 +6,36 @@
 
 /*
  *	app_main.c
- *	Demo application for the micro T-Kernel 3.0 RP2040 SMP port.
+ *	usermain() for the car on the micro T-Kernel 3.0 RP2040 SMP port.
  *
- *	Four tasks and one pass of every IPC primitive the kernel offers, wired
- *	into a single producer/consumer pipeline so the objects are used the
- *	way they are meant to be used rather than poked in isolation:
+ *	Creates and starts the application tasks, prints the boot banner, then
+ *	sleeps.  The kernel-port demo pipeline (producer/consumer/monitor) and
+ *	the GP21->GP10 led_test were removed on 2026-10-21: led_test drove the
+ *	right motor input, and the demo held a mutex and a message buffer the
+ *	car needs.  Both are in the git history.
  *
- *	    producer  --[fixed memory pool]--> record
- *	              --[mutex]-------------> shared sequence counter
- *	              --[message buffer]----> consumer
- *	    consumer  --[semaphore]---------> credit returned to producer
- *	              --[event flag]--------> monitor woken
- *	    monitor   prints a status line
- *	    blink     LED liveness, independent of all of the above
- *
- *	Under SMP the producer is pinned to processor 1 and the consumer to
- *	processor 2, so every message crosses a core boundary and the printed
- *	processor numbers differ.  Built with SMP=0 the same source runs
- *	unchanged on one core.
- *
- *	Deliberately small.  Read it top to bottom, change one thing, reflash.
+ *	Tasks started here:
+ *	    wifi_status_task  Wi-Fi/MQTT console lines   (WIFI=cyw43, TM_WIFI_REPORT=1;
+ *	                      development only, off for demo day)
+ *	    comms_task        MQTT telemetry, Buddy 1    (WIFI_MQTT=1)
+ *	    motion_task       motors and encoders, Buddy 2 (always; core 1,
+ *	                      plus its motion_report printer on core 0)
+ *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
+ *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
  */
 
 #include <tk/tkernel.h>
 #include <tm/tmonitor.h>
 #include <bsp/libbsp.h>
 
-#if TK_SUPPORT_SMP
-#include <tk/smp.h>
-/* Which processor is the caller on?  Numbered from 1, so processor 1 is
-   RP2040 core 0 and processor 2 is core 1. */
-#define THIS_PRC()	tk_get_prc()
-#else
-/* Single-core build: there is only ever processor 1.  tk_get_prc() is
-   declared by the kernel headers but not linked in this configuration, so
-   the demo asks through this macro and the rest of the source is identical
-   for both builds. */
-#define THIS_PRC()	1
-#endif
-
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
-#include "led_test/led_test.h"
-#include "motor_task/motor_task.h"
+#include "race_test/race_test.h"
+#include "comms_task/comms_task.h"
+#include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
+#include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
+#include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
+#include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
 
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
@@ -59,189 +46,23 @@
  *  Tunables
  * ------------------------------------------------------------------ */
 
-#define N_RECORDS	4		/* blocks in the fixed memory pool  */
-#define CREDITS		2		/* messages in flight at once       */
-#define PRODUCE_MS	500		/* one record every half second     */
-#define REPORT_MS	2000		/* monitor prints this often        */
-
-#define FLG_PRODUCED	(1U << 0)
-#define FLG_CONSUMED	(1U << 1)
-
 /* Every task uses 4096 bytes.  The SMP kernel path is deeper than the
    single-core one -- each critical section runs the global ready-queue
    assignment on the calling task's stack -- so 1-2 KiB is no longer enough
    for a task that makes blocking kernel calls. */
 #define STACK_SZ	4096
 
-/* ------------------------------------------------------------------ *
- *  One record travelling through the pipeline
- * ------------------------------------------------------------------ */
-
-typedef struct {
-	UW	seq;			/* sequence number, mutex-guarded    */
-	INT	made_on;		/* processor that produced it        */
-	UW	payload;		/* something to check on arrival     */
-} RECORD;
-
-/* Kernel object ids, filled in by usermain(). */
-LOCAL ID	mpfid;			/* fixed-size memory pool            */
-LOCAL ID	mtxid;			/* guards next_seq                   */
-LOCAL ID	mbfid;			/* producer -> consumer              */
-LOCAL ID	semid;			/* consumer -> producer (credits)    */
-LOCAL ID	flgid;			/* both -> monitor                   */
-
-/* Shared state.  next_seq is guarded by the mutex; the counters below are
-   written by one task each and only read by the monitor, so they need no
-   lock of their own. */
-LOCAL UW	next_seq;
-LOCAL UW	produced, consumed, dropped;
-LOCAL INT	last_made_on, last_seen_on;
-
-/* Backing store for the pool and the message buffer.  Static, because a
-   kernel object must not own memory that can go out of scope. */
-LOCAL UW	mpf_buf[(N_RECORDS * sizeof(RECORD) + sizeof(UW) - 1) / sizeof(UW)
-			+ N_RECORDS];
-LOCAL UW	mbf_buf[(CREDITS * sizeof(RECORD)) / sizeof(UW) + CREDITS * 4];
-
-/* ------------------------------------------------------------------ *
- *  Producer -- pinned to processor 1 under SMP
- * ------------------------------------------------------------------ */
-
-LOCAL void producer_task(INT stacd, void *exinf)
-{
-	RECORD	*rec;
-	RECORD	msg;
-	ER	er;
-
-	(void)stacd; (void)exinf;
-
-	while(1) {
-		/* Wait for a credit: the consumer returns one per message, so
-		   the producer can never outrun it by more than CREDITS. */
-		er = tk_wai_sem(semid, 1, 1000);
-		if(er < E_OK) { dropped++; continue; }
-
-		/* A block from the fixed-size pool, rather than a local, to
-		   show tk_get_mpf/tk_rel_mpf round-tripping. */
-		er = tk_get_mpf(mpfid, (void **)&rec, 100);
-		if(er < E_OK) { dropped++; tk_sig_sem(semid, 1); continue; }
-
-		/* The sequence counter is the one piece of state two tasks
-		   could race on, so it is the one thing under a mutex. */
-		tk_loc_mtx(mtxid, TMO_FEVR);
-		rec->seq = ++next_seq;
-		tk_unl_mtx(mtxid);
-
-		rec->made_on = THIS_PRC();
-		rec->payload = rec->seq * 7U;
-
-		msg = *rec;			/* copy out before releasing */
-		tk_rel_mpf(mpfid, rec);
-
-		er = tk_snd_mbf(mbfid, &msg, (INT)sizeof msg, 1000);
-		if(er < E_OK) { dropped++; tk_sig_sem(semid, 1); continue; }
-
-		produced++;
-		last_made_on = msg.made_on;
-		tk_set_flg(flgid, FLG_PRODUCED);
-
-		tk_dly_tsk(PRODUCE_MS);
-	}
-}
-
-/* ------------------------------------------------------------------ *
- *  Consumer -- pinned to processor 2 under SMP
- * ------------------------------------------------------------------ */
-
-LOCAL void consumer_task(INT stacd, void *exinf)
-{
-	RECORD	msg;
-	INT	sz;
-
-	(void)stacd; (void)exinf;
-
-	while(1) {
-		sz = tk_rcv_mbf(mbfid, &msg, TMO_FEVR);
-		if(sz != (INT)sizeof msg) { dropped++; continue; }
-
-		/* Cheap integrity check: the payload is a known function of
-		   the sequence number, so a torn or reordered message shows
-		   up immediately. */
-		if(msg.payload != msg.seq * 7U) { dropped++; continue; }
-
-		consumed++;
-		last_seen_on = THIS_PRC();
-		tk_set_flg(flgid, FLG_CONSUMED);
-
-		/* Return the credit. */
-		tk_sig_sem(semid, 1);
-	}
-}
-
-/* ------------------------------------------------------------------ *
- *  Monitor -- woken by the event flag, prints a line
- * ------------------------------------------------------------------ */
-
-LOCAL void monitor_task(INT stacd, void *exinf)
-{
-	UINT	ptn;
-	ER	er;
-	INT	i;
-
-	(void)stacd; (void)exinf;
-
-	/* On a USB-CDC build the console is a 4 KB ring drained by the host.
-	   Anything printed before the host enumerates goes into a ring nobody
-	   is reading and is lost, so wait for the link first.  Bounded at ~20 s
-	   so a headless board still runs; on a UART build tm_usb_state() is a
-	   constant and this falls straight through. */
-	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
-		tk_dly_tsk(100);
-	}
-	tk_dly_tsk(500);
-
-	tm_printf((UB *)"\n=== uT-Kernel 3.0 / RP2040 demo ===\n");
-#if TK_SUPPORT_SMP
-	tm_printf((UB *)"SMP build: %d processors\n", TK_MAX_CORE);
-#else
-	tm_printf((UB *)"single-core build\n");
+/* Wi-Fi status reporter (below): a development console, not part of the car
+   design.  It came with the kernel port and prints every [wifi]/[mqtt] line
+   the F1 and MQTT evidence relies on.  Set to 0 for the demo-day build
+   (docs/comms/TASK_LAYOUT_RECONCILIATION.md, section 4 decision 8). */
+#ifndef TM_WIFI_REPORT
+#define TM_WIFI_REPORT	1
 #endif
-	tm_printf((UB *)"producer -> [mbf] -> consumer, %d credits, %d ms period\n\n",
-		  CREDITS, PRODUCE_MS);
 
-	while(1) {
-		/* Wait until both ends have moved at least once since the
-		   last report.  TWF_ANDW = wait for every bit; the flag is
-		   cleared as part of the wait so the next round starts
-		   clean. */
-		er = tk_wai_flg(flgid, FLG_PRODUCED | FLG_CONSUMED,
-				TWF_ANDW | TWF_CLR, &ptn, REPORT_MS);
-
-		if(er == E_TMOUT) {
-			tm_printf((UB *)"[monitor] stalled: produced=%u consumed=%u\n",
-				  produced, consumed);
-			continue;
-		}
-
-		tm_printf((UB *)"[monitor] seq=%u produced=%u consumed=%u dropped=%u"
-			       "  made_on=prc%d seen_on=prc%d\n",
-			  next_seq, produced, consumed, dropped,
-			  last_made_on, last_seen_on);
-
-		/* One line every REPORT_MS cannot overrun a 4 KB ring, but say
-		   so out loud if the console ever does drop bytes. */
-		if(tm_usb_dropped_bytes() != 0) {
-			tm_printf((UB *)"[monitor] console dropped %u bytes\n",
-				  tm_usb_dropped_bytes());
-		}
-
-		tk_dly_tsk(REPORT_MS);
-	}
-}
-
-#if TM_WIFI_CYW43
+#if TM_WIFI_CYW43 && TM_WIFI_REPORT
 /* ------------------------------------------------------------------ *
- *  WiFi status -- only built when WIFI=cyw43
+ *  WiFi status -- only built when WIFI=cyw43 and TM_WIFI_REPORT=1
  *
  *  The radio is not driven from here.  A dedicated service task owns the
  *  CYW43439, lwIP and the echo session -- pinned to processor 1 under SMP,
@@ -264,9 +85,69 @@ LOCAL void fmt_ipv4(UB *dst, const UB *a)
 	tm_sprintf(dst, (UB *)"%u.%u.%u.%u", a[0], a[1], a[2], a[3]);
 }
 
+/* Names for the connection state machine's log (cyw43_utk.h). */
+LOCAL const char *net_state_name(UW state)
+{
+	static const char *const name[] = {
+		"SCANNING", "JOINING", "WAIT_LEASE", "ONLINE", "BACKOFF"
+	};
+
+	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
+}
+
+#if TM_WIFI_MQTT
+/* Names for the MQTT session state (CYW43_MQTT_* in cyw43_utk.h). */
+LOCAL const char *mqtt_state_name(UW state)
+{
+	static const char *const name[] = {
+		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED"
+	};
+
+	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
+}
+#endif
+
+/* " why=..." for a log entry, or "" on the normal forward path.  The link
+   codes are CYW43_LINK_FAIL / _NONET / _BADAUTH from cyw43.h, which this file
+   cannot include. */
+LOCAL void fmt_net_why(UB *dst, const T_CYW43_UTK_NET_EVENT *ev)
+{
+	const char	*link;
+
+	switch(ev->why) {
+	case CYW43_NET_WHY_JOIN_REQUEST:
+		tm_sprintf(dst, (UB *)" why=join-request(%d)", ev->code);
+		break;
+	case CYW43_NET_WHY_JOIN_FAILED:
+		link = (ev->code == -1) ? "FAIL"
+		     : (ev->code == -2) ? "NONET"
+		     : (ev->code == -3) ? "BADAUTH" : "?";
+		tm_sprintf(dst, (UB *)" why=join-failed(%s)", link);
+		break;
+	case CYW43_NET_WHY_JOIN_TIMEOUT:
+		tm_sprintf(dst, (UB *)" why=join-timeout");
+		break;
+	case CYW43_NET_WHY_LEASE_TIMEOUT:
+		tm_sprintf(dst, (UB *)" why=lease-timeout");
+		break;
+	case CYW43_NET_WHY_LINK_LOST:
+		tm_sprintf(dst, (UB *)" why=link-lost");
+		break;
+	case CYW43_NET_WHY_LEASE_LOST:
+		tm_sprintf(dst, (UB *)" why=lease-lost");
+		break;
+	default:
+		dst[0] = '\0';
+		break;
+	}
+}
+
 LOCAL void wifi_status_task(INT stacd, void *exinf)
 {
-	T_CYW43_UTK_STATUS	st;
+	/* static: the snapshot is ~2.7 KB, too much of a 4 KB stack.  Only one
+	   instance of this task ever runs. */
+	static T_CYW43_UTK_STATUS	st;
+	UW			net_cursor = 0;	/* state changes printed so far */
 	UW			last_link = 0xffffffffU;
 	UW			cursor = 0;	/* echoes printed so far */
 	UB			ip[16];
@@ -281,16 +162,39 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 
 	(void)stacd; (void)exinf;
 
-	/* Same enumeration wait the monitor uses.  Without it this task races
-	   ahead of the banner and its first lines land before the demo has
-	   introduced itself. */
+	/* Same enumeration wait usermain() uses before its banner.  Without it
+	   this task races ahead of the banner and its first lines are lost
+	   before the host is reading. */
 	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
 		tk_dly_tsk(100);
 	}
-	tk_dly_tsk(700);		/* let the monitor print its banner first */
+	tk_dly_tsk(700);		/* let usermain() print the banner first */
 
 	while(1) {
 		cyw43_utk_get_status(&st);
+
+		/* Connection state changes.  The radio task logs every transition,
+		   so none is lost between these polls even though JOINING lasts
+		   less than WIFI_IDLE_MS.  join# / lease# / lost are the totals at
+		   the time of the change, t is ms since boot. */
+		if(st.net_log_seq - net_cursor > CYW43_NET_LOG) {
+			tm_printf((UB *)"[wifi] (%u state changes not shown)\n",
+				  st.net_log_seq - net_cursor - CYW43_NET_LOG);
+			net_cursor = st.net_log_seq - CYW43_NET_LOG;
+		}
+		while(net_cursor != st.net_log_seq) {
+			const T_CYW43_UTK_NET_EVENT *ev =
+				&st.net_log[net_cursor % CYW43_NET_LOG];
+			UB why[32];
+
+			fmt_net_why(why, ev);
+			tm_printf((UB *)"[wifi] state=%s%s join#=%u lease#=%u"
+				       " lost=%u t=%ums\n",
+				  net_state_name(ev->state), why,
+				  ev->join_attempts, ev->lease_attempts,
+				  ev->link_losses, ev->t_ms);
+			net_cursor++;
+		}
 
 		/* Link transitions, printed once each rather than every tick. */
 		if(st.link_up != last_link) {
@@ -323,24 +227,44 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		}
 
 #if TM_WIFI_MQTT
-		/* MQTT is one-shot, so report the verdict once on the completion
-		   edge -- including the broker and what was published, because
-		   unlike the echo phases nothing else on this console proves it. */
-		if(st.mqtt_complete != last_mqtt) {
-			last_mqtt = st.mqtt_complete;
-			if(st.mqtt_complete) {
-				UB broker[16];
-				fmt_ipv4(broker, st.mqtt_broker);
-				tm_printf((UB *)"[mqtt] %s:%u  topic=%s  payload=%s"
-					       "  result=%d  published=%u\n",
-					  broker, st.mqtt_port, st.mqtt_topic,
-					  st.mqtt_payload, st.mqtt_result,
-					  st.mqtt_published);
-			}
+		/* One line per session state change.  Changes faster than this
+		   task polls are collapsed, but the counters still show them:
+		   conn# counts CONNACKs and lost counts sessions that ended. */
+		if(st.mqtt_state_changes != last_mqtt) {
+			UB broker[16];
+			last_mqtt = st.mqtt_state_changes;
+			fmt_ipv4(broker, st.mqtt_broker);
+			tm_printf((UB *)"[mqtt] state=%s  %s:%u  conn#=%u lost=%u"
+				       "  pub=%u err=%u drop=%u  last=%d/%d\n",
+				  mqtt_state_name(st.mqtt_state), broker,
+				  st.mqtt_port, st.mqtt_connects,
+				  st.mqtt_sessions_lost, st.mqtt_published,
+				  st.mqtt_publish_errors, st.mqtt_queue_dropped,
+				  st.mqtt_connect_request, st.mqtt_connection_result);
 		}
 #endif
 
 		if(!st.udp_enabled) {
+#if TM_WIFI_DHCP
+			/* Diagnostic (F1.0): linked but no lease yet.  polls= frozen
+			   between lines means the radio task has stopped, and stage=
+			   says where; rd= climbing means it stopped mid-publish.  The
+			   address fields are what lwIP holds so far.  (The UDP profile
+			   has its own "[udp] waiting" line.) */
+			if(st.link_up && !st.dhcp_complete) {
+				UB gw[16], dns[16];
+				fmt_ipv4(ip, st.dhcp_address);
+				fmt_ipv4(gw, st.dhcp_gateway);
+				fmt_ipv4(dns, st.dhcp_dns);
+				tm_printf((UB *)"[wifi] waiting for lease: state=%u tries=%u"
+					       " t=%ums addr=%s gw=%s dns=%s polls=%u"
+					       " stage=%u rd=%u\n",
+					  st.dhcp_state, st.dhcp_tries,
+					  st.dhcp_elapsed_ms, ip, gw, dns,
+					  st.poll_count, st.poll_stage,
+					  st.status_retries);
+			}
+#endif
 			tk_dly_tsk(WIFI_IDLE_MS);
 			continue;
 		}
@@ -430,22 +354,12 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 	}
 }
 
+/* Priority 17: below comms_task (16), so a console printer never delays
+   telemetry.  Core 0 with the radio, never on the control core (core 1). */
 LOCAL T_CTSK ctsk_wifi = {
-	.itskpri	= 8,
+	.itskpri	= 17,
 	.stksz		= STACK_SZ,
 	.task		= wifi_status_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-#endif	/* TM_WIFI_CYW43 */
-
-/* ------------------------------------------------------------------ *
- *  Task and object definitions
- * ------------------------------------------------------------------ */
-
-LOCAL T_CTSK ctsk_producer = {
-	.itskpri	= 5,
-	.stksz		= STACK_SZ,
-	.task		= producer_task,
 #if TK_SUPPORT_SMP
 	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
 	.assprc		= TP_PRC1,
@@ -453,67 +367,50 @@ LOCAL T_CTSK ctsk_producer = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
+#endif	/* TM_WIFI_CYW43 && TM_WIFI_REPORT */
 
-LOCAL T_CTSK ctsk_consumer = {
-	.itskpri	= 6,
+/* ------------------------------------------------------------------ *
+ *  Task definitions
+ * ------------------------------------------------------------------ */
+
+#if TM_BLINK_LED
+LOCAL T_CTSK ctsk_blink = {
+	.itskpri	= 10,
 	.stksz		= STACK_SZ,
-	.task		= consumer_task,
+	.task		= blink_task,
 #if TK_SUPPORT_SMP
 	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
-	.assprc		= TP_PRC2,
+	.assprc		= TP_PRC1,
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+#endif
+
+// Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
+LOCAL T_CTSK ctsk_obstacle = {
+	.itskpri	= 13,
+	.stksz		= STACK_SZ,
+	.task		= obstacle_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
 #else
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
 
-LOCAL T_CTSK ctsk_monitor = {
-	.itskpri	= 7,
+// Buddy 5 nav_ctrl_task (mission state, buttons, buzzer): priority 15, core 0
+LOCAL T_CTSK ctsk_nav = {
+	.itskpri	= 15,
 	.stksz		= STACK_SZ,
-	.task		= monitor_task,
+	.task		= nav_ctrl_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
+#else
 	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_blink = {
-	.itskpri	= 10,
-	.stksz		= STACK_SZ,
-	.task		= blink_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_led_test = {
-	.itskpri	= 9,
-	.stksz		= STACK_SZ,
-	.task		= led_test_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CMPF cmpf = {
-	.mpfatr		= TA_TFIFO | TA_RNG3,
-	.mpfcnt		= N_RECORDS,
-	.blfsz		= sizeof(RECORD),
-	.bufptr		= mpf_buf,
-};
-
-LOCAL T_CMTX cmtx = {
-	.mtxatr		= TA_TFIFO | TA_INHERIT,
-};
-
-LOCAL T_CMBF cmbf = {
-	.mbfatr		= TA_TFIFO,
-	.bufsz		= sizeof mbf_buf,
-	.maxmsz		= sizeof(RECORD),
-	.bufptr		= mbf_buf,
-};
-
-LOCAL T_CSEM csem = {
-	.sematr		= TA_TFIFO,
-	.isemcnt	= CREDITS,
-	.maxsem		= CREDITS,
-};
-
-LOCAL T_CFLG cflg = {
-	.flgatr		= TA_TFIFO | TA_WMUL,
-	.iflgptn	= 0,
+#endif
 };
 
 /* ------------------------------------------------------------------ *
@@ -531,30 +428,88 @@ LOCAL BOOL made(const char *what, ID id)
 	return TRUE;
 }
 
+/* Boot banner.  On a USB-CDC build anything printed before the host
+   enumerates goes into a ring nobody reads, so wait for the link first.
+   Bounded at ~20 s so a headless board still runs; on a UART build
+   tm_usb_state() is a constant and this falls straight through. */
+LOCAL void print_banner(void)
+{
+	INT	i;
+
+	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
+		tk_dly_tsk(100);
+	}
+	tk_dly_tsk(500);
+
+	tm_printf((UB *)"\n=== uT-Kernel 3.0 / RP2040 car ===\n");
+#if TK_SUPPORT_SMP
+	tm_printf((UB *)"SMP build: %d processors\n\n", TK_MAX_CORE);
+#else
+	tm_printf((UB *)"single-core build\n\n");
+#endif
+}
+
 EXPORT INT usermain(void)
 {
 	ID	tid;
 
-	mpfid = tk_cre_mpf(&cmpf); if(!made("mpf", mpfid)) return 1;
-	mtxid = tk_cre_mtx(&cmtx); if(!made("mtx", mtxid)) return 1;
-	mbfid = tk_cre_mbf(&cmbf); if(!made("mbf", mbfid)) return 1;
-	semid = tk_cre_sem(&csem); if(!made("sem", semid)) return 1;
-	flgid = tk_cre_flg(&cflg); if(!made("flg", flgid)) return 1;
+	(void)tid;		/* unused when no task below is built in */
 
-	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
-	/* led_test is not started: it drives GP10, which is now the right
-	   motor's M2A input, so it would spin that wheel whenever GP21 reads
-	   high.  motion_task owns GP8-GP11 (approved pin map). */
-	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);
-	{
-		ER ercd = motor_task_start();	/* Buddy 2: motors + encoders */
-		if(ercd < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", ercd);
+	/* Kernel objects that cross app tasks first, before any task starts
+	   (design section 6.3).  tele_mbf: every task -> comms_task. */
+	if(comms_tele_init() < E_OK) {
+		tm_printf((UB *)"[init] comms_tele_init failed\n");
 	}
-#if TM_WIFI_CYW43
+
+	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
+	 * and nav_flg are. motion IDs stay 0 until Buddy 2 adds them (scan_task
+	 * then simulates motion_task's replies). A failure here only prints:
+	 * usermain() must not return (see the end of this function). */
+	if(E_OK != nav_ctrl_init()) {
+		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
+	} else {
+		scan_if_bind_t scan_bind = {
+			.nav_flgid		= nav_flag(),
+			.p_mission_running	= nav_mission_running,
+		};
+		scan_if_bind(&scan_bind);
+
+		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
+		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
+	}
+
+	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
+	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
+	   Outside the nav block so the motors are braked even if nav_flg
+	   failed.  Motion IDs are not bound yet: scan_task still simulates
+	   motion's replies. */
+	{
+		ER er = motor_task_start();
+		if(er < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", er);
+	}
+
+#if TM_BLINK_LED
+	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
+#endif
+#if TM_WIFI_CYW43 && TM_WIFI_REPORT
 	tid = tk_cre_tsk(&ctsk_wifi);     if(made("tsk(wifi)",     tid)) tk_sta_tsk(tid, 0);
 #endif
+#if TM_WIFI_MQTT
+	{
+		ER er = comms_task_start();
+		if(er < E_OK) tm_printf((UB *)"[init] comms_task_start failed, er=%d\n", er);
+	}
+#endif
+
+#if TM_RACE_TEST
+	/* Two-core demonstration of the packed-word hazard.  Off by default:
+	   flip TM_RACE_TEST in race_test.h to build it in. */
+	if(race_test_start() < E_OK) {
+		tm_printf((UB *)"[init] race_test_start failed\n");
+	}
+#endif
+
+	print_banner();
 
 	/* The initial task has nothing left to do.  It must not return: on
 	   return the kernel shuts the system down. */
