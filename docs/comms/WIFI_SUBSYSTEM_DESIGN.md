@@ -429,8 +429,11 @@ Tribunal 1:
 - **Buddy 1's part:** `comms_task` **sets and clears the Wi-Fi-loss bit** at
   task level on core 0, driven by the connection-state changes the F1.4 work
   already logs (link down / no lease / MQTT down → set; `STREAMING` again →
-  clear). It **reads the flag once per `S` line** and copies the five bits into
-  the `faults` field (`MQTT_SCHEMA.md` §4.1).
+  clear). It **reads the flag once per `S` line** and copies the six bits into
+  the `faults` field (`MQTT_SCHEMA.md` §4.1). *Agreed with Buddy 5 on
+  2026-10-23:* Wi-Fi loss is **bit 5** (`FAULT_WIFI_LOSS`) and
+  **report-only** — `nav_ctrl_task` decides Fault with `FAULT_STOP_MASK`,
+  which leaves it out, so a Wi-Fi drop never stops the car.
 - **Who clears what:** each bit is cleared only by its own setter, or by the
   `FAULT_CLEAR` path Buddy 5 owns. To be written down with Buddy 5.
 - **Cost:** a reader waits at most one kernel-lock window, **85 µs max
@@ -690,7 +693,7 @@ first byte. Fields are packed LSB-first, little-endian, in table order
 
 | Record | Topic | Size | Contents |
 |---|---|---|---|
-| `S` | `…/telemetry`, 1 Hz | **15 B** (120 bits, v3) | header + fault bitmask (5) + the latest-state table: `mot` 4, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4 |
+| `S` | `…/telemetry`, 1 Hz | **16 B** (121 bits, v4) | header + fault bitmask (6) + the latest-state table: `mot` 4, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4 |
 | `E` | `…/telemetry`, on the event | **8–13 B** per kind (v3) | header + the producer's event body: `k` 3 + that kind's fields (`MQTT_SCHEMA.md` §5.1) |
 | `H` | `…/heartbeat` | **7 B** (53 bits) | header only |
 | `D` | `…/state`, on `snap` | **21 B** (162 bits) | `S` + `rssi` 7, `ip` 32, `qd` 3, `mqv` 2 |
@@ -705,7 +708,8 @@ says whether the car dropped them, and `mpv` lets the laptop verify a remap.
 **Measured** (2026-09-28): the JSON state line was **141 bytes**, the
 `key=value` form 101. **Calculated** (Tribunal Test 1,
 [`Tribunal/packed_size.py`](Tribunal/packed_size.py)): the packed `S` record is
-**15 bytes, 9.4× smaller**, and `map` drops from 36 bytes of text to 7. The
+**16 bytes, 8.8× smaller** (v4; v3's 15 bytes was measured on the link on
+2026-10-22), and `map` drops from 36 bytes of text to 7. The
 Week 13 message-size comparison needs the packed figure **measured** on the
 link, not just calculated.
 
@@ -1074,7 +1078,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
       decoder shows `k = B`, and an `EVT_IMU` and it shows `k = I`.
 - [ ] **Gate (updated from Tribunal 1, 2026-10-19):** the laptop decoder
       decodes every record type, and every payload has the fixed length of its
-      type (S 15 B, H 7 B, D 21 B; E 8–13 B by kind, schema v3). This replaces the JSON-era gate
+      type (S 16 B, H 7 B, D 21 B; E 8–13 B by kind, schema v4). This replaces the JSON-era gate
       "a generic client renders the JSON as a tree" (§8.1).
 - [ ] **Gate (Tribunal 1):** pack/unpack round trip on a PC for every field at
       its minimum, maximum and one past (clamped, `ovf` set).

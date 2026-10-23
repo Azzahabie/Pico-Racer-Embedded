@@ -92,6 +92,8 @@ CASES = [
 # Records with no producer helper yet, built from the field lists.
 RECORDS = [
     ("S example", ps.EXAMPLES["S"]),
+    ("S all faults", (ps.S_FIELDS, dict(ps.EXAMPLES["S"][1], faults=0x3F))),
+    ("S Wi-Fi loss", (ps.S_FIELDS, dict(ps.EXAMPLES["S"][1], faults=0x20))),
     ("H example", ps.EXAMPLES["H"]),
     ("D example", (ps.D_FIELDS, dict(ps.EXAMPLES["S"][1], t=3, rssi=58, ip=0x0732A8C0, qd=2, mqv=2))),
 ]
@@ -148,9 +150,9 @@ def main():
         "};",
         "",
         f"/* MQTT_SCHEMA.md section 10 S example, schema v{ps.SCHEMA_VERSION}, in S field order. */",
-        "static const uint32_t s_v3_values[] = {" + ", ".join(
+        "static const uint32_t s_example_values[] = {" + ", ".join(
             str(s_vals.get(f[0], 0)) for f in s_fields) + "};",
-        f"static const uint8_t s_v3_bytes[{len(s_bytes)}] = {c_bytes(s_bytes)};",
+        f"static const uint8_t s_example_bytes[{len(s_bytes)}] = {c_bytes(s_bytes)};",
         "",
         "#endif /* TEST_VECTORS_H */",
         "",

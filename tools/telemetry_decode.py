@@ -1,4 +1,4 @@
-"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v3).
+"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v4).
 
     python tools/telemetry_decode.py [--broker HOST] [--port N] [--id CLIENT_ID]
 
@@ -16,11 +16,11 @@ import argparse
 import datetime
 import time
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 HEADER = [("t", 2), ("v", 3), ("s", 16), ("up", 32)]  # 53 bits, section 3.6
 HEADER_BITS = 53
 
-S_BODY = [("faults", 5), ("mot", 4), ("dst", 8), ("lin", 2), ("dev", 8), ("bar", 5),
+S_BODY = [("faults", 6), ("mot", 4), ("dst", 8), ("lin", 2), ("dev", 8), ("bar", 5),
           ("act", 2), ("hum", 4), ("hgt", 8), ("obs", 8), ("byp", 2), ("mis", 3),
           ("mpv", 4), ("drp", 4)]
 D_EXTRA = [("rssi", 7), ("ip", 32), ("qd", 3), ("mqv", 2)]
@@ -35,6 +35,8 @@ E_BODIES = {
     4: ("obstacle", [("width_cm", 8), ("bypass", 2)]),
     5: ("mission", [("state", 3)]),
 }
+# The shared fault bitmask, bit 0 first (section 4.1, messages.h FAULT_*).
+FAULT_NAMES = ["motor_stall", "encoder", "imu", "scan_sensor_lost", "line_sensor", "wifi_loss"]
 # Offset-encoded fields: stored = value + offset (section 3 rule 5).
 OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_rate": 512}
 
@@ -102,6 +104,8 @@ def describe(values):
             val = val - OFFSETS[key]
         elif key in ("bar", "letter"):
             val = "none" if val == 31 else chr(65 + val) if val <= 25 else f"?{val}"
+        elif key == "faults":
+            val = "|".join(n for i, n in enumerate(FAULT_NAMES) if val >> i & 1) or "0"
         elif key == "ip":
             val = ".".join(str((val >> (8 * i)) & 0xFF) for i in range(4))
         parts.append(f"{key}={val}")
