@@ -79,7 +79,11 @@ encoder_edge_isr (UINT pin, UW events, UW now_us)
     uint32_t gpio_in = in_w(GPIO_IN);
     uint32_t run_us;
 
-    (void)events; /* rise, fall or both: the levels say which */
+    /* Not needed: the level read above gives this pin's net change since
+       the last callback.  That is exact while the wheel's other pin has
+       not changed; a burst of three or more transitions across both pins
+       before the interrupt runs can decode as a smaller step. */
+    (void)events;
 
     if ((MOTION_PIN_ENC_L_A == pin) || (MOTION_PIN_ENC_L_B == pin))
     {

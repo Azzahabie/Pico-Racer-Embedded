@@ -95,7 +95,9 @@ Turn the **left** wheel slowly in the car's forward direction:
 - Mark the tyre, turn exactly **one revolution**, and note the change in
   count: that is counts per wheel revolution (assumption A2).
 - Repeat for the right wheel.
-- `missed` counts illegal transitions (both channels changed at once).
+- `missed` counts illegal transitions (both channels changed at once). It
+  is a lower bound: an interrupt held off for three or more transitions
+  can decode as a smaller step without counting as missed.
   It should stay at 0 when turning by hand.
 
 The braked H-bridge makes the wheel stiff; turning slowly is fine.
@@ -238,8 +240,10 @@ Found while writing this; each needs its owner.
 3. **Print from core 0 only.** In the USB-CDC build `tm_printf` masks
    interrupts on its core for the whole line. Any task that prints should
    be pinned to core 0 (`TP_PRC1`), or the encoder interrupt on core 1 is
-   delayed. scan_task prints on core 1; the timing line above will show
-   whether that matters once both run on the car.
+   delayed. scan_task prints on core 1. The timing line cannot show that
+   delay (its `longest` starts only once interrupts are unmasked); the
+   evidence is the status line's `missed L/R` while the wheels turn with
+   scan_task running, where any non-zero value means an edge came late.
 4. **GP16 (Buddy 4).** `BOARD_LED_PIN` is 16: `hw_setting.c` makes it an
    output at boot and `blink_task` (`TM_BLINK_LED=1` only) toggles it, but
    GP16 is the IMU's Grove 4 pin.
@@ -249,6 +253,10 @@ Found while writing this; each needs its owner.
    to move to GP16/GP17.
 6. **led_test** drove GP10 (right motor M2A). Buddy 1 removed it on
    master (21 Oct).
+7. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
+   `TM_BLINK_LED=1`, blink's diagnostic pulse (`demo_tasks.c`) takes
+   GP8-GP11 and GP2/GP3 back after motion has set them up. Keep both off
+   on the car.
 
 ## Not done yet
 
