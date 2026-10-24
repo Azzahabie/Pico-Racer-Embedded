@@ -88,6 +88,11 @@
 
 #define MOTION_REPORT_TICKS (20u) /* status line every 200 ms */
 
+/* Hardware watchdog (prof Week 6 item 2, PreTri1: 30 ms PROPOSED), fed
+   at the end of every completed tick.  It must stay above the longest
+   gap between feeds measured on the car, which the timing line prints. */
+#define MOTION_WDT_MS (30u)
+
 /* FR-30 stall detection  (PROPOSED: [t_stall] 300 ms, [N_min] 3 counts) */
 #define MOTION_STALL_TICKS      (30u)
 #define MOTION_STALL_MIN_COUNTS (3)
