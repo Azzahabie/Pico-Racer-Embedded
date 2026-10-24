@@ -14,8 +14,8 @@
  *
  *	Wiring, I2C0:
  *
- *	    VIN -> 3V3     SDA -> GP8
- *	    GND -> GND     SCL -> GP9
+ *	    VIN -> 3V3     SDA -> GP16
+ *	    GND -> GND     SCL -> GP17
  *
  *	Output, every READ_MS:
  *	    [imu] acc mg x=.. y=.. z=.. |a|=..   mag mG x=.. y=.. z=..
@@ -33,7 +33,7 @@
 #include "../common/messages.h"
 #include "../usb_console_compat.h"
 
-#define I2C_DEV		"iica"		/* I2C0: GP8 SDA, GP9 SCL           */
+#define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define READ_MS		250
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
 
@@ -119,7 +119,7 @@ LOCAL void bus_scan(void)
 	}
 	if(found == 0) {
 		tm_printf((UB *)"[imu]   nothing answered: check VIN/GND,"
-			       " SDA->GP8, SCL->GP9\n");
+			       " SDA->GP16, SCL->GP17\n");
 	}
 }
 
