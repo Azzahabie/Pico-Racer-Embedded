@@ -7,10 +7,11 @@
  *
  *	    make -C tests/motion_task_sim          (V=1 prints the console)
  *
- *	motor.c, encoder.c and gpio_irq.c are replaced by the fakes below;
- *	motion_lib.c is the real one.
+ *	motor.c, encoder.c, motion_wdt.c and gpio_irq.c are replaced by the
+ *	fakes below; motion_lib.c is the real one.
  */
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -158,7 +159,9 @@ sim_unplug_phase (int w, int phase)
  *  Fakes: motor.h, encoder.h, gpio_irq.h (Buddy 5's dispatcher)
  * ------------------------------------------------------------------ */
 
-ER motor_init(void) { g_duty[0] = g_duty[1] = 0; return E_OK; }
+static int		g_fail_init;	/* motor_init reports a failure */
+
+ER motor_init(void) { g_duty[0] = g_duty[1] = 0; return g_fail_init ? E_OBJ : E_OK; }
 
 void motor_set(motor_side_t side, int32_t duty_pm)
 {
@@ -192,6 +195,33 @@ uint32_t encoder_read_edges_right(void)
 }
 
 ER gpio_irq_init(void) { return E_OK; }
+
+/* motion_wdt.h: counts what motion_task does with the watchdog. */
+static motion_boot_t	g_boot;		/* cause the next start-up reads */
+static int		g_wdt_starts;
+static int		g_wdt_feeds;
+static int		g_wdt_feeds_at_start;	/* armed before any feed? */
+
+motion_boot_t motion_wdt_boot_cause(void) { return g_boot; }
+void motion_wdt_start(void) { g_wdt_starts++; g_wdt_feeds_at_start = g_wdt_feeds; }
+void motion_wdt_feed(void) { g_wdt_feeds++; }
+
+#if MOTION_BENCH
+static int		g_hang_marker;	/* SCRATCH0 holds the test record */
+static uint32_t		g_hang_us;
+static jmp_buf		g_hang_jmp;
+static uint32_t		g_hang_fed_us;
+
+/* The real one never returns: jump back to the scenario. */
+void motion_wdt_hang(uint32_t fed_us) { g_hang_fed_us = fed_us; longjmp(g_hang_jmp, 1); }
+bool motion_wdt_take_hang_us(uint32_t *p_us)
+{
+	int b_found = g_hang_marker;
+
+	if (b_found) { *p_us = g_hang_us; g_hang_marker = 0; }
+	return b_found != 0;
+}
+#endif
 uint32_t encoder_irq_count(void) { return 0u; }
 uint32_t encoder_take_irq_max_us(void) { return 3u; }
 
@@ -379,8 +409,10 @@ sim_reset (const char *p_name)
 	g_gpio_in = 0xFFFFFFFFu;		/* pull-ups: button released */
 	g_gpio_in_reads = 0;
 	g_gp20_setups = 0;
-	CHECK(motion_init(&g_ctx) == E_OK);
-	report_event(&g_ctx, EVT_READY, E_OK, 2);
+	g_wdt_starts = 0;
+	g_wdt_feeds = 0;
+	CHECK(motion_start_up(&g_ctx, 2) == E_OK);
+	g_boot = MOTION_BOOT_POWER_ON;		/* one start-up only */
 	drain_reports();
 }
 
@@ -478,6 +510,67 @@ scenario_hand_turn (void)
 		motion_report_t const *p = find_kind(REP_STATUS, -1, count_kind(REP_STATUS, -1) - 1);
 		CHECK((p != NULL) && (p->val_l >= 180) && (p->val_r == 0));
 	}
+}
+
+/* Armed once at start-up, before the first feed; fed once per completed
+   tick and never on a lost one; the timing line shows the gap. */
+static void
+scenario_watchdog_feed (void)
+{
+	sim_reset("watchdog: armed at start-up, fed every completed tick");
+	CHECK(g_wdt_starts == 1);
+	CHECK(g_wdt_feeds_at_start == 0);
+	CHECK(strstr(g_log, "last reset: power-on or RUN pin") != NULL);
+	CHECK(strstr(g_log, "watchdog armed: the chip resets if a tick does not complete within 30 ms") != NULL);
+	sim_ticks(600);
+	CHECK(g_wdt_feeds == 600);
+	CHECK(strstr(g_log, "longest gap between feeds 10000 us, resets at 30000 us") != NULL);
+
+	/* No tick, no feed.  On the car the chip resets 30 ms after the
+	   last feed, before this 50 ms timeout could ever fire. */
+	g_fail_ticks = 3;
+	sim_ticks(3);
+	CHECK(g_wdt_feeds == 600);
+	sim_tick();
+	CHECK(g_wdt_feeds == 601);
+}
+
+/* After a watchdog reset the car says so and does not start on its own. */
+static void
+scenario_boot_after_watchdog (void)
+{
+	g_boot = MOTION_BOOT_WATCHDOG;
+	sim_reset("start-up after a watchdog reset: reported, motors stay braked");
+	CHECK(strstr(g_log, "last reset: WATCHDOG") != NULL);
+	CHECK(strstr(g_log, "watchdog test") == NULL);
+	CHECK(g_wdt_starts == 1);
+	sim_ticks(300);
+	CHECK(g_duty_max_abs == 0);
+	CHECK(count_kind(REP_EVENT, EVT_START) == 0);
+
+	g_boot = MOTION_BOOT_REBOOT;
+	sim_reset("start-up after the boot ROM's reboot: not a fault");
+	CHECK(strstr(g_log, "not a fault") != NULL);
+	CHECK(strstr(g_log, "WATCHDOG") == NULL);
+}
+
+/* A car that failed its set-up stays braked and is never armed, so it
+   does not reboot over and over. */
+static void
+scenario_init_fail_not_armed (void)
+{
+	printf("-- init fails: watchdog not armed, motors braked\n");
+	memset(&g_ctx, 0, sizeof g_ctx);
+	g_n_seen = 0; g_q_count = 0; g_log_len = 0; g_log[0] = '\0';
+	g_wdt_starts = 0;
+	g_fail_init = 1;
+	CHECK(motion_start_up(&g_ctx, 2) == E_OBJ);
+	g_fail_init = 0;
+	drain_reports();
+	CHECK(g_wdt_starts == 0);
+	CHECK(strstr(g_log, "init FAILED") != NULL);
+	CHECK(strstr(g_log, "watchdog NOT armed") != NULL);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 }
 
 #if !MOTION_BENCH
@@ -695,6 +788,42 @@ scenario_reports_never_block (void)
 	drain_reports();
 }
 
+#if MOTION_TEST_WDT
+/* Bench watchdog test: motion_task hangs with the left wheel turning and
+   never feeds again.  The car's reset and its timing are checked on the
+   car; here, that the hang comes where the README says, and that the next
+   start-up prints the record and keeps the motors braked. */
+static void
+scenario_wdt_hang (void)
+{
+	int feeds;
+
+	sim_reset("watchdog test: hang in L fwd, then the reboot");
+	if (setjmp(g_hang_jmp) == 0) {
+		press_button();
+		sim_ticks(200);
+		CHECK(0);			/* must have hung */
+	}
+	CHECK(g_ctx.step == 0u);		/* L fwd */
+	CHECK(g_ctx.step_ticks == MOTION_TEST_WDT_TICKS);
+	CHECK(g_duty[0] == MOTION_TEST_DUTY);	/* wheel still driven */
+	CHECK(g_hang_fed_us == g_ctx.wdt_fed_us);
+	feeds = g_wdt_feeds;
+	CHECK(feeds > (int)MOTION_TEST_WDT_TICKS);	/* fed until the hang */
+
+	/* The chip resets; SCRATCH0..2 survive with the record. */
+	g_boot = MOTION_BOOT_WATCHDOG;
+	g_hang_marker = 1;
+	g_hang_us = 30004u;
+	sim_reset(NULL);
+	CHECK(strstr(g_log, "last reset: WATCHDOG") != NULL);
+	CHECK(strstr(g_log, "watchdog test: the reset came 30004 us after the last feed (set to 30000 us)") != NULL);
+	CHECK(g_hang_marker == 0);		/* reported once */
+	sim_ticks(300);
+	CHECK(g_duty_max_abs == 0);		/* waits for the button */
+}
+#endif
+
 #else /* MOTION_TEST_PID */
 
 static void
@@ -776,13 +905,21 @@ main (int argc, char **argv)
 	CHECK(motor_task_start() == E_OK);
 	CHECK(sizeof(motion_report_t) == 52u);
 
-#if !MOTION_BENCH
+#if MOTION_TEST_WDT
+	scenario_wdt_hang();
+#elif !MOTION_BENCH
 	scenario_idle();
 	scenario_hand_turn();
+	scenario_watchdog_feed();
+	scenario_boot_after_watchdog();
+	scenario_init_fail_not_armed();
 	scenario_bench_off();
 #elif !MOTION_TEST_PID
 	scenario_idle();
 	scenario_hand_turn();
+	scenario_watchdog_feed();
+	scenario_boot_after_watchdog();
+	scenario_init_fail_not_armed();
 	scenario_button_held_at_boot();
 	scenario_open_loop();
 	scenario_dead_encoder();
@@ -803,7 +940,8 @@ main (int argc, char **argv)
 
 	printf("motion_task sim (%s): %d checks, %d failures\n",
 	       !MOTION_BENCH ? "bench off"
-	                     : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
+	       : MOTION_TEST_WDT ? "watchdog test"
+	       : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
 	       g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

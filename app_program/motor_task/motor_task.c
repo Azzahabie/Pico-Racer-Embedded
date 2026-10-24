@@ -7,8 +7,9 @@
  *    motion_task  core 1, priority 11.  Woken every 10 ms by a cyclic
  *                 handler through an event flag.  Reads both encoder
  *                 counts together, runs the bench test and the stall
- *                 check, writes the motors.  Never prints and never waits
- *                 on anything except its event flag.
+ *                 check, writes the motors, then feeds the hardware
+ *                 watchdog.  Never prints and never waits on anything
+ *                 except its event flag.
  *
  *    motion_report  core 0, low priority.  Receives fixed-size records
  *                 from motion_task through a message buffer and prints
@@ -40,6 +41,7 @@
 #include "motion_lib.h"
 #include "motor.h"
 #include "encoder.h"
+#include "motion_wdt.h"
 #include "motor_task.h"
 
 /* ------------------------------------------------------------------ *
@@ -63,6 +65,7 @@
 #define TIMING_REPORT_TICKS                                                    \
     ((TIMING_REPORT_S * (uint32_t)MS_PER_S) / MOTION_TICK_MS)
 #define MS_PER_S              (1000)
+#define US_PER_MS             (1000u)
 #define CROSSTALK_RATIO       (4) /* other wheel > 1/4 of driven */
 #define MOTION_PRC_SINGLE     (1) /* processor number, 1 core    */
 #define CROSSTALK_MIN_COUNTS  (20)
@@ -113,7 +116,8 @@ typedef enum
     REP_STATUS = 0, /* val = position, rate = counts/s        */
     REP_STEP,       /* val = moved in the step, rate = c/s    */
     REP_EVENT,      /* code = EVT_*, val/rate = arguments     */
-    REP_TIMING      /* timing of the last 5 s                 */
+    REP_TIMING      /* timing of the last 5 s; rate_l = longest
+                       gap between watchdog feeds, us         */
 } report_kind_t;
 
 typedef enum
@@ -123,7 +127,10 @@ typedef enum
     EVT_DONE,
     EVT_ABORT, /* button                                  */
     EVT_FAULT, /* faults byte says which                  */
-    EVT_RAMP   /* val = first duty that moved, 0 = none   */
+    EVT_RAMP,  /* val = first duty that moved, 0 = none   */
+    EVT_BOOT   /* val_l = motion_boot_t, val_r = watchdog
+                  test result in us or -1, rate_l = watchdog
+                  timeout in ms, 0 = not armed            */
 } report_event_t;
 
 typedef struct
@@ -200,6 +207,8 @@ typedef struct
     uint32_t work_max_us;
     uint32_t lost_ticks;
     uint32_t irq_mark;
+    uint32_t wdt_fed_us;     /* when the watchdog was last fed  */
+    uint32_t wdt_gap_max_us; /* longest gap between two feeds   */
 
     /* reporting */
     int32_t  rep_l;
@@ -480,6 +489,15 @@ bench_steps (motion_ctx_t *p_ctx)
     p_ctx->cmd_r = p_step->duty_r;
     p_ctx->step_ticks++;
 
+#if MOTION_BENCH && MOTION_TEST_WDT
+    /* Watchdog test: hang in step 0 ("L fwd") with the left wheel
+       turning.  The tick never completes, so it is never fed again. */
+    if ((0u == p_ctx->step) && (MOTION_TEST_WDT_TICKS == p_ctx->step_ticks))
+    {
+        motion_wdt_hang(p_ctx->wdt_fed_us); /* never returns */
+    }
+#endif
+
     if (p_ctx->step_ticks >= p_step->ticks)
     {
         if ((p_step->duty_l != 0) || (p_step->duty_r != 0))
@@ -738,19 +756,38 @@ tick_report (motion_ctx_t *p_ctx)
         rep.val_r      = (int32_t)p_ctx->rep_dropped;
         rep.irq_count  = irq_now - p_ctx->irq_mark;
         rep.isr_max_us = encoder_take_irq_max_us();
+        rep.rate_l     = (int32_t)p_ctx->wdt_gap_max_us;
         report_send(p_ctx, &rep);
 
-        p_ctx->irq_mark    = irq_now;
-        p_ctx->per_min_us  = UINT32_MAX;
-        p_ctx->per_max_us  = 0u;
-        p_ctx->work_max_us = 0u;
+        p_ctx->irq_mark       = irq_now;
+        p_ctx->per_min_us     = UINT32_MAX;
+        p_ctx->per_max_us     = 0u;
+        p_ctx->work_max_us    = 0u;
+        p_ctx->wdt_gap_max_us = 0u;
     }
+}
+
+/* The last thing in every completed tick.  A tick that hangs, or never
+   comes, leaves the watchdog unfed, and the chip resets MOTION_WDT_MS
+   after this feed. */
+static void
+tick_feed_watchdog (motion_ctx_t *p_ctx, uint32_t t_now)
+{
+    uint32_t gap = t_now - p_ctx->wdt_fed_us; /* modulo 2^32 */
+
+    if (gap > p_ctx->wdt_gap_max_us)
+    {
+        p_ctx->wdt_gap_max_us = gap;
+    }
+    p_ctx->wdt_fed_us = t_now;
+    motion_wdt_feed();
 }
 
 static void
 motion_tick (motion_ctx_t *p_ctx)
 {
     uint32_t t_start = now_us();
+    uint32_t t_end;
     uint32_t work;
 
     tick_timing(p_ctx, t_start);
@@ -797,11 +834,14 @@ motion_tick (motion_ctx_t *p_ctx)
 
     tick_report(p_ctx);
 
-    work = now_us() - t_start;
+    t_end = now_us();
+    work  = t_end - t_start;
     if (work > p_ctx->work_max_us)
     {
         p_ctx->work_max_us = work;
     }
+
+    tick_feed_watchdog(p_ctx, t_end);
 }
 
 /* ------------------------------------------------------------------ *
@@ -860,8 +900,51 @@ motion_init (motion_ctx_t *p_ctx)
     return ercd;
 }
 
+/* Everything before the first tick, in this order: why the chip last
+   started (read before arming, which rewrites the marker it uses), the
+   hardware set-up, then the watchdog.  It is armed only if the set-up
+   passed, so a car that cannot run stays braked instead of rebooting
+   over and over. */
+static ER
+motion_start_up (motion_ctx_t *p_ctx, INT prc)
+{
+    motion_boot_t   boot     = motion_wdt_boot_cause();
+    int32_t         hang_us  = -1;
+    int32_t         armed_ms = 0;
+    ER              ercd;
+    motion_report_t rep;
+#if MOTION_BENCH
+    uint32_t us;
+
+    if (motion_wdt_take_hang_us(&us))
+    {
+        hang_us = (int32_t)us;
+    }
+#endif
+
+    ercd = motion_init(p_ctx);
+    if (E_OK == ercd)
+    {
+        p_ctx->wdt_fed_us = now_us();
+        motion_wdt_start();
+        armed_ms = (int32_t)MOTION_WDT_MS;
+    }
+
+    report_event(p_ctx, EVT_READY, ercd, prc);
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BOOT);
+    rep.val_l  = (int32_t)boot;
+    rep.val_r  = hang_us;
+    rep.rate_l = armed_ms;
+    report_send(p_ctx, &rep);
+
+    return ercd;
+}
+
 /* Wait for one tick and run it.  No tick within MOTION_TICK_TIMEOUT_MS
-   means the cyclic handler or kernel timer stopped: brake. */
+   means the cyclic handler stopped: brake.  This timeout runs on the
+   same kernel timer as the tick, so if that timer stops (core 0 stalled)
+   it never fires.  The watchdog covers that case: no tick, no feed. */
 static void
 motion_cycle (motion_ctx_t *p_ctx)
 {
@@ -896,17 +979,15 @@ motor_task (INT stacd, void *exinf)
     (void)stacd;
     (void)exinf;
 
-    ercd = motion_init(p_ctx);
-
 #if TK_SUPPORT_SMP
     prc = tk_get_prc();
 #endif
-    report_event(p_ctx, EVT_READY, ercd, prc);
+    ercd = motion_start_up(p_ctx, prc);
 
     if (ercd != E_OK)
     {
         /* Without encoders or PWM nothing here is safe to run: stay
-           braked and do nothing else. */
+           braked and do nothing else (the watchdog is not armed). */
         for (;;)
         {
             (void)tk_slp_tsk(TMO_FEVR);
@@ -1056,12 +1137,63 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
 }
 
 static void
+print_boot (UB *p_line, motion_report_t const *p_rep)
+{
+    switch (p_rep->val_l)
+    {
+        case MOTION_BOOT_WATCHDOG:
+            print_line((UB *)"[motion] last reset: WATCHDOG. motion_task"
+                             " stopped feeding it (task hung or tick"
+                             " stopped). Motors stay braked until a"
+                             " command.");
+            break;
+
+        case MOTION_BOOT_REBOOT:
+            print_line((UB *)"[motion] last reset: a reboot by the boot ROM"
+                             " or a debugger (such as after a UF2 copy),"
+                             " not a fault.");
+            break;
+
+        default:
+            print_line((UB *)"[motion] last reset: power-on or RUN pin.");
+            break;
+    }
+
+    if (p_rep->rate_l > 0)
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] watchdog armed: the chip resets if"
+                               " a tick does not complete within %d ms.",
+                         (INT)p_rep->rate_l);
+        print_line(p_line);
+    }
+    else
+    {
+        print_line((UB *)"[motion] watchdog NOT armed (init failed)."
+                         " Motors stay braked.");
+    }
+
+    if (p_rep->val_r >= 0)
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] watchdog test: the reset came %d us"
+                               " after the last feed (set to %u us).",
+                         (INT)p_rep->val_r, (UINT)(MOTION_WDT_MS * US_PER_MS));
+        print_line(p_line);
+    }
+}
+
+static void
 print_event (UB *p_line, motion_report_t const *p_rep)
 {
     switch (p_rep->code)
     {
         case EVT_READY:
             print_ready(p_line, p_rep);
+            break;
+
+        case EVT_BOOT:
+            print_boot(p_line, p_rep);
             break;
 
         case EVT_START:
@@ -1155,6 +1287,12 @@ print_report (motion_report_t const *p_rep)
                 (UINT)p_rep->work_max_us,
                 (UINT)(p_rep->irq_count / TIMING_REPORT_S),
                 (UINT)p_rep->isr_max_us, (INT)p_rep->val_l, (INT)p_rep->val_r);
+            print_line(line);
+            (void)tm_sprintf(line,
+                             (UB *)"[motion] watchdog (5 s): longest gap"
+                                   " between feeds %d us, resets at %u us",
+                             (INT)p_rep->rate_l,
+                             (UINT)(MOTION_WDT_MS * US_PER_MS));
             print_line(line);
             break;
 

@@ -6,9 +6,10 @@
  *  document calls the task motion_task.
  *
  *  This is the bench bring-up version: it owns the motors and encoders,
- *  runs a 10 ms tick on core 1, detects stalls (FR-30) and runs a
- *  button-started bench test.  The command interface from nav_ctrl_task,
- *  STOP_SCAN / STOP_IMU and the hardware watchdog come next.
+ *  runs a 10 ms tick on core 1, detects stalls (FR-30), feeds the
+ *  hardware watchdog (motion_wdt.c) and runs a button-started bench test.
+ *  The command interface from nav_ctrl_task and STOP_SCAN / STOP_IMU come
+ *  next.
  */
 
 #ifndef MOTOR_TASK_H

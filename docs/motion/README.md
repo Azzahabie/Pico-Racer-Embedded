@@ -2,9 +2,9 @@
 
 `motion_task` owns the two motors and the two wheel encoders. This first
 version proves the hardware on the bench: PWM on the H-bridge, both
-encoders counting the right way, the 10 ms tick on core 1, and the FR-30
-stall check. The command interface from `nav_ctrl_task`, STOP_SCAN /
-STOP_IMU and the hardware watchdog come next.
+encoders counting the right way, the 10 ms tick on core 1, the FR-30
+stall check and the hardware watchdog. The command interface from
+`nav_ctrl_task` and STOP_SCAN / STOP_IMU come next.
 
 ## What is in the code
 
@@ -14,12 +14,14 @@ STOP_IMU and the hardware watchdog come next.
 | `app_program/motor_task/motor.c/.h` | PWM driver: GP8/GP9 = slice 4, GP10/GP11 = slice 5, 10 kHz. One 32-bit store updates both inputs of a motor. |
 | `app_program/motor_task/encoder.c/.h` | Quadrature (x4) on GP0..GP3 with pull-ups. Both counts published as one packed 32-bit word. |
 | `app_program/motor_task/motion_lib.c/.h` | Pure arithmetic, no kernel calls: quadrature table, packed counts, wrap-safe delta, stall detector, integer PID with anti-windup. |
+| `app_program/motor_task/motion_wdt.c/.h` | RP2040 hardware watchdog: armed at start-up, fed at the end of every completed tick, and the reason for the last reset. |
 | `app_program/motor_task/motion_cfg.h` | Every pin, flag and tunable in one place. |
 | `app_program/common/gpio_irq.c/.h` | Buddy 5's shared GPIO dispatcher, the one owner of the GPIO bank interrupt. Motion attaches GP0..GP3 one pin at a time on core 1 (see "For the team"). |
 | `tests/motion_lib/` | Host unit tests for `motion_lib` (UBSan/ASan). |
 | `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
 | `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
-| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on. |
+| `tests/motion_wdt/` | The watchdog driver against fake registers: the arming steps and their order, LOAD, the feed, the reset cause. |
+| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, and the watchdog test image. |
 
 Run the host tests in the build container (on macOS the host compiler's
 AddressSanitizer aborts at start-up):
@@ -86,10 +88,21 @@ your car's numbers will differ.
 
 ```
 [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop, MOTION_PACKED=1
+[motion] last reset: power-on or RUN pin.
+[motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
 ```
 
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
-nothing else runs: report the `er` value.
+nothing else runs: report the `er` value. The watchdog is then not armed,
+so the car does not reboot over and over.
+
+`last reset` says why the chip started:
+
+| Line | Meaning |
+|---|---|
+| `power-on or RUN pin.` | Normal start. |
+| `a reboot by the boot ROM or a debugger (such as after a UF2 copy), not a fault.` | Normal after flashing without switching off. |
+| `WATCHDOG. motion_task stopped feeding it ...` | motion_task hung, or its tick stopped, for 30 ms, and the chip reset. The motors stay braked until a command (a button press in a bench image). Report it with the log before it. |
 
 ### Step 1: turn each wheel by hand (motors braked)
 
@@ -195,10 +208,14 @@ encoder's power wire unplugged: that one reports `wheel stalled`.
 
 ```
 [motion] timing (5 s): tick period 9998..10003 us, tick work max 41 us, encoder irq 4210/s (longest 3 us), lost ticks 0, dropped reports 0
+[motion] watchdog (5 s): longest gap between feeds 10000 us, resets at 30000 us
 ```
 
 This is the core 1 timing evidence: tick jitter, the longest tick, the
-encoder interrupt rate and its longest run.
+encoder interrupt rate and its longest run, and the longest gap between
+two watchdog feeds. The 30 ms watchdog is safe only while that gap stays
+well below 30000 us; record the worst one, with Wi-Fi on too once motion
+runs in the Wi-Fi build.
 
 - `encoder irq N/s` counts GPIO interrupts that reached the encoder
   callback. Callbacks from one interrupt share the dispatcher's entry
@@ -207,6 +224,41 @@ encoder interrupt rate and its longest run.
   handler does) to the end of the encoder callback. It is a lower bound:
   it leaves out the exception entry, the kernel's interrupt wrapper and any
   later callback in the same interrupt, such as Buddy 5's ECHO pin.
+
+### Watchdog (PreTri1 row 2, PostTri1 row 9)
+
+`motion_task` arms the RP2040 hardware watchdog once its set-up has passed
+and feeds it as the last thing in every completed tick. If the task hangs,
+or its tick stops (core 0 stalled, kernel timer stopped, a fault handler
+spinning), the chip resets 30 ms after the last feed (`MOTION_WDT_MS`,
+proposed). The reset puts GP8 to GP11 back to inputs with pull-downs, so
+the driver sees both inputs low (brake). After the reboot the motors stay
+braked until a command.
+
+**Test 1, feed gap** (any image): the `watchdog (5 s)` line above.
+
+**Test 2, a hang on purpose** (wheels off). Build a bench image with
+`MOTION_BENCH` 1 and `MOTION_TEST_WDT` 1 (locally, never committed) and
+flash it. Press the button: 0.5 s into `L fwd`, with the left wheel
+turning, motion_task stops feeding the watchdog and spins. Expect:
+
+- the left wheel stops and the USB port drops (the chip reset);
+- the port comes back and the boot lines say:
+
+```
+[motion] last reset: WATCHDOG. motion_task stopped feeding it (task hung or tick stopped). Motors stay braked until a command.
+[motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
+[motion] watchdog test: the reset came NNNNN us after the last feed (set to 30000 us).
+```
+
+`NNNNN` is measured: the hang writes the 1 MHz time to a watchdog scratch
+register until the reset, and the next boot subtracts the time of the last
+feed. It should be about 30000. About 15000 or 60000 would mean the LOAD
+doubling (erratum RP2040-E1) is wrong for this chip.
+
+**Test 3, pins during a reset** (meter, no image needed). Car on battery,
+hold the Robo Pico's RESET button (it holds RUN low) and measure GP8, GP9,
+GP10 and GP11 to GND. All four should read about 0 V (brake).
 
 ## Record the results
 
@@ -223,6 +275,9 @@ encoder interrupt rate and its longest run.
 | Fault with the encoder power wire unplugged (which one) | | |
 | Tick period min..max (us), work max (us) | | |
 | Encoder interrupt longest (us), rate at 350 (per s) | | |
+| Watchdog: longest gap between feeds (us) | | |
+| Watchdog test: reset after the last feed (us), wheel stopped (yes/no) | | |
+| GP8 / GP9 / GP10 / GP11 with RESET held (V) | | |
 
 ## For the team
 
@@ -262,7 +317,14 @@ Found while writing this; each needs its owner.
    to move to GP16/GP17.
 6. **led_test** drove GP10 (right motor M2A). Buddy 1 removed it on
    master (21 Oct).
-7. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
+7. **Watchdog (everyone, once motion runs in the shared build).**
+   motion_task arms the RP2040 hardware watchdog with 30 ms and feeds it
+   every 10 ms tick, and the tick comes from core 0's kernel timer. So if
+   anything holds off core 0's timer interrupt for about 20 ms (interrupts
+   masked, a long critical section), the whole car resets. The timing
+   line's feed gap will show it. Only motion_wdt.c writes the watchdog
+   registers; cpu_clock.c sets its TICK once at boot, which must stay.
+8. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
    `TM_BLINK_LED=1`, blink's diagnostic pulse (`demo_tasks.c`) takes
    GP8-GP11 and GP2/GP3 back after motion has set them up. Keep both off
    on the car.
@@ -274,11 +336,9 @@ Found while writing this; each needs its owner.
   a STOP_SCAN brakes nothing.
 - Command interface from `nav_ctrl_task` (CMD bit), STOP_SCAN / STOP_IMU,
   Motion Fault exit on FAULT_CLEAR(MOTION).
-- RP2040 hardware watchdog fed each tick (proposed 30 ms).
 - Distance, straight-line correction, encoder turns.
 - Minimum-bit command and telemetry formats, once `common/messages.h` is
   agreed with Buddy 1. The 52-byte print record here is motion's console
   channel, in every build and the same in both MOTION_PACKED settings; it
   is not the Week 13 "before" (see week13/baseline.md).
-- `motion_task` waits for nothing but its event flag, but this version
-  has not been timed on the car yet: fill the table above.
+- Watchdog tests 2 and 3 on the car, and the feed gap with Wi-Fi on.

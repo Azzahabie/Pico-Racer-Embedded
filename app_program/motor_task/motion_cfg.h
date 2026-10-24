@@ -118,6 +118,16 @@
 #define MOTION_TEST_PID (0)
 #endif
 
+/* Used only when MOTION_BENCH is 1.
+   1: watchdog test.  The open-loop test stops feeding the watchdog
+      MOTION_TEST_WDT_TICKS into "L fwd", with the left wheel turning,
+      and spins.  The chip must reset MOTION_WDT_MS later with the wheel
+      stopped; the next boot prints how long after the last feed. */
+#ifndef MOTION_TEST_WDT
+#define MOTION_TEST_WDT (0)
+#endif
+#define MOTION_TEST_WDT_TICKS (50u) /* 0.5 s */
+
 #define MOTION_TEST_DUTY       (350)  /* open-loop steps, per-mille */
 #define MOTION_TEST_STEP_TICKS (150u) /* 1.5 s per step */
 #define MOTION_TEST_GAP_TICKS  (100u) /* 1 s braked between steps */
