@@ -99,6 +99,33 @@ No surging or oscillation was seen. These gains are a starting point for
 the floor, where the load is higher; the PID tuning report needs logged
 step responses on the floor too.
 
+## 2026-10-24: wheel size, normal build check
+
+**Ruler measurements (M, by hand, about +-1 mm):** wheel diameter 64 mm,
+wheelbase (centre of left tyre to centre of right tyre) 127 mm.
+
+**Calculated from them and the counts per revolution (C):**
+
+| Item | Value |
+|---|---|
+| Wheel circumference | 201.1 mm |
+| Counts per mm | 12.61 (0.079 mm per count) |
+| 3400 counts/s (35 % power, no load) | 27.0 cm/s |
+| 1600 counts/s (closed-loop test target) | 12.7 cm/s |
+| 1 cm/s in counts | 126 counts/s |
+| Pivot turn, each wheel in opposite directions | 90 deg = 1258 counts, 180 deg = 2515, 360 deg = 5030 |
+| Turn rate from a 1-count left/right difference | 3.6 deg/s over 10 ms, 0.72 deg/s over 50 ms |
+| 16-bit encoder count wraps after | 5.2 m (only differences are used) |
+
+A 1 mm error in the diameter is a 1.6 % distance error, so the NFR-04
+straight trials (500 mm on the floor) should calibrate counts per mm
+before the turn and distance numbers are relied on.
+
+**Normal build on the car (commit 4a69a12, MOTION_BENCH 0):** flashed and
+run; motion_task and motion_report run on their static stacks
+(3998a8d), ticks 9.91 to 10.10 ms, no lost ticks, duty 0 throughout, and
+the encoders count when a wheel is turned by hand.
+
 ### Findings for teammates
 
 - **Buddy 1, `EnableInt`.** Read on core 0 after nav started:
