@@ -22,6 +22,9 @@
  *
  *	Lying flat and still, |a| should be close to 1000 mg and z should
  *	carry most of it.  Turning the board should swing the mag values.
+ *
+ *	Accel range is +/-8 g on every chip, so bumps and crashes on the car
+ *	do not clip (at +/-2 g they pinned at 1998 mg).
  */
 
 #include <tk/tkernel.h>
@@ -36,6 +39,14 @@
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define READ_MS		250
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
+
+/* Accel zero-g offsets in mg, subtracted from every sample.  Measured on
+   our LSM303D: reading flat and upside down, the offset is the midpoint,
+   (up + down) / 2.  z: (1070 + -868) / 2 = +101.  x flipped sign in the
+   same pair, giving +30.  y did not flip, so it is still unmeasured; to
+   get it, stand the board on its two y edges and take the midpoint the
+   same way.  Re-measure if the sensor is swapped. */
+LOCAL const W acc_ofs[3] = { 30, 0, 101 };
 
 typedef enum {
 	CHIP_NONE, CHIP_LSM303D, CHIP_DLHC, CHIP_AGR, CHIP_ADXL345, CHIP_MMA845X
@@ -162,7 +173,7 @@ LOCAL void setup(void)
 	switch(chip) {
 	case CHIP_LSM303D:
 		write_reg(addr, 0x20, 0x6F);	/* CTRL1: 100 Hz, BDU, XYZ  */
-		write_reg(addr, 0x21, 0x00);	/* CTRL2: +/-2 g            */
+		write_reg(addr, 0x21, 0x18);	/* CTRL2: +/-8 g            */
 		write_reg(addr, 0x24, 0x64);	/* CTRL5: mag hi-res 6.25 Hz*/
 		write_reg(addr, 0x25, 0x20);	/* CTRL6: mag +/-4 gauss    */
 		write_reg(addr, 0x26, 0x00);	/* CTRL7: mag continuous    */
@@ -170,7 +181,7 @@ LOCAL void setup(void)
 	case CHIP_DLHC:
 	case CHIP_AGR:
 		write_reg(0x19, 0x20, 0x57);	/* 100 Hz, XYZ              */
-		write_reg(0x19, 0x23, 0x88);	/* BDU, hi-res, +/-2 g      */
+		write_reg(0x19, 0x23, 0xA8);	/* BDU, hi-res, +/-8 g      */
 		if(chip == CHIP_DLHC && !acc_only) {
 			write_reg(0x1E, 0x00, 0x10);	/* 15 Hz            */
 			write_reg(0x1E, 0x01, 0x20);	/* +/-1.3 gauss     */
@@ -181,12 +192,12 @@ LOCAL void setup(void)
 		}
 		break;
 	case CHIP_ADXL345:
-		write_reg(addr, 0x31, 0x08);	/* full res, +/-2 g         */
+		write_reg(addr, 0x31, 0x0A);	/* full res, +/-8 g         */
 		write_reg(addr, 0x2D, 0x08);	/* measure                  */
 		break;
 	case CHIP_MMA845X:
 		write_reg(addr, 0x2A, 0x00);	/* standby to configure     */
-		write_reg(addr, 0x0E, 0x00);	/* +/-2 g                   */
+		write_reg(addr, 0x0E, 0x02);	/* +/-8 g                   */
 		write_reg(addr, 0x2A, 0x19);	/* 100 Hz, active           */
 		break;
 	default:
@@ -208,7 +219,8 @@ LOCAL ER read_sample(W a[3], W m[3], BOOL *has_mag)
 	case CHIP_LSM303D:
 		er = read_regs(addr, 0x28 | AUTO_INC, r, 6);
 		if(er < E_OK) return er;
-		for(i = 0; i < 3; i++) a[i] = (W)le16(&r[2 * i]) * 61 / 1000;
+		/* 0.244 mg/LSB at +/-8 g */
+		for(i = 0; i < 3; i++) a[i] = (W)le16(&r[2 * i]) * 244 / 1000;
 		if(read_regs(addr, 0x08 | AUTO_INC, r, 6) >= E_OK) {
 			/* 0.160 mG/LSB at +/-4 gauss */
 			for(i = 0; i < 3; i++) m[i] = (W)le16(&r[2 * i]) * 4 / 25;
@@ -220,8 +232,8 @@ LOCAL ER read_sample(W a[3], W m[3], BOOL *has_mag)
 	case CHIP_AGR:
 		er = read_regs(0x19, 0x28 | AUTO_INC, r, 6);
 		if(er < E_OK) return er;
-		/* 12-bit left-justified, ~1 mg/LSB */
-		for(i = 0; i < 3; i++) a[i] = le16(&r[2 * i]) >> 4;
+		/* 12-bit left-justified, ~4 mg/LSB at +/-8 g */
+		for(i = 0; i < 3; i++) a[i] = (W)(le16(&r[2 * i]) >> 4) * 4;
 		if(chip == CHIP_DLHC && !acc_only
 		   && read_regs(0x1E, 0x03, r, 6) >= E_OK) {
 			/* X Z Y, big-endian; 1100 LSB/G X/Y, 980 Z */
@@ -239,15 +251,15 @@ LOCAL ER read_sample(W a[3], W m[3], BOOL *has_mag)
 	case CHIP_ADXL345:
 		er = read_regs(addr, 0x32, r, 6);
 		if(er < E_OK) return er;
-		/* 3.9 mg/LSB in full resolution */
+		/* 3.9 mg/LSB in full resolution, at any range */
 		for(i = 0; i < 3; i++) a[i] = (W)le16(&r[2 * i]) * 39 / 10;
 		return E_OK;
 
 	case CHIP_MMA845X:
 		er = read_regs(addr, 0x01, r, 6);
 		if(er < E_OK) return er;
-		/* left-justified, so 1 g = 16384 whatever the resolution */
-		for(i = 0; i < 3; i++) a[i] = (W)be16(&r[2 * i]) * 1000 / 16384;
+		/* left-justified, so 1 g = 4096 at +/-8 g whatever the resolution */
+		for(i = 0; i < 3; i++) a[i] = (W)be16(&r[2 * i]) * 1000 / 4096;
 		return E_OK;
 
 	default:
@@ -298,6 +310,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			tk_dly_tsk(1000);
 			continue;
 		}
+		for(i = 0; i < 3; i++) a[i] -= acc_ofs[i];
 		amag = isqrt((UW)(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]));
 
 		if(has_mag) {
