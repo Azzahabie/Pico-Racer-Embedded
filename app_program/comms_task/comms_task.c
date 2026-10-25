@@ -248,8 +248,11 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		len = comm_w_pack_h(rec, seq, up);
 		er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_HEARTBEAT, rec, len);
 		print_record("H", seq, up, rec, len, er);
-		/* s advances even when the record was dropped: a gap in s with
-		   the drop counter rising says the car lost it, not the network. */
+		/* s advances even when the record was dropped, so the laptop sees
+		   a gap.  drp counts only intake (tele_mbf) drops; a record refused
+		   here because the outbound queue is full (not connected) leaves
+		   drp unchanged and shows only in the radio's drop count
+		   (MQTT_SCHEMA.md section 3). */
 		seq++;
 
 		/* S, the fold of the latest value per source (NFR-10), on the same
