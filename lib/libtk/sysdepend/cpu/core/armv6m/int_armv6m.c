@@ -49,10 +49,20 @@ EXPORT UW disint(void)
 EXPORT void EnableInt_nvic( UINT intno, INT level )
 {
 	UINT	imask;
-	
+	UW	ipr_adr = NVIC_IPR(intno & ~3U);	/* word holding intno's byte */
+	UW	shift = (intno % 4U) * 8U;
+	UW	ipr;
+
 	DI(imask);
-	/* Set interrupt priority level. */
-	*(_UB*)(NVIC_IPR(intno)) = (UB)INTPRI_GROUP(level, 0);
+	/* Set interrupt priority level.  ARMv6-M (Cortex-M0+) allows only
+	 * word access to NVIC_IPRn, so update this interrupt's byte with a
+	 * word read-modify-write; the other three interrupts in the word keep
+	 * their priorities.  Interrupts are masked, and each core has its own
+	 * NVIC, so nothing else writes this word meanwhile. */
+	ipr = *(_UW*)ipr_adr;
+	ipr &= ~(0xFFU << shift);
+	ipr |= ((UW)(UB)INTPRI_GROUP(level, 0)) << shift;
+	*(_UW*)ipr_adr = ipr;
 
 	/* Enables the specified interrupt. */
 	*(_UW*)(NVIC_ISER(intno)) = (0x01U << (intno % 32));
