@@ -967,7 +967,16 @@ not worth blocking M7.
 
 ## 11. One build-gate change this design requires
 
-Today `WIFI_MQTT=1` requires `WIFI_TCP=1` (`build_make/pico_rp2040.mk:155`), and
+> **Done 2026-10-25.** `lwipopts.h` enables `LWIP_TCP`, `MEM_SIZE` 12 KB and the
+> TCP pools for `TM_WIFI_TCP || TM_WIFI_MQTT`. The make gate is
+> `WIFI_MQTT=1 requires WIFI_DNS=1` rather than `WIFI_DHCP=1` as proposed
+> below, so the ladder stays strict and matches the build string at the end of
+> this section. The car build links no echo-test code (flash −3.4 KB, data
+> −1.9 KB). The full chain with the echo tests and the TCP-only build still
+> build. With `WIFI_MQTT=0` the lwIP options are unchanged. The text below is
+> the original proposal.
+
+Before the change, `WIFI_MQTT=1` required `WIFI_TCP=1` (`build_make/pico_rp2040.mk:155`), and
 `WIFI_TCP` enables *two different things at once*: the TCP **stack**, and the TCP
 **echo test**. MQTT needs the first and not the second.
 
