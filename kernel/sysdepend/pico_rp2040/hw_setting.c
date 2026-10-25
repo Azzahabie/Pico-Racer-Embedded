@@ -29,6 +29,7 @@
 
 #include <kernel.h>
 #include <tm/tmonitor.h>
+#include <config_tm.h>		/* TM_CONSOLE_UART */
 
 #include "sysdepend.h"
 
@@ -76,9 +77,12 @@ LOCAL const T_SETUP_REG pinfnc_tbl[] = {
 	/* External LED */
 	{GPIO_CTRL(BOARD_LED_PIN),	GPIO_CTRL_FUNCSEL_SIO},	/* LED pin GPIO */
 	{GPIO_OE, (1<<BOARD_LED_PIN)},				/* LED pin output enable */
-	/* P0,P1 : UART0 */
+#if TM_CONSOLE_UART
+	/* P0,P1 : UART0.  Left in their reset state (not driven) when the
+	   UART console is off: the car wires the left wheel encoder here. */
 	{GPIO_CTRL(0),	GPIO_CTRL_FUNCSEL_UART},	/* P0 UART0-TX */
 	{GPIO_CTRL(1),	GPIO_CTRL_FUNCSEL_UART},	/* P1 UART0-RX */
+#endif
 
 #if USE_SDEV_DRV	// Do not use sample device driver
 	/* P26 : ADC0 */
