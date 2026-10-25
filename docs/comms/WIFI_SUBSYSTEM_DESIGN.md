@@ -276,7 +276,8 @@ interface *they* write against. Option **A** was chosen this session
 >   first in `usermain()`. Its ID `tele_mbfid` is declared in `comms_task.h`
 >   rather than `messages.h`, so `messages.h` stays plain C for the PC test.
 > - `ovf` (clamped) is now a field of the motion body only (PLACEHOLDER); other
->   kinds clamp silently, and `S.drp` counts queue drops.
+>   kinds clamp silently, and `S.drp` counts **intake**-queue drops (not
+>   outbound drops while disconnected — `MQTT_SCHEMA.md` §3).
 >
 > The original v1 design follows, kept as the **unpacked baseline** for the
 > Week 13 before-and-after comparison. Its `EVT_*` enum numbered the kinds
@@ -701,7 +702,9 @@ first byte. Fields are packed LSB-first, little-endian, in table order
 | `map` | `…/map`, retained | **7 B** (56 bits) | `mv` 4 + 26 × 2-bit action codes |
 
 The `s`, `drp` and `mpv` mechanisms are unchanged: `s` makes gaps visible, `drp`
-says whether the car dropped them, and `mpv` lets the laptop verify a remap.
+says whether the car dropped them at its intake queue, and `mpv` lets the laptop
+verify a remap. *Corrected 2026-10-23:* drops at the outbound queue while the
+car is disconnected leave `drp` unchanged (`MQTT_SCHEMA.md` §3, §12 item 20).
 
 ### 8.3 Size
 

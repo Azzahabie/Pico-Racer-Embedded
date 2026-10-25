@@ -125,9 +125,23 @@ for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23).*
 | 16 | `s` | 0–65535 | sequence number for the run, shared by every record on `telemetry` |
 | 32 | `up` | ms | milliseconds since boot (`tk_get_otm()` low word, design §4.1) |
 
-> **`s` and `drp` still make gaps attributable.** A gap in `s` with `drp`
-> unchanged means the *network* lost a record; a gap with `drp` rising means the
-> *car* dropped it at its intake queue.
+> **What a gap in `s` means** *(corrected 2026-10-23 from the v4 hardware
+> test)*. The car can drop a record at two queues, and `drp` counts only the
+> first:
+>
+> - **`drp` rose** → the car dropped it at its **intake** queue (`tele_mbf`):
+>   a producer sent faster than `comms_task` reads.
+> - **`drp` unchanged** → the car was **not connected** to the broker, so the
+>   radio's **outbound** queue (112 B, about 3 s of `H` + `S`) filled and the
+>   record was dropped there — every boot before the first connect, and every
+>   outage — **or** the laptop was not subscribed at the time. These drops show
+>   only on the car's console (`[mqtt] … drop=N`), not on the wire.
+>
+> It is almost never the network: records travel over one TCP connection,
+> which retransmits while it is up. The earlier wording ("`drp` unchanged
+> means the *network* lost it") was wrong; on 2026-10-23 a 42-record gap with
+> `drp` = 0 matched the console's outbound drop count exactly. Counting
+> outbound drops on the wire is open item 20 (§12).
 
 ---
 
@@ -159,7 +173,7 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 2 | `byp` | 0–2 | bypass taken: 1 left, 2 right; 0 = none (Buddy 5) |
 | 3 | `mis` | 0–6 | mission state, 7 states (Vehicle Controller) |
 | 4 | `mpv` | 0–15 | barcode-table version the car is **actually running** (§8.3), wraps |
-| 4 | `drp` | 0–15 | records dropped at the intake queue, cumulative, **saturates at 15** |
+| 4 | `drp` | 0–15 | records dropped at the **intake** queue, cumulative, **saturates at 15**. Outbound-queue drops are not counted (§3) |
 
 **121 bits → 16 bytes** (v3 was exactly 120 bits, so v4's sixth fault bit
 costs one byte; the last 7 bits are padding). The measured JSON line of schema
@@ -526,6 +540,7 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 17 | **Motion `fault` vs. `S.faults`** | §4.1, §5.1 | *new (v3).* The motion event's `fault` bits record the faults **at the moment of that event**; the `S` fault bitmask is the **current state**. They can differ, and both are kept |
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |
 | 19 | **`S.faults` is published as 0** | §4, §4.1 | *new (2026-10-22).* Until Buddy 5's fault event flag exists, `comms_task` has no bitmask to copy; the Wi-Fi-loss bit (item 12) is added with it |
+| 20 | **Outbound drops on the wire** | §3, §4 | *new (2026-10-23).* `drp` counts intake drops only. Goal: a separate **wrapping** outbound-drop counter in `S` (e.g. 8 bits, the reader takes differences across a gap), so the laptop can account for every lost record; schema v5, `S` 16 → 17 B. A saturating 4-bit field would not work: every boot drops ~30 before the first connect |
 
 ---
 
