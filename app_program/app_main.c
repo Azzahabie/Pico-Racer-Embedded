@@ -18,6 +18,8 @@
  *	    wifi_status_task  Wi-Fi/MQTT console lines   (WIFI=cyw43, TM_WIFI_REPORT=1;
  *	                      development only, off for demo day)
  *	    comms_task        MQTT telemetry, Buddy 1    (WIFI_MQTT=1)
+ *	    motion_task       motors and encoders, Buddy 2 (always; core 1,
+ *	                      plus its motion_report printer on core 0)
  *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
  *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
  */
@@ -34,6 +36,8 @@
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
 #include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
 #include "imu_task/imu_task.h" // buddy4: imu_task
+#include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
+
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
@@ -504,6 +508,16 @@ EXPORT INT usermain(void)
 
 	/* Buddy 4: imu_task (priority 12, core 1). */
 	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
+
+	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
+	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
+	   Outside the nav block so the motors are braked even if nav_flg
+	   failed.  Motion IDs are not bound yet: scan_task still simulates
+	   motion's replies. */
+	{
+		ER er = motor_task_start();
+		if(er < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", er);
+	}
 
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
