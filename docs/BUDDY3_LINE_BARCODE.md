@@ -19,7 +19,7 @@ does not command a motor.
 | Stage | Current behavior |
 |---|---|
 | Input | The stand-alone `line_task` reads the left digital line sensor on GP8 and the right sensor on GP6. `BLACK_IS_HIGH` selects the assumed active level; confirm it with the actual sensor before running the car. |
-| Line interpretation | `line_logic` normalizes the configured electrical polarity, accepts steering-state changes after three samples, and accepts line-lost after eight consecutive samples (nominally 40 ms at the 5 ms sample delay). |
+| Line interpretation | `line_logic` normalizes the configured electrical polarity, accepts steering-state changes after six samples, and accepts line-lost after eight consecutive samples (nominally 40 ms at the 5 ms sample delay). |
 | Barcode capture | `bar_capture` debounces transitions, measures alternating bar/space durations in sampler ticks, ends a scan after a quiet gap, and aborts on overlong elements or failed record delivery. |
 | RTOS transport | The stand-alone line test reports directly to the monitor; it does not send sensor records to another task. |
 | Decode | `barcode_decode` recognizes standard Code 39 start/stop framing and the letters A-Z. A decoded letter is reported as **unmapped**; no route or motor action is inferred. |
@@ -51,7 +51,9 @@ samples; this task does not itself stop the motors.
 ## Viewing the line-reader serial output
 
 The line task prints its startup instructions, changed line states, and a
-one-second sensor heartbeat through `tm_printf`.
+two-second sensor heartbeat through `tm_printf`. The IPC producer, consumer,
+and monitor demo tasks are not started, keeping their status output off the
+serial console during sensor bring-up.
 
 - **Use the Pico USB cable:** build and flash the `CONSOLE=usb_cdc` profile.
   Set `PICO_SDK_PATH` and initialize the Pico SDK `lib/tinyusb` submodule as

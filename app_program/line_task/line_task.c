@@ -18,13 +18,15 @@
 #include <tm/tmonitor.h>
 #include <bsp/libbsp.h>
 
+
 #include "../usb_console_compat.h"
 #include "line_task.h"
 #include "line_logic.h"
+#include "barcode_scanner.h"
 
 /* ------------------------- CONFIG: edit these ------------------------- */
 #define SAMPLE_PERIOD_MS	5	/* sensors read every 5 ms               */
-#define CONFIRM_SAMPLES		3	/* same reading N times in a row = accept */
+#define CONFIRM_SAMPLES		6	/* same reading N times in a row = accept */
 #define LOST_SAMPLES		8	/* no line N times (~40 ms) = LOST        */
 #define HEARTBEAT_MS		2000	/* raw pin levels printed this often     */
 /* ---------------------------------------------------------------------- */
@@ -106,7 +108,7 @@ void line_task(INT stacd, void *exinf)
 
 	(void)stacd; (void)exinf;
 
-	line_reader_init(NULL);		/* HIGH = black on both sensors */
+	line_reader_init(NULL);		/* Uses the configured sensor polarity. */
 
 	/* Wait for the USB serial link, as monitor_task does, so the header
 	   is not printed into a ring nobody is reading yet. */
@@ -119,6 +121,11 @@ void line_task(INT stacd, void *exinf)
 	tm_printf((UB *)"Left sensor  : GP%d\n", (INT)LINE_READER_LEFT_GUARD_GPIO);
 	tm_printf((UB *)"Right sensor : GP%d\n", (INT)LINE_READER_RIGHT_GUARD_GPIO);
 	tm_printf((UB *)"Bits shown as RL, 1 = black\n\n");
+
+    tm_printf((UB *)"[barcode] raw=%d black=%d\n",
+          (INT)barcode_scanner_read_raw(),
+          (INT)barcode_scanner_read_black());
+
 
 	while(1) {
 		s = line_update();
