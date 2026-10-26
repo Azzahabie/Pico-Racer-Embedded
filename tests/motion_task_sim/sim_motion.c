@@ -259,7 +259,15 @@ ER tk_wai_flg(ID id, UINT ptn, UINT mode, UINT *p_ptn, TMO tmo)
 {
 	(void)id; (void)mode; (void)tmo;
 	if (g_fail_ticks > 0) { g_fail_ticks--; return E_TMOUT; }
-	*p_ptn = ptn;
+	*p_ptn = g_flag & ptn;
+	if (0u == *p_ptn) { *p_ptn = MOTION_EVT_TICK; }
+	if (0u != (mode & TWF_BITCLR)) { g_flag &= ~*p_ptn; }
+	return E_OK;
+}
+ER tk_ref_flg(ID id, T_RFLG *p_rflg)
+{
+	(void)id;
+	p_rflg->flgptn = g_flag;
 	return E_OK;
 }
 ID tk_cre_mbf(CONST T_CMBF *p)
@@ -421,6 +429,7 @@ sim_reset (const char *p_name)
 	g_duty_max_abs = 0;
 	g_enc_swap = 0;
 	g_fail_ticks = 0;
+	g_flag = 0u;
 	g_q_count = 0;
 	g_hold_reports = 0;
 	g_n_seen = 0;
@@ -714,6 +723,34 @@ scenario_idle (void)
 	CHECK(count_kind(REP_STATUS, -1) == 0);
 	CHECK(count_kind(REP_TIMING, -1) == 1);
 	CHECK(strstr(g_log, "tick period 10000..10000 us") != NULL);
+}
+
+static void
+scenario_stop_scan (void)
+{
+	sim_reset("STOP_SCAN: immediate brake, held until scan clears it");
+	g_ctx.phase = PHASE_STEPS;
+	g_ctx.cmd_l = 350;
+	g_ctx.cmd_r = 350;
+	motor_set(MOTOR_LEFT, g_ctx.cmd_l);
+	motor_set(MOTOR_RIGHT, g_ctx.cmd_r);
+
+	CHECK(E_OK == tk_set_flg(g_flgid,
+				 MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_WAKE));
+	motion_cycle(&g_ctx);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+	CHECK(PHASE_IDLE == g_ctx.phase);
+	CHECK(0u != (g_flag & MOTION_EVT_STOP_SCAN));
+
+	sim_ticks(5);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+	CHECK(PHASE_IDLE == g_ctx.phase);
+
+	CHECK(E_OK == tk_clr_flg(g_flgid, ~MOTION_EVT_STOP_SCAN));
+	CHECK(E_OK == tk_set_flg(g_flgid, MOTION_EVT_STOP_WAKE));
+	motion_cycle(&g_ctx);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+	CHECK(0u == (g_flag & MOTION_EVT_STOP_SCAN));
 }
 
 static void
@@ -1125,12 +1162,14 @@ main (int argc, char **argv)
 	g_verbose = (argc > 1) && (strcmp(argv[1], "-v") == 0);
 
 	CHECK(motor_task_start() == E_OK);
+	CHECK(0 < motor_task_flag());
 	CHECK(sizeof(motion_report_t) == 52u);
 
 #if MOTION_TEST_WDT
 	scenario_wdt_hang();
 #elif !MOTION_BENCH
 	scenario_idle();
+	scenario_stop_scan();
 	scenario_hand_turn();
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
@@ -1146,6 +1185,7 @@ main (int argc, char **argv)
 #endif
 #elif !MOTION_TEST_PID
 	scenario_idle();
+	scenario_stop_scan();
 	scenario_hand_turn();
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
@@ -1162,6 +1202,7 @@ main (int argc, char **argv)
 	scenario_inverted_motor();
 	scenario_reports_never_block();
 #else
+	scenario_stop_scan();
 	scenario_pid();
 	scenario_pid_wrong_polarity();
 	scenario_pid_unplugged_phase();

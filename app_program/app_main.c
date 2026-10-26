@@ -38,6 +38,9 @@
 #include "imu_task/imu_task.h" // buddy4: imu_task
 #include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
 
+=========
+#include "imu_task/imu_task.h" // buddy4: imu_task
+>>>>>>>>> Temporary merge branch 2
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
@@ -480,6 +483,7 @@ LOCAL void print_banner(void)
 EXPORT INT usermain(void)
 {
 	ID	tid;
+	ER	motion_ercd;
 
 	(void)tid;		/* unused when no task below is built in */
 
@@ -489,14 +493,22 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] comms_tele_init failed\n");
 	}
 
+	/* Start motion first so its event-flag ID is available before scan_task. */
+	motion_ercd = motor_task_start();
+	if(E_OK != motion_ercd) {
+		tm_printf((UB *)"[init] motor_task_start failed, er=%d\n",
+			  (INT)motion_ercd);
+	}
+
 	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
-	 * and nav_flg are. motion IDs stay 0 until Buddy 2 adds them (scan_task
-	 * then simulates motion_task's replies). A failure here only prints:
+	 * and motion_flg are. Avoid commands/replies remain simulated until
+	 * motion_task implements its command buffer. A failure here only prints:
 	 * usermain() must not return (see the end of this function). */
 	if(E_OK != nav_ctrl_init()) {
 		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
 	} else {
 		scan_if_bind_t scan_bind = {
+			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
 		};
@@ -508,16 +520,6 @@ EXPORT INT usermain(void)
 
 	/* Buddy 4: imu_task (priority 12, core 1). */
 	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
-
-	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
-	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
-	   Outside the nav block so the motors are braked even if nav_flg
-	   failed.  Motion IDs are not bound yet: scan_task still simulates
-	   motion's replies. */
-	{
-		ER er = motor_task_start();
-		if(er < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", er);
-	}
 
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);

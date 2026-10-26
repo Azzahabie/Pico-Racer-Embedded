@@ -62,8 +62,13 @@ EXPORT ER scan_if_init(void)
 	g_tick_cycid = objid;
 
 	if(scan_if_standalone()) {
-		tm_printf((UB *)"[scan_if] STANDALONE: no motion/nav/telemetry IDs bound; "
-			  "signals are printed, replies simulated, mission = Running\n");
+		if(0 < g_bind.motion_flgid) {
+			tm_printf((UB *)"[scan_if] STOP_ONLY: motion stop is bound; "
+				  "avoid commands/replies are simulated\n");
+		} else {
+			tm_printf((UB *)"[scan_if] STANDALONE: motion stop is not bound; "
+				  "avoid commands/replies are simulated\n");
+		}
 	}
 	return E_OK;
 }
@@ -100,19 +105,39 @@ EXPORT void scan_if_clear(UINT bits)
 
 EXPORT void scan_if_stop_set(void)
 {
+	ER ercd;
+
 	if(0 < g_bind.motion_flgid) {
-		(void)tk_set_flg(g_bind.motion_flgid, MOTION_FLG_STOP_SCAN);
+		ercd = tk_set_flg(g_bind.motion_flgid,
+				  MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_WAKE);
+		if(E_OK != ercd) {
+			tm_printf((UB *)"[scan_if] STOP_SCAN request failed, er=%d\n",
+				  (INT)ercd);
+		}
 	} else {
-		tm_printf((UB *)"[scan_if] -> motion_flg: STOP_SCAN set (car brakes)\n");
+		tm_printf((UB *)"[scan_if] STOP_SCAN requested but motion flag is "
+			  "not bound; no motor brake is sent\n");
 	}
 }
 
 EXPORT void scan_if_stop_clear(void)
 {
+	ER ercd;
+
 	if(0 < g_bind.motion_flgid) {
-		(void)tk_clr_flg(g_bind.motion_flgid, ~MOTION_FLG_STOP_SCAN);
+		ercd = tk_clr_flg(g_bind.motion_flgid, ~MOTION_EVT_STOP_SCAN);
+		if(E_OK != ercd) {
+			tm_printf((UB *)"[scan_if] STOP_SCAN clear failed, er=%d\n",
+				  (INT)ercd);
+		}
+		ercd = tk_set_flg(g_bind.motion_flgid, MOTION_EVT_STOP_WAKE);
+		if(E_OK != ercd) {
+			tm_printf((UB *)"[scan_if] motion wake after STOP_SCAN clear "
+				  "failed, er=%d\n", (INT)ercd);
+		}
 	} else {
-		tm_printf((UB *)"[scan_if] -> motion_flg: STOP_SCAN cleared\n");
+		tm_printf((UB *)"[scan_if] STOP_SCAN cleared locally; motion flag "
+			  "is not bound\n");
 	}
 }
 
@@ -141,7 +166,7 @@ EXPORT bool scan_if_send_cmd(const avoid_cmd_t *p_cmd)
 		if(E_OK != ercd) {
 			sent = false;			/* full: caller retries next tick */
 		} else {
-			(void)tk_set_flg(g_bind.motion_flgid, MOTION_FLG_CMD);
+			(void)tk_set_flg(g_bind.motion_flgid, MOTION_EVT_CMD);
 		}
 	}
 	return sent;

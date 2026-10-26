@@ -12,11 +12,10 @@
  *	  mission_state, hump_state: read through callbacks, so the owner's
  *	                 priority-inheritance mutex stays inside the owner's code.
  *
- *	STANDALONE MODE: until app_main.c calls scan_if_bind() with real IDs
- *	(0 = not created yet), every outgoing signal is printed instead, the
- *	mission counts as Running, and motion_task's replies are simulated
- *	(REVERSE -> REVERSE_DONE, BYPASS -> LINE_FOUND). This lets the whole
- *	statechart run on the bench now, and integration is just filling in IDs.
+ *	FALLBACK MODE: without motion_flgid, stop signals are printed. Without
+ *	avoid_mbfid, avoid commands and motion replies are simulated
+ *	(REVERSE -> REVERSE_DONE, BYPASS -> LINE_FOUND). A bound motion flag
+ *	still carries the live STOP_SCAN request in this mode.
  *
  *	The bit values and structs marked PROPOSED belong in common/messages.h
  *	and move there through a pull request agreed with Buddies 1, 2 and 3.
@@ -28,6 +27,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <tk/tkernel.h>
+#include "../common/messages.h"
 
 /* ---- scan_flg bits (owned by scan_task) ---- */
 #define SCAN_FLG_TICK		0x01U
@@ -41,8 +41,6 @@
 #define SCAN_TICK_MS		60	/* one HC-SR04 cycle */
 
 /* ---- PROPOSED shared definitions (move to common/messages.h) ---- */
-#define MOTION_FLG_CMD		0x02U	/* a command is waiting in a buffer   */
-#define MOTION_FLG_STOP_SCAN	0x04U	/* urgent stop from scan_task         */
 #define NAV_FLG_BLOCKED		0x0100U	/* path blocked / sensor lost > t_block */
 
 typedef enum {

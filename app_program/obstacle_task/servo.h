@@ -17,7 +17,7 @@
 #define SERVO_US_PER_DEG	11	/* SG90 ~500..2500 us over ~180 deg     */
 #define SERVO_MIN_US		500	/* never go past these: the servo jams  */
 #define SERVO_MAX_US		2500	/* against its end stop                 */
-#define SERVO_LIMIT_DEG		60	/* scan range is -60..+60 deg           */
+#define SERVO_LIMIT_DEG		45	/* scan range is -45..+45 deg           */
 #define SERVO_SETTLE_MS		150	/* report budget per step (NFR-07)      */
 
 /* Mounting calibration (see the calibration test in obstacle_task.c).
@@ -25,8 +25,11 @@
  * Fix small errors here. */
 #define SERVO_TRIM_US		55	/* +/- tens of us to make 0 deg = straight ahead */
 #define SERVO_DIR		-1	/* 1 = normal, -1 = servo mounted mirrored       */
+#define SERVO_MOVE_STEP_DEG	5	/* ramp large movements instead of jumping       */
+#define SERVO_MOVE_STEP_MS	30	/* pause between ramp steps                       */
 
 EXPORT void	servo_init(void);
 EXPORT UW	servo_set_angle(INT angle_deg);	/* returns pulse in us */
+EXPORT UW	servo_move_to(INT angle_deg);	/* ramp to angle; returns final pulse in us */
 
 #endif /* SERVO_H */
