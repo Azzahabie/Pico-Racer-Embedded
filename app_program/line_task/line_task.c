@@ -104,11 +104,14 @@ void line_task(INT stacd, void *exinf)
 	line_reader_raw_t	raw;
 	char			bitstr[3];
 	UINT			since_beat = 0;
+	BOOL			barcode_black, last_barcode_black;
+	INT			barcode_raw;
 	INT			i;
 
 	(void)stacd; (void)exinf;
 
 	line_reader_init(NULL);		/* Uses the configured sensor polarity. */
+	barcode_scanner_init(NULL);
 
 	/* Wait for the USB serial link, as monitor_task does, so the header
 	   is not printed into a ring nobody is reading yet. */
@@ -122,13 +125,24 @@ void line_task(INT stacd, void *exinf)
 	tm_printf((UB *)"Right sensor : GP%d\n", (INT)LINE_READER_RIGHT_GUARD_GPIO);
 	tm_printf((UB *)"Bits shown as RL, 1 = black\n\n");
 
-    tm_printf((UB *)"[barcode] raw=%d black=%d\n",
-          (INT)barcode_scanner_read_raw(),
-          (INT)barcode_scanner_read_black());
+	barcode_black = barcode_scanner_read_black() ? TRUE : FALSE;
+	last_barcode_black = barcode_black;
+	barcode_raw = (INT)barcode_scanner_get_last_raw();
+	tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
+		  (INT)BARCODE_SCANNER_GPIO, barcode_raw, (INT)barcode_black);
 
 
 	while(1) {
 		s = line_update();
+		barcode_black = barcode_scanner_read_black() ? TRUE : FALSE;
+		barcode_raw = (INT)barcode_scanner_get_last_raw();
+
+		if(barcode_black != last_barcode_black) {
+			tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
+				  (INT)BARCODE_SCANNER_GPIO, barcode_raw,
+				  (INT)barcode_black);
+			last_barcode_black = barcode_black;
+		}
 
 		if(s != last) {
 			line_reader_format_2bit((UB)line_reader_read_2bit(), bitstr);
@@ -146,6 +160,9 @@ void line_task(INT stacd, void *exinf)
 			tm_printf((UB *)"[line] raw pins: GP%d=%d GP%d=%d\n",
 				  (INT)LINE_READER_LEFT_GUARD_GPIO, (INT)raw.left_guard,
 				  (INT)LINE_READER_RIGHT_GUARD_GPIO, (INT)raw.right_guard);
+			tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
+				  (INT)BARCODE_SCANNER_GPIO, barcode_raw,
+				  (INT)barcode_black);
 		}
 
 		tk_dly_tsk(SAMPLE_PERIOD_MS);
