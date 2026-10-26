@@ -23,6 +23,10 @@
 #define	DEVCNF_I2C_RESET	TRUE	// Reset I2C module
 #define	DEVCNF_I2C_SETPINFUNC	TRUE	// Set I/O pin function
 
+/* I2C0 pins (valid pairs: 0/1, 4/5, 8/9, 12/13, 16/17, 20/21) */
+#define	DEVCNF_I2C0_SDA		16
+#define	DEVCNF_I2C0_SCL		17
+
 /* Register initial value */
 
 // Interrupt priority

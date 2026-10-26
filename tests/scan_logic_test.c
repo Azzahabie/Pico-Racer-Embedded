@@ -78,10 +78,10 @@ int main(void)
 	 *    readings only, far readings beyond the edges. */
 	printf("Test 1: real bench scan, object straight ahead (FR-16, FR-17)\n");
 	grid_clear(grid);
-	set(grid, -60, 960);  set(grid, -45, SL_FAR); set(grid, -30, 206);
+	set(grid, -45, 960);  set(grid, -40, SL_FAR); set(grid, -30, 206);
 	set(grid, -15, 193);  set(grid, 0, 192);      set(grid, 15, 193);
 	set(grid, 30, SL_FAR);		/* read 1907 mm: beyond D_obs */
-	set(grid, 45, SL_FAR); set(grid, 60, SL_FAR);
+	set(grid, 40, SL_FAR); set(grid, 45, SL_FAR);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("object found and in the path", prof.found && prof.in_path);
 	check("closest is ~192 mm near 0 deg", 192 == prof.d_close_mm && 0 == prof.close_deg);
@@ -94,8 +94,8 @@ int main(void)
 	/* 2. Nothing within D_obs -> false alarm */
 	printf("Test 2: false alarm (FR-17 continue)\n");
 	grid_clear(grid);
-	set(grid, -60, SL_FAR); set(grid, -30, 900); set(grid, 0, 850);
-	set(grid, 30, SL_FAR);  set(grid, 60, 1200);
+	set(grid, -45, SL_FAR); set(grid, -30, 900); set(grid, 0, 850);
+	set(grid, 30, SL_FAR);  set(grid, 45, 1200);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("continue", SL_CONTINUE == act);
 
@@ -109,8 +109,8 @@ int main(void)
 	/* 4. Wall: hits all the way to both scan limits -> blocked */
 	printf("Test 4: wall across the whole scan (FR-17 stop, FR-18)\n");
 	grid_clear(grid);
-	set(grid, -60, 350); set(grid, -30, 300); set(grid, 0, 250);
-	set(grid, 30, 300);  set(grid, 60, 350);
+	set(grid, -45, 350); set(grid, -30, 300); set(grid, 0, 250);
+	set(grid, 30, 300);  set(grid, 45, 350);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("neither side open", !prof.left_open && !prof.right_open);
 	check("blocked", SL_BLOCKED == act);
@@ -118,9 +118,9 @@ int main(void)
 	/* 5. Object on the right, fine-scanned edges -> pass left */
 	printf("Test 5: object on the right (NFR-07 side choice)\n");
 	grid_clear(grid);
-	set(grid, -60, SL_FAR); set(grid, -30, SL_FAR); set(grid, 0, SL_FAR);
+	set(grid, -45, SL_FAR); set(grid, -30, SL_FAR); set(grid, 0, SL_FAR);
 	set(grid, 5, 310); set(grid, 10, 300); set(grid, 30, 290);
-	set(grid, 40, 300); set(grid, 45, SL_FAR); set(grid, 60, SL_FAR);
+	set(grid, 40, 300); set(grid, 45, SL_FAR);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("edges 5..40 deg", 5 == prof.left_deg && 40 == prof.right_deg);
 	check("d_c is the true closest point (290 @ 30)",
@@ -133,12 +133,11 @@ int main(void)
 	check("sin(30) = 500", 500 == sl_sin1000(30));
 	check("sin(-15) = -259", -259 == sl_sin1000(-15));
 
-	/* 7. Bench log 21 Oct: object only at +55..+60, outside the car's path */
+	/* 7. Bench log 21 Oct: object at the right edge, outside the car's path */
 	printf("Test 7: object beside the path, not in it (FR-17 continue)\n");
 	grid_clear(grid);
-	set(grid, -60, SL_FAR); set(grid, -30, SL_FAR); set(grid, 0, SL_FAR);
-	set(grid, 30, SL_FAR);  set(grid, 50, SL_FAR);  set(grid, 55, 310);
-	set(grid, 60, 300);
+	set(grid, -45, SL_FAR); set(grid, -30, SL_FAR); set(grid, 0, SL_FAR);
+	set(grid, 30, SL_FAR);  set(grid, 40, 310); set(grid, 45, 300);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("found but not in the path", prof.found && !prof.in_path);
 	check("continue (was BYPASS LEFT before)", SL_CONTINUE == act);
@@ -148,7 +147,7 @@ int main(void)
 	grid_clear(grid);
 	set(grid, -30, 380); set(grid, -15, 380); set(grid, -5, 200);
 	set(grid, 0, 200);   set(grid, 5, 205);   set(grid, 10, SL_FAR);
-	set(grid, 30, SL_FAR); set(grid, 60, SL_FAR);
+	set(grid, 30, SL_FAR); set(grid, 45, SL_FAR);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("near object only: edges -5..+5", -5 == prof.left_deg && 5 == prof.right_deg);
 	check("left side open (gap to the far box)", prof.left_open);
@@ -187,9 +186,9 @@ int main(void)
 	/* 12. Off-path object is closer, but the one ahead matters */
 	printf("Test 12: closer object off to the side, another ahead (FR-13)\n");
 	grid_clear(grid);
-	set(grid, -60, 200); set(grid, -55, SL_FAR); set(grid, -30, SL_FAR);
+	set(grid, -45, 200); set(grid, -40, SL_FAR); set(grid, -30, SL_FAR);
 	set(grid, -5, 350);  set(grid, 0, 340);      set(grid, 5, 350);
-	set(grid, 10, SL_FAR); set(grid, 30, SL_FAR); set(grid, 60, SL_FAR);
+	set(grid, 10, SL_FAR); set(grid, 30, SL_FAR); set(grid, 45, SL_FAR);
 	act = run(grid, SL_D_OBS_MM, false, &prof);
 	check("profiles the object ahead", 0 == prof.close_deg && prof.in_path);
 	check("left clearance limited by the side object", prof.clear_left_mm < SL_CLEAR_OPEN_MM);
