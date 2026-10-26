@@ -27,9 +27,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* ---- grid: -60..+60 deg in 5 deg steps = 25 slots ---- */
+/* ---- grid: -45..+45 deg in 5 deg steps = 19 slots ---- */
 #define SL_STEP_DEG		5
-#define SL_LIMIT_DEG		60
+#define SL_LIMIT_DEG		45
 #define SL_SLOTS		((2 * SL_LIMIT_DEG / SL_STEP_DEG) + 1)
 #define SL_IDX(deg)		(((deg) + SL_LIMIT_DEG) / SL_STEP_DEG)
 #define SL_DEG(idx)		(((idx) * SL_STEP_DEG) - SL_LIMIT_DEG)
@@ -111,7 +111,7 @@ typedef struct {
 	uint8_t	echo_run;	/* valid echoes in a row    */
 } sl_runs_t;
 
-/* sin(deg) * 1000 for deg in -60..+60 (5 deg steps). */
+/* sin(deg) * 1000 for deg in -45..+45 (5 deg steps). */
 int32_t		sl_sin1000(int32_t deg);
 
 /* Build the profile from the grid. A reading counts as obstacle when it

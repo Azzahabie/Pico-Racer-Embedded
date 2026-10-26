@@ -17,7 +17,7 @@
  *	  Coarse Scan 5 angles. Nothing within D_obs -> false alarm: clear
  *	              STOP_SCAN -> Monitoring. Else -> Fine Scan.
  *	  Fine Scan   5 deg steps out from each coarse edge, median of 3 at the
- *	              edge angles, capped to keep the scan inside 4.2 s (NFR-07).
+ *	              edge angles, capped to keep the scan inside 5.5 s (NFR-07).
  *	              Profile -> telemetry -> Planning.
  *	  Planning    continue / bypass / reverse / blocked (FR-17). Bypass:
  *	              clear replies, place command, set CMD, clear STOP_SCAN ->
@@ -33,8 +33,8 @@
  *	              BLOCKED on nav_flg.
  *	  Any state -> Idle when the mission is not Running.
  *
- *	Until Buddies 1-3 bind their IDs (scan_if.h), signals are printed and
- *	motion_task's replies are simulated, so mode 4 runs on the bench now.
+ *	STOP_SCAN uses the bound motion flag; avoid commands and motion_task's
+ *	replies are simulated until the motion command buffer is integrated.
  *
  *	Barr-C (safety subset): braces on every body, constant on the left of
  *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
@@ -62,7 +62,7 @@
 #define NUM_COARSE		5
 #define NO_HIT			999	/* "no coarse hit yet" marker angle */
 
-#define SCAN_BUDGET_MS		4200	/* NFR-07: coarse ~1.1 s + fine ~3.1 s */
+#define SCAN_BUDGET_MS		5500	/* leaves ramp time inside NFR-07's 7 s budget */
 #define FINE_MAX_STEPS		5	/* new angles per edge: the coarse miss is
 					   6 fine steps away and already measured */
 #define LOOK_EST_MS		200	/* settle 150 + one ping (budget check)  */
@@ -70,14 +70,14 @@
 #define T_BLOCK_MS		10000	/* [t_block] proposed                     */
 #define REVERSE_TIMEOUT_MS	5000	/* no REVERSE_DONE by then: Blocked [TBD] */
 
-LOCAL const INT g_coarse_deg[NUM_COARSE] = { -60, -30, 0, 30, 60 };
+LOCAL const INT g_coarse_deg[NUM_COARSE] = { -45, -25, 0, 25, 45 };
 
 /* ------------------------------------------------------------------ */
 /* Mode 1: servo sweep                                                */
 /* ------------------------------------------------------------------ */
 LOCAL void servo_go(INT deg)
 {
-	UW pulse_us = servo_set_angle(deg);
+	UW pulse_us = servo_move_to(deg);
 
 	tm_printf((UB *)"[servo] angle %d deg -> pulse %d us\n", deg, (INT)pulse_us);
 	tk_dly_tsk(500);
@@ -116,7 +116,7 @@ LOCAL void servo_test(void)
 /* ------------------------------------------------------------------ */
 LOCAL void servo_hold(INT deg, const char *p_where, INT secs)
 {
-	UW pulse_us = servo_set_angle(deg);
+	UW pulse_us = servo_move_to(deg);
 
 	tm_printf((UB *)"[calib] angle %d deg (pulse %d us): sensor should point %s\n",
 		  deg, (INT)pulse_us, p_where);
@@ -231,7 +231,7 @@ LOCAL uint16_t to_grid(UW dist_mm)
 
 LOCAL void servo_centre(void)
 {
-	servo_set_angle(0);
+	servo_move_to(0);
 	tk_dly_tsk(SERVO_SETTLE_MS);
 }
 
@@ -321,7 +321,7 @@ LOCAL bool scan_ok(const scan_ctx_t *p_ctx)
 
 LOCAL uint16_t look(scan_ctx_t *p_ctx, INT deg)
 {
-	servo_set_angle(deg);
+	servo_move_to(deg);
 	tk_dly_tsk(SERVO_SETTLE_MS);	/* >= 60 ms since the last ping too */
 	return scan_ping(p_ctx);
 }
@@ -422,7 +422,7 @@ LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir, INT medians_left
 	}
 
 	if(scan_ok(p_ctx)) {
-		servo_set_angle(last_hit);
+		servo_move_to(last_hit);
 		tk_dly_tsk(SERVO_SETTLE_MS);
 		p_ctx->grid[SL_IDX(last_hit)] = median3(p_ctx);
 	}

@@ -29,6 +29,8 @@
 #define SERVO_DIV_REG		(PWM_BASE + PWM_CHx_DIV + (SERVO_SLICE * 0x14))
 #define SERVO_DIV_INT		125U	/* DIV register: integer part in bits 11:4 */
 
+LOCAL INT g_servo_angle_deg;
+
 EXPORT void servo_init(void)
 {
 	/* The kernel only takes the PWM block out of reset when USE_PTMR is set
@@ -45,6 +47,7 @@ EXPORT void servo_init(void)
 	pwm_set_wrap(SERVO_PIN, 19999);			/* 50 Hz frame */
 	pwm_set_cc(SERVO_PIN, SERVO_CENTRE_US + SERVO_TRIM_US);	/* start at centre */
 	pwm_set_enabled(SERVO_PIN, TRUE);
+	g_servo_angle_deg = 0;
 }
 
 EXPORT UW servo_set_angle(INT angle_deg)
@@ -70,5 +73,44 @@ EXPORT UW servo_set_angle(INT angle_deg)
 	}
 
 	pwm_set_cc(SERVO_PIN, (UW)pulse_us);
+	g_servo_angle_deg = angle_deg;
 	return (UW)pulse_us;
+}
+
+EXPORT UW servo_move_to(INT angle_deg)
+{
+	INT	current_deg = g_servo_angle_deg;
+	UW	pulse_us = 0U;
+
+	if(angle_deg > SERVO_LIMIT_DEG) {
+		angle_deg = SERVO_LIMIT_DEG;
+	}
+	if(angle_deg < -SERVO_LIMIT_DEG) {
+		angle_deg = -SERVO_LIMIT_DEG;
+	}
+
+	if(current_deg == angle_deg) {
+		return servo_set_angle(angle_deg);
+	}
+
+	while(current_deg != angle_deg) {
+		if(current_deg < angle_deg) {
+			current_deg += SERVO_MOVE_STEP_DEG;
+			if(current_deg > angle_deg) {
+				current_deg = angle_deg;
+			}
+		} else {
+			current_deg -= SERVO_MOVE_STEP_DEG;
+			if(current_deg < angle_deg) {
+				current_deg = angle_deg;
+			}
+		}
+
+		pulse_us = servo_set_angle(current_deg);
+		if(current_deg != angle_deg) {
+			tk_dly_tsk(SERVO_MOVE_STEP_MS);
+		}
+	}
+
+	return pulse_us;
 }

@@ -186,6 +186,7 @@ typedef struct
     int32_t        ramp_found_r;
     int32_t        cmd_l;
     int32_t        cmd_r;
+    bool           b_stop_flag_fault;
     motion_pid_t   pid_l;
     motion_pid_t   pid_r;
     motion_stall_t stall_l;
@@ -784,7 +785,7 @@ tick_feed_watchdog (motion_ctx_t *p_ctx, uint32_t t_now)
 }
 
 static void
-motion_tick (motion_ctx_t *p_ctx)
+motion_tick (motion_ctx_t *p_ctx, bool b_stop_scan)
 {
     uint32_t t_start = now_us();
     uint32_t t_end;
@@ -793,44 +794,54 @@ motion_tick (motion_ctx_t *p_ctx)
     tick_timing(p_ctx, t_start);
     tick_encoders(p_ctx);
 
-#if MOTION_BENCH
-    if (button_pressed(p_ctx))
+    if (b_stop_scan)
     {
-        if (PHASE_IDLE == p_ctx->phase)
-        {
-            bench_start(p_ctx);
-        }
-        else
-        {
-            bench_stop(p_ctx, EVT_ABORT);
-        }
+        p_ctx->phase = PHASE_IDLE;
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+        motor_brake_all();
     }
+    else
+    {
+#if MOTION_BENCH
+        if (button_pressed(p_ctx))
+        {
+            if (PHASE_IDLE == p_ctx->phase)
+            {
+                bench_start(p_ctx);
+            }
+            else
+            {
+                bench_stop(p_ctx, EVT_ABORT);
+            }
+        }
 #endif
 
-    stall_check(p_ctx);
+        stall_check(p_ctx);
 
-    switch (p_ctx->phase)
-    {
-        case PHASE_STEPS:
-            bench_steps(p_ctx);
-            break;
+        switch (p_ctx->phase)
+        {
+            case PHASE_STEPS:
+                bench_steps(p_ctx);
+                break;
 
-        case PHASE_RAMP:
-            bench_ramp(p_ctx);
-            break;
+            case PHASE_RAMP:
+                bench_ramp(p_ctx);
+                break;
 
-        case PHASE_PID:
-            bench_pid(p_ctx);
-            break;
+            case PHASE_PID:
+                bench_pid(p_ctx);
+                break;
 
-        default:
-            p_ctx->cmd_l = 0;
-            p_ctx->cmd_r = 0;
-            break;
+            default:
+                p_ctx->cmd_l = 0;
+                p_ctx->cmd_r = 0;
+                break;
+        }
+
+        motor_set(MOTOR_LEFT, p_ctx->cmd_l);
+        motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
     }
-
-    motor_set(MOTOR_LEFT, p_ctx->cmd_l);
-    motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
 
     tick_report(p_ctx);
 
@@ -950,12 +961,50 @@ motion_cycle (motion_ctx_t *p_ctx)
 {
     ER   ercd;
     UINT ptn;
+    T_RFLG rflg;
+    bool b_stop_scan;
 
-    ercd = tk_wai_flg(g_flgid, MOTION_EVT_TICK, TWF_ORW | TWF_BITCLR, &ptn,
-                      MOTION_TICK_TIMEOUT_MS);
+    ercd = tk_wai_flg(g_flgid, MOTION_EVT_TICK | MOTION_EVT_STOP_WAKE,
+                      TWF_ORW | TWF_BITCLR, &ptn, MOTION_TICK_TIMEOUT_MS);
     if (E_OK == ercd)
     {
-        motion_tick(p_ctx);
+        if (0u != (ptn & MOTION_EVT_STOP_WAKE))
+        {
+            motor_brake_all();
+        }
+
+        ercd = tk_ref_flg(g_flgid, &rflg);
+        if (E_OK != ercd)
+        {
+            if (!p_ctx->b_stop_flag_fault)
+            {
+                p_ctx->faults |= MOTION_FAULT_INIT;
+                report_event(p_ctx, EVT_FAULT, MOTION_FAULT_INIT, ercd);
+                p_ctx->b_stop_flag_fault = true;
+            }
+            b_stop_scan = true;
+        }
+        else
+        {
+            b_stop_scan = p_ctx->b_stop_flag_fault ||
+                          (0u != (rflg.flgptn & MOTION_EVT_STOP_SCAN));
+        }
+
+        if (b_stop_scan)
+        {
+            if (0u == (ptn & MOTION_EVT_STOP_WAKE))
+            {
+                motor_brake_all();
+            }
+            p_ctx->phase = PHASE_IDLE;
+            p_ctx->cmd_l = 0;
+            p_ctx->cmd_r = 0;
+        }
+
+        if (0u != (ptn & MOTION_EVT_TICK))
+        {
+            motion_tick(p_ctx, b_stop_scan);
+        }
     }
     else
     {
@@ -1001,6 +1050,12 @@ motor_task (INT stacd, void *exinf)
     {
         motion_cycle(p_ctx);
     }
+}
+
+ID
+motor_task_flag (void)
+{
+    return g_flgid;
 }
 
 /* ------------------------------------------------------------------ *

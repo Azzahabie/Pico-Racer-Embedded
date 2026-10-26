@@ -5,21 +5,16 @@
  *  The folder keeps the repo's scaffold name (motor_task); the design
  *  document calls the task motion_task.
  *
- *  This is the bench bring-up version: it owns the motors and encoders,
- *  runs a 10 ms tick on core 1, detects stalls (FR-30), feeds the
- *  hardware watchdog (motion_wdt.c) and runs a button-started bench test.
- *  The command interface from nav_ctrl_task and STOP_SCAN / STOP_IMU come
- *  next.
+ *  This version owns the motors and encoders, runs a 10 ms tick on core 1,
+ *  detects stalls (FR-30), feeds the hardware watchdog (motion_wdt.c), and
+ *  handles Buddy 5's urgent STOP_SCAN request. Other motion commands and
+ *  STOP_IMU remain future integration work.
  */
 
 #ifndef MOTOR_TASK_H
 #define MOTOR_TASK_H
 
 #include <tk/tkernel.h>
-
-/* Event-flag bits motion_task waits on (design Section 4).  Only TICK is
-   used so far; CMD, STOP_SCAN and STOP_IMU will take the next bits. */
-#define MOTION_EVT_TICK (1u << 0)
 
 /* Motion fault bitmask: one bit per fault, packed in one byte. */
 #define MOTION_FAULT_STALL_L (1u << 0) /* FR-30 motor stall, left    */
@@ -31,6 +26,9 @@
 
 /* Task entry, kernel task signature. */
 void motor_task(INT stacd, void *exinf);
+
+/* Event flag used by motion_task; valid after successful motor_task_start(). */
+ID motor_task_flag(void);
 
 /* Create and start everything motion needs: its event flag, the 10 ms
    cyclic handler, motion_task (priority 11, pinned to core 1 under SMP)

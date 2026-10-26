@@ -1,10 +1,11 @@
 # Motion control (Buddy 2): bring-up guide
 
-`motion_task` owns the two motors and the two wheel encoders. This first
-version proves the hardware on the bench: PWM on the H-bridge, both
-encoders counting the right way, the 10 ms tick on core 1, the FR-30
-stall check and the hardware watchdog. The command interface from
-`nav_ctrl_task` and STOP_SCAN / STOP_IMU come next.
+`motion_task` owns the two motors and the two wheel encoders. It proves the
+hardware on the bench: PWM on the H-bridge, both encoders counting the right
+way, the 10 ms tick on core 1, the FR-30 stall check and the hardware
+watchdog. It also handles Buddy 5's urgent
+`STOP_SCAN` request and brakes both motors. The command interface from
+`nav_ctrl_task`, obstacle maneuver commands and `STOP_IMU` are still pending.
 
 ## What is in the code
 
@@ -331,10 +332,10 @@ Found while writing this; each needs its owner.
 
 ## Not done yet
 
-- Motion's kernel objects (motion_flg, avoid_cmd_mbf, nav_cmd_mbf) are not
-  created or bound yet, so scan_task still simulates motion's replies and
-  a STOP_SCAN brakes nothing.
-- Command interface from `nav_ctrl_task` (CMD bit), STOP_SCAN / STOP_IMU,
+- `STOP_SCAN` is wired from scan_task to motion_task, but its response time
+  has not yet been measured on the car. The avoid-command buffer is not
+  created or bound, so bypass/reverse commands and their replies are simulated.
+- Command interface from `nav_ctrl_task` (CMD bit), `STOP_IMU`,
   Motion Fault exit on FAULT_CLEAR(MOTION).
 - Distance, straight-line correction, encoder turns.
 - Minimum-bit command and telemetry formats, once `common/messages.h` is

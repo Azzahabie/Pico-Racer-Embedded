@@ -16,11 +16,10 @@
 #include <stdbool.h>
 #include "scan_logic.h"
 
-/* sin(deg) * 1000, deg = -60, -55, ..., +60 */
+/* sin(deg) * 1000, deg = -45, -40, ..., +45 */
 static const int16_t g_sin1000_tbl[SL_SLOTS] = {
-	-866, -819, -766, -707, -643, -574, -500, -423, -342, -259, -174, -87,
-	   0,
-	  87,  174,  259,  342,  423,  500,  574,  643,  707,  766,  819,  866
+	-707, -643, -574, -500, -423, -342, -259, -174, -87, 0,
+	  87,  174,  259,  342,  423,  500,  574,  643,  707
 };
 
 static int32_t abs_val(int32_t value)
@@ -196,8 +195,8 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 
 	grow(grid, d_obs_mm, close_idx, -1, &left_idx, &left_stop);
 	grow(grid, d_obs_mm, close_idx, +1, &right_idx, &right_stop);
-	p_prof->left_open  = (left_stop >= 0);		/* stopped before -60 */
-	p_prof->right_open = (right_stop < SL_SLOTS);	/* stopped before +60 */
+	p_prof->left_open  = (left_stop >= 0);		/* stopped before -45 */
+	p_prof->right_open = (right_stop < SL_SLOTS);	/* stopped before +45 */
 
 	p_prof->left_deg  = SL_DEG(left_idx);
 	p_prof->right_deg = SL_DEG(right_idx);

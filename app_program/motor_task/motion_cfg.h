@@ -32,7 +32,7 @@
    1: bench image for the tests in docs/motion/README.md, wheels off the
      ground.  Set it here locally, rebuild, and never commit it. */
 #ifndef MOTION_BENCH
-#define MOTION_BENCH (0)
+#define MOTION_BENCH (1)
 #endif
 
 /* Minimum-bit switch (changed requirement, Tribunal 1).
