@@ -520,6 +520,7 @@ LOCAL BOOL made(const char *what, ID id)
 EXPORT INT usermain(void)
 {
 	ID	tid;
+	ER	er;
 
 	mpfid = tk_cre_mpf(&cmpf); if(!made("mpf", mpfid)) return 1;
 	mtxid = tk_cre_mtx(&cmtx); if(!made("mtx", mtxid)) return 1;
@@ -527,9 +528,17 @@ EXPORT INT usermain(void)
 	semid = tk_cre_sem(&csem); if(!made("sem", semid)) return 1;
 	flgid = tk_cre_flg(&cflg); if(!made("flg", flgid)) return 1;
 
+
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_led_test); if(made("tsk(led_test)", tid)) tk_sta_tsk(tid, 0);
-	tid = tk_cre_tsk(&ctsk_line);     if(made("tsk(line)",     tid)) tk_sta_tsk(tid, 0);
+
+	tid = tk_cre_tsk(&ctsk_line);
+	if(!made("tsk(line)", tid)) return 1;
+	er = tk_sta_tsk(tid, 0);
+	if(er < E_OK) {
+		tm_printf((UB *)"[init] line task start failed, er=%d\n", er);
+		return 1;
+	}
 	tid = tk_cre_tsk(&ctsk_monitor);  if(made("tsk(monitor)",  tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_consumer); if(made("tsk(consumer)", tid)) tk_sta_tsk(tid, 0);
 	tid = tk_cre_tsk(&ctsk_producer); if(made("tsk(producer)", tid)) tk_sta_tsk(tid, 0);

@@ -1,37 +1,65 @@
-/* line_logic.h - calibration, line error, line-seen and junction logic.
- * Pure C: no RTOS, no hardware. Unit-tested on a PC (test_buddy3_host.c). */
-#ifndef LINE_LOGIC_H
-#define LINE_LOGIC_H
+#ifndef ROBOCAR_LINE_LOGIC_H
+#define ROBOCAR_LINE_LOGIC_H
 
-#include "buddy3_types.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+/* Two-bit output layout: right guard in bit 1 and left guard in bit 0. */
+#define LINE_READER_RIGHT_GUARD_MASK (1u << 1)
+#define LINE_READER_LEFT_GUARD_MASK  (1u << 0)
+#define LINE_READER_OUTPUT_MASK      (0x03u)
+
+/* Sensor pins. These are digital (DO) inputs, not ADC pins:
+ * GP6 and GP8 have no ADC, so this module reads a plain 0/1 level.
+ * Change the numbers here if the wiring changes. */
+#define LINE_READER_RIGHT_GUARD_GPIO (6u)
+#define LINE_READER_LEFT_GUARD_GPIO  (8u)
+
+/* Digital level of each sensor pin: 0 or 1 (NOT an ADC value). */
+typedef struct {
+    uint16_t right_guard;
+    uint16_t left_guard;
+} line_reader_raw_t;
 
 typedef struct {
-    uint16_t min_a, max_a, min_b, max_b;
-    uint32_t samples;
-} line_cal_acc_t;
+    /* Set a field true when a HIGH pin level means black. */
+    bool right_guard_black_is_high;
+    bool left_guard_black_is_high;
+} line_reader_config_t;
 
-typedef struct {
-    uint16_t white_a, black_a, white_b, black_b;   /* raw ADC counts */
-} line_cal_t;
+/**
+ * Creates a line-sensor configuration with HIGH = black on both sensors.
+ * Flip a field to false if the module outputs LOW over black.
+ */
+line_reader_config_t line_reader_default_config(void);
 
-typedef struct {
-    uint8_t  junction_count;
-    bool     junction_armed;
-    uint16_t lost_count;
-    bool     line_seen;
-} line_track_t;
+/**
+ * Sets up both sensor pins as inputs with pulls off.
+ *
+ * @param config Polarity per sensor. Pass NULL to use
+ *               line_reader_default_config(). The configuration is copied.
+ */
+void line_reader_init(const line_reader_config_t *config);
 
-void         line_cal_begin(line_cal_acc_t *acc);
-void         line_cal_add(line_cal_acc_t *acc, uint16_t raw_a, uint16_t raw_b);
-cal_result_t line_cal_finish(const line_cal_acc_t *acc, line_cal_t *out);
+/** Reads the current pin levels (0 or 1) of the right and left sensors. */
+line_reader_raw_t line_reader_read_raw(void);
 
-uint16_t line_normalise(uint16_t raw, uint16_t white, uint16_t black);
+/**
+ * Classifies both line sensors.
+ *
+ * @return A packed 0bRL value. A set bit means that sensor sees black.
+ */
+uint8_t line_reader_read_2bit(void);
 
-void line_track_reset(line_track_t *t);
-/* One 1 ms step. Fills *out; sets *junction_event for exactly one step per
- * junction (FR-05). */
-void line_track_step(line_track_t *t, const line_cal_t *cal,
-                     uint16_t raw_a, uint16_t raw_b,
-                     line_state_t *out, bool *junction_event);
+/** Returns the pin levels captured by the most recent classified read. */
+line_reader_raw_t line_reader_get_last_raw(void);
 
-#endif /* LINE_LOGIC_H */
+/**
+ * Converts a packed 0bRL value to a null-terminated string such as "10".
+ *
+ * @param value  Packed line-sensor value; bits above the lowest two are ignored.
+ * @param output Caller-provided buffer of at least three characters.
+ */
+void line_reader_format_2bit(uint8_t value, char output[3]);
+
+#endif

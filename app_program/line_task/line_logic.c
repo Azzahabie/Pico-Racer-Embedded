@@ -1,121 +1,128 @@
+/*
+ * line_logic.c - two-sensor digital line reader (RP2040)
+ *
+ * Works in the micro T-Kernel build: it does NOT use the Pico SDK
+ * (pico/stdlib.h, hardware/adc.h are not on this build's include path).
+ * The pins are configured and read directly through the RP2040 registers.
+ *
+ * The sensors are digital (DO) outputs on GP6 and GP8, so there is no
+ * ADC, threshold or hysteresis here: the sensor module itself decides
+ * black or white, and this file reads the resulting 0/1 level.
+ */
+
+#include <stddef.h>
+
 #include "line_logic.h"
 
-static bool at_rail(uint16_t v)
+/* ------------------------ RP2040 register access ----------------------- */
+
+#define IO_BANK0_BASE   0x40014000UL
+#define PADS_BANK0_BASE 0x4001C000UL
+#define SIO_BASE        0xD0000000UL
+
+#define REG32(addr)     (*(volatile uint32_t *)(addr))
+
+#define GPIO_CTRL(pin)  REG32(IO_BANK0_BASE + 0x04UL + 8UL * (pin))
+#define PAD_CTRL(pin)   REG32(PADS_BANK0_BASE + 0x04UL + 4UL * (pin))
+#define SIO_GPIO_IN     REG32(SIO_BASE + 0x04UL)
+#define SIO_GPIO_OE_CLR REG32(SIO_BASE + 0x28UL)
+
+#define FUNCSEL_SIO     5u
+#define PAD_IE          (1u << 6)   /* input enable */
+#define PAD_PUE         (1u << 3)   /* pull-up      */
+#define PAD_PDE         (1u << 2)   /* pull-down    */
+
+typedef struct {
+    line_reader_config_t config;
+    line_reader_raw_t last_raw;
+    uint8_t black_bits;
+} line_reader_state_t;
+
+static line_reader_state_t state;
+
+/** Sets a pin to plain GPIO input with input enabled and both pulls off. */
+static void input_pin_init(uint32_t pin)
 {
-    return (v <= B3_ADC_RAIL_MARGIN) ||
-           (v >= (B3_ADC_MAX - B3_ADC_RAIL_MARGIN));
+    uint32_t pad;
+
+    GPIO_CTRL(pin) = FUNCSEL_SIO;
+    SIO_GPIO_OE_CLR = (1UL << pin);
+
+    /* The pad powers up with a pull-down on, which would drag a weakly
+       driven sensor output low. */
+    pad = PAD_CTRL(pin);
+    pad |= PAD_IE;
+    pad &= ~(PAD_PUE | PAD_PDE);
+    PAD_CTRL(pin) = pad;
 }
 
-void line_cal_begin(line_cal_acc_t *acc)
+static uint16_t pin_level(uint32_t pin)
 {
-    acc->min_a = 0xFFFFu;
-    acc->max_a = 0u;
-    acc->min_b = 0xFFFFu;
-    acc->max_b = 0u;
-    acc->samples = 0u;
+    return (uint16_t)((SIO_GPIO_IN >> pin) & 1UL);
 }
 
-void line_cal_add(line_cal_acc_t *acc, uint16_t raw_a, uint16_t raw_b)
+/* ------------------------------- public ------------------------------- */
+
+line_reader_config_t line_reader_default_config(void)
 {
-    if (raw_a < acc->min_a) { acc->min_a = raw_a; }
-    if (raw_a > acc->max_a) { acc->max_a = raw_a; }
-    if (raw_b < acc->min_b) { acc->min_b = raw_b; }
-    if (raw_b > acc->max_b) { acc->max_b = raw_b; }
-    acc->samples++;
+    line_reader_config_t config = {
+        .right_guard_black_is_high = true,
+        .left_guard_black_is_high = true,
+    };
+
+    return config;
 }
 
-cal_result_t line_cal_finish(const line_cal_acc_t *acc, line_cal_t *out)
+void line_reader_init(const line_reader_config_t *config)
 {
-    if (acc->samples == 0u) {
-        return CAL_FAIL_NO_DATA;
-    }
-    if (at_rail(acc->min_a) || at_rail(acc->max_a) ||
-        at_rail(acc->min_b) || at_rail(acc->max_b)) {
-        return CAL_FAIL_RAIL;
-    }
-    if (((uint16_t)(acc->max_a - acc->min_a) < B3_CAL_MIN_CONTRAST) ||
-        ((uint16_t)(acc->max_b - acc->min_b) < B3_CAL_MIN_CONTRAST)) {
-        return CAL_FAIL_CONTRAST;
-    }
-#if B3_LINE_DARK_IS_HIGH
-    out->black_a = acc->max_a;  out->white_a = acc->min_a;
-    out->black_b = acc->max_b;  out->white_b = acc->min_b;
-#else
-    out->black_a = acc->min_a;  out->white_a = acc->max_a;
-    out->black_b = acc->min_b;  out->white_b = acc->max_b;
-#endif
-    return CAL_OK;
+    state.config = (config != NULL) ? *config : line_reader_default_config();
+    state.black_bits = 0u;
+    state.last_raw.right_guard = 0u;
+    state.last_raw.left_guard = 0u;
+
+    input_pin_init(LINE_READER_RIGHT_GUARD_GPIO);
+    input_pin_init(LINE_READER_LEFT_GUARD_GPIO);
 }
 
-uint16_t line_normalise(uint16_t raw, uint16_t white, uint16_t black)
+line_reader_raw_t line_reader_read_raw(void)
 {
-    int32_t num = ((int32_t)raw - (int32_t)white) * (int32_t)B3_NORM_FULL;
-    int32_t den = (int32_t)black - (int32_t)white;
-    int32_t v;
+    line_reader_raw_t raw;
 
-    if (den == 0) {
-        return 0u;
-    }
-    v = num / den;
-    if (v < 0) {
-        v = 0;
-    }
-    if (v > (int32_t)B3_NORM_FULL) {
-        v = (int32_t)B3_NORM_FULL;
-    }
-    return (uint16_t)v;
+    raw.left_guard = pin_level(LINE_READER_LEFT_GUARD_GPIO);
+    raw.right_guard = pin_level(LINE_READER_RIGHT_GUARD_GPIO);
+
+    return raw;
 }
 
-void line_track_reset(line_track_t *t)
+uint8_t line_reader_read_2bit(void)
 {
-    t->junction_count = 0u;
-    t->junction_armed = true;
-    t->lost_count = 0u;
-    t->line_seen = true;   /* assume on the line when a mission starts */
+    line_reader_raw_t raw = line_reader_read_raw();
+    bool right_guard_black;
+    bool left_guard_black;
+
+    state.last_raw = raw;
+
+    right_guard_black =
+        (raw.right_guard != 0u) == state.config.right_guard_black_is_high;
+    left_guard_black =
+        (raw.left_guard != 0u) == state.config.left_guard_black_is_high;
+
+    state.black_bits =
+        (uint8_t)((right_guard_black ? LINE_READER_RIGHT_GUARD_MASK : 0u) |
+                  (left_guard_black ? LINE_READER_LEFT_GUARD_MASK : 0u));
+
+    return state.black_bits;
 }
 
-void line_track_step(line_track_t *t, const line_cal_t *cal,
-                     uint16_t raw_a, uint16_t raw_b,
-                     line_state_t *out, bool *junction_event)
+line_reader_raw_t line_reader_get_last_raw(void)
 {
-    uint16_t a = line_normalise(raw_a, cal->white_a, cal->black_a);
-    uint16_t b = line_normalise(raw_b, cal->white_b, cal->black_b);
-    int32_t  err = ((int32_t)b - (int32_t)a) * (int32_t)B3_LINE_ERROR_SIGN;
-    bool     both_dark = (a >= B3_JUNCTION_DARK) && (b >= B3_JUNCTION_DARK);
+    return state.last_raw;
+}
 
-    *junction_event = false;
-
-    /* line seen: drops only after [M] ms below [L_min] (FR-03) */
-    if ((uint16_t)(a + b) >= B3_LINE_MIN_SIGNAL) {
-        t->lost_count = 0u;
-        t->line_seen = true;
-    } else {
-        if (t->lost_count < 0xFFFFu) {
-            t->lost_count++;
-        }
-        if (t->lost_count >= B3_LINE_LOST_MS) {
-            t->line_seen = false;
-        }
-    }
-
-    /* junction: both dark for [J_n] samples, one event until released */
-    if (both_dark) {
-        if (t->junction_count < 0xFFu) {
-            t->junction_count++;
-        }
-        if ((t->junction_count >= B3_JUNCTION_DEBOUNCE) && t->junction_armed) {
-            *junction_event = true;
-            t->junction_armed = false;
-        }
-    } else {
-        t->junction_count = 0u;
-        if ((a < B3_JUNCTION_RELEASE) || (b < B3_JUNCTION_RELEASE)) {
-            t->junction_armed = true;
-        }
-    }
-
-    out->error = (int16_t)err;
-    out->dark_a = a;
-    out->dark_b = b;
-    out->line_seen = t->line_seen;
+void line_reader_format_2bit(uint8_t value, char output[3])
+{
+    value &= LINE_READER_OUTPUT_MASK;
+    output[0] = ((value & LINE_READER_RIGHT_GUARD_MASK) != 0u) ? '1' : '0';
+    output[1] = ((value & LINE_READER_LEFT_GUARD_MASK) != 0u) ? '1' : '0';
+    output[2] = '\0';
 }
