@@ -13,8 +13,9 @@ DEPS   := sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c \
           $(wildcard $(SRC)/*.h $(SRC)/../common/*.h stubs/*/*.h)
 
 .PHONY: test clean
-test: sim_off sim_open sim_pid sim_wdt
+test: sim_off sim_off_unpacked sim_open sim_pid sim_wdt
 	./sim_off $(RUNARG)
+	./sim_off_unpacked $(RUNARG)
 	./sim_open $(RUNARG)
 	./sim_pid $(RUNARG)
 	./sim_wdt $(RUNARG)
@@ -22,6 +23,11 @@ test: sim_off sim_open sim_pid sim_wdt
 # Integration build (the committed default): no bench code at all.
 sim_off: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
+
+# The same with the Week 6 (unpacked) layouts, MOTION_PACKED 0: the
+# Week 13 "before" build, with distance_state behind a mutex.
+sim_off_unpacked: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_PACKED=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
 sim_open: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
@@ -34,6 +40,6 @@ sim_wdt: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -DMOTION_TEST_WDT=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
 clean:
-	rm -f sim_off sim_open sim_pid sim_wdt
+	rm -f sim_off sim_off_unpacked sim_open sim_pid sim_wdt
 
 .DEFAULT_GOAL := test

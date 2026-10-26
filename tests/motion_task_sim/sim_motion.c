@@ -297,6 +297,28 @@ ID tk_cre_tsk(CONST T_CTSK *p)
 }
 ER tk_sta_tsk(ID id, INT stacd) { (void)id; (void)stacd; return E_OK; }
 ID tk_cre_cyc(CONST T_CCYC *p) { CHECK(p->cyctim == 10u); return 4; }
+
+/* distance_state mutex (MOTION_PACKED 0 only).  g_mtx_held = 1 plays a
+   reader that holds it. */
+#define SIM_MTXID	(5)
+static int		g_mtx_held;
+static int		g_mtx_pol_locks;	/* writer: never waits */
+static int		g_mtx_wait_locks;	/* reader: waits */
+
+ID tk_cre_mtx(CONST T_CMTX *p) { CHECK(p->mtxatr == TA_INHERIT); return SIM_MTXID; }
+ER tk_loc_mtx(ID id, TMO tmo)
+{
+	CHECK(id == SIM_MTXID);
+	if (tmo == TMO_POL) { g_mtx_pol_locks++; }
+	else { g_mtx_wait_locks++; }
+	if (g_mtx_held) {
+		CHECK(tmo == TMO_POL);		/* a wait here would never end */
+		return E_TMOUT;
+	}
+	g_mtx_held = 1;
+	return E_OK;
+}
+ER tk_unl_mtx(ID id) { CHECK(id == SIM_MTXID); CHECK(g_mtx_held); g_mtx_held = 0; return E_OK; }
 ER tk_dly_tsk(TMO tmo) { (void)tmo; return E_OK; }
 ER tk_slp_tsk(TMO tmo) { (void)tmo; return E_OK; }
 INT tk_get_prc(void) { return 2; }
@@ -411,6 +433,14 @@ sim_reset (const char *p_name)
 	g_gp20_setups = 0;
 	g_wdt_starts = 0;
 	g_wdt_feeds = 0;
+#if MOTION_PACKED
+	g_ds_word = MOTION_DS_WORD_ZERO;
+#else
+	memset(&g_ds, 0, sizeof g_ds);
+	g_mtx_held = 0;
+	g_mtx_pol_locks = 0;
+	g_mtx_wait_locks = 0;
+#endif
 	CHECK(motion_start_up(&g_ctx, 2) == E_OK);
 	g_boot = MOTION_BOOT_POWER_ON;		/* one start-up only */
 	drain_reports();
@@ -476,6 +506,198 @@ check_stall_delay (void)
 	CHECK(g_first_drive > 0);
 	CHECK(ticks >= (int)MOTION_STALL_TICKS && ticks <= (int)MOTION_STALL_TICKS + 1);
 }
+
+/* ------------------------------------------------------------------ *
+ *  Scenarios: distance_state (motion_ds.h), wheels moved by hand
+ * ------------------------------------------------------------------ */
+
+#define DS_MM_PER_COUNT	(M_PI * MOTION_WHEEL_DIA_MM / MOTION_COUNTS_PER_REV)
+
+/* Turn both wheels by hand (counts, + = forward) and run one tick. */
+static void
+ds_move_tick (double left, double right)
+{
+	g_wheel[0].pos += left;
+	g_wheel[1].pos += right;
+	sim_tick();
+}
+
+/* Expected dist_mm for both wheels at this many counts. */
+static long
+ds_mm_at (double counts)
+{
+	return lround(counts * DS_MM_PER_COUNT);
+}
+
+/* Turn rate for k counts per tick of difference, over the window. */
+static long
+ds_turn_at (double diff_per_tick)
+{
+	double diff = diff_per_tick * MOTION_DS_WINDOW_TICKS;
+	double s = MOTION_DS_WINDOW_TICKS * MOTION_TICK_MS / 1000.0;
+
+	return lround(diff * DS_MM_PER_COUNT / MOTION_WHEELBASE_MM * (180.0 / M_PI) / s);
+}
+
+static void
+scenario_ds_straight (void)
+{
+	uint32_t w0, prev, now = 0u;
+	int i, b_every_tick = 1;
+
+	sim_reset("distance_state: straight line, one publish per tick, accel then steady");
+	w0 = motion_ds_read();
+	CHECK(w0 == MOTION_DS_WORD_ZERO);	/* nothing published before a tick */
+	prev = w0;
+	for (i = 1; i <= 100; i++) {
+		ds_move_tick(13.0, 13.0);
+		now = motion_ds_read();
+		if (motion_ds_updates(now, prev) != 1u) { b_every_tick = 0; }
+		if (i == 1) { CHECK(motion_ds_state(now) == MOTION_DS_ACCEL); }
+		if (i == (int)MOTION_DS_HIST) { CHECK(motion_ds_state(now) == MOTION_DS_STEADY); }
+		prev = now;
+	}
+	CHECK(b_every_tick);
+	CHECK(motion_ds_delta_mm(now, w0) == ds_mm_at(1300.0));	/* 103 mm */
+	CHECK(motion_ds_turn_dps(now) == 0);
+	CHECK(motion_ds_state(now) == MOTION_DS_STEADY);
+	CHECK(count_kind(REP_DIST, -1) >= 4);
+	CHECK(strstr(g_log, "[motion] distance_state 0x") != NULL);
+	CHECK(strstr(g_log, "STEADY") != NULL);
+
+	/* Stop: decelerating, then steady once the history is still. */
+	ds_move_tick(0.0, 0.0);
+	CHECK(motion_ds_state(motion_ds_read()) == MOTION_DS_DECEL);
+	sim_ticks((int)MOTION_DS_HIST);
+	CHECK(motion_ds_state(motion_ds_read()) == MOTION_DS_STEADY);
+	CHECK(motion_ds_delta_mm(motion_ds_read(), w0) == ds_mm_at(1300.0));
+}
+
+static void
+scenario_ds_turn_and_reverse (void)
+{
+	uint32_t w0, now;
+	int i;
+
+	sim_reset("distance_state: left turn +, right turn -, reversing falls");
+	w0 = motion_ds_read();
+	for (i = 0; i < 20; i++) { ds_move_tick(-13.0, 13.0); }	/* spin left */
+	now = motion_ds_read();
+	printf("   spin at 13 counts/tick per wheel: %d deg/s (simulation)\n",
+	       (int)motion_ds_turn_dps(now));
+	CHECK(motion_ds_turn_dps(now) == ds_turn_at(26.0));	/* about +93 */
+	CHECK(motion_ds_turn_dps(now) > 0);
+	CHECK(motion_ds_delta_mm(now, w0) == 0);		/* on the spot */
+	CHECK(motion_ds_state(now) == MOTION_DS_STEADY);
+
+	for (i = 0; i < 20; i++) { ds_move_tick(13.0, -13.0); }	/* spin right */
+	now = motion_ds_read();
+	CHECK(motion_ds_turn_dps(now) == -ds_turn_at(26.0));
+
+	w0 = now;
+	for (i = 0; i < 50; i++) { ds_move_tick(-13.0, -13.0); }	/* reverse */
+	now = motion_ds_read();
+	CHECK(motion_ds_delta_mm(now, w0) == -ds_mm_at(650.0));
+	CHECK(motion_ds_turn_dps(now) == 0);
+}
+
+static void
+scenario_ds_lost_tick (void)
+{
+	uint32_t w1, w2, w3;
+	int i;
+
+	sim_reset("distance_state: a lost tick publishes nothing and loses nothing");
+	for (i = 0; i < 10; i++) { ds_move_tick(13.0, 13.0); }
+	w1 = motion_ds_read();
+	g_fail_ticks = 1;
+	ds_move_tick(13.0, 13.0);			/* the car moves, no tick */
+	w2 = motion_ds_read();
+	CHECK(w2 == w1);
+	CHECK(motion_ds_updates(w2, w1) == 0u);	/* reader: nothing new */
+	ds_move_tick(13.0, 13.0);
+	w3 = motion_ds_read();
+	CHECK(motion_ds_updates(w3, w2) == 1u);
+	CHECK(motion_ds_delta_mm(w3, w1) == ds_mm_at(156.0) - ds_mm_at(130.0));
+}
+
+static void
+scenario_ds_wrap (void)
+{
+	uint32_t prev, now;
+	long long summed = 0;
+	int i;
+
+	sim_reset("distance_state: past 32.768 m the wrapped differences still add up");
+	prev = motion_ds_read();
+	for (i = 0; i < 500; i++) {
+		ds_move_tick(1000.0, 1000.0);
+		now = motion_ds_read();
+		summed += motion_ds_delta_mm(now, prev);
+		prev = now;
+	}
+	printf("   driven %lld mm, dist_mm field now %u (simulation)\n",
+	       summed, (unsigned)motion_ds_mm(prev));
+	CHECK(summed > 32768);
+	CHECK(summed == ds_mm_at(500000.0));
+	CHECK(summed == g_ctx.ds_mm);
+}
+
+/* The status line prints the word imu_task reads and each state name.
+   Lines come every 20 ticks: start at tick 15 so the one at tick 20 falls
+   while accelerating, and stop at tick 38 so the one at 40 falls while
+   decelerating. */
+static void
+scenario_ds_status_line (void)
+{
+	char want[64];
+	int i;
+
+	sim_reset("distance_state: status line shows the word and the state");
+	for (i = 1; i <= 40; i++) {
+		if ((i >= 15) && (i < 38)) { ds_move_tick(13.0, 13.0); }
+		else { sim_tick(); }
+		if ((i == 20) || (i == 40)) {
+			(void)snprintf(want, sizeof want, "distance_state 0x%08x:",
+				       (unsigned)motion_ds_read());
+			CHECK(strstr(g_log, want) != NULL);
+		}
+	}
+	CHECK(count_kind(REP_DIST, -1) == 2);
+	CHECK(strstr(g_log, "ACCELERATING") != NULL);
+	CHECK(strstr(g_log, "DECELERATING") != NULL);
+	CHECK(strstr(g_log, "update 4, turn +0 deg/s") != NULL);	/* 20 mod 8 */
+}
+
+#if !MOTION_PACKED
+/* Week 6 form: the writer never waits, so a busy mutex costs one
+   publish, not any distance; the reader sees a repeated read. */
+static void
+scenario_ds_week6_mutex (void)
+{
+	uint32_t w1, w3;
+	int i;
+
+	sim_reset("distance_state, Week 6 form: busy mutex skips a publish, loses nothing");
+	for (i = 0; i < 10; i++) { ds_move_tick(13.0, 13.0); }
+	CHECK(g_mtx_pol_locks == 10);
+	w1 = motion_ds_read();
+	CHECK(g_mtx_wait_locks == 1);
+
+	g_mtx_held = 1;				/* a reader holds it */
+	ds_move_tick(13.0, 13.0);
+	CHECK(g_mtx_pol_locks == 11);
+	g_mtx_held = 0;
+	CHECK(motion_ds_read() == w1);		/* that tick was skipped */
+	CHECK(motion_ds_updates(motion_ds_read(), w1) == 0u);
+
+	ds_move_tick(13.0, 13.0);
+	w3 = motion_ds_read();
+	CHECK(motion_ds_updates(w3, w1) == 1u);
+	CHECK(motion_ds_delta_mm(w3, w1) == ds_mm_at(156.0) - ds_mm_at(130.0));
+	CHECK(!g_mtx_held);
+}
+#endif
 
 /* ------------------------------------------------------------------ *
  *  Scenarios
@@ -914,6 +1136,14 @@ main (int argc, char **argv)
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
 	scenario_bench_off();
+	scenario_ds_straight();
+	scenario_ds_turn_and_reverse();
+	scenario_ds_lost_tick();
+	scenario_ds_wrap();
+	scenario_ds_status_line();
+#if !MOTION_PACKED
+	scenario_ds_week6_mutex();
+#endif
 #elif !MOTION_TEST_PID
 	scenario_idle();
 	scenario_hand_turn();
@@ -938,10 +1168,11 @@ main (int argc, char **argv)
 	scenario_pid_unplug_mid_run();
 #endif
 
-	printf("motion_task sim (%s): %d checks, %d failures\n",
+	printf("motion_task sim (%s%s): %d checks, %d failures\n",
 	       !MOTION_BENCH ? "bench off"
 	       : MOTION_TEST_WDT ? "watchdog test"
 	       : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
+	       MOTION_PACKED ? "" : ", Week 6 unpacked",
 	       g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -7,7 +7,8 @@
  *    motion_task  core 1, priority 11.  Woken every 10 ms by a cyclic
  *                 handler through an event flag.  Reads both encoder
  *                 counts together, runs the bench test and the stall
- *                 check, writes the motors, then feeds the hardware
+ *                 check, writes the motors, publishes distance_state for
+ *                 imu_task (motion_ds.h), then feeds the hardware
  *                 watchdog.  Never prints and never waits on anything
  *                 except its event flag.
  *
@@ -39,6 +40,7 @@
 #include "../common/messages.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
+#include "motion_ds.h"
 #include "motor.h"
 #include "encoder.h"
 #include "motion_wdt.h"
@@ -116,8 +118,11 @@ typedef enum
     REP_STATUS = 0, /* val = position, rate = counts/s        */
     REP_STEP,       /* val = moved in the step, rate = c/s    */
     REP_EVENT,      /* code = EVT_*, val/rate = arguments     */
-    REP_TIMING      /* timing of the last 5 s; rate_l = longest
+    REP_TIMING,     /* timing of the last 5 s; rate_l = longest
                        gap between watchdog feeds, us         */
+    REP_DIST        /* distance_state: code = state, val_l =
+                       net mm, val_r = turn deg/s, rate_l =
+                       accel mm/s^2, rate_r = counter         */
 } report_kind_t;
 
 typedef enum
@@ -210,6 +215,14 @@ typedef struct
     uint32_t wdt_fed_us;     /* when the watchdog was last fed  */
     uint32_t wdt_gap_max_us; /* longest gap between two feeds   */
 
+    /* distance_state (motion_ds.h): the last values published */
+    motion_ds_win_t   ds_win;
+    motion_ds_state_t ds_state;
+    int32_t           ds_mm;      /* net distance, mm               */
+    int32_t           ds_turn;    /* deg/s, counter-clockwise +     */
+    int32_t           ds_accel;   /* mm/s^2, for the status line    */
+    uint32_t          ds_counter; /* publishes so far (word: 3 bits) */
+
     /* reporting */
     int32_t  rep_l;
     int32_t  rep_r;
@@ -218,6 +231,33 @@ typedef struct
 } motion_ctx_t;
 
 static motion_ctx_t g_ctx;
+
+/* ------------------------------------------------------------------ *
+ *  distance_state, shared with imu_task (motion_ds.h)
+ * ------------------------------------------------------------------ */
+
+#if MOTION_PACKED
+/* One aligned word: motion_task is the only writer and stores it whole
+   once per tick; a reader takes it with one load. */
+static volatile uint32_t g_ds_word = MOTION_DS_WORD_ZERO;
+#else
+/* Week 6 form, kept only to measure the Week 13 "before": a struct
+   guarded by a priority-inheritance mutex, held only to copy. */
+typedef struct
+{
+    int32_t dist_mm;
+    int16_t turn_dps;
+    uint8_t state;
+    uint8_t counter;
+} ds_week6_t;
+
+static ds_week6_t g_ds;
+static ID         g_ds_mtxid;
+
+static T_CMTX const g_cmtx_ds = {
+    .mtxatr = TA_INHERIT,
+};
+#endif
 
 /* ------------------------------------------------------------------ *
  *  Kernel objects
@@ -718,6 +758,58 @@ tick_encoders (motion_ctx_t *p_ctx)
     p_ctx->prev_edges_r = edges_r;
 }
 
+/* Build this tick's distance_state from the counts and publish it.  The
+   distance comes from the total counts since start-up, so a skipped or
+   lost tick loses nothing: the next publish includes it. */
+static void
+tick_distance (motion_ctx_t *p_ctx)
+{
+    motion_ds_win_add(&p_ctx->ds_win, p_ctx->d_l, p_ctx->d_r);
+    p_ctx->ds_mm    = motion_ds_dist_mm(p_ctx->pos_l, p_ctx->pos_r);
+    p_ctx->ds_turn  = motion_ds_win_turn_dps(&p_ctx->ds_win);
+    p_ctx->ds_accel = motion_ds_win_accel_mmps2(&p_ctx->ds_win);
+    p_ctx->ds_state = motion_ds_accel_state(p_ctx->ds_accel);
+
+#if MOTION_PACKED
+    p_ctx->ds_counter++;
+    g_ds_word = motion_ds_pack(p_ctx->ds_mm, p_ctx->ds_state, p_ctx->ds_counter,
+                               p_ctx->ds_turn);
+#else
+    /* Never wait: if a reader holds the mutex, skip this tick. */
+    if (E_OK == tk_loc_mtx(g_ds_mtxid, TMO_POL))
+    {
+        p_ctx->ds_counter++;
+        g_ds.dist_mm = p_ctx->ds_mm;
+        g_ds.turn_dps =
+            (int16_t)motion_clamp(p_ctx->ds_turn, INT16_MIN, INT16_MAX);
+        g_ds.state   = (uint8_t)p_ctx->ds_state;
+        g_ds.counter = (uint8_t)(p_ctx->ds_counter & MOTION_DS_CTR_MASK);
+        (void)tk_unl_mtx(g_ds_mtxid);
+    }
+#endif
+}
+
+uint32_t
+motion_ds_read (void)
+{
+#if MOTION_PACKED
+    return g_ds_word; /* one aligned load: all four fields from one tick */
+#else
+    ds_week6_t copy = { 0, 0, 0u, 0u };
+
+    /* The reader waits, as in Week 6: the writer holds the mutex only to
+       copy and never waits itself, so the wait is a few microseconds. */
+    if (E_OK == tk_loc_mtx(g_ds_mtxid, TMO_FEVR))
+    {
+        copy = g_ds;
+        (void)tk_unl_mtx(g_ds_mtxid);
+    }
+
+    return motion_ds_pack(copy.dist_mm, (motion_ds_state_t)copy.state,
+                          copy.counter, copy.turn_dps);
+#endif
+}
+
 static void
 tick_report (motion_ctx_t *p_ctx)
 {
@@ -738,6 +830,13 @@ tick_report (motion_ctx_t *p_ctx)
         rep.val_r  = p_ctx->pos_r;
         rep.rate_l = rate_cps(p_ctx->pos_l - p_ctx->rep_l, p_ctx->rep_ticks);
         rep.rate_r = rate_cps(p_ctx->pos_r - p_ctx->rep_r, p_ctx->rep_ticks);
+        report_send(p_ctx, &rep);
+
+        report_fill(p_ctx, &rep, REP_DIST, (uint8_t)p_ctx->ds_state);
+        rep.val_l  = p_ctx->ds_mm;
+        rep.val_r  = p_ctx->ds_turn;
+        rep.rate_l = p_ctx->ds_accel;
+        rep.rate_r = (int32_t)(p_ctx->ds_counter & MOTION_DS_CTR_MASK);
         report_send(p_ctx, &rep);
     }
     if (p_ctx->rep_ticks >= MOTION_REPORT_TICKS)
@@ -832,6 +931,7 @@ motion_tick (motion_ctx_t *p_ctx)
     motor_set(MOTOR_LEFT, p_ctx->cmd_l);
     motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
 
+    tick_distance(p_ctx);
     tick_report(p_ctx);
 
     t_end = now_us();
@@ -884,6 +984,7 @@ motion_init (motion_ctx_t *p_ctx)
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
+    motion_ds_win_reset(&p_ctx->ds_win);
 
     encoder_read_counts(&p_ctx->prev_l, &p_ctx->prev_r);
     p_ctx->prev_edges_l = encoder_read_edges_left();
@@ -1240,6 +1341,32 @@ print_event (UB *p_line, motion_report_t const *p_rep)
     }
 }
 
+/* The word imu_task reads, then each field.  The word is rebuilt here
+   with the same motion_ds_pack() motion_task uses. */
+static void
+print_distance (UB *p_line, motion_report_t const *p_rep)
+{
+    static char const *const state_names[] = { "STEADY", "ACCELERATING",
+                                               "DECELERATING" };
+    char const              *p_state       = "?";
+
+    if ((uint32_t)p_rep->code
+        < (uint32_t)(sizeof(state_names) / sizeof(state_names[0])))
+    {
+        p_state = state_names[p_rep->code];
+    }
+
+    (void)tm_sprintf(
+        p_line,
+        (UB *)"[motion] distance_state 0x%08x: dist %u mm (net %+d mm),"
+              " %s (%+d mm/s^2), update %d, turn %+d deg/s",
+        (UINT)motion_ds_pack(p_rep->val_l, (motion_ds_state_t)p_rep->code,
+                             (uint32_t)p_rep->rate_r, p_rep->val_r),
+        (UINT)((uint32_t)p_rep->val_l & MOTION_DS_MM_MASK), (INT)p_rep->val_l,
+        p_state, (INT)p_rep->rate_l, (INT)p_rep->rate_r, (INT)p_rep->val_r);
+    print_line(p_line);
+}
+
 static void
 print_report (motion_report_t const *p_rep)
 {
@@ -1294,6 +1421,10 @@ print_report (motion_report_t const *p_rep)
                              (INT)p_rep->rate_l,
                              (UINT)(MOTION_WDT_MS * US_PER_MS));
             print_line(line);
+            break;
+
+        case REP_DIST:
+            print_distance(line, p_rep);
             break;
 
         case REP_EVENT:
@@ -1364,6 +1495,21 @@ motor_task_start (void)
             g_mbfid = obj_id;
         }
     }
+
+#if !MOTION_PACKED
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mtx(&g_cmtx_ds);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_ds_mtxid = obj_id;
+        }
+    }
+#endif
 
     if (E_OK == ercd)
     {

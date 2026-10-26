@@ -3,7 +3,8 @@
 `motion_task` owns the two motors and the two wheel encoders. This first
 version proves the hardware on the bench: PWM on the H-bridge, both
 encoders counting the right way, the 10 ms tick on core 1, the FR-30
-stall check and the hardware watchdog. The command interface from
+stall check and the hardware watchdog. It also publishes `distance_state`,
+the distance and turn rate `imu_task` needs. The command interface from
 `nav_ctrl_task` and STOP_SCAN / STOP_IMU come next.
 
 ## What is in the code
@@ -13,7 +14,8 @@ stall check and the hardware watchdog. The command interface from
 | `app_program/motor_task/motor_task.c/.h` | `motion_task` (core 1, priority 11, 10 ms tick from a cyclic handler through an event flag) and `motion_report` (core 0, priority 24, does all the printing). Bench test, stall check, timing measurement. |
 | `app_program/motor_task/motor.c/.h` | PWM driver: GP8/GP9 = slice 4, GP10/GP11 = slice 5, 10 kHz. One 32-bit store updates both inputs of a motor. |
 | `app_program/motor_task/encoder.c/.h` | Quadrature (x4) on GP0..GP3 with pull-ups. Both counts published as one packed 32-bit word. |
-| `app_program/motor_task/motion_lib.c/.h` | Pure arithmetic, no kernel calls: quadrature table, packed counts, wrap-safe delta, stall detector, integer PID with anti-windup. |
+| `app_program/motor_task/motion_lib.c/.h` | Pure arithmetic, no kernel calls: quadrature table, packed counts, wrap-safe delta, stall detector, integer PID with anti-windup, distance, turn rate and acceleration for `distance_state`. |
+| `app_program/motor_task/motion_ds.h` | `distance_state`: the one 32-bit word motion publishes every tick for `imu_task`. Its layout, `motion_ds_read()` and the helpers that take the fields out. The only file a reader includes. |
 | `app_program/motor_task/motion_wdt.c/.h` | RP2040 hardware watchdog: armed at start-up, fed at the end of every completed tick, and the reason for the last reset. |
 | `app_program/motor_task/motion_cfg.h` | Every pin, flag and tunable in one place. |
 | `app_program/common/gpio_irq.c/.h` | Buddy 5's shared GPIO dispatcher, the one owner of the GPIO bank interrupt. Motion attaches GP0..GP3 one pin at a time on core 1 (see "For the team"). |
@@ -21,7 +23,7 @@ stall check and the hardware watchdog. The command interface from
 | `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
 | `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
 | `tests/motion_wdt/` | The watchdog driver against fake registers: the arming steps and their order, LOAD, the feed, the reset cause. |
-| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, and the watchdog test image. |
+| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, the watchdog test image, and the Week 6 (unpacked) build with `distance_state` behind a mutex. |
 
 Run the host tests in the build container (on macOS the host compiler's
 AddressSanitizer aborts at start-up):
@@ -260,6 +262,78 @@ doubling (erratum RP2040-E1) is wrong for this chip.
 hold the Robo Pico's RESET button (it holds RUN low) and measure GP8, GP9,
 GP10 and GP11 to GND. All four should read about 0 V (brake).
 
+### distance_state (for imu_task, Buddy 4)
+
+Every completed tick, motion_task builds one 32-bit word from the encoder
+counts and stores it whole; `imu_task` reads it with `motion_ds_read()`.
+Layout agreed with Buddy 4 (PostTri1 Version C row 17):
+
+| Bits | Field | Meaning | Read it with |
+|---|---|---|---|
+| 0-14 | dist_mm | Net distance in mm, average of both wheels, modulo 32768. Falls when reversing. Only differences mean anything. | `motion_ds_delta_mm(now, then)`: mm since the last read, + forward |
+| 15-16 | state | 0 STEADY, 1 ACCELERATING, 2 DECELERATING (forward acceleration at or beyond 171 mm/s^2, proposed). 3 is never sent. | `motion_ds_state(w)` |
+| 17-19 | counter | +1 every publish, modulo 8 | `motion_ds_updates(now, then)`: 0 = nothing new, 1 = fresh, more = reads skipped |
+| 20-31 | turn | deg/s, counter-clockwise (left) positive, -2048..+2047, stored + 2048 | `motion_ds_turn_dps(w)` |
+
+How a reader uses it (one load, no mutex, the four fields always from the
+same tick). The reader is `imu_task` on core 1: PostTri1 row 2 allows a
+lock-free word only for one reader on the writer's core, so a second
+reader, or one on core 0, needs the team's agreement first.
+
+```c
+#include "../motor_task/motion_ds.h"
+
+static uint32_t s_prev;
+
+/* When imu_task starts measuring (and after any gap in reading): only
+   differences between two reads mean anything. */
+s_prev = motion_ds_read();
+
+/* Then every sample: */
+uint32_t now = motion_ds_read();
+int32_t  ds  = motion_ds_delta_mm(now, s_prev);  /* mm since last read */
+if (0u == motion_ds_updates(now, s_prev)) { /* motion has not run since */ }
+if (MOTION_DS_STEADY != motion_ds_state(now)) { /* hold pitch */ }
+int32_t  turn = motion_ds_turn_dps(now);          /* + = turning left */
+s_prev = now;
+```
+
+How each field is worked out (`motion_lib.c`, constants in `motion_cfg.h`):
+
+- Distance: (left count + right count) / 2 x pi x 64 mm / 2535, from the
+  total counts since start-up, so rounding never builds up and a lost tick
+  loses nothing. 1 mm steps; one count is 0.079 mm (C).
+- Turn rate: the right wheel's lead over the left over the last 5 ticks
+  (50 ms, `MOTION_DS_WINDOW_TICKS`, proposed), divided by the 127 mm
+  wheelbase. One count of difference is 0.716 deg/s (C).
+- State: the average wheel speed over the last 50 ms against the 50 ms
+  before it.
+
+A turn on the spot adds no distance. In the UART-console build the left
+encoder is off (GP0/GP1 are the console), so the distance is half the
+right wheel's and driving straight reads as a left turn: use the USB
+build.
+
+**Status line** (every 200 ms while a wheel moves, after the count line):
+
+```
+[motion] distance_state 0x800a0040: dist 64 mm (net +64 mm), STEADY (+0 mm/s^2), update 5, turn +0 deg/s
+```
+
+**Test 1, distance** (car on the floor, motors braked, any image): push
+the car straight along a ruler, 1000 mm. `net` should read about 1000.
+Record the reading; a few percent off means the wheel diameter or counts
+per turn need calibrating (NFR-04 trials).
+
+**Test 2, turn sign**: turn the car on the spot by hand, to the left.
+`turn` must be positive while it turns, negative to the right.
+
+**Test 3, state**: push the car off from still, glide, then slow it to a
+stop over about a quarter of a second. Repeat up to three times. The line
+comes only every 200 ms and a sudden change shows for about 90 ms, so one
+run may miss it; pass if ACCELERATING and DECELERATING each appear in some
+run, and STEADY while gliding.
+
 ## Record the results
 
 | Item | Left | Right |
@@ -278,6 +352,8 @@ GP10 and GP11 to GND. All four should read about 0 V (brake).
 | Watchdog: longest gap between feeds (us) | | |
 | Watchdog test: reset after the last feed (us), wheel stopped (yes/no) | | |
 | GP8 / GP9 / GP10 / GP11 with RESET held (V) | | |
+| distance_state: pushed 1000 mm by ruler, `net` reads (mm) | | |
+| distance_state: turn sign correct, left / right (yes/no) | | |
 
 ## For the team
 
@@ -324,7 +400,15 @@ Found while writing this; each needs its owner.
    masked, a long critical section), the whole car resets. The timing
    line's feed gap will show it. Only motion_wdt.c writes the watchdog
    registers; cpu_clock.c sets its TICK once at boot, which must stay.
-8. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
+8. **distance_state (Buddy 4).** Include `motor_task/motion_ds.h` and
+   read with `motion_ds_read()` (one load, never blocks); take the fields
+   out with its helpers, never your own shifts. Proposed, for Buddy 4 to
+   confirm: the 50 ms averaging window, the 171 mm/s^2 threshold for
+   ACCELERATING / DECELERATING (1 degree of accelerometer pitch error, C),
+   the state numbers (0 STEADY, 1 ACCEL, 2 DECEL) and the turn rate stored
+   with an offset of 2048 (as the telemetry turn rate is). The layout
+   moves to `common/messages.h` through the team PR.
+9. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
    `TM_BLINK_LED=1`, blink's diagnostic pulse (`demo_tasks.c`) takes
    GP8-GP11 and GP2/GP3 back after motion has set them up. Keep both off
    on the car.
@@ -336,7 +420,15 @@ Found while writing this; each needs its owner.
   a STOP_SCAN brakes nothing.
 - Command interface from `nav_ctrl_task` (CMD bit), STOP_SCAN / STOP_IMU,
   Motion Fault exit on FAULT_CLEAR(MOTION).
-- Distance, straight-line correction, encoder turns.
+- Straight-line correction, encoder turns.
+- `distance_state` is not reset at a new mission yet (it needs the
+  mission state from nav_ctrl_task). Readers use differences, so this
+  matters only for telemetry.
+- Week 13 RAM numbers for `distance_state` (`tests/week13/measure.sh`,
+  after the commit).
+- PostTri1 row 2 stress test for the lock-free words: a core 1 reader
+  checks the `distance_state` counter and field ranges while motion_task
+  publishes, for 10 minutes on the car.
 - Minimum-bit command and telemetry formats, once `common/messages.h` is
   agreed with Buddy 1. The 52-byte print record here is motion's console
   channel, in every build and the same in both MOTION_PACKED settings; it

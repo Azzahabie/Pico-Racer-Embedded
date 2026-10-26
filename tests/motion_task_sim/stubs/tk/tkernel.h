@@ -45,6 +45,7 @@ typedef int		BOOL;
 #define TA_TFIFO	0x00000000UL
 #define TA_WSGL		0x00000000UL
 #define TA_STA		0x00000002UL
+#define TA_INHERIT	0x00000002UL
 #define TWF_ORW		0x00000001U
 #define TWF_BITCLR	0x00000020U
 #define TMO_POL		(0)
@@ -61,6 +62,7 @@ typedef struct { void *exinf; ATR flgatr; UINT iflgptn; } T_CFLG;
 typedef struct { void *exinf; ATR mbfatr; SZ bufsz; INT maxmsz; void *bufptr; } T_CMBF;
 typedef struct { void *exinf; ATR cycatr; FP cychdr; RELTIM cyctim; RELTIM cycphs; } T_CCYC;
 typedef struct { ATR intatr; FP inthdr; } T_DINT;
+typedef struct { void *exinf; ATR mtxatr; PRI ceilpri; } T_CMTX;
 
 /* Registers the code under test touches. */
 #define TIMER_BASE		0x40054000u
@@ -110,6 +112,9 @@ INT tk_rcv_mbf(ID id, void *msg, TMO tmo);
 ID  tk_cre_tsk(CONST T_CTSK *p);
 ER  tk_sta_tsk(ID id, INT stacd);
 ID  tk_cre_cyc(CONST T_CCYC *p);
+ID  tk_cre_mtx(CONST T_CMTX *p);
+ER  tk_loc_mtx(ID id, TMO tmo);
+ER  tk_unl_mtx(ID id);
 ER  tk_dly_tsk(TMO tmo);
 ER  tk_slp_tsk(TMO tmo);
 INT tk_get_prc(void);

@@ -9,6 +9,7 @@ encoder_dispatch/test_dispatch_uart
 encoder_dispatch/test_dispatch_usb_unpacked
 encoder_dispatch/test_dispatch_race
 motion_task_sim/sim_off
+motion_task_sim/sim_off_unpacked
 motion_task_sim/sim_open
 motion_task_sim/sim_pid
 motion_task_sim/sim_wdt

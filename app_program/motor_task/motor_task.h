@@ -6,7 +6,8 @@
  *  document calls the task motion_task.
  *
  *  This is the bench bring-up version: it owns the motors and encoders,
- *  runs a 10 ms tick on core 1, detects stalls (FR-30), feeds the
+ *  runs a 10 ms tick on core 1, detects stalls (FR-30), publishes
+ *  distance_state for imu_task (read it through motion_ds.h), feeds the
  *  hardware watchdog (motion_wdt.c) and runs a button-started bench test.
  *  The command interface from nav_ctrl_task and STOP_SCAN / STOP_IMU come
  *  next.

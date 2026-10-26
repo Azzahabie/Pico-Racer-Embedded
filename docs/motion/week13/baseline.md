@@ -19,9 +19,9 @@ Building both from one commit means RAM, message sizes and timing compare
 like for like (PostTri1 Version C row 8 promises the stop-time test on both
 builds).
 
-Today the switch covers the encoder counts. Each later feature (commands,
-`distance_state`, the motion state) is written with both forms under the
-same switch; see "To be added".
+Today the switch covers the encoder counts and `distance_state`. Each
+later feature (commands, the motion state) is written with both forms
+under the same switch; see "To be added".
 
 ## Method
 
@@ -100,7 +100,7 @@ not a "before" for anything. With its 4096 B stack it costs 4544 B.
 | Item (plan step) | Switched? | Expected before -> after | Owner |
 |---|---|---|---|
 | Commands on nav_cmd_mbf and avoid_cmd_mbf (1.7) | if Buddy 5 sends through motion's functions; otherwise size only | payload 4 -> 2 B; buffer slot 8 -> 8 B, 6 slots 48 -> 48 B (C) | Buddy 2 with Buddy 5 |
-| distance_state (1.4) | yes, through motion's read and publish functions | struct + mutex 8 B -> one word 4 B (C) | Buddy 2, read by Buddy 4 |
+| distance_state (1.4), built 26 Oct | yes, inside tick_distance() and motion_ds_read() | struct 8 B + mutex ID 4 B -> one word 4 B (M, nm on the working tree; re-run measure.sh after the commit) | Buddy 2, read by Buddy 4 |
 | Motion state and history (1.3) | yes | 2 enums 2 B -> one byte (C) | Buddy 2 |
 | Telemetry sender (1.8) | no (Buddy 1's format) | Buddy 1's v1 record -> 7 B event | Buddy 1, motion supplies fields |
 | Shared fault bits (1.11, 2.4) | no | event-flag bits in both | Buddy 5's flag, motion sets its bits |
