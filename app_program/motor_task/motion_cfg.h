@@ -107,6 +107,30 @@
 #define MOTION_DEADBAND_DUTY (150)
 
 /* ------------------------------------------------------------------ *
+ *  Car geometry and distance_state  (motion_ds.h)
+ * ------------------------------------------------------------------ */
+
+/* Measured on the car, docs/motion/results.md: counts per wheel turn
+   (x4 quadrature, 2 trials), wheel diameter and the distance between the
+   two wheels (ruler).  Distance uses the first two; turn rate uses all
+   three.  Calibrate with the NFR-04 straight trials. */
+#define MOTION_COUNTS_PER_REV (2535)
+#define MOTION_WHEEL_DIA_MM   (64)
+#define MOTION_WHEELBASE_MM   (127)
+
+/* Turn rate and acceleration are averaged over this many ticks.
+   PROPOSED: 5 ticks = 50 ms, the most agreed with Buddy 4 (23 Oct), so
+   her 5-sample stationary rule still works.  One count of difference
+   between the wheels is then about 0.72 deg/s (calculated). */
+#define MOTION_DS_WINDOW_TICKS (5u)
+
+/* Forward acceleration at or above this reads ACCELERATING (and at or
+   below minus this, DECELERATING), so imu_task holds its pitch.
+   PROPOSED: 171 mm/s^2 tilts an accelerometer's pitch reading by 1 degree
+   (9807 x tan 1 deg, calculated).  Set from Buddy 4's A4 hump tests. */
+#define MOTION_DS_ACCEL_MMPS2 (171)
+
+/* ------------------------------------------------------------------ *
  *  Bench test  (wheels off the ground!)
  * ------------------------------------------------------------------ */
 

@@ -589,6 +589,286 @@ static void test_helpers(void)
 	CHECK_EQ(motion_abs(INT32_MIN), INT32_MAX);
 }
 
+/* ------------------------------------------------------------------ *
+ *  distance_state (motion_ds.h and the motion_ds_* arithmetic)
+ * ------------------------------------------------------------------ */
+
+#define PI_D		3.14159265358979323846
+#define MM_PER_COUNT	(PI_D * MOTION_WHEEL_DIA_MM / MOTION_COUNTS_PER_REV)
+#define WINDOW_S	((double)MOTION_DS_WINDOW_TICKS * MOTION_TICK_MS / 1000.0)
+
+/* Nearest whole number, halves away from zero (as the library rounds). */
+static long long
+round_ref (double x)
+{
+	return (long long)((x >= 0.0) ? (x + 0.5) : (x - 0.5));
+}
+
+static void test_ds_layout(void)
+{
+	uint32_t w;
+
+	/* Each field lands in its own bits and nowhere else. */
+	CHECK_EQ(motion_ds_pack(0x7FFF, MOTION_DS_STEADY, 0u, -2048), 0x00007FFFu);
+	CHECK_EQ(motion_ds_pack(0, (motion_ds_state_t)3, 0u, -2048), 0x00018000u);
+	CHECK_EQ(motion_ds_pack(0, MOTION_DS_STEADY, 7u, -2048), 0x000E0000u);
+	CHECK_EQ(motion_ds_pack(0, MOTION_DS_STEADY, 0u, 2047), 0xFFF00000u);
+
+	/* The word before any publish decodes to all zeros. */
+	CHECK_EQ(motion_ds_turn_dps(MOTION_DS_WORD_ZERO), 0);
+	CHECK_EQ(motion_ds_mm(MOTION_DS_WORD_ZERO), 0);
+	CHECK_EQ(motion_ds_counter(MOTION_DS_WORD_ZERO), 0);
+	CHECK_EQ(motion_ds_state(MOTION_DS_WORD_ZERO), MOTION_DS_STEADY);
+	CHECK_EQ(motion_ds_pack(0, MOTION_DS_STEADY, 0u, 0), MOTION_DS_WORD_ZERO);
+
+	/* Turn rate: offset 2048, clamped, sign kept. */
+	w = motion_ds_pack(0, MOTION_DS_STEADY, 0u, -1);
+	CHECK_EQ(motion_ds_turn_dps(w), -1);
+	CHECK_EQ(motion_ds_turn_dps(motion_ds_pack(0, MOTION_DS_STEADY, 0u, 5000)), 2047);
+	CHECK_EQ(motion_ds_turn_dps(motion_ds_pack(0, MOTION_DS_STEADY, 0u, -5000)), -2048);
+	CHECK_EQ(motion_ds_turn_dps(motion_ds_pack(0, MOTION_DS_STEADY, 0u, INT32_MIN)), -2048);
+
+	/* dist_mm is the net distance modulo 32768; a negative one wraps the
+	   same way.  Counter keeps 3 bits. */
+	CHECK_EQ(motion_ds_mm(motion_ds_pack(32768, MOTION_DS_STEADY, 0u, 0)), 0);
+	CHECK_EQ(motion_ds_mm(motion_ds_pack(32769, MOTION_DS_STEADY, 0u, 0)), 1);
+	CHECK_EQ(motion_ds_mm(motion_ds_pack(-1, MOTION_DS_STEADY, 0u, 0)), 32767);
+	CHECK_EQ(motion_ds_counter(motion_ds_pack(0, MOTION_DS_STEADY, 9u, 0)), 1);
+	CHECK_EQ(motion_ds_state(motion_ds_pack(0, MOTION_DS_DECEL, 0u, 0)), MOTION_DS_DECEL);
+}
+
+static void test_ds_round_trip(void)
+{
+	uint32_t i;
+
+	srand(11u);
+	for (i = 0u; i < 20000u; i++) {
+		int32_t mm = (int32_t)(rand() % 200001) - 100000;
+		motion_ds_state_t st = (motion_ds_state_t)(rand() % 3);
+		uint32_t ctr = (uint32_t)rand();
+		int32_t turn = (int32_t)(rand() % 4096) - 2048;
+		uint32_t w = motion_ds_pack(mm, st, ctr, turn);
+
+		CHECK_EQ(motion_ds_mm(w), (uint32_t)mm & 0x7FFFu);
+		CHECK_EQ(motion_ds_state(w), st);
+		CHECK_EQ(motion_ds_counter(w), ctr & 7u);
+		CHECK_EQ(motion_ds_turn_dps(w), turn);
+	}
+}
+
+static void test_ds_delta_and_updates(void)
+{
+	uint32_t a = motion_ds_pack(100, MOTION_DS_STEADY, 0u, 0);
+	uint32_t b = motion_ds_pack(150, MOTION_DS_STEADY, 1u, 0);
+	long long truth = 0, summed = 0;
+	uint32_t prev = MOTION_DS_WORD_ZERO;
+	int i;
+
+	CHECK_EQ(motion_ds_delta_mm(b, a), 50);
+	CHECK_EQ(motion_ds_delta_mm(a, b), -50);		/* reversing */
+	CHECK_EQ(motion_ds_delta_mm(motion_ds_pack(5, MOTION_DS_STEADY, 0u, 0),
+				    motion_ds_pack(32760, MOTION_DS_STEADY, 0u, 0)), 13);
+	CHECK_EQ(motion_ds_delta_mm(motion_ds_pack(32760, MOTION_DS_STEADY, 0u, 0),
+				    motion_ds_pack(5, MOTION_DS_STEADY, 0u, 0)), -13);
+	CHECK_EQ(motion_ds_delta_mm(motion_ds_pack(16383, MOTION_DS_STEADY, 0u, 0),
+				    motion_ds_pack(0, MOTION_DS_STEADY, 0u, 0)), 16383);
+	CHECK_EQ(motion_ds_delta_mm(motion_ds_pack(16384, MOTION_DS_STEADY, 0u, 0),
+				    motion_ds_pack(0, MOTION_DS_STEADY, 0u, 0)), -16384);
+	/* Other fields never leak into the distance. */
+	CHECK_EQ(motion_ds_delta_mm(motion_ds_pack(7, MOTION_DS_DECEL, 7u, -2048),
+				    motion_ds_pack(7, MOTION_DS_ACCEL, 0u, 2047)), 0);
+
+	CHECK_EQ(motion_ds_updates(b, a), 1);
+	CHECK_EQ(motion_ds_updates(a, a), 0);
+	CHECK_EQ(motion_ds_updates(motion_ds_pack(0, MOTION_DS_STEADY, 1u, 0),
+				   motion_ds_pack(0, MOTION_DS_STEADY, 7u, 0)), 2);
+
+	/* Random walk of the net distance, forward and back: the summed
+	   deltas between reads equal the true distance. */
+	srand(13u);
+	for (i = 0; i < 200000; i++) {
+		uint32_t now;
+
+		truth += (rand() % 3001) - 1500;		/* |step| < 16384 */
+		now = motion_ds_pack((int32_t)truth, MOTION_DS_STEADY, (uint32_t)i, 0);
+		summed += motion_ds_delta_mm(now, prev);
+		prev = now;
+	}
+	CHECK_EQ(summed, truth);
+}
+
+static void test_ds_dist(void)
+{
+	uint32_t i;
+
+	CHECK_EQ(motion_ds_dist_mm(0, 0), 0);
+	CHECK_EQ(motion_ds_dist_mm(100, -100), 0);	/* turn on the spot */
+	/* One wheel turn on both wheels = pi x 64 = 201.06 mm. */
+	CHECK_EQ(motion_ds_dist_mm(MOTION_COUNTS_PER_REV, MOTION_COUNTS_PER_REV), 201);
+	CHECK_EQ(motion_ds_dist_mm(-MOTION_COUNTS_PER_REV, -MOTION_COUNTS_PER_REV), -201);
+	/* 170 km: no overflow, and pi as 355/113 stays within 1 part in a
+	   million (about 15 mm here). */
+	{
+		double ref = (double)INT32_MAX * MM_PER_COUNT;
+		double got = (double)motion_ds_dist_mm(INT32_MAX, INT32_MAX);
+		CHECK((got > ref * (1.0 - 1e-6)) && (got < ref * (1.0 + 1e-6)));
+		got = (double)motion_ds_dist_mm(INT32_MIN, INT32_MIN);
+		CHECK((got < -ref * (1.0 - 1e-6)) && (got > -ref * (1.0 + 1e-6) - 1.0));
+	}
+
+	srand(17u);
+	for (i = 0u; i < 20000u; i++) {
+		int32_t l = (int32_t)((rand() % 2000001) - 1000000) * 100;
+		int32_t r = l + (int32_t)(rand() % 20001) - 10000;
+		double ref = ((double)l + (double)r) / 2.0 * MM_PER_COUNT;
+		long long got = motion_ds_dist_mm(l, r);
+
+		/* pi as 355/113 is off by 1 part in 11 million */
+		CHECK((got - round_ref(ref) <= 1) && (round_ref(ref) - got <= 1));
+	}
+}
+
+/* Sum of the newest window of d_r - d_l, as deg/s. */
+static double
+turn_ref (double diff_counts)
+{
+	return diff_counts * MM_PER_COUNT / MOTION_WHEELBASE_MM
+	       * (180.0 / PI_D) / WINDOW_S;
+}
+
+static void test_ds_turn(void)
+{
+	motion_ds_win_t w;
+	uint32_t i;
+
+	motion_ds_win_reset(&w);
+	CHECK_EQ(motion_ds_win_turn_dps(&w), 0);
+
+	/* Right wheel ahead = turning left = counter-clockwise = positive. */
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS; i++) {
+		motion_ds_win_add(&w, -13, 13);
+	}
+	CHECK(motion_ds_win_turn_dps(&w) > 0);
+	CHECK_EQ(motion_ds_win_turn_dps(&w), round_ref(turn_ref(26.0 * MOTION_DS_WINDOW_TICKS)));
+
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS; i++) {
+		motion_ds_win_add(&w, 13, -13);
+	}
+	CHECK_EQ(motion_ds_win_turn_dps(&w), -round_ref(turn_ref(26.0 * MOTION_DS_WINDOW_TICKS)));
+
+	/* Only the newest window counts: one older tick drops out. */
+	motion_ds_win_reset(&w);
+	motion_ds_win_add(&w, 0, 100);
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS - 1u; i++) {
+		motion_ds_win_add(&w, 0, 0);
+	}
+	CHECK_EQ(motion_ds_win_turn_dps(&w), round_ref(turn_ref(100.0)));
+	motion_ds_win_add(&w, 0, 0);
+	CHECK_EQ(motion_ds_win_turn_dps(&w), 0);
+
+	/* One count of difference: the step size quoted in motion_cfg.h. */
+	motion_ds_win_reset(&w);
+	motion_ds_win_add(&w, 0, 1);
+	printf("   distance_state: 1 count over %u ticks = %.3f deg/s (calculated)\n",
+	       (unsigned)MOTION_DS_WINDOW_TICKS, turn_ref(1.0));
+	CHECK_EQ(motion_ds_win_turn_dps(&w), round_ref(turn_ref(1.0)));
+
+	/* Random windows against the floating-point formula. */
+	srand(19u);
+	for (i = 0u; i < 20000u; i++) {
+		uint32_t k;
+		double diff = 0.0;
+
+		for (k = 0u; k < MOTION_DS_HIST; k++) {
+			int32_t l = (rand() % 201) - 100, r = (rand() % 201) - 100;
+			motion_ds_win_add(&w, l, r);
+			if (k >= MOTION_DS_HIST - MOTION_DS_WINDOW_TICKS) {
+				diff += (double)(r - l);
+			}
+		}
+		CHECK_EQ(motion_ds_win_turn_dps(&w), round_ref(turn_ref(diff)));
+	}
+
+	/* A huge tick is clamped, never overflows. */
+	motion_ds_win_reset(&w);
+	motion_ds_win_add(&w, INT32_MIN, INT32_MAX);
+	CHECK(motion_ds_win_turn_dps(&w) > 0);
+}
+
+/* Change in the summed forward counts between the two windows, as
+   mm/s^2. */
+static double
+accel_ref (double fwd_change)
+{
+	return fwd_change / 2.0 * MM_PER_COUNT / (WINDOW_S * WINDOW_S);
+}
+
+static void test_ds_accel(void)
+{
+	motion_ds_win_t w;
+	uint32_t i;
+	int32_t a;
+
+	motion_ds_win_reset(&w);
+	CHECK_EQ(motion_ds_win_accel_mmps2(&w), 0);
+	CHECK_EQ(motion_ds_accel_state(0), MOTION_DS_STEADY);
+	CHECK_EQ(motion_ds_accel_state(MOTION_DS_ACCEL_MMPS2), MOTION_DS_ACCEL);
+	CHECK_EQ(motion_ds_accel_state(MOTION_DS_ACCEL_MMPS2 - 1), MOTION_DS_STEADY);
+	CHECK_EQ(motion_ds_accel_state(-MOTION_DS_ACCEL_MMPS2), MOTION_DS_DECEL);
+	CHECK_EQ(motion_ds_accel_state(-MOTION_DS_ACCEL_MMPS2 + 1), MOTION_DS_STEADY);
+
+	/* From rest to 13 counts per tick per wheel: accelerating until both
+	   windows hold the new speed, then steady. */
+	for (i = 1u; i <= MOTION_DS_HIST; i++) {
+		motion_ds_win_add(&w, 13, 13);
+		a = motion_ds_win_accel_mmps2(&w);
+		if (i < MOTION_DS_HIST) {
+			CHECK(motion_ds_accel_state(a) == MOTION_DS_ACCEL);
+		} else {
+			CHECK_EQ(a, 0);
+		}
+	}
+	/* Stop: decelerating, then steady again. */
+	for (i = 1u; i <= MOTION_DS_HIST; i++) {
+		motion_ds_win_add(&w, 0, 0);
+		a = motion_ds_win_accel_mmps2(&w);
+		CHECK((i < MOTION_DS_HIST) ? (motion_ds_accel_state(a) == MOTION_DS_DECEL)
+					   : (a == 0));
+	}
+	/* Turning on the spot is not forward acceleration. */
+	for (i = 1u; i <= MOTION_DS_HIST; i++) {
+		motion_ds_win_add(&w, -20, 20);
+		CHECK_EQ(motion_ds_win_accel_mmps2(&w), 0);
+	}
+
+	/* Random histories against the floating-point formula. */
+	srand(23u);
+	for (i = 0u; i < 20000u; i++) {
+		uint32_t k;
+		double f_new = 0.0, f_old = 0.0;
+
+		for (k = 0u; k < MOTION_DS_HIST; k++) {
+			int32_t l = (rand() % 201) - 100, r = (rand() % 201) - 100;
+			motion_ds_win_add(&w, l, r);
+			if (k >= MOTION_DS_HIST - MOTION_DS_WINDOW_TICKS) {
+				f_new += (double)(l + r);
+			} else {
+				f_old += (double)(l + r);
+			}
+		}
+		a = motion_ds_win_accel_mmps2(&w);
+		CHECK((a - round_ref(accel_ref(f_new - f_old)) <= 1)
+		      && (round_ref(accel_ref(f_new - f_old)) - a <= 1));
+	}
+
+	/* Extremes saturate instead of overflowing. */
+	motion_ds_win_reset(&w);
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS; i++) {
+		motion_ds_win_add(&w, INT32_MAX, INT32_MAX);
+	}
+	CHECK(motion_ds_win_accel_mmps2(&w) > 0);
+}
+
 int main(void)
 {
 	test_quad_table_properties();
@@ -607,6 +887,12 @@ int main(void)
 	test_pid_extremes();
 	test_pid_closed_loop();
 	test_helpers();
+	test_ds_layout();
+	test_ds_round_trip();
+	test_ds_delta_and_updates();
+	test_ds_dist();
+	test_ds_turn();
+	test_ds_accel();
 
 	printf("motion_lib: %d checks, %d failures\n", g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;

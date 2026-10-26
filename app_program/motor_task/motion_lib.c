@@ -357,6 +357,166 @@ motion_pid_step (motion_pid_t *p_pid, int32_t setpoint, int32_t measured)
 }
 
 /* ------------------------------------------------------------------ *
+ *  distance_state arithmetic
+ * ------------------------------------------------------------------ */
+
+#define DS_PI_NUM      (355) /* pi ~ 355/113 */
+#define DS_PI_DEN      (113)
+#define DS_DEG_PER_PI  (180) /* degrees in pi radians */
+#define DS_MS_PER_S    (1000)
+#define DS_US2_PER_MS2 (1000000) /* (ms per s)^2 */
+#define DS_WINDOW_MS   ((int64_t)MOTION_DS_WINDOW_TICKS * MOTION_TICK_MS)
+
+/* distance = sum x pi x D / (2 x CPR) */
+#define DS_MM_NUM ((int64_t)DS_PI_NUM * MOTION_WHEEL_DIA_MM)
+#define DS_MM_DEN ((int64_t)2 * DS_PI_DEN * MOTION_COUNTS_PER_REV)
+
+/* turn = diff x D x 180 x 1000 / (CPR x B x window ms) */
+#define DS_TURN_NUM ((int64_t)MOTION_WHEEL_DIA_MM * DS_DEG_PER_PI * DS_MS_PER_S)
+#define DS_TURN_DEN                                                            \
+    ((int64_t)MOTION_COUNTS_PER_REV * MOTION_WHEELBASE_MM * DS_WINDOW_MS)
+
+/* accel = change in fwd sum x pi x D x 10^6 / (2 x CPR x (window ms)^2) */
+#define DS_ACCEL_NUM (DS_MM_NUM * DS_US2_PER_MS2)
+#define DS_ACCEL_DEN (DS_MM_DEN * DS_WINDOW_MS * DS_WINDOW_MS)
+
+_Static_assert(MOTION_DS_WINDOW_TICKS >= 1u, "window needs one tick");
+_Static_assert(MOTION_DS_HIST <= 255u, "history index is a uint8_t");
+
+/* num / den rounded to the nearest whole number, halves away from zero.
+   den > 0.  The inputs here stay far inside int64_t. */
+static int64_t
+ds_div_round (int64_t num, int64_t den)
+{
+    int64_t half = den / 2;
+    int64_t result;
+
+    if (num >= 0)
+    {
+        result = (num + half) / den;
+    }
+    else
+    {
+        result = -((half - num) / den);
+    }
+
+    return result;
+}
+
+static int32_t
+ds_sat32 (int64_t value)
+{
+    int32_t result;
+
+    if (value > (int64_t)INT32_MAX)
+    {
+        result = INT32_MAX;
+    }
+    else if (value < (int64_t)INT32_MIN)
+    {
+        result = INT32_MIN;
+    }
+    else
+    {
+        result = (int32_t)value;
+    }
+
+    return result;
+}
+
+/* Sum of n slots of a history ring, starting n_back slots before the
+   newest one (n_back 0 = the newest window). */
+static int32_t
+ds_sum (int16_t const *p_ring, uint8_t next, uint32_t n_back, uint32_t n)
+{
+    int32_t  sum = 0;
+    uint32_t idx;
+    uint32_t i;
+
+    for (i = 0u; i < n; i++)
+    {
+        /* Newest slot is next - 1; step back n_back + i more. */
+        idx = ((uint32_t)next + (2u * MOTION_DS_HIST) - 1u - n_back - i)
+              % MOTION_DS_HIST;
+        sum += (int32_t)p_ring[idx];
+    }
+
+    return sum;
+}
+
+void
+motion_ds_win_reset (motion_ds_win_t *p_win)
+{
+    uint32_t i;
+
+    for (i = 0u; i < MOTION_DS_HIST; i++)
+    {
+        p_win->fwd[i]  = 0;
+        p_win->turn[i] = 0;
+    }
+    p_win->next = 0u;
+}
+
+void
+motion_ds_win_add (motion_ds_win_t *p_win, int32_t d_l, int32_t d_r)
+{
+    int32_t l = motion_clamp(d_l, INT16_MIN / 2, INT16_MAX / 2);
+    int32_t r = motion_clamp(d_r, INT16_MIN / 2, INT16_MAX / 2);
+
+    p_win->fwd[p_win->next]  = (int16_t)(l + r);
+    p_win->turn[p_win->next] = (int16_t)(r - l);
+    p_win->next = (uint8_t)(((uint32_t)p_win->next + 1u) % MOTION_DS_HIST);
+}
+
+int32_t
+motion_ds_win_turn_dps (motion_ds_win_t const *p_win)
+{
+    int32_t diff = ds_sum(p_win->turn, p_win->next, 0u, MOTION_DS_WINDOW_TICKS);
+
+    return ds_sat32(ds_div_round((int64_t)diff * DS_TURN_NUM, DS_TURN_DEN));
+}
+
+int32_t
+motion_ds_win_accel_mmps2 (motion_ds_win_t const *p_win)
+{
+    int32_t f_new = ds_sum(p_win->fwd, p_win->next, 0u, MOTION_DS_WINDOW_TICKS);
+    int32_t f_old = ds_sum(p_win->fwd, p_win->next, MOTION_DS_WINDOW_TICKS,
+                           MOTION_DS_WINDOW_TICKS);
+
+    return ds_sat32(
+        ds_div_round((int64_t)(f_new - f_old) * DS_ACCEL_NUM, DS_ACCEL_DEN));
+}
+
+motion_ds_state_t
+motion_ds_accel_state (int32_t accel_mmps2)
+{
+    motion_ds_state_t state;
+
+    if (accel_mmps2 >= MOTION_DS_ACCEL_MMPS2)
+    {
+        state = MOTION_DS_ACCEL;
+    }
+    else if (accel_mmps2 <= -MOTION_DS_ACCEL_MMPS2)
+    {
+        state = MOTION_DS_DECEL;
+    }
+    else
+    {
+        state = MOTION_DS_STEADY;
+    }
+
+    return state;
+}
+
+int32_t
+motion_ds_dist_mm (int32_t pos_l, int32_t pos_r)
+{
+    int64_t sum = (int64_t)pos_l + (int64_t)pos_r;
+
+    return ds_sat32(ds_div_round(sum * DS_MM_NUM, DS_MM_DEN));
+}
+
+/* ------------------------------------------------------------------ *
  *  Helpers
  * ------------------------------------------------------------------ */
 

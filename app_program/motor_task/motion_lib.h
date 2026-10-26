@@ -11,6 +11,7 @@
  *      with a wrap-safe delta
  *    - stall detector (FR-30)
  *    - integer PI(D) speed controller with anti-windup
+ *    - distance, turn rate and acceleration for distance_state
  *
  *  Only unsigned types are used with bitwise operators (Barr-C 5.3b).
  */
@@ -20,6 +21,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+
+#include "motion_cfg.h"
+#include "motion_ds.h"
 
 /* ------------------------------------------------------------------ *
  *  Quadrature decoding
@@ -180,6 +184,51 @@ void    motion_pid_init(motion_pid_t *p_pid, int32_t kp_q8, int32_t ki_q8,
 void    motion_pid_reset(motion_pid_t *p_pid);
 int32_t motion_pid_step(motion_pid_t *p_pid, int32_t setpoint,
                         int32_t measured);
+
+/* ------------------------------------------------------------------ *
+ *  distance_state arithmetic  (the word itself: motion_ds.h)
+ *
+ *  Uses the car geometry and the window in motion_cfg.h.  Each result is
+ *  worked out again from whole counts and rounded to the nearest unit,
+ *  so rounding never builds up.  Counts are + forward on both wheels.
+ *
+ *  A wheel moves pi x D / CPR mm per count (D = wheel diameter, CPR =
+ *  counts per wheel turn), so:
+ *    distance  = (pos_l + pos_r) / 2 x pi x D / CPR            mm
+ *    turn rate = (s_r - s_l) / B over the window, in deg/s     B = wheelbase
+ *                (pi cancels: counts x D x 180 / (CPR x B x window s))
+ *    accel     = change in the average wheel speed between the newest
+ *                window and the one before it, in mm/s^2
+ *  pi is taken as 355/113 (7 significant figures).
+ * ------------------------------------------------------------------ */
+
+/* Ticks of history kept: the newest window and the one before it. */
+#define MOTION_DS_HIST (2u * MOTION_DS_WINDOW_TICKS)
+
+typedef struct
+{
+    int16_t fwd[MOTION_DS_HIST];  /* d_l + d_r in each tick, counts */
+    int16_t turn[MOTION_DS_HIST]; /* d_r - d_l in each tick, counts */
+    uint8_t next;                 /* slot the next tick goes in     */
+} motion_ds_win_t;
+
+/* All history to zero: the car was standing still. */
+void motion_ds_win_reset(motion_ds_win_t *p_win);
+
+/* Add one tick's wheel movement in counts (each clamped to int16). */
+void motion_ds_win_add(motion_ds_win_t *p_win, int32_t d_l, int32_t d_r);
+
+/* Turn rate over the newest window, deg/s, counter-clockwise positive. */
+int32_t motion_ds_win_turn_dps(motion_ds_win_t const *p_win);
+
+/* Forward acceleration between the two windows, mm/s^2. */
+int32_t motion_ds_win_accel_mmps2(motion_ds_win_t const *p_win);
+
+/* STEADY, ACCEL or DECEL for an acceleration (MOTION_DS_ACCEL_MMPS2). */
+motion_ds_state_t motion_ds_accel_state(int32_t accel_mmps2);
+
+/* Net distance in mm from the two wheels' positions since start-up. */
+int32_t motion_ds_dist_mm(int32_t pos_l, int32_t pos_r);
 
 /* ------------------------------------------------------------------ *
  *  Small helpers
