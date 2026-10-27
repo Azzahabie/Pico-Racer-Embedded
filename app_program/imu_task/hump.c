@@ -91,6 +91,17 @@ EXPORT W hump_height_mm(void)
 	return (hump_state == HUMP_NONE) ? 0 : h_um / 1000;
 }
 
+EXPORT void hump_abort(void)
+{
+	if(hump_state != HUMP_NONE || on_top) {
+		tm_printf((UB *)"[imu] hump discarded (fault or abnormal"
+			       " tilt)\n");
+	}
+	hump_state = HUMP_NONE;
+	on_top = FALSE;
+	pend_win = 0;
+}
+
 /* End the hump in progress: count it if it rose high enough.  The height
    is the larger of the highest rise and the deepest drop, so it still
    comes out right if uphill was ever taken the wrong way round. */

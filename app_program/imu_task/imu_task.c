@@ -40,7 +40,10 @@
 #include "../common/messages.h"
 #include "../usb_console_compat.h"
 #include "../motor_task/motion_ds.h"
+#include "../motor_task/motor_task.h"	/* motor_task_flag: STOP_IMU   */
+#include "../nav_task/nav_ctrl.h"	/* nav_flg, mission state      */
 #include "hump.h"
+#include "imu_safety.h"
 
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
@@ -54,6 +57,11 @@
 #define IMU_VERBOSE	0		/* 1: also the raw axes, z range,
 					   distance_state count and mag      */
 #endif
+
+#define USB_WAIT_MS	4000		/* longest wait for a console host: on
+					   battery there is none, and nav's
+					   CAL_REQ times out after 10 s      */
+#define REINIT_EVERY	100		/* while no data: set up again, 1 s   */
 
 #define CAL_SAMPLES	100		/* 1 s of samples per attempt         */
 #define CAL_TRIES	5
@@ -95,6 +103,62 @@ LOCAL ID	imu_tid;		/* woken by imu_tick()              */
 LOCAL CHIP	chip;
 LOCAL UW	addr;			/* LSM303D / ADXL345 / MMA845x      */
 LOCAL BOOL	acc_only;		/* DLHC/AGR: mag not identified     */
+LOCAL ID	imu_flgid;		/* CAL_REQ from nav_ctrl_task       */
+LOCAL BOOL	faulted;		/* Fault (6.4): left only by a
+					   calibration that passes          */
+
+EXPORT ID imu_task_init(void)
+{
+	T_CFLG	cflg;
+	ID	id;
+
+	if(imu_flgid > 0) return imu_flgid;
+	cflg.exinf   = NULL;
+	cflg.flgatr  = TA_TFIFO | TA_WSGL;
+	cflg.iflgptn = 0;
+	id = tk_cre_flg(&cflg);
+	if(id > 0) imu_flgid = id;
+	return id;
+}
+
+/* nav_ctrl_task asked for a calibration (FR-02)?  Clears the request. */
+LOCAL BOOL cal_requested(void)
+{
+	UINT	ptn;
+
+	return imu_flgid > 0
+	       && tk_wai_flg(imu_flgid, IMU_FLG_CAL_REQ, TWF_ORW | TWF_BITCLR,
+			     &ptn, TMO_POL) == E_OK;
+}
+
+LOCAL void tell_nav(UINT bits)
+{
+	if(nav_flag() > 0) tk_set_flg(nav_flag(), bits);
+}
+
+/* Go to Fault (Statechart 6.4, NFR-13): tell nav_ctrl_task, and during a
+   mission brake through STOP_IMU (motion_task brakes within 20 ms,
+   NFR-18).  imu_task never clears STOP_IMU: motion_task does, when nav
+   sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
+   goes on the shared fault flag once Buddy 5's fault_set() exists. */
+LOCAL void raise_fault(const char *why)
+{
+	mission_state_t	ms = nav_mission_state();
+	BOOL		in_mission = (ms == MS_RUNNING || ms == MS_PAUSED);
+	UW		t10;
+
+	if(faulted) return;
+	faulted = TRUE;
+	if(in_mission && motor_task_flag() > 0) {
+		motion_stop_stamp(MOTION_EVT_STOP_IMU);
+		tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_IMU);
+	}
+	tell_nav(NAV_FLG_IMU_FAULT);
+	t10 = tilt_deg10(safety_tilt_mg());
+	tm_printf((UB *)"[imu] !!!!! IMU FAULT: %s (tilt %u.%u deg, mission %s)"
+		       " -> IMU_FAULT%s !!!!!\n", why, t10 / 10, t10 % 10,
+		  nav_state_name(ms), in_mission ? " + STOP_IMU" : "");
+}
 
 /* Write sub-address, repeated start, read n bytes. */
 LOCAL ER read_regs(UW sadr, UB reg, UB *buf, SZ n)
@@ -329,8 +393,9 @@ LOCAL UW wait_tick(void)
    boot is absorbed into the offsets.  An attempt is rejected if someone
    bumps the car (axis spread over CAL_SPREAD_MG), the wheels turn
    (distance_state), or the mean is too far from flat (wrong mounting).
-   After CAL_TRIES rejects the constants in acc_ofs stay. */
-LOCAL void calibrate(void)
+   After CAL_TRIES rejects it fails (CAL_FAIL) and acc_ofs keeps the
+   last good offsets. */
+LOCAL BOOL calibrate(void)
 {
 	W	a[3], m[3], sum[3], lo[3], hi[3], mean[3], spread;
 	BOOL	has_mag, moved;
@@ -394,17 +459,36 @@ LOCAL void calibrate(void)
 			tm_printf((UB *)"[imu] cal ok: offsets x=%d y=%d z=%d mg,"
 				       " spread %d mg\n", acc_ofs[0], acc_ofs[1],
 				  acc_ofs[2], spread);
-			return;
+			return TRUE;
 		}
 		tk_dly_tsk(500);
 	}
-	tm_printf((UB *)"[imu] cal failed, using fixed offsets x=%d y=%d"
-		       " z=%d mg\n", acc_ofs[0], acc_ofs[1], acc_ofs[2]);
+	tm_printf((UB *)"[imu] cal FAILED after %d tries (offsets kept: x=%d"
+		       " y=%d z=%d mg)\n", CAL_TRIES, acc_ofs[0], acc_ofs[1],
+		  acc_ofs[2]);
+	return FALSE;
+}
+
+/* Answer nav_ctrl_task's CAL_REQ (FR-02).  Passing is the only way out
+   of Fault (Statechart 6.4); nav then sends FAULT_CLEAR(IMU), on which
+   motion_task clears STOP_IMU. */
+LOCAL void answer_cal(BOOL ok)
+{
+	if(ok) {
+		faulted = FALSE;
+		safety_reset();
+		tell_nav(NAV_FLG_CAL_OK_IMU);
+		tm_printf((UB *)"[imu] -> nav: CAL_OK_IMU\n");
+	} else {
+		faulted = TRUE;
+		tell_nav(NAV_FLG_CAL_FAIL);
+		tm_printf((UB *)"[imu] -> nav: CAL_FAIL\n");
+	}
 }
 
 EXPORT void imu_task(INT stacd, void *exinf)
 {
-	W	a[3], m[3];
+	W	a[3] = { 0, 0, 0 }, m[3];
 	W	sum[3], zmin, zmax;
 	W	hsum[2];
 	UW	ds_hump;
@@ -412,19 +496,22 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	BOOL	has_mag = FALSE, got_mag;
 	UW	amag, amax;
 	UW	ds, ds_prev, ds_win, ds_pub;
-	UW	lost, rderr, k;
+	UW	lost, rderr, k, bad;
 	INT	n, i, idle_n = 0;
 	ER	er;
+	BOOL	ok;
+	UINT	ev;
 	UB	line[200], *p;
+	mission_state_t	ms;
 
 	(void)stacd; (void)exinf;
 
-	/* Same enumeration wait as the monitor, so nothing printed before the
-	   host opens the port is lost. */
-	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
+	/* Wait for the console host, so nothing printed before it opens the
+	   port is lost; not long, or nav's CAL_REQ times out on battery. */
+	for(i = 0; i < USB_WAIT_MS / 100 && tm_usb_state() < 2; i++) {
 		tk_dly_tsk(100);
 	}
-	tk_dly_tsk(1000);		/* after the demo banner */
+	tk_dly_tsk(200);
 
 	dd = tk_opn_dev((UB *)I2C_DEV, TD_UPDATE);
 	if(dd < E_OK) {
@@ -433,9 +520,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		tk_ext_tsk();
 	}
 
-	/* Retry until a known chip shows up, so it can be plugged in late. */
+	/* Retry until a known chip shows up, so it can be plugged in late.
+	   Meanwhile a CAL_REQ fails: Initialising -> Fault (6.4, NFR-13). */
 	while((chip = detect()) == CHIP_NONE) {
 		tm_printf((UB *)"[imu] no supported IMU found\n");
+		if(cal_requested()) {
+			tm_printf((UB *)"[imu] init failed: no IMU to calibrate\n");
+			answer_cal(FALSE);
+		}
 		bus_scan();
 		tk_dly_tsk(3000);
 	}
@@ -450,7 +542,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		tm_printf((UB *)"[imu] tk_cre_cyc failed, er=%d\n", er);
 		tk_ext_tsk();
 	}
-	calibrate();
+	/* nav_ctrl_task's first CAL_REQ is usually already waiting by now;
+	   this calibration answers it.  A later one is answered in the loop. */
+	ok = calibrate();
+	if(cal_requested()) answer_cal(ok);
+	bad = 0;
 
 	ds_prev = ds_win = ds_hump = motion_ds_read();
 	hsum[0] = hsum[1] = 0;
@@ -465,21 +561,52 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	for(k = 0; ; k++) {
 		lost += wait_tick();
 
+		/* Calibrating (6.4), on nav's request: the car is still for
+		   1-7 s, so the windows start again after it. */
+		if(cal_requested()) {
+			answer_cal(calibrate());
+			ds_prev = ds_win = ds_hump = motion_ds_read();
+			hsum[0] = hsum[1] = 0;
+			hn = 0;
+			bad = 0;
+		}
+
 		/* distance_state: count publishes so a stalled motion_task
 		   shows up as ds well under REPORT_SAMPLES. */
 		ds = motion_ds_read();
 		ds_pub += motion_ds_updates(ds, ds_prev);
 		ds_prev = ds;
 
+		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0:
+		   powered down, not a reading. */
 		er = read_sample(a, m, &got_mag, (k % MAG_EVERY) == 0);
-		if(er < E_OK) {
+		ok = er >= E_OK && (a[0] != 0 || a[1] != 0 || a[2] != 0);
+		if(ok) {
+			for(i = 0; i < 3; i++) a[i] -= acc_ofs[i];
+		}
+
+		/* Fault checks on every sample (FR-28, NFR-13, NFR-19). */
+		ev = safety_step(ok, a[0], a[1], a[2]);
+		bad = ok ? 0 : bad + 1;
+		if((ev & SAFETY_EV_REINIT) != 0
+		   || (bad > 0 && bad % REINIT_EVERY == 0)) {
+			tm_printf((UB *)"[imu] reads failing: setting the IMU"
+				       " up again\n");
+			setup();
+		}
+		if(safety_no_data()) {
+			raise_fault("no good IMU sample for 50 ms");
+		}
+		ms = nav_mission_state();
+		if(safety_tilted() && (ms == MS_RUNNING || ms == MS_PAUSED)) {
+			raise_fault("abnormal tilt");
+		}
+
+		if(!ok) {
 			rderr++;
 		} else {
 			if(got_mag) has_mag = TRUE;
-			for(i = 0; i < 3; i++) {
-				a[i] -= acc_ofs[i];
-				sum[i] += a[i];
-			}
+			for(i = 0; i < 3; i++) sum[i] += a[i];
 			amag = imu_isqrt((UW)(a[0] * a[0] + a[1] * a[1]
 					  + a[2] * a[2]));
 			if(amag > amax) amax = amag;
@@ -492,7 +619,12 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		}
 
 		if((k + 1) % HUMP_SAMPLES == 0) {
-			if(hn > 0) {
+			/* In Fault, or tilted past T, it is not driving over a
+			   hump: held on its side, a few mm of wheel turn read as
+			   a 6 mm "hump" at 1 g of tilt. */
+			if(faulted || safety_tilted()) {
+				hump_abort();
+			} else if(hn > 0) {
 				hump_step(hsum[0] / hn, hsum[1] / hn,
 					  motion_ds_delta_mm(ds, ds_hump),
 					  motion_ds_state(ds) == MOTION_DS_STEADY);
@@ -516,7 +648,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			/* Still and level, nothing wrong: one line in
 			   IDLE_REPORTS, so moving lines stand out. */
 			if(v != 0 || hs != HUMP_NONE || rderr != 0
-			   || lost != 0 || ++idle_n >= IDLE_REPORTS) {
+			   || lost != 0 || faulted
+			   || ++idle_n >= IDLE_REPORTS) {
 				idle_n = 0;
 				/* One tm_printf per line: built up first. */
 				p = line;
@@ -539,6 +672,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				if(rderr != 0 || lost != 0) {
 					p += tm_sprintf(p, (UB *)"  | rderr %u"
 							"  lost %u", rderr, lost);
+				}
+				if(faulted) {
+					p += tm_sprintf(p, (UB *)"  | FAULT:"
+							" recalibrate (GP20)");
 				}
 				tm_printf((UB *)"%s\n", line);
 			}

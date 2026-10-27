@@ -276,6 +276,13 @@ static void long_top_carry(void)
 	carry(100); drive(700, 50); stop(2);
 }
 
+/* A fault halfway up: the hump is dropped, then the next pass counts. */
+static void abort_mid_climb(void)
+{
+	USE(HUMP); stop(2); drive(280, 50); hump_abort();
+	drive(100, 60); stop(2); drive(700, 50); stop(2);
+}
+
 /* Off a drop the hump never reads as DESCENDING, so only the
    HUMP_TOP_MAX_MM cap ends it, before the next wedge. */
 static void wedges(void)
@@ -307,6 +314,7 @@ static const SCENARIO scenarios[] = {
 	{ "long top, three up/back",		long_top_three,		3 },
 	{ "two wedges, drop-off far sides",	wedges,			2 },
 	{ "long top, stop, carried back, over",	long_top_carry,		2 },
+	{ "fault mid-climb, then over",		abort_mid_climb,	1 },
 	{ "flat floor only",			flat,			0 },
 };
 

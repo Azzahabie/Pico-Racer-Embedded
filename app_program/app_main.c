@@ -571,7 +571,21 @@ EXPORT INT usermain(void)
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
 		};
+		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the
+		 * mission waits for CAL_OK_IMU (FR-02). ir_flgid stays 0 until
+		 * Buddy 3's ir_sense_task is bound here too. */
+		ID imu_flgid = imu_task_init();
+		nav_bind_t nav_links = {
+			.imu_flgid		= (imu_flgid > 0) ? imu_flgid : 0,
+			.cal_req_bit		= IMU_FLG_CAL_REQ,
+		};
+
+		if(imu_flgid <= 0) {
+			tm_printf((UB *)"[init] imu_flg failed, er=%d: IMU not calibrated by nav\n",
+				  (INT)imu_flgid);
+		}
 		scan_if_bind(&scan_bind);
+		nav_bind(&nav_links);
 
 		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
 		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task

@@ -15,6 +15,11 @@ typedef enum { HUMP_NONE, HUMP_CLIMBING, HUMP_DESCENDING } HUMP_STATE;
  * mm (- reversing), and whether motion_task reported STEADY. */
 IMPORT void hump_step(W ax, W ay, W dmm, BOOL steady);
 
+/* Drop a hump in progress, and the "on top" follow, without counting it:
+ * a fault, or the car tilted past T (Statechart 6.4: fault discards the
+ * unfinished hump). */
+IMPORT void hump_abort(void);
+
 IMPORT HUMP_STATE hump_get_state(void);
 IMPORT const char *hump_state_name(HUMP_STATE s);
 IMPORT W  hump_height_mm(void);		/* on the hump now; 0 if none */

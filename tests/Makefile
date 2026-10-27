@@ -4,7 +4,7 @@
 # These live outside app_program/ because every .c under app_program/ is
 # compiled into the firmware.
 
-SUITES := motion_lib motion_sm motor motion_wdt encoder encoder_dispatch motion_task_sim imu_hump
+SUITES := motion_lib motion_sm motor motion_wdt encoder encoder_dispatch motion_task_sim imu_hump imu_safety
 
 .PHONY: test clean $(SUITES)
 test: $(SUITES)
