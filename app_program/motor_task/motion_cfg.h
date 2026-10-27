@@ -152,6 +152,24 @@
 #endif
 #define MOTION_TEST_WDT_TICKS (50u) /* 0.5 s */
 
+/* Used only when MOTION_BENCH is 1.
+   1: stop test (NFR-18).  The button starts both wheels at
+      MOTION_TEST_DUTY; a stand-in for scan_task and imu_task (a task on
+      core 1 at imu_task's priority) sets STOP_SCAN and STOP_IMU in turn
+      while they turn, and clears each again (scan_task stays print-only
+      in bench images: see motion_flag()).  Every stop prints how long
+      after the request the brake was written; after
+      MOTION_TEST_STOP_TRIALS stops per source the summary prints. */
+#ifndef MOTION_TEST_STOP
+#define MOTION_TEST_STOP (0)
+#endif
+#define MOTION_TEST_STOP_TRIALS (100u) /* per source                  */
+#define MOTION_TEST_STOP_DRIVE  (30u)  /* ticks driving before a stop */
+#define MOTION_TEST_STOP_HOLD   (20u)  /* stand-in steps, about 400 ms */
+#define MOTION_TEST_STOP_PRI    (12)   /* imu_task's priority         */
+/* Each stand-in step is about 20 ms, as tk_dly_tsk(10) adds one 10 ms
+   kernel tick, so a STOP stays set about 400 ms (C). */
+
 #define MOTION_TEST_DUTY       (350)  /* open-loop steps, per-mille */
 #define MOTION_TEST_STEP_TICKS (150u) /* 1.5 s per step */
 #define MOTION_TEST_GAP_TICKS  (100u) /* 1 s braked between steps */
