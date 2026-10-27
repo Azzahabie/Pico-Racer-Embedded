@@ -107,15 +107,20 @@ LOCAL void hump_finish(void)
 {
 	W	top = (peak_um > -trough_um) ? peak_um : -trough_um;
 	W	mm = (top + 500) / 1000;
+	W	tenths = (top + 50) / 100;	/* 0.1 mm, for tuning logs */
 
 	if(mm >= HUMP_MIN_MM) {
 		hump_count++;
 		hump_last_mm = (UW)mm;
-		tm_printf((UB *)"[imu] HUMP %u: height %d mm, peak tilt %u mg,"
-			       " %d mm long\n", hump_count, mm, tilt_peak,
-			  hump_len);
+		tm_printf((UB *)"[imu] HUMP %u: height %d.%d mm (up %d.%d,"
+			       " down %d.%d), peak tilt %u mg, %d mm long\n",
+			  hump_count, tenths / 10, tenths % 10,
+			  (peak_um + 50) / 100 / 10, (peak_um + 50) / 100 % 10,
+			  (-trough_um + 50) / 100 / 10,
+			  (-trough_um + 50) / 100 % 10, tilt_peak, hump_len);
 	} else {
-		tm_printf((UB *)"[imu] hump ignored: only %d mm high\n", mm);
+		tm_printf((UB *)"[imu] hump ignored: only %d.%d mm high\n",
+			  tenths / 10, tenths % 10);
 	}
 	hump_state = HUMP_NONE;
 }
