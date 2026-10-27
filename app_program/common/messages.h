@@ -1,7 +1,7 @@
 #ifndef COMMON_MESSAGES_H
 #define COMMON_MESSAGES_H
 
-/* Shared message structs, mailbox/queue IDs, and pin assignments.
+/* Shared message structs and mailbox/queue IDs.
  * Every buddy's task depends on this file -- route changes through
  * a pull request so nobody's build breaks silently.
  *
@@ -617,3 +617,4 @@ static inline uint32_t comm_w_dist_delta_mm(uint32_t now_mm, uint32_t then_mm)
 }
 
 #endif /* COMMON_MESSAGES_H */
+

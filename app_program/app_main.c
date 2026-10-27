@@ -31,6 +31,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
+#include "line_task/line_task.h"
 #include "comms_task/comms_task.h"
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
@@ -437,6 +438,57 @@ LOCAL T_CTSK ctsk_nav = {
 	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
 #else
 	.tskatr		= TA_HLNG | TA_RNG3,
+};
+
+LOCAL T_CTSK ctsk_blink = {
+	.itskpri	= 10,
+	.stksz		= STACK_SZ,
+	.task		= blink_task,
+	.tskatr		= TA_HLNG | TA_RNG3,
+};
+
+LOCAL T_CTSK ctsk_led_test = {
+	.itskpri	= 9,
+	.stksz		= STACK_SZ,
+	.task		= led_test_task,
+	.tskatr		= TA_HLNG | TA_RNG3,
+};
+
+LOCAL T_CTSK ctsk_line = {
+	.itskpri	= 9,
+	.stksz		= STACK_SZ,
+	.task		= line_task,
+	.tskatr		= TA_HLNG | TA_RNG3,
+};
+
+LOCAL T_CMPF cmpf = {
+	.mpfatr		= TA_TFIFO | TA_RNG3,
+	.mpfcnt		= N_RECORDS,
+	.blfsz		= sizeof(RECORD),
+	.bufptr		= mpf_buf,
+};
+
+LOCAL T_CMTX cmtx = {
+	.mtxatr		= TA_TFIFO | TA_INHERIT,
+};
+
+LOCAL T_CMBF cmbf = {
+	.mbfatr		= TA_TFIFO,
+	.bufsz		= sizeof mbf_buf,
+	.maxmsz		= sizeof(RECORD),
+	.bufptr		= mbf_buf,
+};
+
+LOCAL T_CSEM csem = {
+	.sematr		= TA_TFIFO,
+	.isemcnt	= CREDITS,
+	.maxsem		= CREDITS,
+};
+
+LOCAL T_CFLG cflg = {
+	.flgatr		= TA_TFIFO | TA_WMUL,
+	.iflgptn	= 0,
+};
 #endif
 };
 

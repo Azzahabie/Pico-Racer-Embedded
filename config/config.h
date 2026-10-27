@@ -38,7 +38,13 @@
 
 #define	CNF_MAX_TSKPRI		32	/* Task Max priority */
 
-#define CNF_TIMER_PERIOD	10	/* System timer period */
+#ifndef CNF_TIMER_PERIOD
+#if defined(_PICO_RP2040_)
+#define	CNF_TIMER_PERIOD	1	/* 1 ms cadence for the RP2040 barcode sampler */
+#else
+#define	CNF_TIMER_PERIOD	10	/* System timer period */
+#endif
+#endif
 
 /* Maximum number of kernel objects */
 #define CNF_MAX_TSKID		32	/* Task */
