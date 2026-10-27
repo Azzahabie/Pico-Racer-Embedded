@@ -480,6 +480,7 @@ LOCAL void print_banner(void)
 EXPORT INT usermain(void)
 {
 	ID	tid;
+	ER	nav_er;
 	ER	motion_ercd;
 
 	(void)tid;		/* unused when no task below is built in */
@@ -490,20 +491,29 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] comms_tele_init failed\n");
 	}
 
-	/* Start motion first so its event-flag ID is available before scan_task. */
+	/* Buddy 5: nav_flg first, before any task that uses it. A failure
+	 * here only prints: usermain() must not return (see the end of this
+	 * function). */
+	nav_er = nav_ctrl_init();
+	if(E_OK != nav_er) {
+		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
+	}
+
+	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
+	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
+	   Before scan_task is bound, so motion_flg exists; outside the nav
+	   block so the motors are braked even if nav_flg failed. */
 	motion_ercd = motor_task_start();
 	if(E_OK != motion_ercd) {
 		tm_printf((UB *)"[init] motor_task_start failed, er=%d\n",
 			  (INT)motion_ercd);
 	}
 
-	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
-	 * and motion_flg are. Avoid commands/replies remain simulated until
-	 * motion_task implements its command buffer. A failure here only prints:
-	 * usermain() must not return (see the end of this function). */
-	if(E_OK != nav_ctrl_init()) {
-		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
-	} else {
+	/* Buddy 5: tell scan_task where the mission state, nav_flg and
+	 * motion_flg are, so its STOP_SCAN brakes the car. avoid_cmd_mbf stays
+	 * 0 until Buddy 2 adds it (step 1.7), so scan_task still simulates
+	 * motion_task's replies to its commands. */
+	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
 			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),

@@ -13,12 +13,13 @@ DEPS   := sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c \
           $(wildcard $(SRC)/*.h $(SRC)/../common/*.h stubs/*/*.h)
 
 .PHONY: test clean
-test: sim_off sim_off_unpacked sim_open sim_pid sim_wdt
+test: sim_off sim_off_unpacked sim_open sim_pid sim_wdt sim_stop
 	./sim_off $(RUNARG)
 	./sim_off_unpacked $(RUNARG)
 	./sim_open $(RUNARG)
 	./sim_pid $(RUNARG)
 	./sim_wdt $(RUNARG)
+	./sim_stop $(RUNARG)
 
 # Integration build (the committed default): no bench code at all.
 sim_off: $(DEPS)
@@ -39,7 +40,11 @@ sim_pid: $(DEPS)
 sim_wdt: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -DMOTION_TEST_WDT=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
 
+# Stop test image (MOTION_TEST_STOP 1): NFR-18 trials from the stand-in.
+sim_stop: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -DMOTION_TEST_STOP=1 -o $@ sim_motion.c $(SRC)/motion_lib.c -lm
+
 clean:
-	rm -f sim_off sim_off_unpacked sim_open sim_pid sim_wdt
+	rm -f sim_off sim_off_unpacked sim_open sim_pid sim_wdt sim_stop
 
 .DEFAULT_GOAL := test

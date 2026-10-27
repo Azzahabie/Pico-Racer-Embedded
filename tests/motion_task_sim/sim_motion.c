@@ -165,13 +165,26 @@ ER motor_init(void) { g_duty[0] = g_duty[1] = 0; return g_fail_init ? E_OBJ : E_
 
 void motor_set(motor_side_t side, int32_t duty_pm)
 {
+	if ((duty_pm != 0) && ((g_flag & MOTION_EVT_STOPS) != 0u)) {
+		CHECK(!"a wheel driven while a STOP bit is set");
+	}
 	g_duty[side] = motion_clamp(duty_pm, -MOTION_DUTY_FULL, MOTION_DUTY_FULL);
 	if (motion_abs(g_duty[side]) > g_duty_max_abs) {
 		g_duty_max_abs = motion_abs(g_duty[side]);
 	}
 }
 
-void motor_brake_all(void) { g_duty[0] = g_duty[1] = 0; }
+static int		g_brake_calls;	/* motor_brake_all() calls */
+static int		g_probe;	/* time the brake and the first report */
+static uint32_t		g_brake_t_us;
+static uint32_t		g_rep_t_us;
+
+void motor_brake_all(void)
+{
+	g_duty[0] = g_duty[1] = 0;
+	g_brake_calls++;
+	if (g_probe) { g_brake_t_us = g_time_us; g_time_us += 3u; }	/* 3 us to brake */
+}
 int32_t motor_get_duty(motor_side_t side) { return g_duty[side]; }
 
 ER encoder_init(void) { return E_OK; }
@@ -255,19 +268,29 @@ static int		g_hold_reports;
 ID tk_cre_flg(CONST T_CFLG *p) { (void)p; return 1; }
 ER tk_set_flg(ID id, UINT ptn) { (void)id; g_flag |= ptn; return E_OK; }
 ER tk_clr_flg(ID id, UINT ptn) { (void)id; g_flag &= ptn; return E_OK; }
-ER tk_wai_flg(ID id, UINT ptn, UINT mode, UINT *p_ptn, TMO tmo)
+/* As the kernel does it (eventflag.c): wake if any waited bit is set,
+   return the whole pattern from before the clear, and with TWF_BITCLR
+   clear every waited bit. */
+static UINT		g_last_waiptn;
+static UINT		g_last_wmode;
+
+static jmp_buf		g_loop_jmp;	/* leaves motor_task()'s for (;;) */
+static int		g_loop_wakes = -1;	/* waits allowed before the jump */
+
+ER tk_wai_flg(ID id, UINT waiptn, UINT mode, UINT *p_ptn, TMO tmo)
 {
-	(void)id; (void)mode; (void)tmo;
+	(void)id; (void)tmo;
+	if (g_loop_wakes == 0) { longjmp(g_loop_jmp, 1); }
+	if (g_loop_wakes > 0) { g_loop_wakes--; }
+	g_last_waiptn = waiptn;
+	g_last_wmode = mode;
 	if (g_fail_ticks > 0) { g_fail_ticks--; return E_TMOUT; }
-	*p_ptn = g_flag & ptn;
-	if (0u == *p_ptn) { *p_ptn = MOTION_EVT_TICK; }
-	if (0u != (mode & TWF_BITCLR)) { g_flag &= ~*p_ptn; }
-	return E_OK;
-}
-ER tk_ref_flg(ID id, T_RFLG *p_rflg)
-{
-	(void)id;
-	p_rflg->flgptn = g_flag;
+	if ((g_flag & waiptn) == 0u) {
+		CHECK(!"motion_cycle called with nothing to wake it (it would block)");
+		return E_TMOUT;
+	}
+	*p_ptn = g_flag;
+	if ((mode & TWF_BITCLR) != 0u) { g_flag &= ~waiptn; }
 	return E_OK;
 }
 ID tk_cre_mbf(CONST T_CMBF *p)
@@ -284,6 +307,7 @@ ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 	(void)id;
 	CHECK(tmo == TMO_POL);			/* motion_task never blocks */
 	CHECK(size == (INT)sizeof(motion_report_t));
+	if (g_probe && (g_rep_t_us == 0u)) { g_rep_t_us = g_time_us; g_time_us += 5u; }
 	if (g_q_count >= SIM_QUEUE_LEN) { return E_TMOUT; }
 	memcpy(&g_queue[g_q_count++], msg, sizeof(motion_report_t));
 	return E_OK;
@@ -298,6 +322,11 @@ ID tk_cre_tsk(CONST T_CTSK *p)
 		CHECK(p->itskpri == 11);
 		CHECK((p->tskatr & TA_ASSPRC) != 0u);
 		CHECK(p->assprc == TP_PRC2);	/* core 1 */
+#if MOTION_BENCH && MOTION_TEST_STOP
+	} else if (p->task == (FP)stop_standin_task) {
+		CHECK(p->itskpri == 12);	/* imu_task's, below motion */
+		CHECK(p->assprc == TP_PRC2);	/* core 1, like scan and imu */
+#endif
 	} else {
 		CHECK(p->assprc == TP_PRC1);	/* reporter on core 0 */
 	}
@@ -395,6 +424,7 @@ sim_tick (void)
 	g_time_us += 10000u;
 	g_tick++;
 	plant_step();
+	if (g_fail_ticks == 0) { motion_cyclic_isr(NULL); }	/* the 10 ms handler */
 	motion_cycle(&g_ctx);
 	if ((g_first_drive < 0) && ((g_duty[0] != 0) || (g_duty[1] != 0))) {
 		g_first_drive = g_tick;
@@ -429,7 +459,6 @@ sim_reset (const char *p_name)
 	g_duty_max_abs = 0;
 	g_enc_swap = 0;
 	g_fail_ticks = 0;
-	g_flag = 0u;
 	g_q_count = 0;
 	g_hold_reports = 0;
 	g_n_seen = 0;
@@ -442,6 +471,15 @@ sim_reset (const char *p_name)
 	g_gp20_setups = 0;
 	g_wdt_starts = 0;
 	g_wdt_feeds = 0;
+	g_flag = 0u;
+	g_brake_calls = 0;
+	g_probe = 0;
+	g_brake_t_us = 0u;
+	g_rep_t_us = 0u;
+	memset((void *)g_stop_req_us, 0, sizeof g_stop_req_us);
+#if MOTION_BENCH && MOTION_TEST_STOP
+	gb_st_ready = false;
+#endif
 #if MOTION_PACKED
 	g_ds_word = MOTION_DS_WORD_ZERO;
 #else
@@ -709,6 +747,260 @@ scenario_ds_week6_mutex (void)
 #endif
 
 /* ------------------------------------------------------------------ *
+ *  Scenarios: stop path (NFR-18)
+ * ------------------------------------------------------------------ */
+
+#define STOP_WAKE_US	(17u)	/* simulated request -> wake time */
+
+/* A STOP sender (scan_task or imu_task, core 1, below motion) between two
+   ticks: optionally stamp, set the bit, and motion wakes on it. */
+static void
+stop_request (UINT bit, int b_stamp)
+{
+	g_time_us += 1234u;		/* somewhere between two ticks */
+	if (b_stamp) { motion_stop_stamp(bit); }
+	(void)tk_set_flg(g_flgid, bit);
+	g_time_us += STOP_WAKE_US;
+	motion_cycle(&g_ctx);		/* the wake on the STOP bit */
+	drain_reports();
+}
+
+static void
+scenario_stop_scan (void)
+{
+	uint32_t ticks0;
+	int feeds0;
+
+	sim_reset("STOP_SCAN: brake at once, stay braked, scan_task clears it");
+	CHECK(g_flgid > 0);
+	CHECK(motor_task_flag() == (MOTION_BENCH ? 0 : g_flgid));	/* bench: scan_task print-only */
+	sim_ticks(5);
+	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == MOTION_EVT_STOPS);
+	CHECK((g_last_wmode & TWF_BITCLR) == 0u);	/* never clears a STOP */
+
+	ticks0 = g_ctx.ticks;
+	feeds0 = g_wdt_feeds;
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	CHECK(g_brake_calls == 1);			/* the first write */
+	CHECK(g_ctx.ticks == ticks0);		/* a STOP wake does no tick work */
+	CHECK(g_wdt_feeds == feeds0);
+	CHECK((g_flag & MOTION_EVT_STOP_SCAN) != 0u);	/* only scan_task clears it */
+	CHECK(strstr(g_log, "[motion] STOP_SCAN set: brake written 17 us after the request.") != NULL);
+
+	/* While stopped the STOP bits are left out of the wait, so motion
+	   cannot spin on a bit that stays set; it checks them every tick. */
+	sim_ticks(50);
+	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == 0u);
+	CHECK((g_last_wmode & TWF_BITCLR) != 0u);
+	CHECK((g_flag & MOTION_EVT_TICK) == 0u);	/* each tick consumed */
+	CHECK((g_flag & MOTION_EVT_STOP_SCAN) != 0u);
+	CHECK(g_ctx.ticks == ticks0 + 50u);
+	CHECK(g_wdt_feeds == feeds0 + 50);
+	CHECK(count_kind(REP_EVENT, EVT_STOP) == 1);
+
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_tick();
+	CHECK(g_ctx.stop_bits == 0u);
+	CHECK(strstr(g_log, "every STOP bit clear, after 510 ms braked.") != NULL);	/* 51 ticks */
+	CHECK(strstr(g_log, "Motors stay braked until a command.") != NULL);
+	sim_tick();
+	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == MOTION_EVT_STOPS);
+	CHECK(g_duty_max_abs == 0);
+}
+
+static void
+scenario_stop_imu_and_scan (void)
+{
+	sim_reset("STOP_IMU unstamped, then STOP_SCAN too: braked until both clear");
+	sim_ticks(3);
+	stop_request(MOTION_EVT_STOP_IMU, 0);
+	CHECK(g_brake_calls == 1);
+	CHECK(strstr(g_log, "[motion] STOP_IMU set: motors braked (the sender did not stamp the request).") != NULL);
+
+	sim_tick();
+	g_time_us += 500u;
+	motion_stop_stamp(MOTION_EVT_STOP_SCAN);
+	(void)tk_set_flg(g_flgid, MOTION_EVT_STOP_SCAN);
+	sim_tick();				/* seen on the next tick */
+	CHECK(g_brake_calls == 1);		/* already braked */
+	CHECK(strstr(g_log, "[motion] STOP_SCAN set: seen") != NULL);
+	CHECK(strstr(g_log, "(already braked)") != NULL);
+
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(3);
+	CHECK(g_ctx.stop_bits == MOTION_EVT_STOP_IMU);	/* STOP_IMU stays */
+	CHECK(count_kind(REP_EVENT, EVT_GO) == 0);
+	CHECK((g_flag & MOTION_EVT_STOP_IMU) != 0u);	/* motion did not clear it */
+
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);	/* FAULT_CLEAR(IMU), later */
+	sim_tick();
+	CHECK(count_kind(REP_EVENT, EVT_GO) == 1);
+	CHECK(g_ctx.stop_bits == 0u);
+}
+
+/* A STOP set before motor_task() reaches its loop survives the start-up
+   clear (only TICK is cleared) and brakes on the first wake. */
+static void
+scenario_stop_before_first_tick (void)
+{
+	sim_reset("STOP_SCAN set before motor_task's loop: braked on the first wake");
+	g_flag = MOTION_EVT_STOP_SCAN | MOTION_EVT_TICK;	/* a stale tick too */
+	g_loop_wakes = 1;			/* one wake, then leave the loop */
+	if (setjmp(g_loop_jmp) == 0) {
+		motor_task(0, NULL);
+	}
+	g_loop_wakes = -1;
+	drain_reports();
+	CHECK((g_flag & MOTION_EVT_STOP_SCAN) != 0u);
+	CHECK(g_ctx.stop_bits == MOTION_EVT_STOP_SCAN);
+	CHECK(g_brake_calls >= 1);
+	CHECK(count_kind(REP_EVENT, EVT_STOP) == 1);
+	CHECK(g_ctx.ticks == 0u);		/* the stale tick was cleared */
+}
+
+/* In the wake that sees a STOP the brake comes first: before any report,
+   and the time is taken after it. */
+static void
+scenario_stop_order (void)
+{
+	sim_reset("STOP wake: brake first, then the time, then the report");
+	sim_ticks(3);
+	g_probe = 1;
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	g_probe = 0;
+	CHECK(g_brake_t_us != 0u);
+	CHECK(g_rep_t_us > g_brake_t_us);
+	CHECK(strstr(g_log, "brake written 20 us after the request") != NULL);	/* 17 + 3 */
+}
+
+#if MOTION_BENCH && !MOTION_TEST_STOP
+/* A STOP during a bench test brakes the wheels in that wake and ends the
+   test; it does not start again when the STOP clears, nor on the button
+   while a STOP is set. */
+static void
+scenario_stop_during_bench (void)
+{
+	sim_reset("STOP_SCAN during the open-loop test: brake at once, test ends");
+	press_button();
+	sim_ticks(20);
+	CHECK(g_duty[0] != 0);			/* L fwd is driving */
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));	/* in the same wake */
+	CHECK(g_ctx.phase == PHASE_IDLE);
+	CHECK(strstr(g_log, "the bench test ended on the STOP") != NULL);
+
+	sim_ticks(30);
+	press_button();				/* STOP still set: no start */
+	CHECK(g_ctx.phase == PHASE_IDLE);
+	CHECK(count_kind(REP_EVENT, EVT_START) == 1);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(30);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(g_ctx.phase == PHASE_IDLE);
+
+	/* A tick and a STOP in the same wake while driving: the STOP comes
+	   first, so the tick never drives (the motor_set fake checks it). */
+	sim_reset(NULL);
+	press_button();
+	sim_ticks(20);
+	CHECK(g_duty[0] != 0);
+	(void)tk_set_flg(g_flgid, MOTION_EVT_STOP_SCAN);
+	sim_tick();
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(g_ctx.phase == PHASE_IDLE);
+	CHECK(count_kind(REP_EVENT, EVT_STOP) == 1);
+}
+#endif
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+/* The whole NFR-18 bench test: the stand-in runs one step after every
+   tick (it is below motion_task on the same core), and a STOP it sets
+   wakes motion at once. */
+static void
+scenario_stop_test (void)
+{
+	standin_t st = { 0u, 0u, 0u };
+	int t, done = 0, b_spin = 0;
+	uint32_t k = 0u, src, drove = 0u, drove_min = UINT32_MAX;
+	uint32_t want_min[2] = { UINT32_MAX, UINT32_MAX }, want_max[2] = { 0u, 0u };
+	uint32_t want_sum[2] = { 0u, 0u };
+	char want[160];
+
+	sim_reset("stop test: 100 stops per source from the stand-in, timed");
+	press_button();
+	CHECK(g_ctx.phase == PHASE_STOPTEST);
+	CHECK(strstr(g_log, "START stop test (NFR-18)") != NULL);
+	CHECK(strstr(g_log, "test=stop (NFR-18)") != NULL);
+	drove = g_ctx.st_drive;			/* it started driving in the press */
+
+	for (t = 0; (t < 20000) && !done; t++) {
+		UINT before = g_flag & MOTION_EVT_STOPS;
+		UINT added;
+
+		sim_tick();
+		if ((g_duty[0] != 0) && (g_duty[1] != 0)) { drove++; }
+		standin_step(&st);
+		added = g_flag & MOTION_EVT_STOPS & ~before;
+		if (added != 0u) {
+			/* a different wake time each stop, so min, mean and max differ */
+			uint32_t w = 10u + ((k * 7u) % 23u);
+
+			src = (added == MOTION_EVT_STOP_SCAN) ? 0u : 1u;
+			if (w < want_min[src]) { want_min[src] = w; }
+			if (w > want_max[src]) { want_max[src] = w; }
+			want_sum[src] += w;
+			k++;
+			if (drove < drove_min) { drove_min = drove; }
+			drove = 0u;
+			g_time_us += w;
+			motion_cycle(&g_ctx);
+			drain_reports();
+			if ((g_duty[0] != 0) || (g_duty[1] != 0)) { b_spin = 1; }
+		}
+		done = (g_ctx.phase == PHASE_IDLE);
+	}
+	printf("   stop test took %d ticks (simulation)\n", t);
+	CHECK(done);
+	CHECK(!b_spin);				/* braked in every STOP wake */
+	CHECK(drove_min >= MOTION_TEST_STOP_DRIVE);	/* wheels turning at each stop */
+	for (src = 0u; src < 2u; src++) {
+		(void)snprintf(want, sizeof want,
+			       "STOP TEST %s: 100 stops, request to brake min %u / mean %u / max %u us",
+			       (src == 0u) ? "STOP_SCAN" : "STOP_IMU", (unsigned)want_min[src],
+			       (unsigned)(want_sum[src] / 100u), (unsigned)want_max[src]);
+		CHECK(want_min[src] < want_max[src]);
+		CHECK(strstr(g_log, want) != NULL);
+	}
+	CHECK(g_ctx.st_n[STOP_SRC_SCAN] == MOTION_TEST_STOP_TRIALS);
+	CHECK(g_ctx.st_n[STOP_SRC_IMU] == MOTION_TEST_STOP_TRIALS);
+	CHECK(g_duty_max_abs == MOTION_TEST_DUTY);	/* it drove between stops */
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(g_ctx.faults == 0u);
+
+	/* A STOP from elsewhere (unstamped) is braked but never counted, and
+	   a stamp made while a bit is already set is never charged later. */
+	sim_reset(NULL);
+	press_button();
+	sim_ticks((int)MOTION_TEST_STOP_DRIVE + 1);
+	CHECK(gb_st_ready);
+	stop_request(MOTION_EVT_STOP_SCAN, 0);		/* scan_task, say */
+	CHECK(!gb_st_ready);				/* the stand-in waits */
+	motion_stop_stamp(MOTION_EVT_STOP_SCAN);	/* stamp for a set bit */
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(5);
+	stop_request(MOTION_EVT_STOP_SCAN, 0);
+	CHECK(g_ctx.st_n[STOP_SRC_SCAN] == 0u);
+	CHECK(strstr(g_log, "brake written") == NULL);	/* the old stamp was dropped */
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	press_button();					/* abort */
+
+	/* Idle afterwards: the stand-in sets nothing more. */
+	for (t = 0; t < 200; t++) { sim_tick(); standin_step(&st); }
+	CHECK((g_flag & MOTION_EVT_STOPS) == 0u);
+}
+#endif
+
+/* ------------------------------------------------------------------ *
  *  Scenarios
  * ------------------------------------------------------------------ */
 
@@ -723,34 +1015,6 @@ scenario_idle (void)
 	CHECK(count_kind(REP_STATUS, -1) == 0);
 	CHECK(count_kind(REP_TIMING, -1) == 1);
 	CHECK(strstr(g_log, "tick period 10000..10000 us") != NULL);
-}
-
-static void
-scenario_stop_scan (void)
-{
-	sim_reset("STOP_SCAN: immediate brake, held until scan clears it");
-	g_ctx.phase = PHASE_STEPS;
-	g_ctx.cmd_l = 350;
-	g_ctx.cmd_r = 350;
-	motor_set(MOTOR_LEFT, g_ctx.cmd_l);
-	motor_set(MOTOR_RIGHT, g_ctx.cmd_r);
-
-	CHECK(E_OK == tk_set_flg(g_flgid,
-				 MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_WAKE));
-	motion_cycle(&g_ctx);
-	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
-	CHECK(PHASE_IDLE == g_ctx.phase);
-	CHECK(0u != (g_flag & MOTION_EVT_STOP_SCAN));
-
-	sim_ticks(5);
-	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
-	CHECK(PHASE_IDLE == g_ctx.phase);
-
-	CHECK(E_OK == tk_clr_flg(g_flgid, ~MOTION_EVT_STOP_SCAN));
-	CHECK(E_OK == tk_set_flg(g_flgid, MOTION_EVT_STOP_WAKE));
-	motion_cycle(&g_ctx);
-	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
-	CHECK(0u == (g_flag & MOTION_EVT_STOP_SCAN));
 }
 
 static void
@@ -1162,14 +1426,12 @@ main (int argc, char **argv)
 	g_verbose = (argc > 1) && (strcmp(argv[1], "-v") == 0);
 
 	CHECK(motor_task_start() == E_OK);
-	CHECK(0 < motor_task_flag());
 	CHECK(sizeof(motion_report_t) == 52u);
 
 #if MOTION_TEST_WDT
 	scenario_wdt_hang();
 #elif !MOTION_BENCH
 	scenario_idle();
-	scenario_stop_scan();
 	scenario_hand_turn();
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
@@ -1183,9 +1445,14 @@ main (int argc, char **argv)
 #if !MOTION_PACKED
 	scenario_ds_week6_mutex();
 #endif
+	scenario_stop_scan();
+	scenario_stop_imu_and_scan();
+	scenario_stop_before_first_tick();
+	scenario_stop_order();
+#elif MOTION_TEST_STOP
+	scenario_stop_test();
 #elif !MOTION_TEST_PID
 	scenario_idle();
-	scenario_stop_scan();
 	scenario_hand_turn();
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
@@ -1201,8 +1468,9 @@ main (int argc, char **argv)
 	scenario_swapped_plugs();
 	scenario_inverted_motor();
 	scenario_reports_never_block();
-#else
 	scenario_stop_scan();
+	scenario_stop_during_bench();
+#else
 	scenario_pid();
 	scenario_pid_wrong_polarity();
 	scenario_pid_unplugged_phase();
@@ -1212,6 +1480,7 @@ main (int argc, char **argv)
 	printf("motion_task sim (%s%s): %d checks, %d failures\n",
 	       !MOTION_BENCH ? "bench off"
 	       : MOTION_TEST_WDT ? "watchdog test"
+	       : MOTION_TEST_STOP ? "stop test"
 	       : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
 	       MOTION_PACKED ? "" : ", Week 6 unpacked",
 	       g_checks, g_failures);
