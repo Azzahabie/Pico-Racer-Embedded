@@ -46,6 +46,12 @@
 #include "motion_wdt.h"
 #include "motor_task.h"
 
+/* The motion_flg bits (common/messages.h) are four different bits. */
+_Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
+                | MOTION_EVT_STOP_IMU)
+                   == 0x0Fu,
+               "motion_flg bits overlap");
+
 /* ------------------------------------------------------------------ *
  *  Constants
  * ------------------------------------------------------------------ */
@@ -106,8 +112,14 @@ typedef enum
     PHASE_IDLE = 0,
     PHASE_STEPS,
     PHASE_RAMP,
-    PHASE_PID
+    PHASE_PID,
+    PHASE_STOPTEST /* MOTION_TEST_STOP only */
 } motion_phase_t;
+
+/* STOP sources, for the request stamps and the stop test. */
+#define STOP_SRC_SCAN (0u)
+#define STOP_SRC_IMU  (1u)
+#define STOP_SOURCES  (2u)
 
 /* ------------------------------------------------------------------ *
  *  Report records (motion_task -> motion_report)
@@ -130,12 +142,20 @@ typedef enum
     EVT_READY = 0, /* val_l = init ercd, val_r = processor    */
     EVT_START,     /* val_l = PID target in counts/s (or 0)   */
     EVT_DONE,
-    EVT_ABORT, /* button                                  */
-    EVT_FAULT, /* faults byte says which                  */
-    EVT_RAMP,  /* val = first duty that moved, 0 = none   */
-    EVT_BOOT   /* val_l = motion_boot_t, val_r = watchdog
-                  test result in us or -1, rate_l = watchdog
-                  timeout in ms, 0 = not armed            */
+    EVT_ABORT,   /* button                                  */
+    EVT_FAULT,   /* faults byte says which                  */
+    EVT_RAMP,    /* val = first duty that moved, 0 = none   */
+    EVT_BOOT,    /* val_l = motion_boot_t, val_r = watchdog
+                    test result in us or -1, rate_l = watchdog
+                    timeout in ms, 0 = not armed            */
+    EVT_STOP,    /* val_l = STOP bit newly seen, val_r = us
+                    from the request to the brake, or -1 if
+                    not stamped, rate_l = 1 if this stop
+                    wrote the brake, 0 if already braked   */
+    EVT_GO,      /* every STOP bit clear; val_l = ms braked */
+    EVT_STOPTEST /* stop test result for one source: val_l
+                    = STOP bit, val_r = stops, rate_l = max
+                    us, rate_r = mean us, duty_l = min us  */
 } report_event_t;
 
 typedef struct
@@ -191,7 +211,6 @@ typedef struct
     int32_t        ramp_found_r;
     int32_t        cmd_l;
     int32_t        cmd_r;
-    bool           b_stop_flag_fault;
     motion_pid_t   pid_l;
     motion_pid_t   pid_r;
     motion_stall_t stall_l;
@@ -215,6 +234,18 @@ typedef struct
     uint32_t irq_mark;
     uint32_t wdt_fed_us;     /* when the watchdog was last fed  */
     uint32_t wdt_gap_max_us; /* longest gap between two feeds   */
+
+    /* stop path (NFR-18) */
+    uint32_t stop_bits;                   /* STOP bits at the last check */
+    uint32_t stop_t_us;                   /* when the brake was written  */
+    uint32_t stop_req_used[STOP_SOURCES]; /* last request stamp used */
+#if MOTION_BENCH && MOTION_TEST_STOP
+    uint32_t st_drive; /* ticks driving since the last stop */
+    uint32_t st_n[STOP_SOURCES];
+    uint32_t st_min_us[STOP_SOURCES];
+    uint32_t st_max_us[STOP_SOURCES];
+    uint32_t st_sum_us[STOP_SOURCES];
+#endif
 
     /* distance_state (motion_ds.h): the last values published */
     motion_ds_win_t   ds_win;
@@ -266,6 +297,15 @@ static T_CMTX const g_cmtx_ds = {
 
 static ID g_flgid;
 static ID g_mbfid;
+
+/* NFR-18 request times, one word per STOP source.  Each is written only
+   by its own sender (motion_stop_stamp) and read only by motion_task. */
+static volatile uint32_t g_stop_req_us[STOP_SOURCES];
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+/* Stop test: motion_task -> stand-in, "both wheels are turning". */
+static volatile bool gb_st_ready;
+#endif
 
 static UW g_report_buf[(REPORT_QUEUE_LEN
                         * (sizeof(motion_report_t) + MBF_HEADER_BYTES))
@@ -329,6 +369,26 @@ static T_CTSK const g_ctsk_report = {
 #endif
 };
 
+#if MOTION_BENCH && MOTION_TEST_STOP
+static void stop_standin_task(INT stacd, void *exinf);
+
+static _Alignas(8) UW g_standin_stack[REPORT_TASK_STACK / sizeof(UW)];
+
+/* Same core as scan_task and imu_task, at imu_task's priority. */
+static T_CTSK const g_ctsk_standin = {
+    .itskpri = MOTION_TEST_STOP_PRI,
+    .stksz   = sizeof(g_standin_stack),
+    .bufptr  = g_standin_stack,
+    .task    = (FP)stop_standin_task,
+#if TK_SUPPORT_SMP
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF | TA_ASSPRC,
+    .assprc = TP_PRC2, /* core 1 */
+#else
+    .tskatr = TA_HLNG | TA_RNG3 | TA_USERBUF,
+#endif
+};
+#endif
+
 /* ------------------------------------------------------------------ *
  *  Small helpers
  * ------------------------------------------------------------------ */
@@ -337,6 +397,37 @@ static uint32_t
 now_us (void)
 {
     return in_w(TIMER_RAWL);
+}
+
+/* Bench images return 0, so scan_task stays print-only: the GP20 press
+   that starts a bench test also starts nav's mission, and scan_task's own
+   STOP_SCAN (anything within 25 cm, or no sensor) would end the test.
+   The stop test's stand-in uses g_flgid directly. */
+ID
+motor_task_flag (void)
+{
+    ID flgid = g_flgid;
+
+#if MOTION_BENCH
+    flgid = 0;
+#endif
+
+    return flgid;
+}
+
+void
+motion_stop_stamp (UINT stop_bit)
+{
+    uint32_t t_now = now_us();
+
+    if (0u != (stop_bit & MOTION_EVT_STOP_SCAN))
+    {
+        g_stop_req_us[STOP_SRC_SCAN] = t_now;
+    }
+    if (0u != (stop_bit & MOTION_EVT_STOP_IMU))
+    {
+        g_stop_req_us[STOP_SRC_IMU] = t_now;
+    }
 }
 
 /* Counts moved over n ticks -> counts per second. */
@@ -493,6 +584,9 @@ bench_stop (motion_ctx_t *p_ctx, report_event_t evt)
     p_ctx->phase = PHASE_IDLE;
     p_ctx->cmd_l = 0;
     p_ctx->cmd_r = 0;
+#if MOTION_BENCH && MOTION_TEST_STOP
+    gb_st_ready = false;
+#endif
 
     report_send(p_ctx, &rep);
 }
@@ -508,7 +602,22 @@ bench_start (motion_ctx_t *p_ctx)
     motion_pid_reset(&p_ctx->pid_r);
     bench_mark(p_ctx);
 
-#if MOTION_TEST_PID
+#if MOTION_BENCH && MOTION_TEST_STOP
+    {
+        uint32_t src;
+
+        for (src = 0u; src < STOP_SOURCES; src++)
+        {
+            p_ctx->st_n[src]      = 0u;
+            p_ctx->st_min_us[src] = UINT32_MAX;
+            p_ctx->st_max_us[src] = 0u;
+            p_ctx->st_sum_us[src] = 0u;
+        }
+        p_ctx->st_drive = 0u;
+    }
+    p_ctx->phase = PHASE_STOPTEST;
+    report_event(p_ctx, EVT_START, 0, 1);
+#elif MOTION_TEST_PID
     p_ctx->phase = PHASE_PID;
     report_event(p_ctx, EVT_START, rate_cps(MOTION_PID_TARGET, 1u), 0);
 #else
@@ -622,6 +731,62 @@ bench_pid (motion_ctx_t *p_ctx)
         bench_stop(p_ctx, EVT_DONE);
     }
 }
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+/* Stop test (NFR-18): both wheels at MOTION_TEST_DUTY whenever no STOP
+   bit is set.  After MOTION_TEST_STOP_DRIVE ticks of driving it tells
+   the stand-in it may set the next STOP; stop_check() times each one. */
+static void
+bench_stoptest (motion_ctx_t *p_ctx)
+{
+    motion_report_t rep;
+    uint32_t        src;
+    bool            b_done = true;
+
+    if (0u == p_ctx->stop_bits)
+    {
+        p_ctx->cmd_l = MOTION_TEST_DUTY;
+        p_ctx->cmd_r = MOTION_TEST_DUTY;
+        if (p_ctx->st_drive < MOTION_TEST_STOP_DRIVE)
+        {
+            p_ctx->st_drive++;
+        }
+    }
+    else
+    {
+        p_ctx->st_drive = 0u;
+    }
+
+    for (src = 0u; src < STOP_SOURCES; src++)
+    {
+        if (p_ctx->st_n[src] < MOTION_TEST_STOP_TRIALS)
+        {
+            b_done = false;
+        }
+    }
+
+    if (b_done && (0u == p_ctx->stop_bits))
+    {
+        for (src = 0u; src < STOP_SOURCES; src++)
+        {
+            report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STOPTEST);
+            rep.val_l  = (int32_t)((STOP_SRC_SCAN == src) ? MOTION_EVT_STOP_SCAN
+                                                          : MOTION_EVT_STOP_IMU);
+            rep.val_r  = (int32_t)p_ctx->st_n[src];
+            rep.rate_l = (int32_t)p_ctx->st_max_us[src];
+            rep.rate_r = (int32_t)(p_ctx->st_sum_us[src] / p_ctx->st_n[src]);
+            rep.duty_l = (int16_t)motion_clamp((int32_t)p_ctx->st_min_us[src],
+                                               0, INT16_MAX);
+            report_send(p_ctx, &rep);
+        }
+        bench_stop(p_ctx, EVT_DONE);
+    }
+    else
+    {
+        gb_st_ready = (p_ctx->st_drive >= MOTION_TEST_STOP_DRIVE);
+    }
+}
+#endif
 
 /* FR-30.  Judged on the duty that was applied during the tick just
    measured.  Open loop counts net movement either way (polarity is not
@@ -883,8 +1048,120 @@ tick_feed_watchdog (motion_ctx_t *p_ctx, uint32_t t_now)
     motion_wdt_feed();
 }
 
+/* ------------------------------------------------------------------ *
+ *  Stop path (NFR-18)
+ * ------------------------------------------------------------------ */
+
+/* Report one newly seen STOP bit, with the time from its request to the
+   brake if the sender stamped it (motion_stop_stamp). */
 static void
-motion_tick (motion_ctx_t *p_ctx, bool b_stop_scan)
+stop_report (motion_ctx_t *p_ctx, uint32_t src, uint32_t t_brake,
+             bool b_braked_now)
+{
+    motion_report_t rep;
+    uint32_t        req     = g_stop_req_us[src];
+    int32_t         lat_us  = -1;
+    uint32_t        lat_raw = 0u;
+
+    if (req != p_ctx->stop_req_used[src]) /* a new stamp */
+    {
+        p_ctx->stop_req_used[src] = req;
+        lat_raw                   = t_brake - req; /* modulo 2^32 */
+        lat_us                    = (int32_t)lat_raw;
+    }
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+    if ((PHASE_STOPTEST == p_ctx->phase) && (lat_us >= 0) && b_braked_now)
+    {
+        p_ctx->st_n[src]++;
+        p_ctx->st_sum_us[src] += lat_raw;
+        if (lat_raw < p_ctx->st_min_us[src])
+        {
+            p_ctx->st_min_us[src] = lat_raw;
+        }
+        if (lat_raw > p_ctx->st_max_us[src])
+        {
+            p_ctx->st_max_us[src] = lat_raw;
+        }
+    }
+#endif
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STOP);
+    rep.val_l  = (int32_t)((STOP_SRC_SCAN == src) ? MOTION_EVT_STOP_SCAN
+                                                  : MOTION_EVT_STOP_IMU);
+    rep.val_r  = lat_us;
+    rep.rate_l = b_braked_now ? 1 : 0;
+    report_send(p_ctx, &rep);
+}
+
+/* The first thing in every wake (design Section 4: STOP bits first, and
+   the brake is the first write).  ptn is the whole flag pattern the wait
+   returned, STOP bits included even when they were not waited on. */
+static void
+stop_check (motion_ctx_t *p_ctx, UINT ptn)
+{
+    uint32_t stops    = (uint32_t)ptn & MOTION_EVT_STOPS;
+    uint32_t new_bits = stops & ~p_ctx->stop_bits;
+    bool     b_first  = (0u == p_ctx->stop_bits) && (0u != stops);
+    uint32_t t_brake;
+
+    if (b_first)
+    {
+        motor_brake_all();
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    t_brake = now_us();
+    if (b_first)
+    {
+        p_ctx->stop_t_us = t_brake;
+    }
+#if MOTION_BENCH && MOTION_TEST_STOP
+    if (0u != stops)
+    {
+        gb_st_ready = false; /* no new stop until it has driven again */
+    }
+#endif
+
+    if (0u != new_bits)
+    {
+        if (0u != (new_bits & MOTION_EVT_STOP_SCAN))
+        {
+            stop_report(p_ctx, STOP_SRC_SCAN, t_brake, b_first);
+        }
+        if (0u != (new_bits & MOTION_EVT_STOP_IMU))
+        {
+            stop_report(p_ctx, STOP_SRC_IMU, t_brake, b_first);
+        }
+
+        /* A bench step, ramp or PID test ends on a STOP (reported with
+           the phase it ended, so the line can say so). */
+        if ((PHASE_IDLE != p_ctx->phase) && (PHASE_STOPTEST != p_ctx->phase))
+        {
+            p_ctx->phase = PHASE_IDLE;
+        }
+    }
+    else if ((0u == stops) && (0u != p_ctx->stop_bits))
+    {
+        report_event(p_ctx, EVT_GO,
+                     (int32_t)((t_brake - p_ctx->stop_t_us) / US_PER_MS), 0);
+    }
+    else
+    {
+        /* No change. */
+    }
+
+    /* Each stamp is looked at once, in the first wake after it: it times
+       a stop only if its bit is newly set in that wake.  So a stamp made
+       for a bit that was already set is never charged to a later stop. */
+    p_ctx->stop_req_used[STOP_SRC_SCAN] = g_stop_req_us[STOP_SRC_SCAN];
+    p_ctx->stop_req_used[STOP_SRC_IMU]  = g_stop_req_us[STOP_SRC_IMU];
+
+    p_ctx->stop_bits = stops;
+}
+
+static void
+motion_tick (motion_ctx_t *p_ctx)
 {
     uint32_t t_start = now_us();
     uint32_t t_end;
@@ -893,54 +1170,61 @@ motion_tick (motion_ctx_t *p_ctx, bool b_stop_scan)
     tick_timing(p_ctx, t_start);
     tick_encoders(p_ctx);
 
-    if (b_stop_scan)
-    {
-        p_ctx->phase = PHASE_IDLE;
-        p_ctx->cmd_l = 0;
-        p_ctx->cmd_r = 0;
-        motor_brake_all();
-    }
-    else
-    {
 #if MOTION_BENCH
-        if (button_pressed(p_ctx))
+    if (button_pressed(p_ctx))
+    {
+        if (PHASE_IDLE != p_ctx->phase)
         {
-            if (PHASE_IDLE == p_ctx->phase)
-            {
-                bench_start(p_ctx);
-            }
-            else
-            {
-                bench_stop(p_ctx, EVT_ABORT);
-            }
+            bench_stop(p_ctx, EVT_ABORT);
         }
+        else if (0u == p_ctx->stop_bits)
+        {
+            bench_start(p_ctx);
+        }
+        else
+        {
+            /* A STOP bit is set: no test starts. */
+        }
+    }
 #endif
 
-        stall_check(p_ctx);
+    stall_check(p_ctx);
 
-        switch (p_ctx->phase)
-        {
-            case PHASE_STEPS:
-                bench_steps(p_ctx);
-                break;
+    switch (p_ctx->phase)
+    {
+        case PHASE_STEPS:
+            bench_steps(p_ctx);
+            break;
 
-            case PHASE_RAMP:
-                bench_ramp(p_ctx);
-                break;
+        case PHASE_RAMP:
+            bench_ramp(p_ctx);
+            break;
 
-            case PHASE_PID:
-                bench_pid(p_ctx);
-                break;
+        case PHASE_PID:
+            bench_pid(p_ctx);
+            break;
 
-            default:
-                p_ctx->cmd_l = 0;
-                p_ctx->cmd_r = 0;
-                break;
-        }
+#if MOTION_BENCH && MOTION_TEST_STOP
+        case PHASE_STOPTEST:
+            bench_stoptest(p_ctx);
+            break;
+#endif
 
-        motor_set(MOTOR_LEFT, p_ctx->cmd_l);
-        motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
+        default:
+            p_ctx->cmd_l = 0;
+            p_ctx->cmd_r = 0;
+            break;
     }
+
+    /* Braked for as long as any STOP bit is set. */
+    if (0u != p_ctx->stop_bits)
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+
+    motor_set(MOTOR_LEFT, p_ctx->cmd_l);
+    motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
 
     tick_distance(p_ctx);
     tick_report(p_ctx);
@@ -966,6 +1250,63 @@ motion_cyclic_isr (void *exinf)
     (void)exinf;
     (void)tk_set_flg(g_flgid, MOTION_EVT_TICK);
 }
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+/* Stop test stand-in for scan_task and imu_task.  Once motion_task says
+   the wheels are turning, it sets STOP_SCAN or STOP_IMU in turn, the way
+   they will (stamp, then tk_set_flg), and clears it again after
+   MOTION_TEST_STOP_HOLD ticks.  On the car only FAULT_CLEAR(IMU) clears
+   STOP_IMU; the stand-in clears it itself so the test can go on. */
+typedef struct
+{
+    UINT     bit;     /* the STOP bit it has set, 0 = none */
+    uint32_t hold;    /* ticks it has held it              */
+    uint32_t n_stops; /* stops requested so far         */
+} standin_t;
+
+static void
+standin_step (standin_t *p_st)
+{
+    if (0u != p_st->bit)
+    {
+        p_st->hold++;
+        if (p_st->hold >= MOTION_TEST_STOP_HOLD)
+        {
+            (void)tk_clr_flg(g_flgid, ~p_st->bit);
+            p_st->bit = 0u;
+        }
+    }
+    else if (gb_st_ready)
+    {
+        p_st->bit  = (0u == (p_st->n_stops % STOP_SOURCES))
+                         ? MOTION_EVT_STOP_SCAN
+                         : MOTION_EVT_STOP_IMU;
+        p_st->hold = 0u;
+        p_st->n_stops++;
+        motion_stop_stamp(p_st->bit);
+        (void)tk_set_flg(g_flgid, p_st->bit);
+    }
+    else
+    {
+        /* Waiting for the wheels to turn. */
+    }
+}
+
+static void
+stop_standin_task (INT stacd, void *exinf)
+{
+    standin_t st = { 0u, 0u, 0u };
+
+    (void)stacd;
+    (void)exinf;
+
+    for (;;)
+    {
+        (void)tk_dly_tsk((TMO)MOTION_TICK_MS);
+        standin_step(&st);
+    }
+}
+#endif
 
 /* Hardware and state set-up.  Motors first, so they are braked before
    anything else happens.  Returns the first error. */
@@ -1061,50 +1402,34 @@ static void
 motion_cycle (motion_ctx_t *p_ctx)
 {
     ER   ercd;
-    UINT ptn;
-    T_RFLG rflg;
-    bool b_stop_scan;
+    UINT ptn    = 0u;
+    UINT waiptn = MOTION_EVT_TICK;
+    UINT mode   = TWF_ORW | TWF_BITCLR;
 
-    ercd = tk_wai_flg(g_flgid, MOTION_EVT_TICK | MOTION_EVT_STOP_WAKE,
-                      TWF_ORW | TWF_BITCLR, &ptn, MOTION_TICK_TIMEOUT_MS);
+    /* TWF_BITCLR clears every bit waited on, so a STOP bit is never part
+       of a clearing wait: motion must not clear STOP_SCAN or STOP_IMU.
+       While running, wait on the STOP bits too, without a clear, so a
+       stop wakes motion at once; then clear the tick by hand.  While
+       stopped, leave them out (a set bit in the wait would return at
+       once, forever) and look at them on every tick. */
+    if (0u == p_ctx->stop_bits)
+    {
+        waiptn = MOTION_EVT_TICK | MOTION_EVT_STOPS;
+        mode   = TWF_ORW;
+    }
+
+    ercd = tk_wai_flg(g_flgid, waiptn, mode, &ptn, MOTION_TICK_TIMEOUT_MS);
     if (E_OK == ercd)
     {
-        if (0u != (ptn & MOTION_EVT_STOP_WAKE))
-        {
-            motor_brake_all();
-        }
+        stop_check(p_ctx, ptn);
 
-        ercd = tk_ref_flg(g_flgid, &rflg);
-        if (E_OK != ercd)
+        if ((TWF_ORW == mode) && (0u != (ptn & MOTION_EVT_TICK)))
         {
-            if (!p_ctx->b_stop_flag_fault)
-            {
-                p_ctx->faults |= MOTION_FAULT_INIT;
-                report_event(p_ctx, EVT_FAULT, MOTION_FAULT_INIT, ercd);
-                p_ctx->b_stop_flag_fault = true;
-            }
-            b_stop_scan = true;
+            (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_TICK);
         }
-        else
+        if (0u != (ptn & MOTION_EVT_TICK)) /* only a tick runs the work */
         {
-            b_stop_scan = p_ctx->b_stop_flag_fault ||
-                          (0u != (rflg.flgptn & MOTION_EVT_STOP_SCAN));
-        }
-
-        if (b_stop_scan)
-        {
-            if (0u == (ptn & MOTION_EVT_STOP_WAKE))
-            {
-                motor_brake_all();
-            }
-            p_ctx->phase = PHASE_IDLE;
-            p_ctx->cmd_l = 0;
-            p_ctx->cmd_r = 0;
-        }
-
-        if (0u != (ptn & MOTION_EVT_TICK))
-        {
-            motion_tick(p_ctx, b_stop_scan);
+            motion_tick(p_ctx);
         }
     }
     else
@@ -1144,19 +1469,14 @@ motor_task (INT stacd, void *exinf)
         }
     }
 
-    /* Start the period measurement from a fresh tick. */
-    (void)tk_clr_flg(g_flgid, 0u);
+    /* Start the period measurement from a fresh tick.  Clear only TICK:
+       a STOP bit set before now must still brake the car. */
+    (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_TICK);
 
     for (;;)
     {
         motion_cycle(p_ctx);
     }
-}
-
-ID
-motor_task_flag (void)
-{
-    return g_flgid;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1256,18 +1576,20 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
     bool b_init_ok = (0 == p_rep->val_l);
 
 #if MOTION_BENCH
-    (void)tm_sprintf(p_line,
-                     (UB *)"[motion] ready on processor %d, init %s (er=%d)."
-                           " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
-                           " button GP%u, test=%s, MOTION_PACKED=%d",
-                     (INT)p_rep->val_r, b_init_ok ? "OK" : "FAILED",
-                     (INT)p_rep->val_l, (UINT)MOTION_PWM_HZ,
-                     (UINT)MOTION_PIN_M1A, (UINT)MOTION_PIN_M2B,
-                     (UINT)MOTION_PIN_ENC_L_A, (UINT)MOTION_PIN_ENC_R_B,
-                     encoder_left_enabled() ? "" : " (LEFT OFF: UART console)",
-                     (UINT)MOTION_PIN_BUTTON,
-                     (0 != MOTION_TEST_PID) ? "closed-loop" : "open-loop",
-                     (INT)MOTION_PACKED);
+    (void)tm_sprintf(
+        p_line,
+        (UB *)"[motion] ready on processor %d, init %s (er=%d)."
+              " PWM %u Hz on GP%u-GP%u, encoders GP%u-GP%u%s,"
+              " button GP%u, test=%s, MOTION_PACKED=%d",
+        (INT)p_rep->val_r, b_init_ok ? "OK" : "FAILED", (INT)p_rep->val_l,
+        (UINT)MOTION_PWM_HZ, (UINT)MOTION_PIN_M1A, (UINT)MOTION_PIN_M2B,
+        (UINT)MOTION_PIN_ENC_L_A, (UINT)MOTION_PIN_ENC_R_B,
+        encoder_left_enabled() ? "" : " (LEFT OFF: UART console)",
+        (UINT)MOTION_PIN_BUTTON,
+        (0 != MOTION_TEST_STOP)
+            ? "stop (NFR-18)"
+            : ((0 != MOTION_TEST_PID) ? "closed-loop" : "open-loop"),
+        (INT)MOTION_PACKED);
     print_line(p_line);
 
     if (b_init_ok)
@@ -1339,6 +1661,72 @@ print_boot (UB *p_line, motion_report_t const *p_rep)
     }
 }
 
+static char const *
+stop_name (int32_t bit)
+{
+    return (MOTION_EVT_STOP_IMU == (uint32_t)bit) ? "STOP_IMU" : "STOP_SCAN";
+}
+
+/* EVT_STOP, EVT_GO and EVT_STOPTEST. */
+static void
+print_stop (UB *p_line, motion_report_t const *p_rep)
+{
+    bool b_test = (PHASE_STOPTEST == (motion_phase_t)p_rep->phase);
+
+    if (EVT_STOP == (report_event_t)p_rep->code)
+    {
+        if (p_rep->val_r < 0)
+        {
+            (void)tm_sprintf(p_line,
+                             (UB *)"[motion] %s set: motors braked (the"
+                                   " sender did not stamp the request).",
+                             stop_name(p_rep->val_l));
+        }
+        else if (0 != p_rep->rate_l)
+        {
+            (void)tm_sprintf(p_line,
+                             (UB *)"[motion] %s set: brake written %d us"
+                                   " after the request.",
+                             stop_name(p_rep->val_l), (INT)p_rep->val_r);
+        }
+        else
+        {
+            (void)tm_sprintf(p_line,
+                             (UB *)"[motion] %s set: seen %d us after the"
+                                   " request (already braked).",
+                             stop_name(p_rep->val_l), (INT)p_rep->val_r);
+        }
+        print_line(p_line);
+
+        if ((PHASE_IDLE != (motion_phase_t)p_rep->phase) && !b_test)
+        {
+            print_line((UB *)"[motion]   the bench test ended on the STOP."
+                             " Press the button to run again.");
+        }
+    }
+    else if (EVT_GO == (report_event_t)p_rep->code)
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] every STOP bit clear, after %d ms"
+                               " braked. %s",
+                         (INT)p_rep->val_l,
+                         b_test ? "Driving again."
+                                : "Motors stay braked until a command.");
+        print_line(p_line);
+    }
+    else
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] STOP TEST %s: %d stops, request to"
+                               " brake min %d / mean %d / max %d us"
+                               " (NFR-18: within 20000 us)",
+                         stop_name(p_rep->val_l), (INT)p_rep->val_r,
+                         (INT)p_rep->duty_l, (INT)p_rep->rate_r,
+                         (INT)p_rep->rate_l);
+        print_line(p_line);
+    }
+}
+
 static void
 print_event (UB *p_line, motion_report_t const *p_rep)
 {
@@ -1353,7 +1741,18 @@ print_event (UB *p_line, motion_report_t const *p_rep)
             break;
 
         case EVT_START:
-            if (0 != p_rep->val_l)
+            if (0 != p_rep->val_r)
+            {
+                (void)tm_sprintf(p_line,
+                                 (UB *)"[motion] START stop test (NFR-18):"
+                                       " both wheels at %d per-mille,"
+                                       " STOP_SCAN and STOP_IMU %u times"
+                                       " each (press the button to abort)",
+                                 (INT)MOTION_TEST_DUTY,
+                                 (UINT)MOTION_TEST_STOP_TRIALS);
+                print_line(p_line);
+            }
+            else if (0 != p_rep->val_l)
             {
                 (void)tm_sprintf(p_line,
                                  (UB *)"[motion] START closed-loop test,"
@@ -1379,6 +1778,12 @@ print_event (UB *p_line, motion_report_t const *p_rep)
 
         case EVT_FAULT:
             print_faults(p_line, p_rep);
+            break;
+
+        case EVT_STOP:
+        case EVT_GO:
+        case EVT_STOPTEST:
+            print_stop(p_line, p_rep);
             break;
 
         case EVT_RAMP:
@@ -1577,6 +1982,14 @@ motor_task_start (void)
         obj_id = tk_cre_tsk(&g_ctsk_motion);
         ercd   = (obj_id < E_OK) ? obj_id : tk_sta_tsk(obj_id, 0);
     }
+
+#if MOTION_BENCH && MOTION_TEST_STOP
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_tsk(&g_ctsk_standin);
+        ercd   = (obj_id < E_OK) ? obj_id : tk_sta_tsk(obj_id, 0);
+    }
+#endif
 
     if (E_OK == ercd)
     {
