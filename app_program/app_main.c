@@ -72,6 +72,7 @@
    assignment on the calling task's stack -- so 1-2 KiB is no longer enough
    for a task that makes blocking kernel calls. */
 #define STACK_SZ	4096
+#define LINE_STACK_SZ 8192
 
 /* ------------------------------------------------------------------ *
  *  One record travelling through the pipeline
@@ -468,7 +469,7 @@ LOCAL T_CTSK ctsk_led_test = {
 
 LOCAL T_CTSK ctsk_line = {
 	.itskpri	= 9,
-	.stksz		= STACK_SZ,
+	.stksz = LINE_STACK_SZ,
 	.task		= line_task,
 	.tskatr		= TA_HLNG | TA_RNG3,
 };

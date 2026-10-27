@@ -106,15 +106,18 @@ LOCAL void commissioning_sample(const char *surface)
 		  surface);
 	for (sample = 0u; sample < LINE_COMMISSION_SAMPLE_COUNT; ++sample) {
 		raw = line_reader_read_raw();
-		tm_printf((UB *)"[commission] GP%d=%d GP%d=%d\n",
-			  (INT)LINE_LEFT_GPIO, (INT)raw.left_guard,
-			  (INT)LINE_RIGHT_GPIO, (INT)raw.right_guard);
+		tm_printf((UB *)"[commission] %s ADC GP%d=%d GP%d=%d; barcode DO GP%d=%u\n",
+			  surface,
+			  (INT)LINE_SENSOR_LEFT_GPIO, (INT)raw.left_guard,
+			  (INT)LINE_SENSOR_RIGHT_GPIO, (INT)raw.right_guard,
+			  (INT)BARCODE_SENSOR_GPIO,
+			  (UINT)barcode_scanner_read_raw());
 		tk_dly_tsk(LINE_COMMISSION_SAMPLE_PERIOD_MS);
 	}
 }
 #endif
 
-LOCAL void print_barcode_result(const barcode_decode_result_t *result)
+LOCAL void barcode_report_scan(const barcode_decode_result_t *result)
 {
 	if (result->valid) {
 		tm_printf((UB *)"[barcode] DECODED: \"%s\" (dir=%s, elems=%u)\n",
@@ -134,16 +137,24 @@ void line_task(INT stacd, void *exinf)
 {
 	LINE_STATE current;
 	LINE_STATE last = (LINE_STATE)-1;
+	LINE_STATE pending_state = LINE_STRAIGHT;
 	line_reader_raw_t raw;
 	barcode_decode_result_t barcode_result;
 	char bit_string[3];
 	UINT heartbeat = 0u;
 	INT wait_count;
+	ER line_init_result;
+	ER barcode_init_result;
+	BOOL pending_line_log = FALSE;
+	BOOL pending_heartbeat = FALSE;
+	BOOL pending_adc_error = FALSE;
+	ER adc_error;
+	ER pending_adc_error_code = E_OK;
 
 	(void)stacd;
 	(void)exinf;
-	line_reader_init(NULL);
-	barcode_scanner_init(NULL);
+	line_init_result = line_reader_init(NULL);
+	barcode_init_result = barcode_scanner_init(NULL);
 
 	for (wait_count = 0; (wait_count < 200) && (tm_usb_state() < 2);
 	     ++wait_count) {
@@ -151,11 +162,25 @@ void line_task(INT stacd, void *exinf)
 	}
 	tk_dly_tsk(800);
 
+	if (line_init_result < E_OK) {
+		tm_printf((UB *)"[line] ADC initialization failed, er=%d\n",
+			  line_init_result);
+		return;
+	}
+	if (barcode_init_result < E_OK) {
+		tm_printf((UB *)"[barcode] GPIO/mutex initialization failed, er=%d\n",
+			  barcode_init_result);
+		return;
+	}
+
 	tm_printf((UB *)"\n=== Line reader started ===\n");
-	tm_printf((UB *)"Left sensor: GP%d, right sensor: GP%d\n",
-		  (INT)LINE_LEFT_GPIO, (INT)LINE_RIGHT_GPIO);
-	tm_printf((UB *)"Line bits are 0bRL; 1 = black. Barcode ADC: GP%d.\n",
-		  (INT)BARCODE_GPIO);
+	tm_printf((UB *)"Left ADC: GP%d, right ADC: GP%d\n",
+		  (INT)LINE_SENSOR_LEFT_GPIO, (INT)LINE_SENSOR_RIGHT_GPIO);
+	tm_printf((UB *)"Line bits are 0bRL; 1 = black. Barcode DO: GP%d.\n",
+		  (INT)BARCODE_SENSOR_GPIO);
+	raw = line_reader_read_raw();
+	tm_printf((UB *)"[line] raw ADC GP26=%d GP27=%d\n",
+		  (INT)raw.left_guard, (INT)raw.right_guard);
 
 #if LINE_COMMISSIONING_MODE
 	commissioning_sample("white");
@@ -165,23 +190,62 @@ void line_task(INT stacd, void *exinf)
 	while (1) {
 		current = line_update();
 		if (barcode_scanner_poll(&barcode_result)) {
-			print_barcode_result(&barcode_result);
+			barcode_report_scan(&barcode_result);
+			if (barcode_scanner_last_error() < E_OK) {
+				tm_printf((UB *)"[barcode] publish failed, er=%d\n",
+					  barcode_scanner_last_error());
+			}
 		}
 
 		if (current != last) {
-			line_reader_format_2bit((UB)current, bit_string);
-			tm_printf((UB *)"[line] RL=%s | %s | cmd: %s\n",
-				  bit_string, state_name(current), cmd_name(current));
+			if (barcode_scanner_scan_active()) {
+				pending_state = current;
+				pending_line_log = TRUE;
+			} else {
+				line_reader_format_2bit((UB)current, bit_string);
+				tm_printf((UB *)"[line] RL=%s | %s | cmd: %s\n",
+					  bit_string, state_name(current),
+					  cmd_name(current));
+			}
 			last = current;
+		}
+		adc_error = line_reader_last_error();
+		if (adc_error < E_OK) {
+			pending_adc_error = TRUE;
+			pending_adc_error_code = adc_error;
 		}
 
 		heartbeat += LINE_SAMPLE_PERIOD_MS;
 		if (heartbeat >= LINE_HEARTBEAT_MS) {
 			heartbeat = 0u;
-			raw = line_reader_get_last_raw();
-			tm_printf((UB *)"[line] raw pins: GP%d=%d GP%d=%d\n",
-				  (INT)LINE_LEFT_GPIO, (INT)raw.left_guard,
-				  (INT)LINE_RIGHT_GPIO, (INT)raw.right_guard);
+			if (barcode_scanner_scan_active()) {
+				pending_heartbeat = TRUE;
+			} else {
+				raw = line_reader_get_last_raw();
+				tm_printf((UB *)"[line] raw ADC GP26=%d GP27=%d\n",
+					  (INT)raw.left_guard, (INT)raw.right_guard);
+			}
+		}
+
+		if (!barcode_scanner_scan_active()) {
+			if (pending_adc_error) {
+				tm_printf((UB *)"[line] ADC read failed, er=%d\n",
+					  pending_adc_error_code);
+				pending_adc_error = FALSE;
+			}
+			if (pending_line_log) {
+				line_reader_format_2bit((UB)pending_state, bit_string);
+				tm_printf((UB *)"[line] RL=%s | %s | cmd: %s\n",
+					  bit_string, state_name(pending_state),
+					  cmd_name(pending_state));
+				pending_line_log = FALSE;
+			}
+			if (pending_heartbeat) {
+				raw = line_reader_get_last_raw();
+				tm_printf((UB *)"[line] raw ADC GP26=%d GP27=%d\n",
+					  (INT)raw.left_guard, (INT)raw.right_guard);
+				pending_heartbeat = FALSE;
+			}
 		}
 		tk_dly_tsk(LINE_SAMPLE_PERIOD_MS);
 	}
