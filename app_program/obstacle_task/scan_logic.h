@@ -104,11 +104,16 @@ typedef enum {
 	SL_PING_NO_ECHO		/* no echo pulse at all: possible sensor fault     */
 } sl_ping_t;
 
+/* The four "in a row" counters packed into 9 bits (minimum-bit
+ * requirement). Each saturates at its field maximum, which is at least
+ * the largest threshold it is compared with, so ">= N" still works:
+ *   bits 0-2 close   0-7  (SL_N_STOP_HUMP = 4)
+ *   bits 3-4 clear   0-3  (SL_N_CLEAR = 3)
+ *   bits 5-6 no_echo 0-3  (SL_N_NO_ECHO = 3)
+ *   bits 7-8 echo    0-3  (SL_N_ECHO = 3)
+ * Owned by one task; read it only through the sl_runs_* accessors. */
 typedef struct {
-	uint8_t	close_run;	/* close readings in a row  */
-	uint8_t	clear_run;	/* clear readings in a row  */
-	uint8_t	no_echo_run;	/* no-echo pings in a row   */
-	uint8_t	echo_run;	/* valid echoes in a row    */
+	uint16_t	packed;
 } sl_runs_t;
 
 /* sin(deg) * 1000 for deg in -45..+45 (5 deg steps). */
@@ -130,5 +135,9 @@ const char	*sl_action_name(sl_action_t action);
 sl_ping_t	sl_classify(bool no_echo, uint32_t dist_mm);
 void		sl_runs_reset(sl_runs_t *p_runs);
 void		sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping);
+uint8_t		sl_runs_close(const sl_runs_t *p_runs);
+uint8_t		sl_runs_clear(const sl_runs_t *p_runs);
+uint8_t		sl_runs_no_echo(const sl_runs_t *p_runs);
+uint8_t		sl_runs_echo(const sl_runs_t *p_runs);
 
 #endif /* SCAN_LOGIC_H */

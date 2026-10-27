@@ -14,11 +14,12 @@
 
 #include "scan_if.h"
 #include "../motor_task/motor_task.h"
+#include "../nav_task/nav_ctrl.h"	/* fault_set / fault_clear */
+#include "../comms_task/comms_task.h"	/* comms_tele_send */
 
 LOCAL scan_if_bind_t	g_bind;			/* all 0 / NULL = standalone */
 LOCAL ID		g_scan_flgid = 0;
 LOCAL ID		g_tick_cycid = 0;
-LOCAL UW		g_tele_drops = 0U;
 
 /* 60 ms cyclic handler: runs outside any task, only sets a bit (Section 4) */
 LOCAL void scan_tick_cyc(void *p_exinf)
@@ -171,30 +172,23 @@ EXPORT void scan_if_set_blocked(void)
 	}
 }
 
-EXPORT void scan_if_send_tele(const scan_tele_t *p_rec)
+/* 13-bit body, 2 bytes on tele_mbf. Never waits: a full queue is a
+ * dropped record, counted by comms_tele_send(). */
+EXPORT void scan_if_send_profile(uint32_t width_mm, uint32_t bypass)
 {
-	ER ercd;
+	UB	body[COMM_W_INTAKE_SIZE_OBSTACLE];
 
-	if(0 < g_bind.tele_mbfid) {
-		ercd = tk_snd_mbf(g_bind.tele_mbfid, p_rec, (INT)sizeof(*p_rec), TMO_POL);
-		if(E_OK != ercd) {
-			g_tele_drops++;			/* never wait on telemetry */
-		}
-	} else if(TELE_SCAN_FAULT == p_rec->type) {
-		tm_printf((UB *)"[scan_if] -> telemetry: SENSOR FAULT record\n");
-	} else {
-		tm_printf((UB *)"[scan_if] -> telemetry: profile d_c=%d @%d W=%d "
-			  "x=%d..%d clr L=%d R=%d act=%d\n",
-			  (INT)p_rec->d_close_mm, (INT)p_rec->close_deg,
-			  (INT)p_rec->width_mm, (INT)p_rec->x_left_mm,
-			  (INT)p_rec->x_right_mm, (INT)p_rec->clear_left_mm,
-			  (INT)p_rec->clear_right_mm, (INT)p_rec->action);
-	}
+	(void)comms_tele_send(body, (INT)comm_w_pack_obstacle(body,
+				(width_mm + 5U) / 10U, bypass));
 }
 
-EXPORT UW scan_if_tele_drops(void)
+EXPORT void scan_if_sensor_lost(bool lost)
 {
-	return g_tele_drops;
+	if(lost) {
+		fault_set(FAULT_SCAN_SENSOR_LOST);
+	} else {
+		fault_clear(FAULT_SCAN_SENSOR_LOST);
+	}
 }
 
 /* ---- shared state, read through the owner's callbacks ---- */

@@ -7,8 +7,11 @@
  *	  motion_flg     Buddy 2. scan_task sets STOP_SCAN and CMD.
  *	  avoid_cmd_mbf  Buddy 2. scan_task -> motion_task, packed 16-bit command, room 2.
  *	  nav_flg        nav_ctrl_task. scan_task sets BLOCKED.
- *	  tele_mbfid     Buddy 1. scan_task sends profile / sensor-fault records,
- *	                 non-blocking; a full queue drops the record and counts it.
+ *	  tele_mbf       Buddy 1. scan_task sends the packed obstacle body
+ *	                 (comm_w_pack_obstacle, kind 4) through comms_tele_send(),
+ *	                 non-blocking; a full queue drops it and comms counts it.
+ *	  fault_flg      Buddy 5 (nav_ctrl). scan_task sets / clears only
+ *	                 FAULT_SCAN_SENSOR_LOST; the S record carries it.
  *	  mission_state, hump_state: read through callbacks, so the owner's
  *	                 priority-inheritance mutex stays inside the owner's code.
  *
@@ -59,29 +62,16 @@ typedef struct {		/* scan planner form; packed before MBF send */
 	uint16_t	dist_mm;	/* bypass: lateral offset; reverse: distance */
 } avoid_cmd_t;
 
-typedef enum {
-	TELE_SCAN_PROFILE = 0x50,	/* 'P' */
-	TELE_SCAN_FAULT   = 0x46	/* 'F' sensor lost */
-} tele_scan_type_t;
-
-typedef struct {		/* fixed-size record for tele_mbfid (FR-23) */
-	uint8_t		type;		/* tele_scan_type_t                 */
-	uint8_t		action;		/* sl_action_t                      */
-	int16_t		d_close_mm;
-	int16_t		close_deg;
-	int16_t		width_mm;
-	int16_t		x_left_mm;
-	int16_t		x_right_mm;
-	int16_t		clear_left_mm;
-	int16_t		clear_right_mm;
-} scan_tele_t;
+/* Obstacle event body "bypass" field (MQTT_SCHEMA.md, kind 4) */
+#define SCAN_TELE_BYPASS_NONE	0U
+#define SCAN_TELE_BYPASS_LEFT	1U
+#define SCAN_TELE_BYPASS_RIGHT	2U
 
 /* ---- binding, filled in by app_main.c at integration ---- */
 typedef struct {
 	ID	motion_flgid;			/* 0 = standalone */
 	ID	avoid_mbfid;
 	ID	nav_flgid;
-	ID	tele_mbfid;
 	bool	(*p_mission_running)(void);	/* NULL = always Running */
 	bool	(*p_hump_active)(void);		/* NULL = never on a hump */
 } scan_if_bind_t;
@@ -100,11 +90,14 @@ EXPORT void	scan_if_stop_set(void);
 EXPORT void	scan_if_stop_clear(void);
 EXPORT bool	scan_if_send_cmd(const avoid_cmd_t *p_cmd);	/* false = unavailable/full/invalid */
 EXPORT void	scan_if_set_blocked(void);
-EXPORT void	scan_if_send_tele(const scan_tele_t *p_rec);
+/* Obstacle profile -> telemetry (FR-16, FR-23): width in mm (sent in cm,
+ * clamped to 8 bits) and the bypass side, SCAN_TELE_BYPASS_*. */
+EXPORT void	scan_if_send_profile(uint32_t width_mm, uint32_t bypass);
+/* Sensor Lost entered (true) or left (false): FAULT_SCAN_SENSOR_LOST. */
+EXPORT void	scan_if_sensor_lost(bool lost);
 
 EXPORT bool	scan_if_mission_running(void);
 EXPORT bool	scan_if_hump_active(void);
 EXPORT bool	scan_if_standalone(void);	/* missing motion or avoid binding */
-EXPORT UW	scan_if_tele_drops(void);
 
 #endif /* SCAN_IF_H */

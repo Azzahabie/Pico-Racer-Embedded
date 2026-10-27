@@ -320,35 +320,82 @@ sl_ping_t sl_classify(bool no_echo, uint32_t dist_mm)
 	return ping;
 }
 
-void sl_runs_reset(sl_runs_t *p_runs)
+/* Field positions in sl_runs_t.packed (see scan_logic.h). */
+#define RUN_CLOSE_SHIFT		0U
+#define RUN_CLOSE_MAX		7U
+#define RUN_CLEAR_SHIFT		3U
+#define RUN_CLEAR_MAX		3U
+#define RUN_NO_ECHO_SHIFT	5U
+#define RUN_NO_ECHO_MAX		3U
+#define RUN_ECHO_SHIFT		7U
+#define RUN_ECHO_MAX		3U
+
+_Static_assert((SL_N_STOP <= RUN_CLOSE_MAX) && (SL_N_STOP_HUMP <= RUN_CLOSE_MAX) &&
+	       (SL_N_CLEAR <= RUN_CLEAR_MAX) && (SL_N_NO_ECHO <= RUN_NO_ECHO_MAX) &&
+	       (SL_N_ECHO <= RUN_ECHO_MAX), "a run counter field is too narrow");
+
+static uint8_t run_get(const sl_runs_t *p_runs, uint32_t shift, uint32_t max)
 {
-	p_runs->close_run = 0U;
-	p_runs->clear_run = 0U;
-	p_runs->no_echo_run = 0U;
-	p_runs->echo_run = 0U;
+	return (uint8_t)((p_runs->packed >> shift) & max);
 }
 
-static uint8_t inc_sat(uint8_t count)
+/* +1, saturating at the field maximum */
+static void run_inc(sl_runs_t *p_runs, uint32_t shift, uint32_t max)
 {
-	return (count < 255U) ? (uint8_t)(count + 1U) : count;
+	uint32_t count = run_get(p_runs, shift, max);
+
+	if(count < max) {
+		count++;
+	}
+	p_runs->packed = (uint16_t)((p_runs->packed & ~(max << shift)) | (count << shift));
+}
+
+static void run_zero(sl_runs_t *p_runs, uint32_t shift, uint32_t max)
+{
+	p_runs->packed = (uint16_t)(p_runs->packed & ~(max << shift));
+}
+
+void sl_runs_reset(sl_runs_t *p_runs)
+{
+	p_runs->packed = 0U;
 }
 
 void sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping)
 {
 	if(SL_PING_NO_ECHO == ping) {
-		p_runs->no_echo_run = inc_sat(p_runs->no_echo_run);
-		p_runs->echo_run = 0U;
-		p_runs->close_run = 0U;		/* a gap breaks "in a row" */
-		p_runs->clear_run = 0U;
+		run_inc(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
+		run_zero(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
+		run_zero(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);	/* a gap breaks "in a row" */
+		run_zero(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
 	} else {
-		p_runs->echo_run = inc_sat(p_runs->echo_run);
-		p_runs->no_echo_run = 0U;
+		run_inc(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
+		run_zero(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
 		if(SL_PING_CLOSE == ping) {
-			p_runs->close_run = inc_sat(p_runs->close_run);
-			p_runs->clear_run = 0U;
+			run_inc(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
+			run_zero(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
 		} else {
-			p_runs->clear_run = inc_sat(p_runs->clear_run);
-			p_runs->close_run = 0U;
+			run_inc(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
+			run_zero(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
 		}
 	}
+}
+
+uint8_t sl_runs_close(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
+}
+
+uint8_t sl_runs_clear(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
+}
+
+uint8_t sl_runs_no_echo(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
+}
+
+uint8_t sl_runs_echo(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
 }

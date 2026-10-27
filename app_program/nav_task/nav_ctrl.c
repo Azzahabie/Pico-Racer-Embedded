@@ -72,6 +72,7 @@
 
 LOCAL volatile uint32_t	g_mission = (uint32_t)MS_INITIALISING;	/* one store */
 LOCAL ID		g_nav_flgid = 0;
+LOCAL ID		g_fault_flgid = 0;
 LOCAL nav_bind_t	g_nav_bind;
 
 /* ------------------------------------------------------------------ */
@@ -117,15 +118,50 @@ EXPORT ER nav_ctrl_init(void)
 	T_CFLG	cflg = { .exinf = NULL, .flgatr = TA_TFIFO | TA_WMUL, .iflgptn = 0U };
 	ID	objid;
 
-	if(0 < g_nav_flgid) {
+	if((0 < g_nav_flgid) && (0 < g_fault_flgid)) {
 		return E_OK;
 	}
-	objid = tk_cre_flg(&cflg);
+	if(0 >= g_nav_flgid) {
+		objid = tk_cre_flg(&cflg);
+		if(0 >= objid) {
+			return (ER)objid;
+		}
+		g_nav_flgid = objid;
+	}
+	objid = tk_cre_flg(&cflg);			/* fault_flg, all bits clear */
 	if(0 >= objid) {
 		return (ER)objid;
 	}
-	g_nav_flgid = objid;
+	g_fault_flgid = objid;
 	return E_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared fault bitmask                                               */
+/* ------------------------------------------------------------------ */
+EXPORT void fault_set(UINT bits)
+{
+	if(0 < g_fault_flgid) {
+		(void)tk_set_flg(g_fault_flgid, bits & FAULT_ALL);
+	}
+}
+
+EXPORT void fault_clear(UINT bits)
+{
+	if(0 < g_fault_flgid) {
+		(void)tk_clr_flg(g_fault_flgid, ~(bits & FAULT_ALL));	/* keeps the rest */
+	}
+}
+
+EXPORT UINT fault_bits(void)
+{
+	T_RFLG	rflg;
+	UINT	bits = 0U;
+
+	if((0 < g_fault_flgid) && (E_OK == tk_ref_flg(g_fault_flgid, &rflg))) {
+		bits = rflg.flgptn & FAULT_ALL;
+	}
+	return bits;
 }
 
 EXPORT void nav_bind(const nav_bind_t *p_bind)
