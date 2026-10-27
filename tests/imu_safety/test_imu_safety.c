@@ -103,6 +103,25 @@ int main(void)
 	expect(run_tilt(30, 1, SAFETY_EV_TILT) == 1,
 	       "jolt mid-tilt: run carries on");
 
+	/* Just past T: z has dropped to cos 26 = 899 mg, so it still fires. */
+	safety_reset();
+	expect(run_tilt(26, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
+	       "26 deg: tilt event on sample N");
+
+	/* A sideways knock on a level car: 450 mg x, z still 1 g, |a|
+	   1.1 g (inside the band).  Read 26.7 deg on the car, not a tilt. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 450, 0, 1000);
+	expect((ev & SAFETY_EV_TILT) == 0, "sideways knock, level: no tilt event");
+
+	/* ... ringing between in-band knocks and out-of-band jolts. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 20; i++) {
+		ev |= (i % 2) ? safety_step(TRUE, 2000, 0, 300)
+			      : safety_step(TRUE, -500, 200, 980);
+	}
+	expect((ev & SAFETY_EV_TILT) == 0, "ringing knock: no tilt event");
+
 	/* Upside down (|a| 1 g, no x/y): not a tilt by this check. */
 	safety_reset();
 	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 0, 0, -1000);

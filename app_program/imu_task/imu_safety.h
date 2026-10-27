@@ -16,6 +16,12 @@
 #define SAFETY_TILT_N	3		/* N samples in a row (FR-28)         */
 #define SAFETY_G_LO_MG	700		/* |a| outside this: a jolt, not a    */
 #define SAFETY_G_HI_MG	1300		/* tilt, so it does not count to N    */
+#define SAFETY_Z_MAX_MG	950		/* a tilt past T also drops z (cos 25 =
+					   906 mg); a sideways knock on a level
+					   car keeps z ~1000 and |a| < 1.3 g,
+					   and tripped T for 3 samples twice
+					   (2026-10-28 logs: IMPACT while
+					   paused; pushed onto the ramp)      */
 #define SAFETY_BAD_N	5		/* Y = 50 ms with no good sample
 					   (NFR-13)                           */
 #define SAFETY_REINIT_N	2		/* re-set the chip up after this many */
