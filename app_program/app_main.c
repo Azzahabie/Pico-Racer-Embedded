@@ -35,6 +35,7 @@
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
 #include "nav_task/nav_ctrl.h"          // buddy 5: nav_ctrl_task (mission state)
+#include "imu_task/imu_task.h" // buddy4: imu_task
 #include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
 
 #if TM_WIFI_CYW43
@@ -387,6 +388,32 @@ LOCAL T_CTSK ctsk_blink = {
 };
 #endif
 
+/* buddy4: imu_task: reads the IMU, detects humps and abnormal motion, and raises
+ * STOP_IMU / IMU_FAULT (Buddy 4). Week 6 task table: priority 12, core 1. */
+LOCAL T_CTSK ctsk_imu = {
+	.itskpri	= 12,			/* Lower number = higher priority. Below
+						   ir_sense_task (10) and motion_task (11),
+						   above scan_task (13). Priorities only
+						   order tasks within one core. */
+	.stksz		= STACK_SZ,		/* Stack in bytes. Reuses master's shared
+						   constant; size it from the measured stack
+						   high-water mark later. */
+	.task		= imu_task,		/* Entry function, declared in imu_task.h. */
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG		/* Task is written in C. */
+			| TA_RNG3		/* Runs at protection level 3 (user task). */
+			| TA_ASSPRC,		/* Pin to a specific core. Unpinned tasks
+						   can land on core 0 and be preempted by
+						   the radio task. */
+	.assprc		= TP_PRC2,		/* Processor 2 = RP2040 core 1, where the
+						   control tasks and encoder/echo ISRs run.
+						   (TP_PRC1 is core 0: radio and console.) */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,	/* Single-core build: there is no second
+						   core, so no pinning. */
+#endif
+};
+
 // Buddy 5 obstacle scan task (scan_task in the design): priority 13, core 1
 LOCAL T_CTSK ctsk_obstacle = {
 	.itskpri	= 13,
@@ -412,6 +439,7 @@ LOCAL T_CTSK ctsk_nav = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
+
 
 /* ------------------------------------------------------------------ *
  *  Entry point
@@ -453,6 +481,7 @@ EXPORT INT usermain(void)
 {
 	ID	tid;
 	ER	nav_er;
+	ER	motion_ercd;
 
 	(void)tid;		/* unused when no task below is built in */
 
@@ -474,9 +503,10 @@ EXPORT INT usermain(void)
 	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
 	   Before scan_task is bound, so motion_flg exists; outside the nav
 	   block so the motors are braked even if nav_flg failed. */
-	{
-		ER er = motor_task_start();
-		if(er < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", er);
+	motion_ercd = motor_task_start();
+	if(E_OK != motion_ercd) {
+		tm_printf((UB *)"[init] motor_task_start failed, er=%d\n",
+			  (INT)motion_ercd);
 	}
 
 	/* Buddy 5: tell scan_task where the mission state, nav_flg and
@@ -485,15 +515,18 @@ EXPORT INT usermain(void)
 	 * motion_task's replies to its commands. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
+			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
-			.motion_flgid		= motion_flag(),
 		};
 		scan_if_bind(&scan_bind);
 
 		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
 		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
 	}
+
+	/* Buddy 4: imu_task (priority 12, core 1). */
+	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);

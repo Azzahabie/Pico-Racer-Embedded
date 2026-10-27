@@ -773,7 +773,7 @@ scenario_stop_scan (void)
 
 	sim_reset("STOP_SCAN: brake at once, stay braked, scan_task clears it");
 	CHECK(g_flgid > 0);
-	CHECK(motion_flag() == (MOTION_BENCH ? 0 : g_flgid));	/* bench: scan_task print-only */
+	CHECK(motor_task_flag() == (MOTION_BENCH ? 0 : g_flgid));	/* bench: scan_task print-only */
 	sim_ticks(5);
 	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == MOTION_EVT_STOPS);
 	CHECK((g_last_wmode & TWF_BITCLR) == 0u);	/* never clears a STOP */

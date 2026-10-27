@@ -18,20 +18,22 @@ the shared test vectors from these tables.
 History: 2026-10-19 (Tribunal 1) schema v2: 53-bit header, H, D, cmd, map.
 2026-10-22 schema v3: one body layout per event kind (E is variable length),
 `mot` in S widened from 2 to 4 bits (S stays 15 bytes), IMU event class added.
+2026-10-23 schema v4: fault bitmask 5 -> 6 bits as agreed with Buddy 5 (bit 4
+line sensor, bit 5 Wi-Fi loss), so S is 16 bytes; D stays 21.
 """
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # field, meaning, proposed range, bits, note
 HEADER = [
     ("t",     "record type",              "0 S, 1 E, 2 H, 3 D",    2, "same position in every record"),
-    ("v",     "schema version",           "0..7",                  3, "3 = this layout (2 = Tribunal 1, JSON was 1)"),
+    ("v",     "schema version",           "0..7",                  3, "4 = this layout (3 = 5 fault bits, 2 = Tribunal 1, JSON was 1)"),
     ("s",     "sequence number",          "0..65535 over a run",  16, "a 5 min run is under 300 lines"),
     ("up",    "ms since boot",            "0..2^32-1",            32, "boot semantics kept; run-relative would be 19"),
 ]
 
 S_BODY = [
-    ("faults","shared fault bitmask",     "5 named faults",        5, "one bit per fault"),
+    ("faults","shared fault bitmask",     "6 named faults",        6, "one bit per fault; v4: was 5"),
     ("mot",   "motion state",             "0..15",                 4, "v3: was 2 bits, as motion E state"),
     ("dst",   "distance since last change","0..255 cm",            8, "clamped; comms_task derives it from dist_mm"),
     ("lin",   "line state",               "0..2",                  2, ""),

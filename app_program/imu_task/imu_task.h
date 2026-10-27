@@ -1,8 +1,10 @@
 #ifndef IMU_TASK_H
 #define IMU_TASK_H
 
-/* TODO: declare imu_task's entry function and anything usermain.c
- * needs to create/start this task. Match the real kernel task
- * signature from kernel/knlinc -- don't guess it. */
+#include <tk/tkernel.h>
+
+/* GY-511 (LSM303DLHC or LSM303AGR) bring-up task: reads the accelerometer
+ * and magnetometer over I2C0 (GP16 = SDA, GP17 = SCL) and prints them. */
+EXPORT void imu_task(INT stacd, void *exinf);
 
 #endif /* IMU_TASK_H */

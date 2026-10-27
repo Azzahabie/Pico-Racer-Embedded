@@ -157,7 +157,7 @@
       MOTION_TEST_DUTY; a stand-in for scan_task and imu_task (a task on
       core 1 at imu_task's priority) sets STOP_SCAN and STOP_IMU in turn
       while they turn, and clears each again (scan_task stays print-only
-      in bench images: see motion_flag()).  Every stop prints how long
+      in bench images: see motor_task_flag()).  Every stop prints how long
       after the request the brake was written; after
       MOTION_TEST_STOP_TRIALS stops per source the summary prints. */
 #ifndef MOTION_TEST_STOP

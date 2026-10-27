@@ -98,7 +98,7 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 
 | Shared object | Owner | What this layer does with it |
 |---|---|---|
-| Shared fault bitmask (µT-Kernel event flag) | Buddy 5, `nav_ctrl_task` | sets/clears the **Wi-Fi-loss** bit; copies all five fault bits into each `S` record |
+| Shared fault bitmask (µT-Kernel event flag) | Buddy 5, `nav_ctrl_task` | sets/clears the **Wi-Fi-loss** bit; copies all six fault bits into each `S` record (Wi-Fi loss is bit 5, report-only; `MQTT_SCHEMA.md` §4.1) |
 | Packed record layouts in `messages.h` | Buddy 1 | defines them, with the pack/unpack helpers every producer calls |
 | Buddy 2's ~54-bit motion record (8 B on the queue) | Buddy 2 | receives it on `tele_mbf` and folds it into `S` (format to reconcile) |
 | Buddy 3's 2-bit action and 5-bit letter index | Buddy 3 | carries them in `S`, `E` and the 7-byte `map` |

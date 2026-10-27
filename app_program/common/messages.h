@@ -5,7 +5,7 @@
  * Every buddy's task depends on this file -- route changes through
  * a pull request so nobody's build breaks silently.
  *
- * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v3).
+ * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v4).
  * Packed with explicit shifts and masks, never C bit-fields, LSB-first and
  * little-endian: bit n of a record is bit (n mod 8) of byte (n div 8).  Plain
  * C with no kernel or hardware calls, so the same code runs in the PC unit
@@ -23,10 +23,44 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ *
+ *  motion_flg bits (Buddy 2 / Buddy 5 integration)
+ * ------------------------------------------------------------------ */
+
+#define MOTION_EVT_TICK        (1U << 0)   /* motion_task cyclic handler */
+#define MOTION_EVT_CMD         (1U << 1)   /* queued motion command       */
+#define MOTION_EVT_STOP_SCAN   (1U << 2)   /* persistent obstacle stop   */
+#define MOTION_EVT_STOP_IMU    (1U << 3)   /* imu_task stop; motion clears
+                                              it on FAULT_CLEAR(IMU)       */
+#define MOTION_EVT_STOPS       (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
+
+/* ------------------------------------------------------------------ *
+ *  Shared fault bitmask (schema section 4.1)
+ * ------------------------------------------------------------------ */
+
+/* Bit positions in the shared fault event flag that nav_ctrl_task creates.
+ * Owned by Buddy 5; agreed with Buddies 1, 2, 4 and 5 on 2026-10-23.  Each
+ * task sets and clears only its own bit.  Record S carries these bits as they
+ * are, so moving a bit or adding one changes the wire: send it to Buddy 1 as
+ * a pull request (MQTT_SCHEMA.md section 5.2). */
+#define FAULT_MOTOR_STALL       (1U << 0)   /* motion_task, core 1 (Buddy 2)    */
+#define FAULT_ENCODER           (1U << 1)   /* motion_task, core 1 (Buddy 2)    */
+#define FAULT_IMU               (1U << 2)   /* imu_task, core 1 (Buddy 4)       */
+#define FAULT_SCAN_SENSOR_LOST  (1U << 3)   /* scan_task, core 1 (Buddy 5)      */
+#define FAULT_LINE_SENSOR       (1U << 4)   /* ir_sense_task, core 1 (Buddy 3)  */
+#define FAULT_WIFI_LOSS         (1U << 5)   /* comms_task, core 0 (Buddy 1)     */
+#define FAULT_COUNT             6U
+#define FAULT_ALL               ((1U << FAULT_COUNT) - 1U)
+
+/* The bits that send the mission to Fault.  Wi-Fi loss is report-only: it is
+ * there for the laptop, and a mission never waits on Wi-Fi, so nav_ctrl_task
+ * tests the flag against this mask, never against FAULT_ALL. */
+#define FAULT_STOP_MASK         (FAULT_ALL & ~FAULT_WIFI_LOSS)
+
+/* ------------------------------------------------------------------ *
  *  Record header -- every outbound record starts with it (schema 3.6)
  * ------------------------------------------------------------------ */
 
-#define COMM_W_SCHEMA_VERSION   3U
+#define COMM_W_SCHEMA_VERSION   4U
 
 #define COMM_W_REC_S            0U   /* periodic state line, ...telemetry */
 #define COMM_W_REC_E            1U   /* edge event, ...telemetry          */
@@ -274,10 +308,10 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 }
 
 /* ------------------------------------------------------------------ *
- *  Record S -- the periodic state line (schema section 4), 15 bytes
+ *  Record S -- the periodic state line (schema section 4), 16 bytes
  * ------------------------------------------------------------------ */
 
-#define COMM_W_S_FAULTS_BITS    5U   /* shared fault bitmask, section 4.1   */
+#define COMM_W_S_FAULTS_BITS    FAULT_COUNT /* shared fault bitmask, 4.1  */
 #define COMM_W_S_MOT_BITS       4U   /* motion state                        */
 #define COMM_W_S_DST_BITS       8U   /* cm since the last motion change     */
 #define COMM_W_S_LIN_BITS       2U   /* line state                          */
@@ -298,8 +332,8 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
                                 + COMM_W_S_HUM_BITS + COMM_W_S_HGT_BITS       \
                                 + COMM_W_S_OBS_BITS + COMM_W_S_BYP_BITS       \
                                 + COMM_W_S_MIS_BITS + COMM_W_S_MPV_BITS       \
-                                + COMM_W_S_DRP_BITS)                  /* 120 */
-#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 15 */
+                                + COMM_W_S_DRP_BITS)                  /* 121 */
+#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 16 */
 
 /* The latest value per source, as stored on the wire (offset-encoded fields
    keep their offset).  comms_task keeps one and folds every event into it. */

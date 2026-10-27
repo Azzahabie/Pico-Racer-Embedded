@@ -265,9 +265,9 @@ GP10 and GP11 to GND. All four should read about 0 V (brake).
 
 ### Emergency stop (NFR-18)
 
-`motion_flg` (`motor_task.h`) has four bits: TICK 0x01, CMD 0x02,
-STOP_SCAN 0x04 and STOP_IMU 0x08. CMD and STOP_SCAN are the values in
-Buddy 5's `scan_if.h`, and the build fails if they ever differ.
+`motion_flg` has four bits, defined once in `common/messages.h` and
+shared with scan_task and imu_task: TICK 0x01, CMD 0x02, STOP_SCAN 0x04
+and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
 
 - **scan_task sets and clears STOP_SCAN;** motion never clears it.
   **imu_task sets STOP_IMU** and never clears it; motion clears it when
@@ -283,11 +283,11 @@ Buddy 5's `scan_if.h`, and the build fails if they ever differ.
   Resuming what the car was doing (the history state) comes with the
   statechart, step 1.3. A STOP also ends any bench test.
 
-How a sender raises a stop (`scan_task` already does the second line):
+How a sender raises a stop (`scan_if_stop_set()` does exactly this):
 
 ```c
 motion_stop_stamp(MOTION_EVT_STOP_SCAN);               /* optional: NFR-18 timing */
-(void)tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN);
+(void)tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_SCAN);
 ```
 
 Never wait on `motion_flg`; only motion_task does.
@@ -323,7 +323,7 @@ Run it again with Wi-Fi streaming once motion runs in the Wi-Fi build
 with the original design, so the `MOTION_PACKED` 0 run is optional. The port measured 16 to
 43 us for a same-core wake (docs/PORT_RP2040.md), so expect tens of us.
 
-In every bench image (`MOTION_BENCH` 1) `motion_flag()` returns 0, so
+In every bench image (`MOTION_BENCH` 1) `motor_task_flag()` returns 0, so
 scan_task stays print-only: the GP20 press that starts a bench test also
 starts nav's mission, and scan_task's own STOP_SCAN (anything within
 25 cm, or no sensor at all) would otherwise end the test.
@@ -489,11 +489,11 @@ Found while writing this; each needs its owner.
    with an offset of 2048 (as the telemetry turn rate is). The layout
    moves to `common/messages.h` through the team PR.
 9. **STOP bits (Buddies 4 and 5).** Set STOP_SCAN or STOP_IMU with
-   `tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN or _IMU)` from
-   `motor_task.h`; never wait on motion_flg. imu_task never clears
+   `tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_SCAN or _IMU)`, with
+   the bit names from `common/messages.h` (never the numbers); never wait on motion_flg. imu_task never clears
    STOP_IMU: motion does, when nav_ctrl_task sends FAULT_CLEAR(IMU). For the NFR-18 timing, call
-   `motion_stop_stamp(bit)` just before the set: Buddy 5's
-   `scan_if_stop_set()` could add that one line. Buddy 5: the comment
+   `motion_stop_stamp(bit)` just before the set, as Buddy 5's
+   `scan_if_stop_set()` now does. Buddy 5: the comment
    above `scan_if_wait()` says TWF_BITCLR clears only the bits that ended
    the wait; the kernel clears every bit in the wait pattern
    (eventflag.c). It does no harm in scan_task, which gets every set bit

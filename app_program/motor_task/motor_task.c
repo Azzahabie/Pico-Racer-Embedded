@@ -38,7 +38,6 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
-#include "../obstacle_task/scan_if.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -47,11 +46,11 @@
 #include "motion_wdt.h"
 #include "motor_task.h"
 
-/* scan_task sets these bits with its own names (scan_if.h). */
-_Static_assert(MOTION_EVT_CMD == MOTION_FLG_CMD,
-               "CMD bit differs from scan_if.h");
-_Static_assert(MOTION_EVT_STOP_SCAN == MOTION_FLG_STOP_SCAN,
-               "STOP_SCAN bit differs from scan_if.h");
+/* The motion_flg bits (common/messages.h) are four different bits. */
+_Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
+                | MOTION_EVT_STOP_IMU)
+                   == 0x0Fu,
+               "motion_flg bits overlap");
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -405,7 +404,7 @@ now_us (void)
    STOP_SCAN (anything within 25 cm, or no sensor) would end the test.
    The stop test's stand-in uses g_flgid directly. */
 ID
-motion_flag (void)
+motor_task_flag (void)
 {
     ID flgid = g_flgid;
 

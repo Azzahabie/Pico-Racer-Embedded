@@ -18,38 +18,33 @@
 
 #include <tk/tkernel.h>
 
+#include "../common/messages.h"
+
 /* ------------------------------------------------------------------ *
  *  motion_flg (design Section 4)
  *
- *  The event flag motion_task waits on.  CMD and STOP_SCAN have the
- *  values in Buddy 5's scan_if.h (MOTION_FLG_CMD, MOTION_FLG_STOP_SCAN);
- *  motor_task.c checks that they match.  PROPOSED: all four move to
- *  common/messages.h through the team pull request.
+ *  The event flag motion_task waits on.  Its bits (MOTION_EVT_*) are
+ *  defined once, in common/messages.h, shared with scan_task and imu_task:
  *
- *    TICK       set by motion's 10 ms cyclic handler.
- *    CMD        set by a command sender after it has placed a command
- *               (step 1.7; motion does not read it yet).
- *    STOP_SCAN  set and cleared ONLY by scan_task: "obstacle".
- *    STOP_IMU   set by imu_task, which never clears it; motion_task
- *               clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
- *               (step 1.7; until then nothing clears it).
+ *    TICK       0x01  set by motion's 10 ms cyclic handler.
+ *    CMD        0x02  set by a command sender after it has placed a
+ *                     command (step 1.7; motion does not read it yet).
+ *    STOP_SCAN  0x04  set and cleared ONLY by scan_task: "obstacle".
+ *    STOP_IMU   0x08  set by imu_task, which never clears it; motion_task
+ *                     clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
+ *                     (step 1.7; until then nothing clears it).
  *
  *  A STOP bit is a level: motion brakes as soon as it sees one and stays
  *  braked while any is set.  Senders use tk_set_flg (and scan_task
- *  tk_clr_flg) on motion_flag(); never wait on this flag (only
+ *  tk_clr_flg) on motor_task_flag(); never wait on this flag (only
  *  motion_task may).
  * ------------------------------------------------------------------ */
 
-#define MOTION_EVT_TICK      (1u << 0)
-#define MOTION_EVT_CMD       (1u << 1)
-#define MOTION_EVT_STOP_SCAN (1u << 2)
-#define MOTION_EVT_STOP_IMU  (1u << 3)
-#define MOTION_EVT_STOPS     (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
-
 /* motion_flg's ID, valid once motor_task_start() has returned E_OK
-   (0 before, and always 0 in bench images, MOTION_BENCH 1).  For the STOP
-   senders and, later, the command senders. */
-ID motion_flag(void);
+   (0 before, and always 0 in bench images, MOTION_BENCH 1, so scan_task
+   stays print-only there).  For the STOP senders and, later, the command
+   senders. */
+ID motor_task_flag(void);
 
 /* Optional, for the NFR-18 timing: a STOP sender calls this just before
    tk_set_flg, with the bit it is about to set.  It notes the 1 MHz time,
