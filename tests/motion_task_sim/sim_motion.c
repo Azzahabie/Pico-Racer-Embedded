@@ -165,7 +165,11 @@ ER motor_init(void) { g_duty[0] = g_duty[1] = 0; return g_fail_init ? E_OBJ : E_
 
 void motor_set(motor_side_t side, int32_t duty_pm)
 {
-	if ((duty_pm != 0) && ((g_flag & MOTION_EVT_STOPS) != 0u)) {
+	/* Never driven while a STOP bit is set, except a reverse under
+	   STOP_SCAN alone (design 6.2). */
+	if ((duty_pm != 0) && ((g_flag & MOTION_EVT_STOPS) != 0u)
+	    && !((MOTION_ST_REVERSING == motion_sm_state(&g_ctx.sm))
+		 && ((g_flag & MOTION_EVT_STOP_IMU) == 0u))) {
 		CHECK(!"a wheel driven while a STOP bit is set");
 	}
 	g_duty[side] = motion_clamp(duty_pm, -MOTION_DUTY_FULL, MOTION_DUTY_FULL);
@@ -819,11 +823,13 @@ scenario_stop_scan (void)
 	CHECK((g_flag & MOTION_EVT_STOP_SCAN) != 0u);	/* only scan_task clears it */
 	CHECK(strstr(g_log, "[motion] STOP_SCAN set: brake written 17 us after the request.") != NULL);
 
-	/* While stopped the STOP bits are left out of the wait, so motion
-	   cannot spin on a bit that stays set; it checks them every tick. */
+	/* While stopped the STOP bit already set is left out of the wait, so
+	   motion cannot spin on it (it checks it every tick); the other STOP
+	   bit stays in, so a new one still wakes motion at once. */
 	sim_ticks(50);
-	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == 0u);
-	CHECK((g_last_wmode & TWF_BITCLR) != 0u);
+	CHECK((g_last_waiptn & MOTION_EVT_STOP_SCAN) == 0u);
+	CHECK((g_last_waiptn & MOTION_EVT_STOP_IMU) != 0u);
+	CHECK((g_last_wmode & TWF_BITCLR) == 0u);
 	CHECK((g_flag & MOTION_EVT_TICK) == 0u);	/* each tick consumed */
 	CHECK((g_flag & MOTION_EVT_STOP_SCAN) != 0u);
 	CHECK(g_ctx.ticks == ticks0 + 50u);
@@ -833,8 +839,7 @@ scenario_stop_scan (void)
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
 	sim_tick();
 	CHECK(g_ctx.stop_bits == 0u);
-	CHECK(strstr(g_log, "every STOP bit clear, after 510 ms braked.") != NULL);	/* 51 ticks */
-	CHECK(strstr(g_log, "Motors stay braked until a command.") != NULL);
+	CHECK(strstr(g_log, "every STOP bit clear, 510 ms after the first one was seen.") != NULL);	/* 51 ticks */
 	sim_tick();
 	CHECK((g_last_waiptn & MOTION_EVT_STOPS) == MOTION_EVT_STOPS);
 	CHECK(g_duty_max_abs == 0);
@@ -984,6 +989,172 @@ scenario_statechart_fault (void)
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT") != NULL);
 	sim_ticks(5);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);	/* stays */
+}
+
+/* Running, stopped by STOP_SCAN, then scan_task's REVERSE of mm. */
+static void
+reverse_start (unsigned mm)
+{
+	g_mission = MS_RUNNING;
+	sim_ticks(2);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	g_ctx.avoid_cmd = (uint8_t)MOTION_SM_AVOID_REVERSE;	/* step 1.7 will */
+	g_ctx.avoid_mm = (uint16_t)mm;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
+}
+
+static double
+sim_avg_pos (void)
+{
+	return (g_wheel[0].pos + g_wheel[1].pos) / 2.0;
+}
+
+/* scan_task's reverse: back 150 mm with STOP_SCAN still set, then
+   REVERSE_DONE to scan_task and back to Braked. */
+static void
+scenario_reverse (void)
+{
+	double start, moved_mm;
+	int t;
+
+	sim_reset("reverse: back 150 mm under STOP_SCAN, then REVERSE_DONE");
+	start = sim_avg_pos();
+	reverse_start(150u);
+	CHECK(strstr(g_log, "[motion] state BRAKED -> REVERSING") != NULL);
+	for (t = 0; (t < 500) && (motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING); t++) {
+		sim_tick();
+		if (t == 30) { CHECK((g_duty[0] < 0) && (g_duty[1] < 0)); }	/* backwards */
+	}
+	moved_mm = (start - sim_avg_pos()) * DS_MM_PER_COUNT;
+	printf("   reverse took %d ticks, %.0f mm back (simulation)\n", t, moved_mm);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	CHECK(strstr(g_log, "[motion] state REVERSING -> BRAKED, sent REVERSE_DONE") != NULL);
+	CHECK((moved_mm >= 150.0) && (moved_mm < 175.0));
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(g_ctx.faults == 0u);
+	CHECK(t < 300);					/* inside scan's 5 s */
+
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);	/* false alarm */
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+}
+
+/* STOP_IMU during a reverse brakes in that wake, then REVERSE_DONE. */
+static void
+scenario_reverse_imu (void)
+{
+	int brakes;
+
+	sim_reset("reverse: STOP_IMU brakes at once, then REVERSE_DONE");
+	reverse_start(150u);
+	sim_ticks(20);
+	CHECK(g_duty[0] != 0);
+	brakes = g_brake_calls;
+	stop_request(MOTION_EVT_STOP_IMU, 1);		/* wakes motion at once */
+	CHECK(g_brake_calls > brakes);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(strstr(g_log, "[motion] STOP_IMU set: brake written 17 us after the request.") != NULL);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	sim_ticks(10);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+}
+
+/* Ticks while REVERSING (at most limit); returns the ticks taken. */
+static int
+run_reverse (int limit)
+{
+	int t;
+
+	for (t = 0; (t < limit) && (motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING); t++) {
+		sim_tick();
+	}
+	return t;
+}
+
+/* The distance is measured from where the reverse started, not from 0:
+   the car was pushed 300 mm first.  A second reverse straight after
+   starts with a fresh speed controller (same first duty both times). */
+static void
+scenario_reverse_twice (void)
+{
+	double start, moved_mm;
+	int32_t duty1_l, duty1_r;
+	int i;
+
+	sim_reset("reverse: measured from its own start, twice in a row");
+	for (i = 0; i < 40; i++) { ds_move_tick(95.0, 95.0); }	/* ~300 mm */
+	sim_ticks(20);					/* standing still */
+	start = sim_avg_pos();
+	reverse_start(150u);
+	duty1_l = g_duty[0];
+	duty1_r = g_duty[1];
+	(void)run_reverse(500);
+	moved_mm = (start - sim_avg_pos()) * DS_MM_PER_COUNT;
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	CHECK((moved_mm >= 149.4) && (moved_mm < 175.0));
+	CHECK(g_ctx.faults == 0u);
+
+	sim_ticks(20);					/* wheels at rest again */
+	g_scan_flag = 0u;
+	start = sim_avg_pos();
+	g_ctx.avoid_cmd = (uint8_t)MOTION_SM_AVOID_REVERSE;
+	g_ctx.avoid_mm = 150u;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
+	CHECK((g_duty[0] == duty1_l) && (g_duty[1] == duty1_r));	/* PID reset */
+	(void)run_reverse(500);
+	moved_mm = (start - sim_avg_pos()) * DS_MM_PER_COUNT;
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	CHECK((moved_mm >= 149.4) && (moved_mm < 175.0));
+}
+
+/* A motor wired backwards: the closed-loop stall check sees the wheel go
+   the wrong way and stops the reverse with a stall fault. */
+static void
+scenario_reverse_motor_inv (void)
+{
+	int t;
+
+	sim_reset("reverse: a backwards motor gives a stall fault, no runaway");
+	g_wheel[1].b_motor_inv = 1;
+	reverse_start(150u);
+	t = run_reverse(200);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);
+	CHECK((g_ctx.faults & MOTION_FAULT_STALL_R) != 0u);
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	CHECK((g_nav_flag & NAV_FLG_MOTION_FAULT) != 0u);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(t <= 2 * (int)MOTION_STALL_TICKS);
+}
+
+/* A wheel blocked during a reverse: stall fault, REVERSE_DONE and
+   MOTION_FAULT, braked. */
+static void
+scenario_reverse_stall (void)
+{
+	int t;
+
+	sim_reset("reverse: a blocked wheel gives a stall fault");
+	reverse_start(150u);
+	sim_ticks(30);					/* under way */
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
+	g_wheel[1].b_blocked = 1;
+	for (t = 0; (t < 100) && (motion_sm_state(&g_ctx.sm) != MOTION_ST_FAULT); t++) {
+		sim_tick();
+	}
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);
+	CHECK((g_ctx.faults & MOTION_FAULT_STALL_R) != 0u);
+	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
+	CHECK((g_nav_flag & NAV_FLG_MOTION_FAULT) != 0u);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
+	CHECK(t <= (int)MOTION_STALL_TICKS + 2);
 }
 
 /* Each reply lands on the right flag and bit; scan_flg is skipped until
@@ -1593,6 +1764,11 @@ main (int argc, char **argv)
 	scenario_statechart();
 	scenario_statechart_fault();
 	scenario_statechart_replies();
+	scenario_reverse();
+	scenario_reverse_imu();
+	scenario_reverse_stall();
+	scenario_reverse_twice();
+	scenario_reverse_motor_inv();
 #elif MOTION_TEST_STOP
 	scenario_stop_test();
 #elif !MOTION_TEST_PID
