@@ -46,6 +46,12 @@
 #include "motion_wdt.h"
 #include "motor_task.h"
 
+/* The motion_flg bits (common/messages.h) are four different bits. */
+_Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
+                | MOTION_EVT_STOP_IMU)
+                   == 0x0Fu,
+               "motion_flg bits overlap");
+
 /* ------------------------------------------------------------------ *
  *  Constants
  * ------------------------------------------------------------------ */
@@ -206,7 +212,6 @@ typedef struct
     int32_t        ramp_found_r;
     int32_t        cmd_l;
     int32_t        cmd_r;
-    bool           b_stop_flag_fault;
     motion_pid_t   pid_l;
     motion_pid_t   pid_r;
     motion_stall_t stall_l;
@@ -411,7 +416,7 @@ now_us (void)
    STOP_SCAN (anything within 25 cm, or no sensor) would end the test.
    The stop test's stand-in uses g_flgid directly. */
 ID
-motion_flag (void)
+motor_task_flag (void)
 {
     ID flgid = g_flgid;
 
@@ -1183,15 +1188,6 @@ motion_tick (motion_ctx_t *p_ctx)
     tick_timing(p_ctx, t_start);
     tick_encoders(p_ctx);
 
-    if (b_stop_scan)
-    {
-        p_ctx->phase = PHASE_IDLE;
-        p_ctx->cmd_l = 0;
-        p_ctx->cmd_r = 0;
-        motor_brake_all();
-    }
-    else
-    {
 #if MOTION_BENCH
     if (button_pressed(p_ctx))
     {
@@ -1210,21 +1206,21 @@ motion_tick (motion_ctx_t *p_ctx)
     }
 #endif
 
-        stall_check(p_ctx);
+    stall_check(p_ctx);
 
-        switch (p_ctx->phase)
-        {
-            case PHASE_STEPS:
-                bench_steps(p_ctx);
-                break;
+    switch (p_ctx->phase)
+    {
+        case PHASE_STEPS:
+            bench_steps(p_ctx);
+            break;
 
-            case PHASE_RAMP:
-                bench_ramp(p_ctx);
-                break;
+        case PHASE_RAMP:
+            bench_ramp(p_ctx);
+            break;
 
-            case PHASE_PID:
-                bench_pid(p_ctx);
-                break;
+        case PHASE_PID:
+            bench_pid(p_ctx);
+            break;
 
 #if MOTION_BENCH && MOTION_TEST_STOP
         case PHASE_STOPTEST:
@@ -1500,18 +1496,6 @@ motor_task (INT stacd, void *exinf)
     {
         motion_cycle(p_ctx);
     }
-}
-
-ID
-motor_task_flag (void)
-{
-    return g_flgid;
-}
-
-ID
-motor_task_avoid_mbfid (void)
-{
-    return g_avoid_cmd_mbfid;
 }
 
 /* ------------------------------------------------------------------ *

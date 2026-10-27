@@ -265,9 +265,9 @@ GP10 and GP11 to GND. All four should read about 0 V (brake).
 
 ### Emergency stop (NFR-18)
 
-`motion_flg` (`motor_task.h`) has four bits: TICK 0x01, CMD 0x02,
-STOP_SCAN 0x04 and STOP_IMU 0x08. CMD and STOP_SCAN are the values in
-Buddy 5's `scan_if.h`, and the build fails if they ever differ.
+`motion_flg` has four bits, defined once in `common/messages.h` and
+shared with scan_task and imu_task: TICK 0x01, CMD 0x02, STOP_SCAN 0x04
+and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
 
 - **scan_task sets and clears STOP_SCAN;** motion never clears it.
   **imu_task sets STOP_IMU** and never clears it; motion clears it when
@@ -283,11 +283,11 @@ Buddy 5's `scan_if.h`, and the build fails if they ever differ.
   Resuming what the car was doing (the history state) comes with the
   statechart, step 1.3. A STOP also ends any bench test.
 
-How a sender raises a stop (`scan_task` already does the second line):
+How a sender raises a stop (`scan_if_stop_set()` does exactly this):
 
 ```c
 motion_stop_stamp(MOTION_EVT_STOP_SCAN);               /* optional: NFR-18 timing */
-(void)tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN);
+(void)tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_SCAN);
 ```
 
 Never wait on `motion_flg`; only motion_task does.
@@ -323,7 +323,7 @@ Run it again with Wi-Fi streaming once motion runs in the Wi-Fi build
 with the original design, so the `MOTION_PACKED` 0 run is optional. The port measured 16 to
 43 us for a same-core wake (docs/PORT_RP2040.md), so expect tens of us.
 
-In every bench image (`MOTION_BENCH` 1) `motion_flag()` returns 0, so
+In every bench image (`MOTION_BENCH` 1) `motor_task_flag()` returns 0, so
 scan_task stays print-only: the GP20 press that starts a bench test also
 starts nav's mission, and scan_task's own STOP_SCAN (anything within
 25 cm, or no sensor at all) would otherwise end the test.
@@ -334,10 +334,12 @@ sensor on GP4/GP5, `OBSTACLE_TEST_MODE` 4 as committed, wheels off).
 mission is Running: once nav prints `[nav] mission ... -> READY`, press
 GP20 and look for `-> RUNNING`. Then hold a hand within 25 cm in front of
 the sensor: expect
-`STOP_SCAN set: motors braked (the sender did not stamp the request).`
+`STOP_SCAN set: brake written NN us after the request.` (scan_task
+stamps its own request, so this is NFR-18 timing from the real sender).
 `every STOP bit clear` follows when scan_task's own scan decides the way
-is free, which may be while the hand is still there. scan_task still
-prints its STANDALONE banner, because its command buffer is not bound
+is free, which may be while the hand is still there. scan_task prints its
+`STOP_ONLY` banner (motion's stop is bound; its commands and motion's
+replies are still simulated), because its command buffer is not bound
 yet.
 
 ### distance_state (for imu_task, Buddy 4)
@@ -489,11 +491,11 @@ Found while writing this; each needs its owner.
    with an offset of 2048 (as the telemetry turn rate is). The layout
    moves to `common/messages.h` through the team PR.
 9. **STOP bits (Buddies 4 and 5).** Set STOP_SCAN or STOP_IMU with
-   `tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN or _IMU)` from
-   `motor_task.h`; never wait on motion_flg. imu_task never clears
+   `tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_SCAN or _IMU)`, with
+   the bit names from `common/messages.h` (never the numbers); never wait on motion_flg. imu_task never clears
    STOP_IMU: motion does, when nav_ctrl_task sends FAULT_CLEAR(IMU). For the NFR-18 timing, call
-   `motion_stop_stamp(bit)` just before the set: Buddy 5's
-   `scan_if_stop_set()` could add that one line. Buddy 5: the comment
+   `motion_stop_stamp(bit)` just before the set, as Buddy 5's
+   `scan_if_stop_set()` now does. Buddy 5: the comment
    above `scan_if_wait()` says TWF_BITCLR clears only the bits that ended
    the wait; the kernel clears every bit in the wait pattern
    (eventflag.c). It does no harm in scan_task, which gets every set bit
@@ -505,13 +507,9 @@ Found while writing this; each needs its owner.
 
 ## Not done yet
 
-- `avoid_cmd_mbf` is created by `motor_task_start()` with room for two
-  packed 16-bit commands and bound to `scan_task` in `app_main.c`. The
-  payload uses 3 operation bits, 1 bypass-side bit (0=left, 1=right), and
-  12 distance-in-mm bits; reverse uses side zero. Motion does not consume
-  the queue or execute maneuvers yet; `nav_cmd_mbf` is also pending.
-  `scan_task` does not simulate motion replies. `motion_flg` is bound for
-  STOP_SCAN.
+- avoid_cmd_mbf and nav_cmd_mbf are not created or bound yet, so
+  scan_task still simulates motion's replies to its commands. motion_flg
+  is bound, so its STOP_SCAN does brake the car.
 - Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
   STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
   FAULT_CLEAR(MOTION).

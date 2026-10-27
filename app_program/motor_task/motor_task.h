@@ -19,30 +19,33 @@
 #include <tk/tkernel.h>
 #include "../common/messages.h"
 
+#include "../common/messages.h"
+
 /* ------------------------------------------------------------------ *
  *  motion_flg (design Section 4)
  *
- *  The event flag motion_task waits on. Shared bit values are defined in
- *  common/messages.h.
+ *  The event flag motion_task waits on.  Its bits (MOTION_EVT_*) are
+ *  defined once, in common/messages.h, shared with scan_task and imu_task:
  *
- *    TICK       set by motion's 10 ms cyclic handler.
- *    CMD        set by a command sender after it has placed a command
- *               (step 1.7; motion does not read it yet).
- *    STOP_SCAN  set and cleared ONLY by scan_task: "obstacle".
- *    STOP_IMU   set by imu_task, which never clears it; motion_task
- *               clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
- *               (step 1.7; until then nothing clears it).
+ *    TICK       0x01  set by motion's 10 ms cyclic handler.
+ *    CMD        0x02  set by a command sender after it has placed a
+ *                     command (step 1.7; motion does not read it yet).
+ *    STOP_SCAN  0x04  set and cleared ONLY by scan_task: "obstacle".
+ *    STOP_IMU   0x08  set by imu_task, which never clears it; motion_task
+ *                     clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
+ *                     (step 1.7; until then nothing clears it).
  *
  *  A STOP bit is a level: motion brakes as soon as it sees one and stays
  *  braked while any is set.  Senders use tk_set_flg (and scan_task
- *  tk_clr_flg) on motion_flag(); never wait on this flag (only
+ *  tk_clr_flg) on motor_task_flag(); never wait on this flag (only
  *  motion_task may).
  * ------------------------------------------------------------------ */
 
 /* motion_flg's ID, valid once motor_task_start() has returned E_OK
-   (0 before, and always 0 in bench images, MOTION_BENCH 1).  For the STOP
-   senders and, later, the command senders. */
-ID motion_flag(void);
+   (0 before, and always 0 in bench images, MOTION_BENCH 1, so scan_task
+   stays print-only there).  For the STOP senders and, later, the command
+   senders. */
+ID motor_task_flag(void);
 
 /* Optional, for the NFR-18 timing: a STOP sender calls this just before
    tk_set_flg, with the bit it is about to set.  It notes the 1 MHz time,
@@ -59,13 +62,6 @@ void motion_stop_stamp(UINT stop_bit);
 
 /* Task entry, kernel task signature. */
 void motor_task(INT stacd, void *exinf);
-
-/* Event flag used by motion_task; valid after successful motor_task_start(). */
-ID motor_task_flag(void);
-
-/* avoid_cmd_mbf, created before motion_task starts; Buddy 5 sends one packed
-   16-bit avoid command per message. */
-ID motor_task_avoid_mbfid(void);
 
 /* Create and start everything motion needs: its event flag, the 10 ms
    cyclic handler, motion_task (priority 11, pinned to core 1 under SMP)

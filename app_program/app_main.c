@@ -491,13 +491,6 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] comms_tele_init failed\n");
 	}
 
-	/* Start motion first so its event-flag ID is available before scan_task. */
-	motion_ercd = motor_task_start();
-	if(E_OK != motion_ercd) {
-		tm_printf((UB *)"[init] motor_task_start failed, er=%d\n",
-			  (INT)motion_ercd);
-	}
-
 	/* Buddy 5: nav_flg first, before any task that uses it. A failure
 	 * here only prints: usermain() must not return (see the end of this
 	 * function). */
@@ -506,8 +499,15 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
 	}
 
-	/* Motion was started before nav initialization so its interface exists
-	   before scan_task is bound. */
+	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
+	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
+	   Before scan_task is bound, so motion_flg exists; outside the nav
+	   block so the motors are braked even if nav_flg failed. */
+	motion_ercd = motor_task_start();
+	if(E_OK != motion_ercd) {
+		tm_printf((UB *)"[init] motor_task_start failed, er=%d\n",
+			  (INT)motion_ercd);
+	}
 
 	/* Buddy 5: tell scan_task where the mission and motion interfaces are.
 	 * Motion queues avoid commands but does not yet execute them or generate
@@ -516,9 +516,6 @@ EXPORT INT usermain(void)
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
-			.motion_flgid		= (E_OK == motion_ercd) ? motion_flag() : 0,
-			.avoid_mbfid		= (E_OK == motion_ercd) ?
-					  motor_task_avoid_mbfid() : 0,
 		};
 		scan_if_bind(&scan_bind);
 
