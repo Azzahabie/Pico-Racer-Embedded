@@ -313,8 +313,8 @@ static void test_avoid_command(void)
     ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
                              MOTION_AVOID_SIDE_NONE,
                              MOTION_AVOID_DIST_MAX, &word) &&
-       (word == 0xFFF1U),
-       "12-bit maximum distance is supported", "avoid command");
+       (word == 0x1FF1U),
+       "9-bit maximum distance is supported", "avoid command");
 
     ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
                               MOTION_AVOID_SIDE_LEFT, 150U, &word),
@@ -332,7 +332,7 @@ static void test_avoid_command(void)
        "undefined operation is rejected", "avoid command");
     ok(!motion_avoid_cmd_unpack((uint16_t)(0x12CAU | 0x8000U),
                                 &op, &side, &dist_mm),
-       "all 16 bits belong to defined fields", "avoid command");
+       "reserved high bits must be zero", "avoid command");
 }
 
 int main(void)

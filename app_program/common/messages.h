@@ -35,6 +35,66 @@
                                               it on FAULT_CLEAR(IMU)       */
 #define MOTION_EVT_STOPS       (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
 
+/* scan_task -> motion_task avoid command, stored in a 16-bit MBF payload.
+ * Bits 0-2 are the operation, bit 3 is the bypass side (0=left, 1=right),
+ * bits 4-12 are the distance in mm, and bits 13-15 are reserved as zero.
+ * Side is zero for reverse commands. */
+#define MOTION_AVOID_OP_REVERSE    1U
+#define MOTION_AVOID_OP_BYPASS     2U
+#define MOTION_AVOID_SIDE_NONE     0U
+#define MOTION_AVOID_SIDE_LEFT     1U
+#define MOTION_AVOID_SIDE_RIGHT    2U
+#define MOTION_AVOID_DIST_MAX      511U
+
+static inline bool motion_avoid_cmd_pack(uint8_t op, uint8_t side,
+                                         uint16_t dist_mm, uint16_t *p_word)
+{
+    bool valid;
+    uint8_t side_bit = 0U;
+
+    valid = (NULL != p_word) && (0U < dist_mm) &&
+            (dist_mm <= MOTION_AVOID_DIST_MAX) &&
+            (((MOTION_AVOID_OP_REVERSE == op) &&
+              (MOTION_AVOID_SIDE_NONE == side)) ||
+             ((MOTION_AVOID_OP_BYPASS == op) &&
+              ((MOTION_AVOID_SIDE_LEFT == side) ||
+               (MOTION_AVOID_SIDE_RIGHT == side))));
+    if (valid) {
+        if (MOTION_AVOID_SIDE_RIGHT == side) {
+            side_bit = 1U;
+        }
+        *p_word = (uint16_t)(((uint16_t)op & 0x07U) |
+                             ((uint16_t)side_bit << 3) |
+                             ((dist_mm & 0x01FFU) << 4));
+    }
+    return valid;
+}
+
+static inline bool motion_avoid_cmd_unpack(uint16_t word, uint8_t *p_op,
+                                           uint8_t *p_side,
+                                           uint16_t *p_dist_mm)
+{
+    uint8_t op = (uint8_t)(word & 0x07U);
+    uint8_t side_bit = (uint8_t)((word >> 3) & 0x01U);
+    uint8_t side = MOTION_AVOID_SIDE_NONE;
+    uint16_t dist_mm = (uint16_t)((word >> 4) & 0x01FFU);
+    uint16_t check_word;
+
+    if (MOTION_AVOID_OP_BYPASS == op) {
+        side = (0U == side_bit) ? MOTION_AVOID_SIDE_LEFT
+                                : MOTION_AVOID_SIDE_RIGHT;
+    }
+    if ((NULL == p_op) || (NULL == p_side) || (NULL == p_dist_mm) ||
+        !motion_avoid_cmd_pack(op, side, dist_mm, &check_word) ||
+        (word != check_word)) {
+        return false;
+    }
+    *p_op = op;
+    *p_side = side;
+    *p_dist_mm = dist_mm;
+    return true;
+}
+
 /* ------------------------------------------------------------------ *
  *  Shared fault bitmask (schema section 4.1)
  * ------------------------------------------------------------------ */
