@@ -4,16 +4,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "line_config.h"
+
 /* Two-bit output layout: right guard in bit 1 and left guard in bit 0. */
 #define LINE_READER_RIGHT_GUARD_MASK (1u << 1)
 #define LINE_READER_LEFT_GUARD_MASK  (1u << 0)
 #define LINE_READER_OUTPUT_MASK      (0x03u)
 
-/* Sensor pins. These are digital (DO) inputs, not ADC pins:
- * GP6 and GP8 have no ADC, so this module reads a plain 0/1 level.
- * Change the numbers here if the wiring changes. */
-#define LINE_READER_RIGHT_GUARD_GPIO (6u)
-#define LINE_READER_LEFT_GUARD_GPIO  (8u)
+/* Pin assignments are centralized in line_config.h. GP6 and GP8 are
+ * digital (DO) inputs and cannot be used as ADC inputs. */
+#define LINE_READER_RIGHT_GUARD_GPIO LINE_SENSOR_RIGHT_GPIO
+#define LINE_READER_LEFT_GUARD_GPIO  LINE_SENSOR_LEFT_GPIO
 
 /* Digital level of each sensor pin: 0 or 1 (NOT an ADC value). */
 typedef struct {

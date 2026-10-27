@@ -2,11 +2,11 @@
 
 ## Status
 
-The digital two-sensor line interpreter, single-letter Code 39 A-Z decoder,
-edge capture, bounded record transport, and µT-Kernel task integration are
-implemented. Host tests and both firmware build targets pass. These results
-are software checks only: no robot wiring, sensor behavior, barcode artwork,
-timing, or motion has been verified on hardware.
+The digital two-sensor line interpreter, edge-based Code 39 A-Z decoder, and
+µT-Kernel task integration are implemented. The host decoder test and default
+SMP=0 UART firmware build pass. These are software checks only: no robot
+wiring, sensor behavior, barcode artwork, timing, or motion has been verified
+on hardware.
 
 GPIO numbers below are the current source configuration, not confirmed
 physical wiring. Keep motor power disconnected until the wiring, motor
@@ -18,16 +18,12 @@ does not command a motor.
 
 | Stage | Current behavior |
 |---|---|
-| Input | The stand-alone `line_task` reads the left digital line sensor on GP8 and the right sensor on GP6. `BLACK_IS_HIGH` selects the assumed active level; confirm it with the actual sensor before running the car. |
-| Line interpretation | `line_logic` normalizes the configured electrical polarity, accepts steering-state changes after six samples, and accepts line-lost after eight consecutive samples (nominally 40 ms at the 5 ms sample delay). |
-| Barcode capture | `bar_capture` debounces transitions, measures alternating bar/space durations in sampler ticks, ends a scan after a quiet gap, and aborts on overlong elements or failed record delivery. |
-| RTOS transport | The stand-alone line test reports directly to the monitor; it does not send sensor records to another task. |
-| Decode | `barcode_decode` recognizes standard Code 39 start/stop framing and the letters A-Z. A decoded letter is reported as **unmapped**; no route or motor action is inferred. |
-| Navigation | The stand-alone line task prints suggested DRIVE/STEER/STOP commands only. It does not control motors; there is no navigation or motor-control consumer. |
-
-The message buffer is configured for 64 records with 8 bytes of kernel buffer
-accounting per record. The separate bring-up SPSC ring uses an empty slot to
-distinguish full from empty, so its effective capacity is 63 records.
+| Input | The line task reads left GP8 and right GP6 as digital inputs (`1 = black`). Barcode GP26 is ADC0 and is sampled independently. |
+| Line interpretation | Packed values are `RL`: 00 LOST, 01 left deviation, 10 right deviation, 11 JUNCTION. Black on the left steers right; black on the right steers left. `LINE_STEER_INVERT` flips the steering suggestions; `LINE_STOP_ON_LOST` defaults to 0. |
+| Barcode capture | GP26 uses 3000 rising / 1000 falling ADC thresholds. Each transition is timestamped from the RP2040 hardware timer and stored as an alternating bar/space width in microseconds. |
+| Decode | The unit-testable decoder assumes Code 39, `*` delimiters, A-Z, and one narrow inter-character gap. It classifies widths from each measured symbol and accepts either scan direction. A successful string is available through `barcode_scanner_get_decoded()`. |
+| Console | Application log output uses a shared T-Kernel mutex. Barcode samples are not printed; only completed scan results/errors and line state changes are logged. |
+| Navigation | The line task prints suggested commands only. It does not control motors; the motor task remains a stub. |
 
 ## Digital line truth table
 
@@ -37,21 +33,21 @@ stationary robot before connecting motor control.
 
 | GP8 (left) | GP6 (right) | State | Suggested command |
 |---:|---:|---|---|
-| Black | Black | Centred | DRIVE |
-| Black | White | Line under left sensor | STEER_LEFT |
-| White | Black | Line under right sensor | STEER_RIGHT |
-| White | White | Line lost | STOP |
+| White | White | LOST | DRIVE by default; STOP only with `LINE_STOP_ON_LOST=1` |
+| Black | White | Left deviation | STEER_RIGHT |
+| White | Black | Right deviation | STEER_LEFT |
+| Black | Black | JUNCTION | DRIVE |
 
 Two digital sensors cannot measure an exact line width or distinguish an
 18 mm line from another pattern that covers both sensors. Place both sensors
 within the line's 18 mm width when centred, and verify the sensor outputs on
-the bench. The STOP suggestion is reported after eight consecutive lost
-samples; this task does not itself stop the motors.
+the bench. With `LINE_STOP_ON_LOST=1`, STOP is reported after 40 consecutive
+lost samples; this task does not itself stop the motors.
 
 ## Viewing the line-reader serial output
 
 The line task prints its startup instructions, changed line states, and a
-two-second sensor heartbeat through `tm_printf`. The IPC producer, consumer,
+two-second sensor heartbeat through the shared console logger. The IPC producer, consumer,
 and monitor demo tasks are not started, keeping their status output off the
 serial console during sensor bring-up.
 
@@ -70,16 +66,15 @@ match the firmware profile that was built and flashed.
 ## Code 39 patterns in the decoder
 
 `W` means wide and `N` means narrow, in bar-space order. A letter scan must
-contain 29 durations: start `*` (9 elements), one narrow inter-character
-space, one letter (9 elements), another narrow inter-character space, and
-stop `*` (9 elements). The standard Code 39 start/stop pattern is
+contain 29 durations: start `*` (9 elements), a narrow-sized inter-character
+space, one letter (9 elements), another narrow-sized space, and stop `*`
+(9 elements). The standard Code 39 start/stop pattern is
 `NWNNWNWNN`.
 
-The decoder derives a narrow/wide threshold from the known start frame, which
-has three wide elements, and requires the measured wide/narrow separation to
-meet `B3_CODE39_WIDE_RATIO_X100` (2.00 by default). This calibration and
-threshold are not validated against the robot's sensor, speed, or printed
-artwork.
+For each symbol, the decoder measures the six narrow and three wide elements
+and classifies against their midpoint. The minimum wide/narrow ratio is 2.00,
+configured by `BARCODE_WIDE_NARROW_MIN_RATIO_X100`. This has not been validated
+against the robot's speed or printed artwork.
 
 | Letter | Pattern | Letter | Pattern | Letter | Pattern |
 |---|---|---|---|---|---|
@@ -93,77 +88,73 @@ artwork.
 | V | `NWWNNNNNW` | W | `WWWNNNNNN` | X | `NWNNWNNNW` |
 | Y | `WWNNWNNNN` | Z | `NWWNWNNNN` | | |
 
-These are the static standard Code 39 letter patterns in source, not six
-measured patterns from the course. The repository does not contain the
-`BARCODE.pptx` artwork, and the patterns in the supplied attachment were
-flattened together; the six physical samples therefore cannot be
-independently reconstructed or checked.
+These are the standard Code 39 letter patterns in source, not measured
+patterns from the course artwork.
 
-Direction is another unresolved input. Some single-letter patterns can be
-valid in both orientations as different letters. For example, reversing
-some valid symbols collides with another valid symbol. Without a known scan
-direction, direction signal, or asymmetric marker, a decoder cannot both
-accept all letters and guarantee rejection of every reversed scan.
+The decoder identifies reversed scans by matching the reversed start/stop
+delimiter pair, reverses the captured width sequence, and then decodes in
+normal Code 39 order. This implementation assumes the stated Code 39
+encoding; use a different decoder if the course uses another encoding.
+
+## Commissioning and pin ownership
+
+Set `LINE_COMMISSIONING_MODE` to 1 in `line_config.h` to print GP8/GP6 raw
+levels for five seconds over white and then five seconds over black. Move the
+stationary sensors between those surfaces when prompted. GP8 and GP6 are
+digital-only RP2040 GPIOs and cannot be ADC inputs. GP26 is ADC0; GP28 is
+reserved here as battery-sense ADC2.
+
+The configured line-left input GP8 overlaps the stated motor-driver range
+GP8-GP11. The firmware deliberately reports this as a pin conflict and does
+not choose a replacement pin. Resolve the real wiring before connecting
+hardware or enabling motor control.
+
+Producer/consumer affinity is configured in the SMP source: producer on
+processor 1 (RP2040 core 0), consumer on processor 2 (core 1). However,
+`usermain()` currently leaves creation/start of both tasks and their monitor
+commented out, so those fields are not produced by this application. In an
+SMP=0 build both would report processor 1. Even when enabled,
+`made_on=prc1 seen_on=prc1` alone would not demonstrate cross-core execution.
 
 ## Timing and limits
 
 | Setting | Current value | Status |
 |---|---:|---|
-| Line task delay | 1 kernel tick | Relative `tk_dly_tsk`; the RP2040 kernel tick is configured as 1 ms, but actual sampling interval and scheduler jitter are unmeasured. |
-| Line input stabilization | 2 samples | Software setting; not measured against sensor noise or robot speed. |
-| Junction candidate debounce | 3 samples | Software setting; “both dark” is not proof of a physical junction. |
-| Barcode transition stabilization | 2 samples | Software setting; sensor waveform has not been measured. |
-| Longest accepted barcode element | 400 sampler ticks | Provisional; requires sensor, speed, and artwork measurements. |
-| Quiet-gap scan end | 500 sampler ticks | Provisional; requires measurement and timing validation. |
-| Maximum assembled durations | 32 | Software bound; valid single-letter frame currently uses 29 durations. |
+| Line task delay | 1 ms | Configured kernel tick; actual scheduling jitter is unmeasured. |
+| Line input stabilization | 30 samples | Nominally 30 ms, before scheduler jitter. |
+| Line-lost debounce | 40 samples | Nominally 40 ms; does not stop unless `LINE_STOP_ON_LOST=1`. |
+| Barcode scan end | 500000 us quiet white | Configurable capture timeout; validate against slowest intended speed. |
+| Barcode maximum | 24 characters / 259 widths | Fixed storage bound; overlong scans report an error. |
 
-Ticks in barcode capture are counts of sampler calls, not measured
-milliseconds. A 1 ms kernel tick setting does not prove the line task runs
-exactly once per millisecond. The commented `B3_PROFILE_PIN` definition alone
-does not instrument or measure task timing.
+Barcode widths are measured from the RP2040 free-running microsecond timer
+when the task observes a threshold crossing. The 1 ms task delay does not
+prove that ADC sampling occurs exactly once per millisecond; scheduling jitter
+and ADC conversion duration remain to be measured.
 
 ## Verification performed
 
-The host test suite is synthetic and exercises:
+The Code 39 host test is synthetic and exercises:
 
-- all 26 letter patterns, width scaling/noise, malformed and reversed frames;
-- assembler abort, recovery, and overflow behavior;
-- every digital line truth-table combination under both polarities;
-- junction debounce/rearm, ring saturation, and capture timeout/recovery.
+- All A-Z symbols at multiple width scales, plus A forwards and reversed.
 
 Run the host tests from the repository root:
 
 ```sh
 gcc -std=c11 -Wall -Wextra -Wpedantic \
-  tests/buddy3_host_test.c \
-  app_program/line_task/barcode_decode.c \
-  app_program/line_task/bar_capture.c \
-  app_program/line_task/bar_ring.c \
-  app_program/line_task/line_logic.c \
-  -o /tmp/buddy3_host_test
-/tmp/buddy3_host_test
+  tests/barcode_decode_test.c app_program/line_task/barcode_decode.c \
+  -o /tmp/barcode_decode_test
+/tmp/barcode_decode_test
 ```
 
-All eight test groups passed with Ubuntu GCC 15.2.0.
-
-The full micro T-Kernel default single-core UART target builds with:
+The full micro T-Kernel default single-core UART target is built with:
 
 ```sh
 cd build_make
 make -j8
 ```
 
-This task's full build passed in a writable WSL copy with Ubuntu
-`arm-none-eabi-gcc` 14.2.1, producing `mtk3pico_smp0_uart.elf` and
-`mtk3pico_smp0_uart.uf2`. Existing generated output directories in the
-Windows-mounted workspace were not writable from WSL, so the build was run
-in a separate writable copy. This is a successful build with that toolchain,
-not a qualification against the repository's pinned 13.2.1 baseline.
-
-The standalone Pico SDK barcode bring-up target also configured and built
-successfully with the installed Pico SDK 1.5.1 and ARM GCC 10.3.1. It is a
-separate bring-up image, not the micro T-Kernel firmware target. Neither
-build flashes or tests a physical robot.
+The host test and firmware build do not test physical sensors, wiring, barcode
+artwork, or motion.
 
 ## Ordered hardware-validation checklist
 
@@ -180,13 +171,12 @@ build flashes or tests a physical robot.
    Confirm sensor spacing, height, alignment, and field of view.
 4. **Verify line observations while stationary.** Exercise light, dark, and
    both-sensor conditions; compare the observed logs/state with the truth
-   table. Determine whether both-dark is a junction on the real course or
-   merely a wide/centered line. Tune debounce only from recorded data.
-5. **Obtain and measure the real barcode source.** Restore the artwork and
-   six intended samples, record their exact narrow/wide elements and
-   inter-character spacing, and test both scan orientations. Capture sensor
-   transitions at the intended height and speed; tune the 400/500 tick
-   limits only from those measured waveforms.
+   table. Verify both-dark behavior against the course before treating it as
+   a physical junction. Tune debounce only from recorded data.
+5. **Obtain and measure the real barcode source.** Confirm the assumed Code 39
+   A-Z encoding, record narrow/wide elements and inter-character spacing,
+   and test both scan orientations. Capture sensor transitions at the intended
+   height and speed; validate the 500000 us end-gap against slow scans.
 6. **Measure timing.** Measure sampler cadence, task execution time, and
    scheduling jitter on hardware with reviewed instrumentation on a
    confirmed spare pin or a suitable trace method. Do not assume the
@@ -214,5 +204,5 @@ build flashes or tests a physical robot.
   both-dark shapes.
 - No course map, letter-to-command mapping, navigation consumer, motor
   control interface, or safety-stop path exists in this implementation.
-- Universal reversed-scan rejection is ambiguous for single Code 39 letters
-  without additional direction information.
+- The Code 39 A-Z assumption and the quiet-gap timeout need confirmation against
+  the actual barcode format, artwork, and scanning speed.

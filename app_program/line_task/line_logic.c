@@ -66,8 +66,10 @@ static uint16_t pin_level(uint32_t pin)
 line_reader_config_t line_reader_default_config(void)
 {
     line_reader_config_t config = {
-        .right_guard_black_is_high = true,
-        .left_guard_black_is_high = true,
+        .right_guard_black_is_high =
+            (LINE_SENSOR_RIGHT_BLACK_IS_HIGH != 0u),
+        .left_guard_black_is_high =
+            (LINE_SENSOR_LEFT_BLACK_IS_HIGH != 0u),
     };
 
     return config;

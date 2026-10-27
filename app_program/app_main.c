@@ -46,6 +46,7 @@
 #endif
 
 #include "usb_console_compat.h"
+#include "common/console_logger.h"
 #include "demo_tasks.h"
 #include "led_test/led_test.h"
 #include "line_task/line_task.h"
@@ -200,13 +201,13 @@ LOCAL void monitor_task(INT stacd, void *exinf)
 	}
 	tk_dly_tsk(500);
 
-	tm_printf((UB *)"\n=== uT-Kernel 3.0 / RP2040 demo ===\n");
+	CONSOLE_LOG((UB *)"\n=== uT-Kernel 3.0 / RP2040 demo ===\n");
 #if TK_SUPPORT_SMP
-	tm_printf((UB *)"SMP build: %d processors\n", TK_MAX_CORE);
+	CONSOLE_LOG((UB *)"SMP build: %d processors\n", TK_MAX_CORE);
 #else
-	tm_printf((UB *)"single-core build\n");
+	CONSOLE_LOG((UB *)"single-core build\n");
 #endif
-	tm_printf((UB *)"producer -> [mbf] -> consumer, %d credits, %d ms period\n\n",
+	CONSOLE_LOG((UB *)"producer -> [mbf] -> consumer, %d credits, %d ms period\n\n",
 		  CREDITS, PRODUCE_MS);
 
 	while(1) {
@@ -218,12 +219,12 @@ LOCAL void monitor_task(INT stacd, void *exinf)
 				TWF_ANDW | TWF_CLR, &ptn, REPORT_MS);
 
 		if(er == E_TMOUT) {
-			tm_printf((UB *)"[monitor] stalled: produced=%u consumed=%u\n",
+			CONSOLE_LOG((UB *)"[monitor] stalled: produced=%u consumed=%u\n",
 				  produced, consumed);
 			continue;
 		}
 
-		tm_printf((UB *)"[monitor] seq=%u produced=%u consumed=%u dropped=%u"
+		CONSOLE_LOG((UB *)"[monitor] seq=%u produced=%u consumed=%u dropped=%u"
 			       "  made_on=prc%d seen_on=prc%d\n",
 			  next_seq, produced, consumed, dropped,
 			  last_made_on, last_seen_on);
@@ -231,7 +232,7 @@ LOCAL void monitor_task(INT stacd, void *exinf)
 		/* One line every REPORT_MS cannot overrun a 4 KB ring, but say
 		   so out loud if the console ever does drop bytes. */
 		if(tm_usb_dropped_bytes() != 0) {
-			tm_printf((UB *)"[monitor] console dropped %u bytes\n",
+			CONSOLE_LOG((UB *)"[monitor] console dropped %u bytes\n",
 				  tm_usb_dropped_bytes());
 		}
 
@@ -293,13 +294,13 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		if(st.link_up != last_link) {
 			last_link = st.link_up;
 			if(st.link_up) {
-				tm_printf((UB *)"[wifi] link UP  rssi=%d  mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
+				CONSOLE_LOG((UB *)"[wifi] link UP  rssi=%d  mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
 					  st.link_rssi, st.mac[0], st.mac[1],
 					  st.mac[2], st.mac[3], st.mac[4], st.mac[5]);
 				/* The address is reported by its own transition
 				   below -- DHCP usually finishes after this. */
 			} else {
-				tm_printf((UB *)"[wifi] link DOWN\n");
+				CONSOLE_LOG((UB *)"[wifi] link DOWN\n");
 			}
 		}
 
@@ -314,7 +315,7 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 				fmt_ipv4(ip, st.dhcp_address);
 				fmt_ipv4(gw, st.dhcp_gateway);
 				fmt_ipv4(dns, st.dhcp_dns);
-				tm_printf((UB *)"[wifi] ip=%s  gw=%s  dns=%s\n",
+				CONSOLE_LOG((UB *)"[wifi] ip=%s  gw=%s  dns=%s\n",
 					  ip, gw, dns);
 			}
 		}
@@ -329,7 +330,7 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		   has an address. */
 		if(st.udp_packets_sent == 0 && st.udp_write_seq == 0) {
 			if(++stalled_polls == 25U) {	/* ~5 s at the busy rate */
-				tm_printf((UB *)"[udp] waiting: link=%u netif_up=%u"
+				CONSOLE_LOG((UB *)"[udp] waiting: link=%u netif_up=%u"
 					       " link_up=%u dhcp=%u addr=%u.%u.%u.%u\n",
 					  st.link_up, st.netif_up, st.netif_link_up,
 					  st.dhcp_complete, st.dhcp_address[0],
@@ -347,7 +348,7 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		if(st.udp_packets_sent != 0 && st.udp_session_count != shown_session) {
 			shown_session = st.udp_session_count;
 			fmt_ipv4(ip, st.udp_target);
-			tm_printf((UB *)"[udp] session %u: echoing to %s:%u,"
+			CONSOLE_LOG((UB *)"[udp] session %u: echoing to %s:%u,"
 				       " %u packets of %u bytes\n",
 				  st.udp_session_count + 1U, ip, st.udp_port,
 				  st.udp_expected_packets, st.udp_payload_size);
@@ -358,7 +359,7 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		   skip forward and say so rather than printing stale slots. */
 		if(st.udp_write_seq > cursor) {
 			if(st.udp_write_seq - cursor > CYW43_UDP_RING) {
-				tm_printf((UB *)"[udp] (%u echoes not shown, reader behind)\n",
+				CONSOLE_LOG((UB *)"[udp] (%u echoes not shown, reader behind)\n",
 					  st.udp_write_seq - cursor - CYW43_UDP_RING);
 				cursor = st.udp_write_seq - CYW43_UDP_RING;
 			}
@@ -377,7 +378,7 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 				if(st.udp_ring_len[slot] > 12) {
 					n += tm_sprintf(&line[n], (UB *)" ...");
 				}
-				tm_printf((UB *)"%s\n", line);
+				CONSOLE_LOG((UB *)"%s\n", line);
 				cursor++;
 			}
 		}
@@ -385,14 +386,14 @@ LOCAL void wifi_status_task(INT stacd, void *exinf)
 		if(st.udp_complete && st.udp_session_count != summarised) {
 			summarised = st.udp_session_count;
 			fmt_ipv4(ip, st.udp_target);
-			tm_printf((UB *)"[udp] %s:%u  sent=%u recv=%u matched=%u/%u"
+			CONSOLE_LOG((UB *)"[udp] %s:%u  sent=%u recv=%u matched=%u/%u"
 				       "  corrupt=%u retries=%u errs=%u  %u ms\n",
 				  ip, st.udp_port, st.udp_packets_sent,
 				  st.udp_packets_received, st.udp_packets_matched,
 				  st.udp_expected_packets, st.udp_corrupt,
 				  st.udp_retries, st.udp_send_errors,
 				  st.udp_elapsed_ms);
-			tm_printf((UB *)"[udp] session %u complete: result=%d%s\n",
+			CONSOLE_LOG((UB *)"[udp] session %u complete: result=%d%s\n",
 				  st.udp_session_count + 1U, st.udp_result,
 				  (st.udp_packets_matched == st.udp_expected_packets
 				   && st.udp_corrupt == 0)
@@ -511,7 +512,7 @@ LOCAL T_CFLG cflg = {
 LOCAL BOOL made(const char *what, ID id)
 {
 	if(id <= E_OK) {
-		tm_printf((UB *)"[init] tk_cre_%s failed, er=%d\n", what, id);
+		CONSOLE_LOG((UB *)"[init] tk_cre_%s failed, er=%d\n", what, id);
 		return FALSE;
 	}
 	return TRUE;
@@ -521,6 +522,12 @@ EXPORT INT usermain(void)
 {
 	ID	tid;
 	ER	er;
+
+	er = console_logger_init();
+	if(er < E_OK) {
+		tm_printf((UB *)"[init] console logger creation failed, er=%d\n", er);
+		return 1;
+	}
 
 	mpfid = tk_cre_mpf(&cmpf); if(!made("mpf", mpfid)) return 1;
 	mtxid = tk_cre_mtx(&cmtx); if(!made("mtx", mtxid)) return 1;
@@ -536,7 +543,7 @@ EXPORT INT usermain(void)
 	if(!made("tsk(line)", tid)) return 1;
 	er = tk_sta_tsk(tid, 0);
 	if(er < E_OK) {
-		tm_printf((UB *)"[init] line task start failed, er=%d\n", er);
+		CONSOLE_LOG((UB *)"[init] line task start failed, er=%d\n", er);
 		return 1;
 	}
 	/* Keep the console focused on line-sensor output during bring-up. */

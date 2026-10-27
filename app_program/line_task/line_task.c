@@ -1,170 +1,327 @@
 /*
- * line_task.c - black-line task (uT-Kernel 3.0, RP2040)
- *
- * Uses line_logic.c/.h to read the two sensors, filters the result, and
- * prints the line state over the console. No motors yet.
- *
- * Mount the two sensors closer together than the 18 mm line width so that
- * BOTH see black when the car is centred.
- *
- *   bits (R L)   state
- *   1 1          LINE_CENTRED   -> DRIVE
- *   0 1          LINE_LEFT      -> STEER_LEFT   (only left sees black)
- *   1 0          LINE_RIGHT     -> STEER_RIGHT  (only right sees black)
- *   0 0          LINE_LOST      -> STOP
+ * line_task.c - two digital line sensors and independent Code 39 reader.
  */
 
 #include <tk/tkernel.h>
 #include <tm/tmonitor.h>
 #include <bsp/libbsp.h>
 
+#include <stdint.h>
 
+#include "../common/console_logger.h"
 #include "../usb_console_compat.h"
 #include "line_task.h"
 #include "line_logic.h"
 #include "barcode_scanner.h"
+#include "barcode_decode.h"
 
-/* ------------------------- CONFIG: edit these ------------------------- */
-#define SAMPLE_PERIOD_MS	5	/* sensors read every 5 ms               */
-#define CONFIRM_SAMPLES		6	/* same reading N times in a row = accept */
-#define LOST_SAMPLES		8	/* no line N times (~40 ms) = LOST        */
-#define HEARTBEAT_MS		2000	/* raw pin levels printed this often     */
-/* ---------------------------------------------------------------------- */
+#define BARCODE_TIMER_BASE (0x40054000UL)
+#define BARCODE_TIMER_RAWL (*(volatile uint32_t *)(BARCODE_TIMER_BASE + 0x28UL))
 
 typedef enum {
-	LINE_CENTRED = 0,
-	LINE_LEFT,
-	LINE_RIGHT,
-	LINE_LOST
-} LINE_STATE;
+    LINE_LOST = 0,
+    LINE_LEFT_DEVIATION,
+    LINE_RIGHT_DEVIATION,
+    LINE_JUNCTION
+} line_state_t;
 
-LOCAL const char *state_name(LINE_STATE s)
+static line_state_t filtered_state = LINE_LOST;
+static line_state_t candidate_state = LINE_LOST;
+static UINT candidate_count;
+
+static line_state_t bits_to_state(uint8_t bits)
 {
-	switch(s) {
-	case LINE_CENTRED:	return "CENTRED (both on line)";
-	case LINE_LEFT:		return "LEFT    (line drifting left)";
-	case LINE_RIGHT:	return "RIGHT   (line drifting right)";
-	default:		return "LOST    (no line -> STOP)";
-	}
+    switch (bits & LINE_READER_OUTPUT_MASK) {
+    case 0u:
+        return LINE_LOST;
+    case LINE_READER_LEFT_GUARD_MASK:
+        return LINE_LEFT_DEVIATION;
+    case LINE_READER_RIGHT_GUARD_MASK:
+        return LINE_RIGHT_DEVIATION;
+    default:
+        return LINE_JUNCTION;
+    }
 }
 
-LOCAL const char *cmd_name(LINE_STATE s)
+static uint8_t line_state_bits(line_state_t state)
 {
-	switch(s) {
-	case LINE_CENTRED:	return "DRIVE";
-	case LINE_LEFT:		return "STEER_LEFT";
-	case LINE_RIGHT:	return "STEER_RIGHT";
-	default:		return "STOP";
-	}
+    switch (state) {
+    case LINE_LEFT_DEVIATION:
+        return LINE_READER_LEFT_GUARD_MASK;
+    case LINE_RIGHT_DEVIATION:
+        return LINE_READER_RIGHT_GUARD_MASK;
+    case LINE_JUNCTION:
+        return LINE_READER_OUTPUT_MASK;
+    case LINE_LOST:
+    default:
+        return 0u;
+    }
 }
 
-/* Packed 0bRL value from line_reader -> line state. */
-LOCAL LINE_STATE bits_to_state(UB bits)
+static const char *line_state_name(line_state_t state)
 {
-	BOOL r = (bits & LINE_READER_RIGHT_GUARD_MASK) ? TRUE : FALSE;
-	BOOL l = (bits & LINE_READER_LEFT_GUARD_MASK) ? TRUE : FALSE;
-
-	if(l && r)	return LINE_CENTRED;
-	if(l && !r)	return LINE_LEFT;
-	if(!l && r)	return LINE_RIGHT;
-	return LINE_LOST;
+    switch (state) {
+    case LINE_LOST:
+        return "LOST (both white)";
+    case LINE_LEFT_DEVIATION:
+        return "LEFT DEVIATION";
+    case LINE_RIGHT_DEVIATION:
+        return "RIGHT DEVIATION";
+    case LINE_JUNCTION:
+        return "JUNCTION";
+    default:
+        return "INVALID";
+    }
 }
 
-/*
- * A new state is only accepted after it has been read several times in a
- * row. LOST needs more samples, so a small gap or speck on the tape does
- * not stop the car, but a real end of line still does within ~40 ms.
- */
-LOCAL LINE_STATE	filtered = LINE_LOST;	/* start "stopped" */
-LOCAL LINE_STATE	candidate = LINE_LOST;
-LOCAL UINT		candidate_cnt;
-
-LOCAL LINE_STATE line_update(void)
+static const char *line_command(line_state_t state)
 {
-	LINE_STATE raw = bits_to_state((UB)line_reader_read_2bit());
-	UINT needed;
+    switch (state) {
+    case LINE_LOST:
+#if LINE_STOP_ON_LOST
+        return "STOP";
+#else
+        return "DRIVE";
+#endif
+    case LINE_LEFT_DEVIATION:
+#if LINE_STEER_INVERT
+        return "STEER_LEFT";
+#else
+        return "STEER_RIGHT";
+#endif
+    case LINE_RIGHT_DEVIATION:
+#if LINE_STEER_INVERT
+        return "STEER_RIGHT";
+#else
+        return "STEER_LEFT";
+#endif
+    case LINE_JUNCTION:
+        return "DRIVE";
+    default:
+        return "INVALID";
+    }
+}
 
-	if(raw == candidate) {
-		if(candidate_cnt < 1000U) candidate_cnt++;
-	} else {
-		candidate = raw;
-		candidate_cnt = 1;
-	}
+static line_state_t line_update(uint8_t *raw_bits)
+{
+    line_state_t raw_state;
+    UINT required;
 
-	needed = (candidate == LINE_LOST) ? LOST_SAMPLES : CONFIRM_SAMPLES;
-	if(candidate_cnt >= needed) {
-		filtered = candidate;
-	}
-	return filtered;
+    raw_state = bits_to_state(line_reader_read_2bit());
+    if (raw_state == candidate_state) {
+        if (candidate_count < 1000u) {
+            ++candidate_count;
+        }
+    } else {
+        candidate_state = raw_state;
+        candidate_count = 1u;
+    }
+
+    required = (candidate_state == LINE_LOST)
+                   ? LINE_LOST_SAMPLES
+                   : LINE_CONFIRM_SAMPLES;
+    if (candidate_count >= required) {
+        filtered_state = candidate_state;
+    }
+    *raw_bits = line_state_bits(filtered_state);
+
+    return filtered_state;
+}
+
+#if LINE_COMMISSIONING_MODE
+static void commissioning_phase(const char *surface)
+{
+    UINT samples;
+    UINT i;
+
+    samples = LINE_COMMISSION_PHASE_MS /
+              LINE_COMMISSION_SAMPLE_PERIOD_MS;
+    CONSOLE_LOG((UB *)"[line] commissioning: place sensors over %s for 5 s\n",
+                surface);
+    for (i = 0u; i < samples; ++i) {
+        line_reader_raw_t raw = line_reader_read_raw();
+
+        CONSOLE_LOG((UB *)"[line] raw GP%d=%d GP%d=%d (%s)\n",
+                    (INT)LINE_READER_LEFT_GUARD_GPIO, (INT)raw.left_guard,
+                    (INT)LINE_READER_RIGHT_GUARD_GPIO, (INT)raw.right_guard,
+                    surface);
+        tk_dly_tsk(LINE_COMMISSION_SAMPLE_PERIOD_MS);
+    }
+}
+#endif
+
+static void barcode_append_width(uint32_t widths[BARCODE_MAX_ELEMENTS],
+                                 uint32_t *count,
+                                 bool *overflow,
+                                 uint32_t width)
+{
+    if (*count < BARCODE_MAX_ELEMENTS) {
+        widths[*count] = width;
+        ++(*count);
+    } else {
+        *overflow = true;
+    }
+}
+
+static void barcode_report_scan(const uint32_t *widths,
+                                uint32_t count,
+                                bool overflow)
+{
+    barcode_decode_result_t result;
+    ER error;
+
+    if (overflow) {
+        CONSOLE_LOG((UB *)"[barcode] ERROR: too_many_elements\n");
+        return;
+    }
+
+    barcode_decode(widths, count, &result);
+    if (!result.valid) {
+        if (result.error_character != 0u) {
+            CONSOLE_LOG((UB *)"[barcode] ERROR: %s at char %u\n",
+                        barcode_error_name(result.error),
+                        result.error_character);
+        } else {
+            CONSOLE_LOG((UB *)"[barcode] ERROR: %s\n",
+                        barcode_error_name(result.error));
+        }
+        return;
+    }
+
+    error = barcode_scanner_publish_decoded(result.text);
+    if (error < E_OK) {
+        CONSOLE_LOG((UB *)"[barcode] ERROR: result_store er=%d\n", error);
+        return;
+    }
+
+    CONSOLE_LOG((UB *)"[barcode] DECODED: \"%s\" (dir=%s, elems=%u)\n",
+                result.text,
+                (result.direction == BARCODE_DIRECTION_FORWARD) ? "fwd" : "rev",
+                result.element_count);
 }
 
 void line_task(INT stacd, void *exinf)
 {
-	LINE_STATE		s, last = (LINE_STATE)-1;
-	line_reader_raw_t	raw;
-	char			bitstr[3];
-	UINT			since_beat = 0;
-	BOOL			barcode_black, last_barcode_black;
-	INT			barcode_raw;
-	INT			i;
+    line_state_t state;
+    line_state_t last_state = (line_state_t)4;
+    uint32_t barcode_widths[BARCODE_MAX_ELEMENTS];
+    uint32_t barcode_width_count = 0u;
+    uint32_t segment_start_us = 0u;
+    uint32_t last_edge_us = 0u;
+    UINT heartbeat_ms = 0u;
+    uint8_t raw_bits;
+    char bit_text[3];
+    bool barcode_ready;
+    bool barcode_black;
+    bool barcode_scan_active = false;
+    bool barcode_overflow = false;
+    bool barcode_current_black = false;
+    INT i;
 
-	(void)stacd; (void)exinf;
+    (void)stacd;
+    (void)exinf;
 
-	line_reader_init(NULL);		/* Uses the configured sensor polarity. */
-	barcode_scanner_init(NULL);
+    for (i = 0; i < 200 && tm_usb_state() < 2u; ++i) {
+        tk_dly_tsk(100);
+    }
+    tk_dly_tsk(800);
 
-	/* Wait for the USB serial link, as monitor_task does, so the header
-	   is not printed into a ring nobody is reading yet. */
-	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
-		tk_dly_tsk(100);
-	}
-	tk_dly_tsk(800);
+    CONSOLE_LOG((UB *)"\n=== Line reader started ===\n");
+    CONSOLE_LOG((UB *)"Left sensor: GP%d, right sensor: GP%d (digital, 1=black)\n",
+                (INT)LINE_READER_LEFT_GUARD_GPIO,
+                (INT)LINE_READER_RIGHT_GUARD_GPIO);
+    CONSOLE_LOG((UB *)"Barcode: GP%d ADC%d; battery sense reserved: GP%d ADC%d\n",
+                (INT)BARCODE_SENSOR_GPIO, (INT)BARCODE_SENSOR_ADC_CHANNEL,
+                (INT)BATTERY_SENSE_GPIO, (INT)BATTERY_SENSE_ADC_CHANNEL);
 
-	tm_printf((UB *)"\n=== Line reader started ===\n");
-	tm_printf((UB *)"Left sensor  : GP%d\n", (INT)LINE_READER_LEFT_GUARD_GPIO);
-	tm_printf((UB *)"Right sensor : GP%d\n", (INT)LINE_READER_RIGHT_GUARD_GPIO);
-	tm_printf((UB *)"Bits shown as RL, 1 = black\n\n");
+#if LINE_SENSOR_MOTOR_PIN_CONFLICT
+    CONSOLE_LOG((UB *)"[pin conflict] line sensor GP%d overlaps motor driver "
+                "GP%d-GP%d; resolve wiring before connecting hardware\n",
+                (INT)LINE_SENSOR_LEFT_GPIO, (INT)MOTOR_DRIVER_GPIO_1,
+                (INT)MOTOR_DRIVER_GPIO_4);
+#endif
+#if LINE_SENSOR_BATTERY_PIN_CONFLICT || BARCODE_BATTERY_PIN_CONFLICT
+    CONSOLE_LOG((UB *)"[pin conflict] sensor and battery-sense assignments "
+                "overlap; resolve wiring before connecting hardware\n");
+#endif
 
-	barcode_black = barcode_scanner_read_black() ? TRUE : FALSE;
-	last_barcode_black = barcode_black;
-	barcode_raw = (INT)barcode_scanner_get_last_raw();
-	tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
-		  (INT)BARCODE_SCANNER_GPIO, barcode_raw, (INT)barcode_black);
+    line_reader_init(NULL);
+    {
+        ER error = barcode_scanner_init(NULL);
+        barcode_ready = (error >= E_OK);
+        if (!barcode_ready) {
+            CONSOLE_LOG((UB *)"[barcode] ERROR: scanner_init er=%d\n", error);
+        }
+    }
 
+#if LINE_COMMISSIONING_MODE
+    commissioning_phase("white");
+    commissioning_phase("black");
+#endif
 
-	while(1) {
-		s = line_update();
-		barcode_black = barcode_scanner_read_black() ? TRUE : FALSE;
-		barcode_raw = (INT)barcode_scanner_get_last_raw();
+    if (barcode_ready) {
+        barcode_current_black = barcode_scanner_read_black();
+        segment_start_us = BARCODE_TIMER_RAWL;
+        last_edge_us = segment_start_us;
+    }
 
-		if(barcode_black != last_barcode_black) {
-			tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
-				  (INT)BARCODE_SCANNER_GPIO, barcode_raw,
-				  (INT)barcode_black);
-			last_barcode_black = barcode_black;
-		}
+    while (1) {
+        uint32_t now_us;
 
-		if(s != last) {
-			line_reader_format_2bit((UB)line_reader_read_2bit(), bitstr);
-			tm_printf((UB *)"[line] RL=%s | %s | cmd: %s\n",
-				  bitstr, state_name(s), cmd_name(s));
-			last = s;
-		}
+        state = line_update(&raw_bits);
+        if (state != last_state) {
+            line_reader_format_2bit(raw_bits, bit_text);
+            CONSOLE_LOG((UB *)"[line] RL=%s | %s | cmd: %s\n",
+                        bit_text, line_state_name(state), line_command(state));
+            last_state = state;
+        }
 
-		/* Heartbeat with the raw pin levels, so a wiring or polarity
-		   problem is visible even when the state never changes. */
-		since_beat += SAMPLE_PERIOD_MS;
-		if(since_beat >= HEARTBEAT_MS) {
-			since_beat = 0;
-			raw = line_reader_get_last_raw();
-			tm_printf((UB *)"[line] raw pins: GP%d=%d GP%d=%d\n",
-				  (INT)LINE_READER_LEFT_GUARD_GPIO, (INT)raw.left_guard,
-				  (INT)LINE_READER_RIGHT_GUARD_GPIO, (INT)raw.right_guard);
-			tm_printf((UB *)"[barcode] GP%d raw=%d black=%d\n",
-				  (INT)BARCODE_SCANNER_GPIO, barcode_raw,
-				  (INT)barcode_black);
-		}
+        if (barcode_ready) {
+            barcode_black = barcode_scanner_read_black();
+            now_us = BARCODE_TIMER_RAWL;
+            if (barcode_black != barcode_current_black) {
+                uint32_t width = now_us - segment_start_us;
 
-		tk_dly_tsk(SAMPLE_PERIOD_MS);
-	}
+                if (barcode_black) {
+                    if (barcode_scan_active) {
+                        barcode_append_width(barcode_widths,
+                                             &barcode_width_count,
+                                             &barcode_overflow, width);
+                    } else {
+                        barcode_scan_active = true;
+                        barcode_width_count = 0u;
+                        barcode_overflow = false;
+                    }
+                } else if (barcode_scan_active) {
+                    barcode_append_width(barcode_widths,
+                                         &barcode_width_count,
+                                         &barcode_overflow, width);
+                }
+
+                segment_start_us = now_us;
+                last_edge_us = now_us;
+                barcode_current_black = barcode_black;
+            } else if (barcode_scan_active && !barcode_current_black &&
+                       (uint32_t)(now_us - last_edge_us) >=
+                           BARCODE_SCAN_END_GAP_US) {
+                barcode_report_scan(barcode_widths, barcode_width_count,
+                                    barcode_overflow);
+                barcode_scan_active = false;
+                barcode_width_count = 0u;
+                barcode_overflow = false;
+            }
+        }
+
+        heartbeat_ms += LINE_SAMPLE_PERIOD_MS;
+        if (heartbeat_ms >= LINE_HEARTBEAT_MS) {
+            line_reader_raw_t raw = line_reader_get_last_raw();
+
+            heartbeat_ms = 0u;
+            CONSOLE_LOG((UB *)"[line] raw pins: GP%d=%d GP%d=%d\n",
+                        (INT)LINE_READER_LEFT_GUARD_GPIO, (INT)raw.left_guard,
+                        (INT)LINE_READER_RIGHT_GUARD_GPIO, (INT)raw.right_guard);
+        }
+
+        tk_dly_tsk(LINE_SAMPLE_PERIOD_MS);
+    }
 }

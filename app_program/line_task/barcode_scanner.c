@@ -9,7 +9,7 @@
  * instead of freezing the task.
  */
 
-#include <stddef.h>
+#include <tk/tkernel.h>
 
 #include "barcode_scanner.h"
 
@@ -22,27 +22,29 @@
 /* Atomic alias offsets: +0x2000 sets bits, +0x3000 clears bits. */
 #define ALIAS_CLR           0x3000UL
 
-#define RESETS_BASE         0x4000C000UL
-#define RESETS_RESET_CLR    REG32(RESETS_BASE + ALIAS_CLR + 0x00UL)
-#define RESETS_RESET_DONE   REG32(RESETS_BASE + 0x08UL)
+#define BARCODE_RESETS_BASE      0x4000C000UL
+#define BARCODE_RESETS_RESET_CLR REG32(BARCODE_RESETS_BASE + ALIAS_CLR + 0x00UL)
+#define BARCODE_RESETS_RESET_DONE REG32(BARCODE_RESETS_BASE + 0x08UL)
 #define RESET_ADC_BIT       (1u << 0)
 
-#define CLOCKS_BASE         0x40008000UL
-#define CLK_ADC_CTRL        REG32(CLOCKS_BASE + 0x60UL)
-#define CLK_ADC_ENABLE      (1u << 11)
+#define BARCODE_CLOCKS_BASE     0x40008000UL
+#define BARCODE_CLK_ADC_CTRL    REG32(BARCODE_CLOCKS_BASE + 0x60UL)
+#define BARCODE_CLK_ADC_ENABLE (1u << 11)
 
-#define IO_BANK0_BASE       0x40014000UL
-#define PADS_BANK0_BASE     0x4001C000UL
-#define GPIO_CTRL(pin)      REG32(IO_BANK0_BASE + 0x04UL + 8UL * (pin))
-#define PAD_CTRL_CLR(pin)   REG32(PADS_BANK0_BASE + ALIAS_CLR + 0x04UL + 4UL * (pin))
+#define BARCODE_IO_BANK0_BASE  0x40014000UL
+#define BARCODE_PADS_BANK0_BASE 0x4001C000UL
+#define BARCODE_GPIO_CTRL(pin) \
+    REG32(BARCODE_IO_BANK0_BASE + 0x04UL + 8UL * (pin))
+#define BARCODE_PAD_CTRL_CLR(pin) \
+    REG32(BARCODE_PADS_BANK0_BASE + ALIAS_CLR + 0x04UL + 4UL * (pin))
 #define FUNCSEL_NULL        0x1Fu
 #define PAD_IE              (1u << 6)   /* digital input enable */
 #define PAD_PUE             (1u << 3)   /* pull-up              */
 #define PAD_PDE             (1u << 2)   /* pull-down            */
 
-#define ADC_BASE            0x4004C000UL
-#define ADC_CS              REG32(ADC_BASE + 0x00UL)
-#define ADC_RESULT          REG32(ADC_BASE + 0x04UL)
+#define BARCODE_ADC_BASE    0x4004C000UL
+#define BARCODE_ADC_CS      REG32(BARCODE_ADC_BASE + 0x00UL)
+#define BARCODE_ADC_RESULT  REG32(BARCODE_ADC_BASE + 0x04UL)
 #define ADC_CS_EN           (1u << 0)
 #define ADC_CS_START_ONCE   (1u << 2)
 #define ADC_CS_READY        (1u << 8)
@@ -54,6 +56,8 @@ typedef struct {
     barcode_scanner_config_t config;
     uint16_t last_raw;
     bool black;
+    char decoded[BARCODE_SCANNER_RESULT_SIZE];
+    ID result_mutex;
 } barcode_scanner_state_t;
 
 static barcode_scanner_state_t state;
@@ -74,35 +78,36 @@ static bool wait_set(volatile uint32_t *reg, uint32_t mask)
 /** Takes the ADC out of reset, makes sure its clock runs, and enables it. */
 static void adc_hw_init(void)
 {
-    RESETS_RESET_CLR = RESET_ADC_BIT;
-    (void)wait_set(&RESETS_RESET_DONE, RESET_ADC_BIT);
+    BARCODE_RESETS_RESET_CLR = RESET_ADC_BIT;
+    (void)wait_set(&BARCODE_RESETS_RESET_DONE, RESET_ADC_BIT);
 
     /* The ADC needs its own 48 MHz clock. It is normally already running
        from the USB PLL; only start it if the BSP left it off. */
-    if ((CLK_ADC_CTRL & CLK_ADC_ENABLE) == 0u) {
-        CLK_ADC_CTRL = CLK_ADC_ENABLE;      /* AUXSRC = 0: USB PLL */
+    if ((BARCODE_CLK_ADC_CTRL & BARCODE_CLK_ADC_ENABLE) == 0u) {
+        BARCODE_CLK_ADC_CTRL = BARCODE_CLK_ADC_ENABLE; /* AUXSRC = 0 */
     }
 
-    ADC_CS = ADC_CS_EN;
-    (void)wait_set(&ADC_CS, ADC_CS_READY);
+    BARCODE_ADC_CS = ADC_CS_EN;
+    (void)wait_set(&BARCODE_ADC_CS, ADC_CS_READY);
 }
 
 /** Makes GP26 an analogue input: no function, no digital input, no pulls. */
 static void adc_pin_init(uint32_t pin)
 {
-    GPIO_CTRL(pin) = FUNCSEL_NULL;
-    PAD_CTRL_CLR(pin) = (PAD_IE | PAD_PUE | PAD_PDE);
+    BARCODE_GPIO_CTRL(pin) = FUNCSEL_NULL;
+    BARCODE_PAD_CTRL_CLR(pin) = (PAD_IE | PAD_PUE | PAD_PDE);
 }
 
 /** One conversion on the sensor's channel. */
 static uint16_t adc_read_once(void)
 {
-    ADC_CS = ADC_CS_EN | ADC_CS_START_ONCE |
-             ((uint32_t)BARCODE_SCANNER_ADC_CHANNEL << ADC_CS_AINSEL_SHIFT);
+    BARCODE_ADC_CS = ADC_CS_EN | ADC_CS_START_ONCE |
+                     ((uint32_t)BARCODE_SCANNER_ADC_CHANNEL <<
+                      ADC_CS_AINSEL_SHIFT);
 
-    (void)wait_set(&ADC_CS, ADC_CS_READY);
+    (void)wait_set(&BARCODE_ADC_CS, ADC_CS_READY);
 
-    return (uint16_t)(ADC_RESULT & 0x0FFFu);
+    return (uint16_t)(BARCODE_ADC_RESULT & 0x0FFFu);
 }
 
 /** Reads the ADC repeatedly and averages the samples to reduce noise. */
@@ -125,22 +130,18 @@ static uint16_t read_average(void)
  * the black state, preventing noisy values near the threshold from flickering.
  */
 static bool detect_black(uint16_t reading,
-                         uint16_t threshold,
-                         uint16_t hysteresis,
-                         bool black_is_high,
+                         const barcode_scanner_config_t *config,
                          bool was_black)
 {
-    uint16_t lower = (threshold > hysteresis)
-                         ? (uint16_t)(threshold - hysteresis)
-                         : 0u;
-    uint32_t upper_sum = (uint32_t)threshold + hysteresis;
-    uint16_t upper = (upper_sum < 4095u) ? (uint16_t)upper_sum : 4095u;
-
-    if (black_is_high) {
-        return was_black ? (reading >= lower) : (reading >= upper);
+    if (config->black_is_high) {
+        return was_black
+                   ? (reading >= config->black_falling_threshold)
+                   : (reading >= config->black_rising_threshold);
     }
 
-    return was_black ? (reading <= upper) : (reading <= lower);
+    return was_black
+               ? (reading <= config->black_rising_threshold)
+               : (reading <= config->black_falling_threshold);
 }
 
 /* ------------------------------- public ------------------------------- */
@@ -148,23 +149,33 @@ static bool detect_black(uint16_t reading,
 barcode_scanner_config_t barcode_scanner_default_config(void)
 {
     barcode_scanner_config_t config = {
-        .threshold = 2048u,
-        .hysteresis = 64u,
-        .black_is_high = true,
+        .black_rising_threshold = BARCODE_BLACK_RISING_THRESHOLD,
+        .black_falling_threshold = BARCODE_BLACK_FALLING_THRESHOLD,
+        .black_is_high = (BARCODE_BLACK_IS_HIGH != 0u),
     };
 
     return config;
 }
 
-void barcode_scanner_init(const barcode_scanner_config_t *config)
+ER barcode_scanner_init(const barcode_scanner_config_t *config)
 {
+    T_CMTX mutex_config = { 0 };
+
     state.config =
         (config != NULL) ? *config : barcode_scanner_default_config();
     state.black = false;
     state.last_raw = 0u;
+    state.decoded[0] = '\0';
 
     adc_hw_init();
     adc_pin_init(BARCODE_SCANNER_GPIO);
+    mutex_config.mtxatr = TA_TFIFO | TA_INHERIT;
+    state.result_mutex = tk_cre_mtx(&mutex_config);
+    if (state.result_mutex <= E_OK) {
+        return (ER)state.result_mutex;
+    }
+
+    return E_OK;
 }
 
 uint16_t barcode_scanner_read_raw(void)
@@ -179,9 +190,7 @@ bool barcode_scanner_read_black(void)
 
     state.black = detect_black(
         reading,
-        state.config.threshold,
-        state.config.hysteresis,
-        state.config.black_is_high,
+        &state.config,
         state.black);
 
     return state.black;
@@ -190,4 +199,66 @@ bool barcode_scanner_read_black(void)
 uint16_t barcode_scanner_get_last_raw(void)
 {
     return state.last_raw;
+}
+
+ER barcode_scanner_publish_decoded(const char *text)
+{
+    uint32_t i;
+    ER error;
+
+    if (text == NULL) {
+        return E_PAR;
+    }
+
+    if (state.result_mutex <= E_OK) {
+        return E_OBJ;
+    }
+
+    error = tk_loc_mtx(state.result_mutex, TMO_FEVR);
+    if (error < E_OK) {
+        return error;
+    }
+
+    for (i = 0u; i < BARCODE_SCANNER_RESULT_SIZE - 1u &&
+                 text[i] != '\0'; ++i) {
+        state.decoded[i] = text[i];
+    }
+    if (i == BARCODE_SCANNER_RESULT_SIZE - 1u && text[i] != '\0') {
+        error = tk_unl_mtx(state.result_mutex);
+        return (error < E_OK) ? error : E_PAR;
+    }
+    state.decoded[i] = '\0';
+    error = tk_unl_mtx(state.result_mutex);
+
+    return error;
+}
+
+ER barcode_scanner_get_decoded(char *buffer, uint32_t buffer_size)
+{
+    uint32_t i;
+    ER error;
+
+    if (buffer == NULL || buffer_size == 0u ||
+        state.result_mutex <= E_OK) {
+        return E_PAR;
+    }
+
+    error = tk_loc_mtx(state.result_mutex, TMO_FEVR);
+    if (error < E_OK) {
+        return error;
+    }
+
+    for (i = 0u; i + 1u < buffer_size &&
+                 i < BARCODE_SCANNER_RESULT_SIZE - 1u &&
+                 state.decoded[i] != '\0'; ++i) {
+        buffer[i] = state.decoded[i];
+    }
+    if (i + 1u == buffer_size && state.decoded[i] != '\0') {
+        error = tk_unl_mtx(state.result_mutex);
+        return (error < E_OK) ? error : E_PAR;
+    }
+    buffer[i] = '\0';
+    error = tk_unl_mtx(state.result_mutex);
+
+    return error;
 }

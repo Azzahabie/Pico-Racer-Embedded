@@ -4,23 +4,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* The barcode sensor is an analogue input on GP26, which is ADC channel 0.
- * Only GP26-GP29 have an ADC: GP26=ch0, GP27=ch1, GP28=ch2, GP29=ch3.
- * If the pin changes, change BOTH numbers together. */
-#define BARCODE_SCANNER_GPIO        (26u)
-#define BARCODE_SCANNER_ADC_CHANNEL (0u)
+#include <tk/tkernel.h>
+
+#include "line_config.h"
+
+#define BARCODE_SCANNER_GPIO        BARCODE_SENSOR_GPIO
+#define BARCODE_SCANNER_ADC_CHANNEL BARCODE_SENSOR_ADC_CHANNEL
+#define BARCODE_SCANNER_RESULT_SIZE (BARCODE_MAX_CHARACTERS + 1u)
 
 typedef struct {
-    uint16_t threshold;
-    uint16_t hysteresis;
-
-    /* Set true when a reading above the threshold means black. */
+    uint16_t black_rising_threshold;
+    uint16_t black_falling_threshold;
     bool black_is_high;
 } barcode_scanner_config_t;
 
 /**
- * Creates a barcode-sensor configuration with safe 12-bit ADC starting values.
- * The threshold should be calibrated on the actual black and white surfaces.
+ * Creates the configured 12-bit ADC thresholds and signal polarity.
  *
  * @return A complete configuration for barcode_scanner_init().
  */
@@ -29,10 +28,10 @@ barcode_scanner_config_t barcode_scanner_default_config(void);
 /**
  * Initializes the ADC and configures GP26 as an analogue input.
  *
- * @param config Threshold, hysteresis and signal polarity. Pass NULL to use
+ * @param config Edge thresholds and signal polarity. Pass NULL to use
  *               barcode_scanner_default_config(). The configuration is copied.
  */
-void barcode_scanner_init(const barcode_scanner_config_t *config);
+ER barcode_scanner_init(const barcode_scanner_config_t *config);
 
 /**
  * Reads and averages the barcode sensor.
@@ -52,4 +51,10 @@ bool barcode_scanner_read_black(void);
 /** Returns the raw ADC value captured by the most recent classified read. */
 uint16_t barcode_scanner_get_last_raw(void);
 
-#endif 
+/** Publishes the latest decoded text for other tasks to read safely. */
+ER barcode_scanner_publish_decoded(const char *text);
+
+/** Copies the most recently decoded text, including its terminator. */
+ER barcode_scanner_get_decoded(char *buffer, uint32_t buffer_size);
+
+#endif
