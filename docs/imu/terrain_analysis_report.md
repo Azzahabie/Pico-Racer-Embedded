@@ -23,6 +23,27 @@ measured.
 | Task | imu_task, priority 12, pinned to core 1 (`TA_ASSPRC`) |
 | Console | one `[imu]` status line per second (FR-29 rate), events printed as they happen |
 
+**LSM303D, not LSM303DLHC.** Our GY-511 boards carry the LSM303D variant: accelerometer
+and magnetometer share one I2C address, 0x1D (the DLHC uses 0x19 and 0x1E). The code
+identifies the chip by its WHO_AM_I register instead of assuming one, and uses the
+LSM303D register map, checked against the datasheet:
+
+| Register / value | LSM303D datasheet | Code (`imu_task.c`) |
+|---|---|---|
+| Address | 0x1D (SA0 high), 0x1E (SA0 low) | tries 0x1D, then 0x1E |
+| WHO_AM_I | 0x0F = 0x49 | checked at boot |
+| Accel output | OUT_X_L_A 0x28 … OUT_Z_H_A 0x2D, little-endian | 6 bytes from 0x28, auto-increment (0x80) |
+| Mag output | OUT_X_L_M 0x08 … OUT_Z_H_M 0x0D | 6 bytes from 0x08, auto-increment |
+| CTRL1 0x20 | 100 Hz, BDU, X/Y/Z enabled | 0x6F |
+| CTRL2 0x21 | ±8 g | 0x18 |
+| CTRL5 0x24 | mag high resolution, 6.25 Hz | 0x64 |
+| CTRL6 0x25 | ±4 gauss | 0x20 |
+| CTRL7 0x26 | continuous conversion | 0x00 |
+| Accel scale | 0.244 mg/LSB at ±8 g | × 244 / 1000 |
+| Mag scale | 0.160 mgauss/LSB at ±4 gauss | × 4 / 25 |
+
+Still and level, the car reads 0, 0, 1000 mg (±2 mg), which confirms the scale.
+
 **How the runs were done.** The normal firmware keeps the motors braked, so every
 run was a **hand push** over the ramp with both wheels on the ground. Encoders still
 count while pushed. This matters for the error analysis (§6): with the motors braked,
