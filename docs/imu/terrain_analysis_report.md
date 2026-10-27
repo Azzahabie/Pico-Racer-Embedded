@@ -94,7 +94,7 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 | End, driven over | back within 2 mm of start height, or level for 40 mm **once on the way down** | a level top longer than 40 mm otherwise ended the hump on the top and counted the way down as a second hump |
 | End, safety cap | level for 250 mm | far side that drops off too fast to read as a slope |
 | End, stopped | still for 1 s: hump counted, then the car is followed "on top" until it is back down | backing off a ramp once counted as a new hump |
-| Stopped on the slope | still, tilt ≥ 65 mg and under the 4 mm minimum: the climb stays open for the next push | stopped 2.4 mm up a 9 mm ramp, the climb was ignored and the rest of the ramp was never counted (2026-10-28) |
+| Stopped on the slope | still, tilt ≥ 65 mg and under the 4 mm minimum: the climb stays open for the next push | stopped 2.4 mm up the 10 mm ramp, the climb was ignored and the rest of the ramp was never counted (2026-10-28) |
 | Picked up | stopped but tilt changes > 60 mg between windows: "on top" ends | carried back to the start, the next climb was swallowed |
 | Minimum | 4 mm | shorter climbs are reported as ignored |
 | Fault / tilt past T | unfinished hump discarded (Statechart 6.4) | held on its side, a few mm of wheel turn once read as a 6 mm "hump" |
@@ -206,22 +206,23 @@ discarded as abnormal tilt under the old T = 20° (§4.6), so this setup still n
 2 more clean passes for the 5 that NFR-05 asks for. Pass 3 is the first over-read:
 skid goes either way, depending on which wheel slips.
 
-### 4.4 9 mm ramp, final firmware (2026-10-28); target ±2.0 mm, limit ±5 mm
+### 4.4 Lower practice ramp, final firmware (2026-10-28) — 10 mm; target ±2.0 mm, limit ±5 mm
 
-Ramp height 9 mm (ruler, 2026-10-28). Car calibrated on the flat floor, mission
-RUNNING, commit `981208e`. Each pass pushed up the ramp and stopped on top.
+The same 10 mm ramp as §4.1. Car calibrated on the flat floor, mission RUNNING,
+commit `981208e`. Each pass pushed up the ramp and stopped on top.
 
 | Pass | Reported (mm) | Error (mm) | Peak tilt | Wheels | Target | Limit |
 |---|---|---|---|---|---|---|
-| 1 | 6.6 | −2.4 | 114 mg | pivoting: right wheel up to ~4× left, up to 31 °/s | ❌ | ✅ |
-| 2 | 6.5 | −2.5 | 199 mg | pivoting: left wheel nearly stopped, up to 117 °/s | ❌ | ✅ |
-| 3 | 6.6 | −2.4 | 140 mg | pivoting: left wheel stopped, up to 94 °/s | ❌ | ✅ |
+| 1 | 6.6 | −3.4 | 114 mg | pivoting: right wheel up to ~4× left, up to 31 °/s | ❌ | ✅ |
+| 2 | 6.5 | −3.5 | 199 mg | pivoting: left wheel nearly stopped, up to 117 °/s | ❌ | ✅ |
+| 3 | 6.6 | −3.4 | 140 mg | pivoting: left wheel stopped, up to 94 °/s | ❌ | ✅ |
 
 **Target 0/3, limit 3/3**, and exactly one hump per pass with no false fault. The
 three agree within 0.1 mm, so the under-read is systematic, and every pass
 pivoted: distance is the mean of both wheels, which under-reads a pivot (§6). The
 straightest push of the day, on an earlier build of the same session, read
-7.6 mm (−1.4 mm). Self-driven passes are needed to tell the method's own error
+7.6 mm (−2.4 mm). The pivoting passes read 2.3–2.9 mm lower than the clean
+passes of §4.1 on the same ramp (−0.6…−1.1 mm). Self-driven passes are needed to tell the method's own error
 from the push.
 
 ### 4.5 Why no correction factor
@@ -240,7 +241,7 @@ every clean traversal recorded is within the NFR-05 target.
 | N | 3 samples | 3 (30 ms) | unchanged |
 | Jolt filter | — | samples with \|a\| outside 0.7…1.3 g do not count to N | crashes push x/y but pull \|a\| away from 1 g |
 | Knock filter | — | a sample over T only counts if z < 950 mg as well (cos 25° = 906 mg) | a sideways knock under ~0.8 g stays inside the \|a\| band and read 25.7–26.9° on a level car: two false faults on 2026-10-28 (IMPACT while paused; pushed onto the ramp edge), status under 4° straight after |
-| Slope hold | — | 65 mg | stopped on the 9 mm ramp at 4.6–5.9° (80–103 mg); a car left on a hump edge after a pivot rests at ~50 mg |
+| Slope hold | — | 65 mg | stopped on the 10 mm ramp at 4.6–5.9° (80–103 mg); a car left on a hump edge after a pivot rests at ~50 mg |
 | Y (no data) | 50 ms | 50 ms (5 samples) | unchanged |
 | θ_on | 5° for 3 samples | **2.9° (50 mg) for 3 × 100 ms windows** | a 10 mm ramp peaks at only 6–10°, so a lower onset catches more of the climb; windows (not single samples) keep it above the 1.7° floor variation |
 | θ_off | 3° | **2.0° (35 mg)**, plus 40 mm on the way down | floor spots differ by up to 1.7° |
@@ -307,14 +308,14 @@ variation worth sampling further.
    open (§3.2), but a mission pause discards an unfinished hump, as planned. Not
    expected on the course: the car drives up and over without pausing.
 4. **Pivoting under-reads.** Distance is the mean of both wheels, so a push that
-   swings onto the ramp on one wheel reads low: −2.4 mm on 9 mm, three times
+   swings onto the ramp on one wheel reads low: −3.4 mm on 10 mm, three times
    (§4.4).
 5. **A knock that also dips z can still trip T.** The knock filter needs z to
    drop as a real tilt does; one knock in PAUSED did both and faulted at 25.7°.
    The `IMU_CSV` build can capture the raw samples to tune it.
 6. **Calibration accepts a tilted car.** x and y may be up to ±150 mg from level,
    so calibrating on the ramp (5.7°) was accepted, and every tilt after it read
-   ~6° off (one 15 mm "hump" on the 9 mm ramp). Calibrate on flat floor.
+   ~6° off (one 15 mm "hump" on the 10 mm ramp). Calibrate on flat floor.
 7. **Half-connected SDA.** With the wire loose, half the reads failed and the rest
    read 30–65° while the car was (probably) level. The outcome is still a fault, but
    wrong-yet-valid readings are possible.
@@ -339,7 +340,7 @@ variation worth sampling further.
 | FR-23 / FR-29 | 🟡 tilt, class, hump fields ready in the word; sending to comms_task waits on Buddy 1 |
 | FR-27 | 🟡 classifier built and running on the car; thresholds not yet validated under motor power |
 | FR-28 | ✅ T = 25°, N = 3; normal humps (up to 15.7°) do not trip; knocks filtered (one residual false fault, §6) |
-| NFR-05 | 🟡 revised to ±2 mm / 20 % (limit ±5 mm), self-driven. Hand pushes: every clean pass within target (10 mm 3/3, 12 mm 1/1, 23.5 mm 3/3); limit 10 mm 8/8, 12 mm 2/3, 23.5 mm 3/5, 9 mm 3/3. Failures traced to wheel skid or pivoting. Self-driven passes still to run |
+| NFR-05 | 🟡 revised to ±2 mm / 20 % (limit ±5 mm), self-driven. Hand pushes: every clean pass within target (10 mm 3/3, 12 mm 1/1, 23.5 mm 3/3); limit 10 mm 11/11 (8 earlier + 3 on the final build), 12 mm 2/3, 23.5 mm 3/5. Failures traced to wheel skid or pivoting. Self-driven passes still to run |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |
 | NFR-18 | ✅ brake 47–61 µs after STOP_IMU (limit 20 ms) |
 | NFR-19 | ✅ 20.5–20.8 ms over 4 trials (limit 40 ms) |

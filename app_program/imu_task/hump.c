@@ -316,7 +316,7 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 	still_win = (ad <= HUMP_STILL_MM) ? still_win + 1 : 0;
 	/* Stopped part way up, still on the slope, and too low to count yet:
 	   the climb is not over, so hold it for the next push.  Ending it
-	   there lost a 9 mm ramp twice (2026-10-28): "ignored, 2.4 mm", then
+	   there lost the 10 mm ramp twice (2026-10-28): "ignored, 2.4 mm", then
 	   the rest of the climb was only followed as "on top"; or a new climb
 	   from 0 that was "ignored, 3.0 mm" too.  Not below HUMP_SLOPE_MG: a
 	   wheel left on the edge after a pivot rests at ~50 mg. */
