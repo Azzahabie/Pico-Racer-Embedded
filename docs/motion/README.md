@@ -20,7 +20,9 @@ STOP_IMU). It also publishes `distance_state`, the distance and turn rate
 | `app_program/motor_task/motion_wdt.c/.h` | RP2040 hardware watchdog: armed at start-up, fed at the end of every completed tick, and the reason for the last reset. |
 | `app_program/motor_task/motion_cfg.h` | Every pin, flag and tunable in one place. |
 | `app_program/common/gpio_irq.c/.h` | Buddy 5's shared GPIO dispatcher, the one owner of the GPIO bank interrupt. Motion attaches GP0..GP3 one pin at a time on core 1 (see "For the team"). |
+| `app_program/motor_task/motion_sm.c/.h` | Statechart 6.2: motion's states and the rules for moving between them, as pure logic. The state and its history fit in one byte. |
 | `tests/motion_lib/` | Host unit tests for `motion_lib` (UBSan/ASan). |
+| `tests/motion_sm/` | Host unit tests for the statechart: every transition, the replies and the interrupted-turn rules. |
 | `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
 | `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
 | `tests/motion_wdt/` | The watchdog driver against fake registers: the arming steps and their order, LOAD, the feed, the reset cause. |
@@ -263,6 +265,90 @@ doubling (erratum RP2040-E1) is wrong for this chip.
 hold the Robo Pico's RESET button (it holds RUN low) and measure GP8, GP9,
 GP10 and GP11 to GND. All four should read about 0 V (brake).
 
+### Statechart (design 6.2)
+
+In the normal image (`MOTION_BENCH` 0) motion runs the statechart from
+design 6.2 once per tick, after the stall check (`motion_sm.c`). Bench
+images keep their bench tests and do not run it.
+
+| State | What it means | Leaves when |
+|---|---|---|
+| IDLE | mission not Running; braked | mission Running: LINE_FOLLOW, or BRAKED if a STOP bit is set |
+| LINE_FOLLOW | following the line | junction command: TURNING; line missing for [t_lost]: LINE_SEARCH |
+| TURNING | junction turn | target reached: MOVE_DONE, then LINE_FOLLOW (line seen) or LINE_SEARCH |
+| BYPASS | around an obstacle | done: LINE_SEARCH |
+| LINE_SEARCH | looking for the line | found: LINE_FOUND, LINE_FOLLOW; [L_search] travelled: LINE_LOST, LINE_LOST |
+| LINE_LOST | braked; nav_ctrl_task decides | mission paused: IDLE |
+| BRAKED | a STOP bit is set | reverse command with STOP_IMU clear: REVERSING; every STOP clear: BYPASS if one is queued, else back to where it was (history) |
+| REVERSING | backing up, STOP_SCAN still set | distance reached or STOP_IMU: REVERSE_DONE, BRAKED |
+| FAULT | stall or encoder fault; braked; MOTION_FAULT sent | FAULT_CLEAR(MOTION) only: IDLE |
+
+From any state but FAULT, the mission leaving Running goes to IDLE; a
+STOP bit in any Active state (LINE_FOLLOW, TURNING, BYPASS, LINE_SEARCH,
+LINE_LOST) goes to BRAKED; a stall or encoder fault while driving goes
+to FAULT. A junction command anywhere but LINE_FOLLOW gets
+CMD_REJECTED. FAULT_CLEAR(IMU) clears STOP_IMU in any state. Replies go
+on nav_flg (MOVE_DONE, CMD_REJECTED, MOTION_FAULT, LINE_FOUND, LINE_LOST)
+and scan_flg (REVERSE_DONE, and LINE_FOUND or LINE_LOST after a bypass).
+
+The rules agreed with Buddy 5 for an interrupted turn: if STOP_SCAN
+clears with nothing queued, the turn carries on and then sends MOVE_DONE;
+if a reverse or bypass command arrives, or the mission leaves Running, the
+turn is dropped with exactly one CMD_REJECTED.
+
+Decided here, where the design is silent:
+- A dropped turn resumes as LINE_FOLLOW once the STOP clears.
+- REVERSE_DONE is sent on every exit from REVERSING (the diagram's note)
+  and when a reverse is refused because STOP_IMU is set (REVIEW D12), so
+  scan_task never waits out its 5 s timeout. A refused reverse also ends
+  an interrupted turn with one CMD_REJECTED.
+- `distance_state` is never reset, not even for a new mission: imu_task
+  works from differences, and a jump would read as a sudden movement.
+  The mission distance (Section 4: reset on a new mission, kept on a
+  resume) comes with the telemetry record, step 1.8.
+
+Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
+
+| # | From | To | When |
+|---|---|---|---|
+| T1 | IDLE | LINE_FOLLOW | mission Running, no STOP bit |
+| T2 | IDLE | BRAKED | mission Running, a STOP bit set |
+| T3 | any Active state | IDLE | mission not Running |
+| T4 | BRAKED, REVERSING | IDLE | mission not Running (REVERSE_DONE from REVERSING) |
+| T5 | any Active state | BRAKED | a STOP bit set (remembered as history) |
+| T6 | BRAKED | REVERSING | reverse command, STOP_IMU clear |
+| T7 | REVERSING | BRAKED | distance reached or STOP_IMU set: REVERSE_DONE |
+| T8 | BRAKED | BYPASS | every STOP bit clear, bypass queued |
+| T9 | BRAKED | history | every STOP bit clear, nothing queued |
+| T10 | BRAKED | LINE_FOLLOW | every STOP bit clear, no history |
+| T11 | LINE_FOLLOW | TURNING | junction command |
+| T12 | TURNING | LINE_FOLLOW | target reached, line seen: MOVE_DONE |
+| T13 | TURNING | LINE_SEARCH | target reached, no line: MOVE_DONE |
+| T14 | LINE_FOLLOW | LINE_SEARCH | line missing for [t_lost] (2 x on a hump) |
+| T15 | LINE_SEARCH | LINE_FOLLOW | line found: LINE_FOUND |
+| T16 | BYPASS | LINE_SEARCH | bypass done |
+| T17 | LINE_SEARCH | LINE_LOST | [L_search] travelled: LINE_LOST |
+| T18 | driving Active state | FAULT | stall or encoder fault: MOTION_FAULT |
+| T19 | REVERSING | FAULT | stall or encoder fault: MOTION_FAULT, REVERSE_DONE |
+| T20 | FAULT | IDLE | FAULT_CLEAR(MOTION) |
+
+**Built so far:** the states, the transitions, the replies and the
+mission and STOP inputs. **Not yet:** what each state drives (line
+following needs Avani's line state, turns, bypass, search) and the
+commands (step 1.7), so the wheels stay braked in every state for now.
+Each change prints one line:
+
+```
+[motion] state IDLE -> LINE_FOLLOW
+[motion] state LINE_FOLLOW -> BRAKED
+[motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE
+```
+
+**Test** (normal image, wheels off, Buddy 5's sensor plugged in): press
+GP20 and look for `state IDLE -> LINE_FOLLOW`; put a hand in front of the
+sensor for `-> BRAKED` and take it away for `-> LINE_FOLLOW`; press GP21
+(pause) for `-> IDLE`.
+
 ### Emergency stop (NFR-18)
 
 `motion_flg` has four bits, defined once in `common/messages.h` and
@@ -279,9 +365,10 @@ and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
 - **While any STOP bit is set** the motors stay braked. Motion checks the
   bits on every tick, but leaves them out of its wait: a bit that stays
   set would otherwise wake it again and again.
-- **When every STOP bit clears**, the motors stay braked until a command.
-  Resuming what the car was doing (the history state) comes with the
-  statechart, step 1.3. A STOP also ends any bench test.
+- **When every STOP bit clears**, the statechart goes back to the state it
+  was in (history, see Statechart above). Until line following and the
+  other manoeuvres exist, the wheels stay braked in every state. A STOP
+  also ends any bench test.
 
 How a sender raises a stop (`scan_if_stop_set()` does exactly this):
 
@@ -513,15 +600,11 @@ Found while writing this; each needs its owner.
 - Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
   STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
   FAULT_CLEAR(MOTION).
-- After a STOP clears, resuming what the car was doing (history state),
-  and braking whenever the mission is not Running: the statechart, step
-  1.3.
+- What each statechart state drives: line following (needs Avani's
+  line state), turns, bypass, line search and reverse.
 - The shared 1 MHz timer helper in `messages.h` that Buddy 4 agreed to
   (`motion_stop_stamp()` is motion's half of it, for now).
 - Straight-line correction, encoder turns.
-- `distance_state` is not reset at a new mission yet (it needs the
-  mission state from nav_ctrl_task). Readers use differences, so this
-  matters only for telemetry.
 - Week 13 RAM numbers for `distance_state` (`tests/week13/measure.sh`,
   after the commit).
 - PostTri1 row 2 stress test for the lock-free words: a core 1 reader
