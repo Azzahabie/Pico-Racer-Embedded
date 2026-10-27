@@ -332,10 +332,22 @@ Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 | T19 | REVERSING | FAULT | stall or encoder fault: MOTION_FAULT, REVERSE_DONE |
 | T20 | FAULT | IDLE | FAULT_CLEAR(MOTION) |
 
-**Built so far:** the states, the transitions, the replies and the
-mission and STOP inputs. **Not yet:** what each state drives (line
-following needs Avani's line state, turns, bypass, search) and the
-commands (step 1.7), so the wheels stay braked in every state for now.
+**Built so far:** the states, the transitions, the replies, the mission
+and STOP inputs, the stall check in every driving state, and the
+**reverse** (below). **Not yet:** the commands (step 1.7) and the other
+manoeuvres (line following needs Avani's line state, turns, bypass,
+search), so those states keep the wheels braked for now.
+
+**Reverse.** On scan_task's REVERSE command (in BRAKED, STOP_IMU clear)
+both wheels drive backwards under the PID at `MOTION_REV_TARGET` (10
+counts per tick, about 8 cm/s, proposed) until the average of the two
+wheels has gone back the commanded distance; then REVERSE_DONE goes to
+scan_task and the car is braked again. It runs while STOP_SCAN stays set,
+as the design says; a new STOP_IMU brakes it in that same wake and ends
+it with REVERSE_DONE; a blocked wheel gives a stall fault (FAULT, with
+REVERSE_DONE and MOTION_FAULT). In the simulator, 150 mm took 207 ticks
+(2.1 s, simulation), inside scan_task's 5 s timeout. It can be triggered
+on the car once the command buffer (step 1.7) is in.
 Each change prints one line:
 
 ```
@@ -360,15 +372,17 @@ and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
   nav_ctrl_task sends FAULT_CLEAR(IMU). That comes with the commands
   (step 1.7), so until then nothing clears STOP_IMU.
 - **Motion brakes in the wake that first sees a STOP bit**, before
-  anything else. While running it waits on the STOP bits too, so a STOP
-  wakes it at once, not at the next tick.
-- **While any STOP bit is set** the motors stay braked. Motion checks the
-  bits on every tick, but leaves them out of its wait: a bit that stays
-  set would otherwise wake it again and again.
+  anything else. It always waits on the STOP bits that are not set yet,
+  so a new STOP wakes it at once, not at the next tick.
+- **While any STOP bit is set** the motors stay braked, with one
+  exception from the design: a reverse commanded by scan_task drives
+  while STOP_SCAN alone is set. A new STOP bit during the reverse brakes
+  it in that wake. A bit already set is left out of the wait (it would
+  wake motion again and again) and is checked on every tick.
 - **When every STOP bit clears**, the statechart goes back to the state it
-  was in (history, see Statechart above). Until line following and the
-  other manoeuvres exist, the wheels stay braked in every state. A STOP
-  also ends any bench test.
+  was in (history, see Statechart above). Apart from the reverse, the
+  manoeuvres are not built yet, so those states keep the wheels braked. A
+  STOP also ends any bench test.
 
 How a sender raises a stop (`scan_if_stop_set()` does exactly this):
 
@@ -383,7 +397,7 @@ What the console prints:
 
 ```
 [motion] STOP_SCAN set: brake written NN us after the request.
-[motion] every STOP bit clear, after NNN ms braked. Motors stay braked until a command.
+[motion] every STOP bit clear, NNN ms after the first one was seen.
 ```
 
 Without `motion_stop_stamp()` the first line says the sender did not stamp
@@ -601,7 +615,8 @@ Found while writing this; each needs its owner.
   STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
   FAULT_CLEAR(MOTION).
 - What each statechart state drives: line following (needs Avani's
-  line state), turns, bypass, line search and reverse.
+  line state), turns, bypass and line search. Reverse is built, and
+  waits for the command buffer to be triggered on the car.
 - The shared 1 MHz timer helper in `messages.h` that Buddy 4 agreed to
   (`motion_stop_stamp()` is motion's half of it, for now).
 - Straight-line correction, encoder turns.
