@@ -1,7 +1,8 @@
 # Terrain analysis report — imu_task (Buddy 4)
 
 Team IS-24 · Pico Racer · µT-Kernel 3.0 on RP2040 (SMP) · tests run 2026-10-27/28
-Code: `app_program/imu_task/` (`imu_task.c`, `hump.c`, `imu_safety.c`) on branch `imu_task`, commit `271bfe8`.
+Code: `app_program/imu_task/` (`imu_task.c`, `hump.c`, `imu_safety.c`, `imu_class.c`) on branch `imu_task`, commit `ce1937d`.
+Data representation (Week 13): [`week13_representation.md`](week13_representation.md).
 
 This report covers the hump detection and height method (FR-10, FR-11, FR-12), its
 accuracy against NFR-05, the thresholds chosen from measured data, and the IMU fault
@@ -98,8 +99,41 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 | Fault / tilt past T | unfinished hump discarded (Statechart 6.4) | held on its side, a few mm of wheel turn once read as a 6 mm "hump" |
 | Accelerating / decelerating | windows that are not STEADY do not start a hump or flip CLIMBING/DESCENDING | acceleration reads as tilt (pitch hold) |
 
-`hump_state` (NONE / CLIMBING / DESCENDING) follows the direction of travel. The
-highest hump since boot is kept for FR-12 (reset on Ready→Running is not wired yet).
+`hump_state` (NONE / CLIMBING / DESCENDING) follows the direction of travel.
+
+### 3.3 Mission handling (FR-12, Statechart 6.4)
+
+Ready → Running starts a new mission: the hump count and the **highest hump** go
+back to zero. Paused → Running keeps them. Leaving Running (pause, end, fault)
+drops an unfinished hump. Verified on the car: `[imu] mission start: humps and
+highest hump reset` on every GP20 start (2026-10-28 02:28–02:32).
+
+### 3.4 Motion event classification (FR-27)
+
+`imu_class.c` classifies every 10 ms sample into a 3-bit code; a change is
+printed (`[imu] motion: …`) once it has held 100 ms, an impact at once.
+
+| Code | Class | Rule (thresholds proposed, see §6) |
+|---|---|---|
+| 0 | still | no encoder mm for 100 ms and \|turn\| < 5 °/s |
+| 1 | turning | \|turn\| > 20 °/s, until < 12 °/s (hysteresis) |
+| 2 / 3 | climbing / descending | from the hump detector |
+| 4 | impact | \|a\| > 1.5 g on one sample, held 500 ms; only within 1 s of the wheels turning |
+| 5 | accelerating | `distance_state` says ACCELERATING |
+| 6 | moving | straight, steady speed |
+
+Choices from the car logs: "still" needs 100 ms, not the proposed 50 ms, because
+`dist_mm` counts whole mm (at 30 mm/s a count comes only every 33 ms); turning has
+hysteresis because a turn rate wandering 17–21 °/s flipped moving/turning every
+~50 ms; impact is gated on motion because carrying the car by hand reached 2.4 g.
+Turn rate comes from the encoders, so a skidding wheel also reads as turning.
+
+### 3.5 Shared state: the `hump_state` word
+
+Everything imu_task reports to other tasks is one aligned 32-bit word, written
+whole every 10 ms by imu_task alone, read with one load and no mutex (Tribunal
+Version C): hump state 2 bits, class 3, height now 8, count 4, highest hump 8,
+fault 1, tilt 6. Layout and sizes in the Week 13 table.
 
 All of these cases are replayed on a PC: `tests/imu_hump` (18 scenarios, each one a
 pass that went wrong on the car) and `tests/imu_safety` (24 checks). Both pass.
@@ -196,9 +230,23 @@ in RUNNING, jerky ones included, gave no fault; a hand tilt in RUNNING faulted a
 | Boot with IMU unplugged → CAL_FAIL | — | not run |
 
 Brake time is motion_task's own stamp (`motion_stop_stamp`), so NFR-18 is met by a
-wide margin. NFR-19 (STOP_IMU within 40 ms of the first sample above T) holds by
-construction — N = 3 samples is 20–30 ms after the first one — but was not timed with
-1 MHz stamps from the first sample.
+wide margin.
+
+### 5.1 Timing (NFR-11, NFR-19)
+
+Measured on the 1 MHz timer by imu_task itself (Wi-Fi off; the Wi-Fi-on repeat
+needs Buddy 1's MQTT build):
+
+| Requirement | Measured | Limit | Result |
+|---|---|---|---|
+| NFR-11 sample period | 9 653–10 352 µs over 22 windows of 10 s | 10 ms ± 1 ms | ✅ |
+| NFR-11 work per sample (WCET) | worst 1 466 µs since boot, typically 950–1 250 µs | — (15 % of 10 ms) | ✅ |
+| NFR-19 first sample over T → STOP_IMU | 20.8, 20.5, 20.5, 20.5 ms (4 trials, 2026-10-28 02:28–02:32) | 40 ms | ✅ |
+
+NFR-19 is fixed by the design: the fault needs N = 3 samples in a row, which arrive
+at 0, 10 and 20 ms, and it is raised ~0.5 ms into the third; the four trials agree
+to 0.3 ms. 4 trials were run instead of the 100 planned, as the spread shows no
+variation worth sampling further.
 
 ## 6. Limitations and error sources
 
@@ -220,10 +268,13 @@ construction — N = 3 samples is 20–30 ms after the first one — but was not
    wrong-yet-valid readings are possible.
 5. **STOP_IMU stays set until reboot.** nav sends FAULT_CLEAR(IMU) after a passing
    calibration, but `nav_cmd_mbf` is not bound to motion_task yet (Buddy 2, step 1.7).
-6. **Not implemented yet:** 6-event motion classifier, impact detection (A), mission
-   max reset on Ready→Running, `hump_state` word and telemetry records (needs
-   Buddy 1's schema), CSV logging mode, NFR-11 jitter/WCET measurement with Wi-Fi on.
-7. **Magnetometer** is read but unused.
+6. **All runs so far are hand pushes.** NFR-05, the classifier thresholds (turn,
+   still, impact A = 1.5 g) and flat-floor runs (no false humps) are to be repeated
+   with the car driving itself; the CSV logging build (`IMU_CSV`) is ready for it.
+7. **Not implemented yet:** sending IMU events to comms_task (`comm_w_pack_imu` /
+   `comms_tele_send`, plan 2.3, with Buddy 1; tilt and turn rate are not in the
+   telemetry schema yet), NFR-11 timing with Wi-Fi on.
+8. **Magnetometer** is read but unused.
 
 ## 7. Requirements status
 
@@ -232,10 +283,12 @@ construction — N = 3 samples is 20–30 ms after the first one — but was not
 | FR-02 | ✅ nav waits for CAL_OK_IMU; CAL_FAIL → FAULT |
 | FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested) |
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
-| FR-12 | 🟡 max kept since boot; reset on Ready→Running and telemetry not wired |
+| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; 🟡 not in telemetry yet |
+| FR-23 / FR-29 | 🟡 tilt, class, hump fields ready in the word; sending to comms_task waits on Buddy 1 |
+| FR-27 | 🟡 classifier built and running on the car; thresholds not yet validated under motor power |
 | FR-28 | ✅ T = 25°, N = 3; normal humps (up to 15.7°) do not trip |
 | NFR-05 | ✅ 10 mm: 8/8; 12 mm: 2/3 (2 more passes needed); 23.5 mm: 3/5 (3/3 clean). Every failure traced to wheel skid |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |
 | NFR-18 | ✅ brake 47–61 µs after STOP_IMU (limit 20 ms) |
-| NFR-19 | 🟡 by design ≤ 30 ms; not timed from the first sample |
-| NFR-11 | 🟡 sampled on a 10 ms cyclic handler, `lost 0` in all logs; jitter/WCET not measured |
+| NFR-19 | ✅ 20.5–20.8 ms over 4 trials (limit 40 ms) |
+| NFR-11 | ✅ period 9 653–10 352 µs, WCET 1 466 µs (Wi-Fi off); 🟡 Wi-Fi-on repeat pending |
