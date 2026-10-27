@@ -62,21 +62,23 @@ int main(void)
 	expect(run_tilt(10, 500, SAFETY_EV_TILT) == 0,
 	       "10 deg (steepest hump seen): no tilt event");
 	safety_reset();
-	expect(run_tilt(19, 500, SAFETY_EV_TILT) == 0, "19 deg: no tilt event");
-
-	/* Past T: fires on the Nth sample in a row, 30 ms (NFR-19: 40 ms). */
+	expect(run_tilt(20, 500, SAFETY_EV_TILT) == 0, "20 deg: no tilt event");
 	safety_reset();
-	at = run_tilt(25, 100, SAFETY_EV_TILT);
-	expect(at == SAFETY_TILT_N, "25 deg: tilt event on sample N");
-	expect(run_tilt(25, 100, SAFETY_EV_TILT) == 0,
-	       "25 deg held: reported once only");
-	expect(safety_tilted(), "25 deg held: still tilted");
+	expect(run_tilt(24, 500, SAFETY_EV_TILT) == 0, "24 deg: no tilt event");
+
+	/* Past T (25 deg): fires on the Nth sample in a row, 30 ms (NFR-19: 40 ms). */
+	safety_reset();
+	at = run_tilt(30, 100, SAFETY_EV_TILT);
+	expect(at == SAFETY_TILT_N, "30 deg: tilt event on sample N");
+	expect(run_tilt(30, 100, SAFETY_EV_TILT) == 0,
+	       "30 deg held: reported once only");
+	expect(safety_tilted(), "30 deg held: still tilted");
 	tilt(0);
 	expect(!safety_tilted(), "back level: not tilted");
 	safety_reset();
-	tilt(25); tilt(25);
+	tilt(30); tilt(30);
 	expect(!safety_tilted(), "2 samples over: not tilted yet");
-	tilt(25);
+	tilt(30);
 	expect(safety_tilted(), "3 samples over: tilted");
 
 	/* Two samples over, one back under: the run starts again. */

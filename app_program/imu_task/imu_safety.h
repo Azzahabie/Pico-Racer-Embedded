@@ -7,9 +7,12 @@
  * every 10 ms sample.  No I2C or kernel calls, so tests/imu_safety can
  * run them on a PC; imu_task acts on what safety_step() returns. */
 
-#define SAFETY_TILT_MG	342		/* T = 20 deg (FR-28): sin 20 = 0.342.
-					   Humps peak at ~10 deg (2026-10-27
-					   ramp logs), so T >= steepest + 5  */
+#define SAFETY_TILT_MG	423		/* T = 25 deg (FR-28): sin 25 = 0.423.
+					   T >= steepest hump + 5: the steeper
+					   practice ramp peaks at ~16 deg, and a
+					   jerky push on it held 20 deg for 3
+					   samples (2026-10-28 logs), so the
+					   proposed 20 deg was too tight      */
 #define SAFETY_TILT_N	3		/* N samples in a row (FR-28)         */
 #define SAFETY_G_LO_MG	700		/* |a| outside this: a jolt, not a    */
 #define SAFETY_G_HI_MG	1300		/* tilt, so it does not count to N    */
