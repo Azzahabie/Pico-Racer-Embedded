@@ -32,6 +32,8 @@
  */
 
 #include <tk/tkernel.h>
+#include <tk/syslib.h>
+#include <sys/sysdef.h>			/* TIMER_TIMERAWL: 1 MHz timer  */
 #include <tm/tmonitor.h>
 
 #include "../../device/include/dev_i2c.h"
@@ -40,37 +42,39 @@
 #include "../common/messages.h"
 #include "../usb_console_compat.h"
 #include "../motor_task/motion_ds.h"
+#include "../motor_task/motor_task.h"	/* motor_task_flag: STOP_IMU   */
+#include "../nav_task/nav_ctrl.h"	/* nav_flg, mission state      */
+#include "hump.h"
+#include "imu_safety.h"
+#include "imu_class.h"
 
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
 
 #define SAMPLE_MS	10		/* accel period; every chip runs 100 Hz */
 #define MAG_EVERY	25		/* mag every 250 ms (LSM303D: 6.25 Hz) */
-#define REPORT_SAMPLES	50		/* one summary line every 500 ms      */
+#define REPORT_SAMPLES	100		/* one status line every 1 s (FR-29)  */
+#define IDLE_REPORTS	5		/* still, no hump, no errors: only
+					   every 5th line (5 s)              */
+#ifndef IMU_CSV
+#define IMU_CSV		0		/* 1: one CSV row per 10 ms sample
+					   (plan 2.4), lines start "csv,"   */
+#endif
+#ifndef IMU_VERBOSE
+#define IMU_VERBOSE	0		/* 1: also the raw axes, z range,
+					   distance_state count and mag      */
+#endif
+
+#define USB_WAIT_MS	4000		/* longest wait for a console host: on
+					   battery there is none, and nav's
+					   CAL_REQ times out after 10 s      */
+#define REINIT_EVERY	100		/* while no data: set up again, 1 s   */
+#define TIMING_REPORTS	10		/* timing line every 10 status lines  */
 
 #define CAL_SAMPLES	100		/* 1 s of samples per attempt         */
 #define CAL_TRIES	5
 #define CAL_SPREAD_MG	80		/* max - min on any axis while still  */
 #define CAL_TILT_MG	150		/* x, y within 0 +/- this, z 1000 +/- */
-
-/* Hump detection runs on 100 ms means of x and y.  Tilted by angle t, the
-   car rises sin(t) mm per mm driven, and sin(t) is the tilt in mg / 1000,
-   so tilt mg * distance mm = rise in um.  Checked against the course
-   humps (9 mm, 23 mm): the 500 ms logs summed to 10 mm and 24 mm. */
-#define HUMP_SAMPLES	10		/* 100 ms detection window            */
-#define HUMP_ENTER_MG	50		/* ~3 deg: a hump starts (while moving)*/
-#define HUMP_EXIT_MG	35		/* below this the car counts as level;
-					   floor spots differ by up to ~30   */
-#define HUMP_GROUND_UM	2000		/* back within 2 mm of the start      */
-#define HUMP_END_MM	40		/* level this far: the hump is over   */
-#define HUMP_MIN_MM	4		/* shorter climbs are not humps       */
-#define HUMP_STILL_WIN	10		/* stopped 1 s, any tilt: hump over   */
-#define HUMP_STILL_MM	1		/* per window: encoder jitter, still  */
-#define HUMP_CONFIRM_WIN 3		/* tilt held 300 ms, one way: a hump  */
-#define HUMP_FLIP_WIN	2		/* 200 ms the other way: up <-> down  */
-#define BASE_DIV	8		/* level tilt tracking, per window    */
-#define BASE_MAX_MG	40		/* level is only learned this close to
-					   the calibration level, stopped     */
 
 /* Accel zero-g offsets in mg, subtracted from every sample.  calibrate()
    replaces them at boot; these are the fallback if it never sees the car
@@ -79,46 +83,21 @@
    x flipped sign in the same pair, giving +30.  y is unmeasured. */
 LOCAL W acc_ofs[3] = { 30, 0, 101 };
 
+#if IMU_VERBOSE
 LOCAL const char * const ds_state_name[] = { "steady", "accel", "decel", "?" };
+#endif
 
-/* Agreed hump_state values (2 bits, Tribunal Section 4). */
-typedef enum { HUMP_NONE, HUMP_CLIMBING, HUMP_DESCENDING } HUMP_STATE;
-
-LOCAL const char * const hump_name[] = { "none", "climbing", "descending" };
-
-LOCAL HUMP_STATE hump_state = HUMP_NONE;
-LOCAL UW	hump_count;		/* humps finished since boot         */
-LOCAL UW	hump_last_mm;		/* height of the last one            */
-LOCAL W		base[2];		/* level x, y: the floor's own tilt  */
-LOCAL W		onset[2];		/* tilt as the hump began = uphill   */
-LOCAL W		h_um, peak_um, trough_um; /* height now / highest / lowest, um */
-LOCAL W		hump_len, level_mm;	/* distance on the hump / level      */
-LOCAL UW	tilt_peak;
-LOCAL INT	still_win;		/* windows stopped                   */
-LOCAL INT	flip_win;		/* windows tilted against the state  */
-LOCAL INT	pend_win;		/* windows of a hump not yet confirmed*/
-LOCAL W		pend_sum[2], pend_h, pend_len;
-LOCAL UW	pend_peak;
-
-/* End the hump in progress: count it if it rose high enough.  The height
-   is the larger of the highest rise and the deepest drop, so it still
-   comes out right if uphill was ever taken the wrong way round. */
-LOCAL void hump_finish(void)
+/* Tilt in 0.1 deg from its sine in mg, without libm: asin(s) is about
+   s + s^3 / 6, within 0.3 deg up to 30 deg (well past any hump). */
+LOCAL UW tilt_deg10(UW mg)
 {
-	W	top = (peak_um > -trough_um) ? peak_um : -trough_um;
-	W	mm = (top + 500) / 1000;
+	UW	s3;
 
-	if(mm >= HUMP_MIN_MM) {
-		hump_count++;
-		hump_last_mm = (UW)mm;
-		tm_printf((UB *)"[imu] HUMP %u: height %d mm, peak tilt %u mg,"
-			       " %d mm long\n", hump_count, mm, tilt_peak,
-			  hump_len);
-	} else {
-		tm_printf((UB *)"[imu] hump ignored: only %d mm high\n", mm);
-	}
-	hump_state = HUMP_NONE;
+	if(mg > 1000) mg = 1000;
+	s3 = mg * mg / 1000 * mg / 1000;
+	return (mg + s3 / 6) * 573 / 1000;
 }
+
 typedef enum {
 	CHIP_NONE, CHIP_LSM303D, CHIP_DLHC, CHIP_AGR, CHIP_ADXL345, CHIP_MMA845X
 } CHIP;
@@ -132,6 +111,70 @@ LOCAL ID	imu_tid;		/* woken by imu_tick()              */
 LOCAL CHIP	chip;
 LOCAL UW	addr;			/* LSM303D / ADXL345 / MMA845x      */
 LOCAL BOOL	acc_only;		/* DLHC/AGR: mag not identified     */
+LOCAL ID	imu_flgid;		/* CAL_REQ from nav_ctrl_task       */
+LOCAL volatile UW imu_word;		/* hump_state word (imu_task.h):
+					   written whole, by imu_task only  */
+
+EXPORT UW imu_word_read(void)	{ return imu_word; }
+LOCAL BOOL	faulted;		/* Fault (6.4): left only by a
+					   calibration that passes          */
+
+EXPORT ID imu_task_init(void)
+{
+	T_CFLG	cflg;
+	ID	id;
+
+	if(imu_flgid > 0) return imu_flgid;
+	cflg.exinf   = NULL;
+	cflg.flgatr  = TA_TFIFO | TA_WSGL;
+	cflg.iflgptn = 0;
+	id = tk_cre_flg(&cflg);
+	if(id > 0) imu_flgid = id;
+	return id;
+}
+
+/* nav_ctrl_task asked for a calibration (FR-02)?  Clears the request. */
+LOCAL BOOL cal_requested(void)
+{
+	UINT	ptn;
+
+	return imu_flgid > 0
+	       && tk_wai_flg(imu_flgid, IMU_FLG_CAL_REQ, TWF_ORW | TWF_BITCLR,
+			     &ptn, TMO_POL) == E_OK;
+}
+
+LOCAL void tell_nav(UINT bits)
+{
+	if(nav_flag() > 0) tk_set_flg(nav_flag(), bits);
+}
+
+/* Go to Fault (Statechart 6.4, NFR-13): tell nav_ctrl_task, and during a
+   mission brake through STOP_IMU (motion_task brakes within 20 ms,
+   NFR-18).  imu_task never clears STOP_IMU: motion_task does, when nav
+   sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
+   goes on the shared fault flag once Buddy 5's fault_set() exists. */
+LOCAL void raise_fault(const char *why, UW t_first)
+{
+	mission_state_t	ms = nav_mission_state();
+	BOOL		in_mission = (ms == MS_RUNNING || ms == MS_PAUSED);
+	UW		t10, us;
+
+	if(faulted) return;
+	faulted = TRUE;
+	if(in_mission && motor_task_flag() > 0) {
+		motion_stop_stamp(MOTION_EVT_STOP_IMU);
+		tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_IMU);
+	}
+	tell_nav(NAV_FLG_IMU_FAULT);
+	/* NFR-19 (tilt, limit 40 ms) and NFR-13 (no data, Y = 50 ms): from
+	   the first offending sample to here, on the 1 MHz timer. */
+	us = in_w(TIMER_TIMERAWL) - t_first;
+	t10 = tilt_deg10(safety_tilt_mg());
+	tm_printf((UB *)"[imu] !!!!! IMU FAULT: %s (tilt %u.%u deg, mission %s)"
+		       " -> IMU_FAULT%s, %u.%u ms after the first sample"
+		       " !!!!!\n", why, t10 / 10, t10 % 10, nav_state_name(ms),
+		  in_mission ? " + STOP_IMU" : "", us / 1000, us % 1000 / 100);
+}
 
 /* Write sub-address, repeated start, read n bytes. */
 LOCAL ER read_regs(UW sadr, UB reg, UB *buf, SZ n)
@@ -168,20 +211,6 @@ LOCAL UB reg8(UW sadr, UB reg)
 
 LOCAL H le16(const UB *p) { return (H)(p[0] | (p[1] << 8)); }
 LOCAL H be16(const UB *p) { return (H)((p[0] << 8) | p[1]); }
-
-/* Integer square root, for |a| without pulling in libm. */
-LOCAL UW isqrt(UW v)
-{
-	UW	r = 0, bit = 1UL << 30;
-
-	while(bit > v) bit >>= 2;
-	while(bit != 0) {
-		if(v >= r + bit) { v -= r + bit; r = (r >> 1) + bit; }
-		else		 { r >>= 1; }
-		bit >>= 2;
-	}
-	return r;
-}
 
 /* Which addresses answer, and what their usual ID registers hold, so an
    unsupported chip can still be identified from the log. */
@@ -380,8 +409,9 @@ LOCAL UW wait_tick(void)
    boot is absorbed into the offsets.  An attempt is rejected if someone
    bumps the car (axis spread over CAL_SPREAD_MG), the wheels turn
    (distance_state), or the mean is too far from flat (wrong mounting).
-   After CAL_TRIES rejects the constants in acc_ofs stay. */
-LOCAL void calibrate(void)
+   After CAL_TRIES rejects it fails (CAL_FAIL) and acc_ofs keeps the
+   last good offsets. */
+LOCAL BOOL calibrate(void)
 {
 	W	a[3], m[3], sum[3], lo[3], hi[3], mean[3], spread;
 	BOOL	has_mag, moved;
@@ -445,171 +475,67 @@ LOCAL void calibrate(void)
 			tm_printf((UB *)"[imu] cal ok: offsets x=%d y=%d z=%d mg,"
 				       " spread %d mg\n", acc_ofs[0], acc_ofs[1],
 				  acc_ofs[2], spread);
-			return;
+			return TRUE;
 		}
 		tk_dly_tsk(500);
 	}
-	tm_printf((UB *)"[imu] cal failed, using fixed offsets x=%d y=%d"
-		       " z=%d mg\n", acc_ofs[0], acc_ofs[1], acc_ofs[2]);
+	tm_printf((UB *)"[imu] cal FAILED after %d tries (offsets kept: x=%d"
+		       " y=%d z=%d mg)\n", CAL_TRIES, acc_ofs[0], acc_ofs[1],
+		  acc_ofs[2]);
+	return FALSE;
 }
 
-/* One 100 ms step of hump detection.  ax, ay: mean tilt in mg; dmm:
-   distance driven in the window (- reversing); steady: motion_task
-   reports neither ACCELERATING nor DECELERATING.
-
-   The mounting angle does not matter: tilt is measured from the level
-   baseline as a magnitude, and a hump always starts with a climb, so the
-   tilt then, flipped if reversing, is "nose up".  The car rises by
-   +/- tilt * dmm: nose up and forward, or nose down and reversing, is
-   up.  dmm keeps its sign, so backing down a slope lowers the car again
-   (counting distance unsigned once added 9 mm per push up the same
-   slope).  CLIMBING and DESCENDING follow which way the car is going.
-   The height is the highest point of the running rise.
-
-   A lurch reads as tilt too: one jolting window as the wheel struck the
-   hump once set uphill backwards and lost a 23 mm hump.  So a hump only
-   starts after HUMP_CONFIRM_WIN steady windows tilted the same way, and
-   uphill is their sum; the state only flips after HUMP_FLIP_WIN.
-
-   Level starts as the calibration level (0, 0) and only follows the
-   floor while the car is stopped near it: following it while driving
-   let a gentle ramp drag level up with it, so the climb never crossed
-   HUMP_ENTER_MG and the way back down looked like a hump. */
-LOCAL void hump_step(W ax, W ay, W dmm, BOOL steady)
+/* Answer nav_ctrl_task's CAL_REQ (FR-02).  Passing is the only way out
+   of Fault (Statechart 6.4); nav then sends FAULT_CLEAR(IMU), on which
+   motion_task clears STOP_IMU. */
+LOCAL void answer_cal(BOOL ok)
 {
-	W	dx, dy, ad, dot, rise, fx, fy;
-	UW	tilt;
-
-	dx = ax - base[0];
-	dy = ay - base[1];
-	tilt = isqrt((UW)(dx * dx + dy * dy));
-	ad = (dmm < 0) ? -dmm : dmm;
-	/* Tilt as if driving forward: reversing up a slope is nose down. */
-	fx = (dmm < 0) ? -dx : dx;
-	fy = (dmm < 0) ? -dy : dy;
-
-	if(hump_state == HUMP_NONE) {
-		if(tilt < HUMP_ENTER_MG) {
-			pend_win = 0;
-			if(ad == 0
-			   && ax > -BASE_MAX_MG && ax < BASE_MAX_MG
-			   && ay > -BASE_MAX_MG && ay < BASE_MAX_MG) {
-				base[0] += (ax - base[0]) / BASE_DIV;
-				base[1] += (ay - base[1]) / BASE_DIV;
-			}
-			return;
-		}
-		if(ad == 0) {		/* tilted by hand, not driven */
-			pend_win = 0;
-			return;
-		}
-		if(!steady) return;	/* lurching: neither count nor reset */
-
-		/* Pending: restart if this window points the other way. */
-		if(pend_win > 0
-		   && fx * pend_sum[0] + fy * pend_sum[1] < 0) {
-			pend_win = 0;
-		}
-		if(pend_win == 0) {
-			pend_sum[0] = pend_sum[1] = 0;
-			pend_h = pend_len = 0;
-			pend_peak = 0;
-		}
-		pend_sum[0] += fx;
-		pend_sum[1] += fy;
-		pend_h += (W)tilt * ad;
-		pend_len += ad;
-		if(tilt > pend_peak) pend_peak = tilt;
-		if(++pend_win < HUMP_CONFIRM_WIN) return;
-
-		/* Confirmed: the pending windows were the start of the climb. */
-		onset[0] = pend_sum[0]; onset[1] = pend_sum[1];
-		h_um = peak_um = pend_h;
-		trough_um = 0;
-		hump_len = pend_len;
-		tilt_peak = pend_peak;
-		level_mm = 0;
-		still_win = flip_win = pend_win = 0;
-		hump_state = HUMP_CLIMBING;
-		tm_printf((UB *)"[imu] hump: climbing (tilt %u mg, up %d mm)\n",
-			  tilt, h_um / 1000);
-		return;
-	}
-
-	hump_len += ad;
-	dot = dx * onset[0] + dy * onset[1];	/* > 0: nose up */
-	rise = (W)tilt * dmm;
-	h_um += (dot >= 0) ? rise : -rise;
-	if(h_um > peak_um) peak_um = h_um;
-	if(h_um < trough_um) trough_um = h_um;
-	if(tilt > tilt_peak) tilt_peak = tilt;
-
-	/* Stopped: the pass is over, however the car is tilted.  It once
-	   rested at ~50 mg after a pivot left a wheel on the hump's edge,
-	   the hump stayed open, and the next pass was merged into it.  On
-	   top of a hump this keeps the height so far; the roll down after
-	   adds well under HUMP_MIN_MM, so it is not counted again. */
-	still_win = (ad <= HUMP_STILL_MM) ? still_win + 1 : 0;
-	if(still_win >= HUMP_STILL_WIN) {
-		hump_finish();
-		return;
-	}
-
-	if(tilt >= HUMP_ENTER_MG) {
-		level_mm = 0;
-		if(dmm != 0 && steady) {
-			HUMP_STATE s = ((dot >= 0) == (dmm > 0))
-				       ? HUMP_CLIMBING : HUMP_DESCENDING;
-
-			if(s == hump_state) {
-				flip_win = 0;
-			} else if(++flip_win >= HUMP_FLIP_WIN) {
-				flip_win = 0;
-				hump_state = s;
-				tm_printf((UB *)"[imu] hump: %s (tilt %u mg,"
-					       " up %d mm)\n", hump_name[s],
-					  tilt, h_um / 1000);
-			}
-		}
-		return;
-	}
-	flip_win = 0;
-
-	/* Back down to where it started (driven over, or backed off). */
-	if(h_um < HUMP_GROUND_UM && h_um > -HUMP_GROUND_UM
-	   && (peak_um >= HUMP_MIN_MM * 1000
-	       || -trough_um >= HUMP_MIN_MM * 1000)) {
-		hump_finish();
-		return;
-	}
-	if(tilt < HUMP_EXIT_MG) {
-		level_mm += ad;
-		if(level_mm >= HUMP_END_MM) hump_finish();
+	if(ok) {
+		faulted = FALSE;
+		safety_reset();
+		tell_nav(NAV_FLG_CAL_OK_IMU);
+		tm_printf((UB *)"[imu] -> nav: CAL_OK_IMU\n");
+	} else {
+		faulted = TRUE;
+		tell_nav(NAV_FLG_CAL_FAIL);
+		tm_printf((UB *)"[imu] -> nav: CAL_FAIL\n");
 	}
 }
 
 EXPORT void imu_task(INT stacd, void *exinf)
 {
-	W	a[3], m[3];
+	W	a[3] = { 0, 0, 0 }, m[3];
 	W	sum[3], zmin, zmax;
 	W	hsum[2];
 	UW	ds_hump;
 	INT	hn;
 	BOOL	has_mag = FALSE, got_mag;
-	UW	amag, amax;
+	UW	amag = 0, amax;
+	W	dmm;
 	UW	ds, ds_prev, ds_win, ds_pub;
-	UW	lost, rderr, k;
-	INT	n, i;
+	UW	lost, rderr, k, bad;
+	INT	n, i, idle_n = 0;
 	ER	er;
+	BOOL	ok;
+	UINT	ev;
+	UB	line[200], *p;
+	mission_state_t	ms, ms_prev;
+	/* NFR-11 timing, 1 MHz: when each sample woke, when its work ended,
+	   the period and work range per timing window, and the worst work
+	   since boot (WCET).  tskip: the last period spans a calibration. */
+	UW	t_wake, t_prev = 0, t_end, per, per_min, per_max, work;
+	UW	work_max, wcet = 0, t_tilt = 0, t_bad = 0;
+	BOOL	tskip = TRUE;
+	INT	run_prev = 0;
 
 	(void)stacd; (void)exinf;
 
-	/* Same enumeration wait as the monitor, so nothing printed before the
-	   host opens the port is lost. */
-	for(i = 0; i < 200 && tm_usb_state() < 2; i++) {
+	/* Wait for the console host, so nothing printed before it opens the
+	   port is lost; not long, or nav's CAL_REQ times out on battery. */
+	for(i = 0; i < USB_WAIT_MS / 100 && tm_usb_state() < 2; i++) {
 		tk_dly_tsk(100);
 	}
-	tk_dly_tsk(1000);		/* after the demo banner */
+	tk_dly_tsk(200);
 
 	dd = tk_opn_dev((UB *)I2C_DEV, TD_UPDATE);
 	if(dd < E_OK) {
@@ -618,9 +544,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		tk_ext_tsk();
 	}
 
-	/* Retry until a known chip shows up, so it can be plugged in late. */
+	/* Retry until a known chip shows up, so it can be plugged in late.
+	   Meanwhile a CAL_REQ fails: Initialising -> Fault (6.4, NFR-13). */
 	while((chip = detect()) == CHIP_NONE) {
 		tm_printf((UB *)"[imu] no supported IMU found\n");
+		if(cal_requested()) {
+			tm_printf((UB *)"[imu] init failed: no IMU to calibrate\n");
+			answer_cal(FALSE);
+		}
 		bus_scan();
 		tk_dly_tsk(3000);
 	}
@@ -629,13 +560,23 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		  (chip == CHIP_DLHC || chip == CHIP_AGR) ? 0x19 : addr,
 		  (chip == CHIP_ADXL345 || chip == CHIP_MMA845X || acc_only)
 		  ? " (accel only, no magnetometer)" : "");
+	/* The fault thresholds in force, so a log shows which build ran. */
+	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg for %d samples (in a"
+		       " mission), no data for %d ms\n",
+		  tilt_deg10(SAFETY_TILT_MG) / 10, tilt_deg10(SAFETY_TILT_MG) % 10,
+		  SAFETY_TILT_N, SAFETY_BAD_N * SAMPLE_MS);
 
 	er = start_ticks();
 	if(er < E_OK) {
 		tm_printf((UB *)"[imu] tk_cre_cyc failed, er=%d\n", er);
 		tk_ext_tsk();
 	}
-	calibrate();
+	/* nav_ctrl_task's first CAL_REQ is usually already waiting by now;
+	   this calibration answers it.  A later one is answered in the loop. */
+	ok = calibrate();
+	if(cal_requested()) answer_cal(ok);
+	bad = 0;
+	ms_prev = nav_mission_state();
 
 	ds_prev = ds_win = ds_hump = motion_ds_read();
 	hsum[0] = hsum[1] = 0;
@@ -646,26 +587,97 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	n = 0;
 	sum[0] = sum[1] = sum[2] = 0;
 	zmin = 32767; zmax = -32768; amax = 0;
+	per_min = 0xFFFFFFFF; per_max = 0; work_max = 0;
+#if IMU_CSV
+	tm_printf((UB *)"csv,t_us,ok,ax_mg,ay_mg,az_mg,tilt_mg,dist_mm,dmm,"
+		       "turn_dps,ds_state,class,hump_state,height_um\n");
+#endif
 
 	for(k = 0; ; k++) {
+		t_end = in_w(TIMER_TIMERAWL);	/* last sample's work is done */
 		lost += wait_tick();
+		t_wake = in_w(TIMER_TIMERAWL);
+		if(!tskip) {
+			per = t_wake - t_prev;
+			work = t_end - t_prev;
+			if(per < per_min) per_min = per;
+			if(per > per_max) per_max = per;
+			if(work > work_max) work_max = work;
+		}
+		tskip = FALSE;
+		t_prev = t_wake;
+
+		/* Calibrating (6.4), on nav's request: the car is still for
+		   1-7 s, so the windows start again after it. */
+		if(cal_requested()) {
+			answer_cal(calibrate());
+			tskip = TRUE;
+			ds_prev = ds_win = ds_hump = motion_ds_read();
+			hsum[0] = hsum[1] = 0;
+			hn = 0;
+			bad = 0;
+		}
 
 		/* distance_state: count publishes so a stalled motion_task
 		   shows up as ds well under REPORT_SAMPLES. */
 		ds = motion_ds_read();
 		ds_pub += motion_ds_updates(ds, ds_prev);
+		dmm = motion_ds_delta_mm(ds, ds_prev);	/* this sample */
 		ds_prev = ds;
 
+		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0:
+		   powered down, not a reading. */
 		er = read_sample(a, m, &got_mag, (k % MAG_EVERY) == 0);
-		if(er < E_OK) {
+		ok = er >= E_OK && (a[0] != 0 || a[1] != 0 || a[2] != 0);
+		if(ok) {
+			for(i = 0; i < 3; i++) a[i] -= acc_ofs[i];
+		}
+
+		/* Fault checks on every sample (FR-28, NFR-13, NFR-19). */
+		ev = safety_step(ok, a[0], a[1], a[2]);
+		bad = ok ? 0 : bad + 1;
+		/* Start of a run over T, or of bad reads: the clock for the
+		   NFR-19 / NFR-13 time printed with the fault. */
+		if(safety_tilt_run() == 1 && run_prev != 1) t_tilt = t_wake;
+		run_prev = safety_tilt_run();	/* a jolt holds it at 1 */
+		if(bad == 1) t_bad = t_wake;
+		if((ev & SAFETY_EV_REINIT) != 0
+		   || (bad > 0 && bad % REINIT_EVERY == 0)) {
+			tm_printf((UB *)"[imu] reads failing: setting the IMU"
+				       " up again\n");
+			setup();
+		}
+		if(safety_no_data()) {
+			raise_fault("no good IMU sample for 50 ms", t_bad);
+		}
+		ms = nav_mission_state();
+		if(safety_tilted() && (ms == MS_RUNNING || ms == MS_PAUSED)) {
+			raise_fault("abnormal tilt", t_tilt);
+		}
+
+		/* Mission changes (Statechart 6.4): a new mission starts the
+		   hump count and highest hump from zero (FR-12); Paused ->
+		   Running keeps them; pause, end or fault drops an unfinished
+		   hump.  A pause keeps "on top": the car has not moved. */
+		if(ms != ms_prev) {
+			if(ms_prev == MS_READY && ms == MS_RUNNING) {
+				hump_mission_reset();
+				tm_printf((UB *)"[imu] mission start: humps and"
+					       " highest hump reset\n");
+			} else if(ms_prev == MS_RUNNING && ms == MS_PAUSED) {
+				hump_pause();
+			} else if(ms_prev == MS_RUNNING) {
+				hump_abort();
+			}
+			ms_prev = ms;
+		}
+
+		if(!ok) {
 			rderr++;
 		} else {
 			if(got_mag) has_mag = TRUE;
-			for(i = 0; i < 3; i++) {
-				a[i] -= acc_ofs[i];
-				sum[i] += a[i];
-			}
-			amag = isqrt((UW)(a[0] * a[0] + a[1] * a[1]
+			for(i = 0; i < 3; i++) sum[i] += a[i];
+			amag = imu_isqrt((UW)(a[0] * a[0] + a[1] * a[1]
 					  + a[2] * a[2]));
 			if(amag > amax) amax = amag;
 			if(a[2] < zmin) zmin = a[2];
@@ -676,8 +688,41 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			hn++;
 		}
 
+		/* Motion event class (FR-27), every sample, printed when it
+		   changes. */
+		if(mclass_step(ok, ok ? amag : 0, dmm, motion_ds_turn_dps(ds),
+			       motion_ds_state(ds) == MOTION_DS_ACCEL,
+			       (UINT)hump_get_state())) {
+			tm_printf((UB *)"[imu] motion: %s\n",
+				  mclass_name(mclass_get()));
+		}
+
+		/* Publish the hump_state word: built in a local, then one
+		   aligned 32-bit store, so a reader never sees half of it. */
+		imu_word = imu_w_pack((UW)hump_get_state(), (UW)mclass_get(),
+				      (hump_height_mm() > 0)
+				      ? (UW)hump_height_mm() : 0U, hump_get_count(),
+				      hump_get_max_mm(), faulted ? 1U : 0U,
+				      tilt_deg10(safety_tilt_mg()) / 10);
+
+#if IMU_CSV
+		/* One row per sample, for plots and for replaying a run through
+		   the PC tests.  ax..az are 0 on a bad read (ok = 0). */
+		tm_printf((UB *)"csv,%u,%d,%d,%d,%d,%u,%u,%d,%d,%u,%u,%u,%d\n",
+			  t_wake, ok, ok ? a[0] : 0, ok ? a[1] : 0,
+			  ok ? a[2] : 0, safety_tilt_mg(), motion_ds_mm(ds), dmm,
+			  motion_ds_turn_dps(ds), (UINT)motion_ds_state(ds),
+			  (UINT)mclass_get(), (UINT)hump_get_state(),
+			  hump_height_um());
+#endif
+
 		if((k + 1) % HUMP_SAMPLES == 0) {
-			if(hn > 0) {
+			/* In Fault, or tilted past T, it is not driving over a
+			   hump: held on its side, a few mm of wheel turn read as
+			   a 6 mm "hump" at 1 g of tilt. */
+			if(faulted || safety_tilted()) {
+				hump_abort();
+			} else if(hn > 0) {
 				hump_step(hsum[0] / hn, hsum[1] / hn,
 					  motion_ds_delta_mm(ds, ds_hump),
 					  motion_ds_state(ds) == MOTION_DS_STEADY);
@@ -689,32 +734,81 @@ EXPORT void imu_task(INT stacd, void *exinf)
 
 		if((k + 1) % REPORT_SAMPLES != 0) continue;
 
+		/* NFR-11: sample period 10 ms +/- 1 ms, and the work per sample
+		   (its worst since boot is the measured WCET). */
+		if((k + 1) % (REPORT_SAMPLES * TIMING_REPORTS) == 0
+		   && per_max > 0) {
+			if(work_max > wcet) wcet = work_max;
+			tm_printf((UB *)"[imu] timing (%d s): sample period %u..%u us"
+				       " (10 ms +/- 1), work max %u us, worst since"
+				       " boot %u us\n",
+				  REPORT_SAMPLES * TIMING_REPORTS * SAMPLE_MS / 1000,
+				  per_min, per_max, work_max, wcet);
+			per_min = 0xFFFFFFFF; per_max = 0; work_max = 0;
+		}
+
 		if(n > 0) {
-			/* Window is REPORT_SAMPLES * SAMPLE_MS = 500 ms, so
-			   mm per window * 2 is mm/s. */
-			tm_printf((UB *)"[imu] acc mg x=%5d y=%5d z=%5d"
-				       "  z %5d..%5d |a|max %5u"
-				       "  car %5d mm/s %s turn %4d dps"
-				       "  ds %2u  lost %u  rderr %u\n",
-				  sum[0] / n, sum[1] / n, sum[2] / n,
-				  zmin, zmax, amax,
-				  motion_ds_delta_mm(ds, ds_win)
-				  * (1000 / (REPORT_SAMPLES * SAMPLE_MS)),
-				  ds_state_name[motion_ds_state(ds)],
-				  motion_ds_turn_dps(ds), ds_pub, lost, rderr);
-			tm_printf((UB *)"[imu] hump %s  up %d mm  humps %u"
-				       " (last %u mm)\n", hump_name[hump_state],
-				  (hump_state == HUMP_NONE) ? 0 : h_um / 1000,
-				  hump_count, hump_last_mm);
+			W	mx = sum[0] / n, my = sum[1] / n;
+			/* mm per REPORT_SAMPLES window, as mm/s. */
+			W	v = motion_ds_delta_mm(ds, ds_win)
+				    * (1000 / (REPORT_SAMPLES * SAMPLE_MS));
+			UW	t10 = tilt_deg10(imu_isqrt((UW)(mx * mx
+							      + my * my)));
+			HUMP_STATE hs = hump_get_state();
+
+			/* Still and level, nothing wrong: one line in
+			   IDLE_REPORTS, so moving lines stand out. */
+			if(v != 0 || hs != HUMP_NONE || rderr != 0
+			   || lost != 0 || faulted
+			   || ++idle_n >= IDLE_REPORTS) {
+				idle_n = 0;
+				/* One tm_printf per line: built up first. */
+				p = line;
+				p += tm_sprintf(p, (UB *)"[imu] %-10s tilt %2u.%u"
+						" deg  %4d mm/s  turn %+4d dps",
+						mclass_name(mclass_get()),
+						t10 / 10, t10 % 10, v,
+						motion_ds_turn_dps(ds));
+				if(hs != HUMP_NONE) {
+					p += tm_sprintf(p, (UB *)"  | %s %d mm",
+							hump_state_name(hs),
+							hump_height_mm());
+				}
+				p += tm_sprintf(p, (UB *)"  | humps %u  last %u mm"
+						"  max %u mm",
+						hump_get_count(),
+						hump_get_last_mm(),
+						hump_get_max_mm());
+				if(rderr != 0 || lost != 0) {
+					p += tm_sprintf(p, (UB *)"  | rderr %u"
+							"  lost %u", rderr, lost);
+				}
+				if(faulted) {
+					p += tm_sprintf(p, (UB *)"  | FAULT:"
+							" recalibrate (GP20)");
+				}
+				tm_printf((UB *)"%s\n", line);
+			}
+#if IMU_VERBOSE
+			tm_printf((UB *)"[imu]   acc mg x=%5d y=%5d z=%5d"
+				       "  z %5d..%5d |a|max %5u  %s  ds %2u\n",
+				  mx, my, sum[2] / n, zmin, zmax, amax,
+				  ds_state_name[motion_ds_state(ds)], ds_pub);
+#endif
 		} else {
-			tm_printf((UB *)"[imu] no good reads in %d ms,"
+			tm_printf((UB *)"[imu] NO GOOD READS in %d ms,"
 				       " rderr %u\n",
 				  REPORT_SAMPLES * SAMPLE_MS, rderr);
 		}
+#if IMU_VERBOSE
 		if(has_mag) {
-			tm_printf((UB *)"[imu] mag mG x=%6d y=%6d z=%6d\n",
+			tm_printf((UB *)"[imu]   mag mG x=%6d y=%6d z=%6d\n",
 				  m[0], m[1], m[2]);
 		}
+#else
+		(void)has_mag; (void)zmin; (void)zmax; (void)amax;
+		(void)ds_pub;
+#endif
 
 		ds_win = ds;
 		ds_pub = 0;
