@@ -38,9 +38,6 @@
 #include "imu_task/imu_task.h" // buddy4: imu_task
 #include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
 
-=========
-#include "imu_task/imu_task.h" // buddy4: imu_task
->>>>>>>>> Temporary merge branch 2
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
@@ -501,9 +498,9 @@ EXPORT INT usermain(void)
 	}
 
 	/* Buddy 5: nav_flg first, then tell scan_task where the mission state
-	 * and motion_flg are. Avoid commands/replies remain simulated until
-	 * motion_task implements its command buffer. A failure here only prints:
-	 * usermain() must not return (see the end of this function). */
+	 * and motion_flg are. Buddy 2's motion branch must expose the command
+	 * buffers before avoid_cmd_mbf can be bound here; scan_if fails closed
+	 * until then. A failure here only prints: usermain() must not return. */
 	if(E_OK != nav_ctrl_init()) {
 		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
 	} else {

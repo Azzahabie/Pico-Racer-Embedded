@@ -62,13 +62,9 @@ EXPORT ER scan_if_init(void)
 	g_tick_cycid = objid;
 
 	if(scan_if_standalone()) {
-		if(0 < g_bind.motion_flgid) {
-			tm_printf((UB *)"[scan_if] STOP_ONLY: motion stop is bound; "
-				  "avoid commands/replies are simulated\n");
-		} else {
-			tm_printf((UB *)"[scan_if] STANDALONE: motion stop is not bound; "
-				  "avoid commands/replies are simulated\n");
-		}
+		tm_printf((UB *)"[scan_if] INCOMPLETE BINDING: motion_flg=%d "
+			  "avoid_mbf=%d; avoid commands fail closed\n",
+			  (INT)g_bind.motion_flgid, (INT)g_bind.avoid_mbfid);
 	}
 	return E_OK;
 }
@@ -144,29 +140,20 @@ EXPORT void scan_if_stop_clear(void)
 /* Place the command, then set CMD (Section 4 order). Never blocks. */
 EXPORT bool scan_if_send_cmd(const avoid_cmd_t *p_cmd)
 {
-	bool	sent = true;
+	bool	sent = false;
 	ER	ercd;
 
-	if(scan_if_standalone()) {
-		tm_printf((UB *)"[scan_if] -> avoid_cmd_mbf: %s side=%s dist=%d mm, CMD set\n",
-			  (AVOID_REVERSE == p_cmd->type) ? "REVERSE" : "BYPASS",
-			  (AVOID_SIDE_LEFT == p_cmd->side) ? "LEFT" :
-			  ((AVOID_SIDE_RIGHT == p_cmd->side) ? "RIGHT" : "-"),
-			  (INT)p_cmd->dist_mm);
-		/* simulated motion_task reply */
-		if(AVOID_REVERSE == p_cmd->type) {
-			tm_printf((UB *)"[sim] motion_task: reversed -> REVERSE_DONE\n");
-			(void)tk_set_flg(g_scan_flgid, SCAN_FLG_REVERSE_DONE);
-		} else {
-			tm_printf((UB *)"[sim] motion_task: bypassed, line found -> LINE_FOUND\n");
-			(void)tk_set_flg(g_scan_flgid, SCAN_FLG_LINE_FOUND);
-		}
-	} else {
+	if((NULL != p_cmd) && !scan_if_standalone()) {
 		ercd = tk_snd_mbf(g_bind.avoid_mbfid, p_cmd, (INT)sizeof(*p_cmd), TMO_POL);
 		if(E_OK != ercd) {
 			sent = false;			/* full: caller retries next tick */
 		} else {
-			(void)tk_set_flg(g_bind.motion_flgid, MOTION_EVT_CMD);
+			sent = true;
+			ercd = tk_set_flg(g_bind.motion_flgid, MOTION_EVT_CMD);
+			if(E_OK != ercd) {
+				tm_printf((UB *)"[scan_if] command queued but motion wake "
+					  "failed, er=%d\n", (INT)ercd);
+			}
 		}
 	}
 	return sent;

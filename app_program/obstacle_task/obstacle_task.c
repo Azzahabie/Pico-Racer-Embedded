@@ -26,15 +26,17 @@
  *	  Reversing   wait REVERSE_DONE -> Coarse Scan with D_obs + reverse.
  *	  Avoiding    keep pinging; 2 close -> STOP_SCAN -> Coarse Scan (re-plan).
  *	              LINE_FOUND -> Monitoring; LINE_LOST -> Idle.
- *	  Blocked     STOP_SCAN stays. 3 clear in a row -> Monitoring.
+ *	  Blocked     STOP_SCAN stays. 3 clear in a row -> Coarse Scan;
+ *	              only a confirmed false alarm or LINE_FOUND resumes
+ *	              monitoring.
  *	              After t_block -> BLOCKED on nav_flg (mission pauses).
  *	  Sensor Lost 3 no-echo pings in a row (any active state): STOP_SCAN,
  *	              fault record. 3 valid echoes -> Coarse Scan. t_block ->
  *	              BLOCKED on nav_flg.
  *	  Any state -> Idle when the mission is not Running.
  *
- *	STOP_SCAN uses the bound motion flag; avoid commands and motion_task's
- *	replies are simulated until the motion command buffer is integrated.
+ *	STOP_SCAN uses the bound motion flag. Avoid commands fail closed until
+ *	the real motion command buffer is bound; replies are never simulated.
  *
  *	Barr-C (safety subset): braces on every body, constant on the left of
  *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
@@ -548,7 +550,8 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 			p_ctx->after_reverse = false;
 			enter(p_ctx, ST_AVOIDING);
 		} else {
-			tm_printf((UB *)"[scan] avoid_cmd_mbf full: STOP_SCAN kept, retry\n");
+			tm_printf((UB *)"[scan] avoid_cmd_mbf unavailable/full: "
+				  "STOP_SCAN kept, retry\n");
 			(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
 		}
 		break;
@@ -563,7 +566,8 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 			p_ctx->after_reverse = true;
 			enter(p_ctx, ST_REVERSING);
 		} else {
-			tm_printf((UB *)"[scan] avoid_cmd_mbf full: STOP_SCAN kept, retry\n");
+			tm_printf((UB *)"[scan] avoid_cmd_mbf unavailable/full: "
+				  "STOP_SCAN kept, retry\n");
 			(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
 		}
 		break;
@@ -696,11 +700,9 @@ LOCAL void scan_task_run(void)
 			(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
 			(void)fwd_ping(&ctx);
 			if(ctx.runs.clear_run >= SL_N_CLEAR) {
-				tm_printf((UB *)"[scan] path clear again\n");
-				scan_if_stop_clear();
-				ctx.reverse_tried = false;
-				ctx.after_reverse = false;
-				enter(&ctx, ST_MONITORING);
+				tm_printf((UB *)"[scan] readings clear; rescan while "
+					  "STOP_SCAN remains set\n");
+				enter(&ctx, ST_COARSE);
 			} else if(!ctx.blocked_sent && (ms_since(ctx.state_us) >= (UW)T_BLOCK_MS)) {
 				scan_if_set_blocked();
 				ctx.blocked_sent = true;

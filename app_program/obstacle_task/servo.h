@@ -26,7 +26,7 @@
 #define SERVO_TRIM_US		55	/* +/- tens of us to make 0 deg = straight ahead */
 #define SERVO_DIR		-1	/* 1 = normal, -1 = servo mounted mirrored       */
 #define SERVO_MOVE_STEP_DEG	5	/* ramp large movements instead of jumping       */
-#define SERVO_MOVE_STEP_MS	30	/* pause between ramp steps                       */
+#define SERVO_MOVE_STEP_MS	50	/* pause between ramp steps; slower sweep        */
 
 EXPORT void	servo_init(void);
 EXPORT UW	servo_set_angle(INT angle_deg);	/* returns pulse in us */

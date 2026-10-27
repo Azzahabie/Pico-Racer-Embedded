@@ -12,10 +12,9 @@
  *	  mission_state, hump_state: read through callbacks, so the owner's
  *	                 priority-inheritance mutex stays inside the owner's code.
  *
- *	FALLBACK MODE: without motion_flgid, stop signals are printed. Without
- *	avoid_mbfid, avoid commands and motion replies are simulated
- *	(REVERSE -> REVERSE_DONE, BYPASS -> LINE_FOUND). A bound motion flag
- *	still carries the live STOP_SCAN request in this mode.
+ *	FAIL-SAFE MODE: if either motion_flgid or avoid_mbfid is missing,
+ *	STOP_SCAN can still be sent when possible, but avoid commands fail
+ *	instead of pretending that motion or line reacquisition succeeded.
  *
  *	The bit values and structs marked PROPOSED belong in common/messages.h
  *	and move there through a pull request agreed with Buddies 1, 2 and 3.
@@ -105,7 +104,7 @@ EXPORT void	scan_if_send_tele(const scan_tele_t *p_rec);
 
 EXPORT bool	scan_if_mission_running(void);
 EXPORT bool	scan_if_hump_active(void);
-EXPORT bool	scan_if_standalone(void);
+EXPORT bool	scan_if_standalone(void);	/* missing motion or avoid binding */
 EXPORT UW	scan_if_tele_drops(void);
 
 #endif /* SCAN_IF_H */
