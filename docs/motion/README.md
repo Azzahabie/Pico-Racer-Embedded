@@ -334,10 +334,12 @@ sensor on GP4/GP5, `OBSTACLE_TEST_MODE` 4 as committed, wheels off).
 mission is Running: once nav prints `[nav] mission ... -> READY`, press
 GP20 and look for `-> RUNNING`. Then hold a hand within 25 cm in front of
 the sensor: expect
-`STOP_SCAN set: motors braked (the sender did not stamp the request).`
+`STOP_SCAN set: brake written NN us after the request.` (scan_task
+stamps its own request, so this is NFR-18 timing from the real sender).
 `every STOP bit clear` follows when scan_task's own scan decides the way
-is free, which may be while the hand is still there. scan_task still
-prints its STANDALONE banner, because its command buffer is not bound
+is free, which may be while the hand is still there. scan_task prints its
+`STOP_ONLY` banner (motion's stop is bound; its commands and motion's
+replies are still simulated), because its command buffer is not bound
 yet.
 
 ### distance_state (for imu_task, Buddy 4)
