@@ -154,7 +154,7 @@ int main(void)
 	expect(mclass_get() == MC_MOVING, "class: slow is still moving");
 
 	/* Turning 30 deg/s. */
-	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 0);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 0);
 	expect(mclass_get() == MC_TURNING, "class: turning");
 
 	/* Turning on the spot: no mm, but turning. */
@@ -168,14 +168,29 @@ int main(void)
 	mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
 	expect(mclass_get() == MC_MOVING, "class: one-sample spike ignored");
 
+	/* A turn rate wandering 17-21 deg/s (2026-10-28 02:14:39) stays one
+	   turn: hysteresis, then straight again below 12. */
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 25, FALSE, 0);
+	expect(mclass_get() == MC_TURNING, "class: turn starts");
+	for (i = 0; i < 40; i++) mclass_step(TRUE, 1000, 1, 17 + (i % 5), FALSE, 0);
+	expect(mclass_get() == MC_TURNING, "class: 17-21 dps stays turning");
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 5, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: below 12 dps, straight");
+
+	/* A 50 ms blip (distance_state ACCELERATING while stopping) is not
+	   reported. */
+	for (i = 0; i < 5; i++) mclass_step(TRUE, 1000, 1, 0, TRUE, 0);
+	for (i = 0; i < 5; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: 50 ms accel blip ignored");
+
 	/* Accelerating (distance_state says so). */
-	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, TRUE, 0);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, TRUE, 0);
 	expect(mclass_get() == MC_ACCELERATING, "class: accelerating");
 
 	/* On a hump, climbing then descending outrank a turn. */
-	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 1);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 1);
 	expect(mclass_get() == MC_CLIMBING, "class: climbing");
-	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 2);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 2);
 	expect(mclass_get() == MC_DESCENDING, "class: descending");
 
 	/* Impact while moving: at once, held 500 ms, then back. */
@@ -186,7 +201,7 @@ int main(void)
 		mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
 	}
 	expect(mclass_get() == MC_IMPACT, "class: impact held 500 ms");
-	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
 	expect(mclass_get() == MC_MOVING, "class: impact over");
 
 	/* Hit just after stopping (a crash brakes the car): still impact. */

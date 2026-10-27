@@ -52,7 +52,11 @@ LOCAL MOTION_CLASS raw_class(BOOL ok, UW amag_mg, W turn_dps,
 	}
 	if(hump == 1) return MC_CLIMBING;
 	if(hump == 2) return MC_DESCENDING;
-	if(at > MC_TURN_DPS) return MC_TURNING;
+	/* Hysteresis: once turning, it takes a clearly straighter path to
+	   stop. */
+	if(at > MC_TURN_DPS || (cur == MC_TURNING && at > MC_TURN_OFF_DPS)) {
+		return MC_TURNING;
+	}
 	if(still_n >= MC_STILL_N) {
 		/* Turning on the spot moves no mm: not still. */
 		return (at < MC_STILL_DPS) ? MC_STATIONARY : cur;

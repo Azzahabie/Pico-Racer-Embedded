@@ -20,6 +20,9 @@ typedef enum {
 /* Thresholds: the Week 6 proposals, except where noted.  Not yet
  * validated on a driven car (assumption A8). */
 #define MC_TURN_DPS	20		/* |turn| above this: turning         */
+#define MC_TURN_OFF_DPS	12		/* ... and below this to stop turning:
+					   at a steady 17-21 deg/s it flickered
+					   moving/turning every 50 ms         */
 #define MC_STILL_DPS	5		/* |turn| below this to be stationary */
 #define MC_STILL_N	10		/* no encoder mm for 100 ms: still.
 					   Proposed 5 samples, but dist_mm is
@@ -29,7 +32,7 @@ typedef enum {
 #define MC_IMPACT_HOLD	50		/* report impact for 500 ms           */
 #define MC_MOVED_N	100		/* impact only within 1 s of moving:
 					   carrying the car by hand hit 2.4 g */
-#define MC_CONFIRM_N	3		/* a new class must hold 30 ms
+#define MC_CONFIRM_N	10		/* a new class must hold 100 ms
 					   (impact is reported at once)       */
 
 IMPORT void mclass_reset(void);
