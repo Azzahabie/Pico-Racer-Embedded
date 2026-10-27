@@ -36,6 +36,8 @@ IMPORT UINT safety_step(BOOL ok, W ax, W ay, W az);
 
 IMPORT UW safety_tilt_mg(void);		/* tilt of the last good sample */
 IMPORT BOOL safety_tilted(void);	/* over T for N samples, now    */
+IMPORT INT safety_tilt_run(void);	/* samples in a row over T: 1 on
+					   the first one (NFR-19 timing)  */
 IMPORT BOOL safety_no_data(void);	/* no good sample for Y, now    */
 
 #endif /* IMU_SAFETY_H */

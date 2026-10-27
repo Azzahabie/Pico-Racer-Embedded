@@ -32,6 +32,8 @@
  */
 
 #include <tk/tkernel.h>
+#include <tk/syslib.h>
+#include <sys/sysdef.h>			/* TIMER_TIMERAWL: 1 MHz timer  */
 #include <tm/tmonitor.h>
 
 #include "../../device/include/dev_i2c.h"
@@ -63,6 +65,7 @@
 					   battery there is none, and nav's
 					   CAL_REQ times out after 10 s      */
 #define REINIT_EVERY	100		/* while no data: set up again, 1 s   */
+#define TIMING_REPORTS	10		/* timing line every 10 status lines  */
 
 #define CAL_SAMPLES	100		/* 1 s of samples per attempt         */
 #define CAL_TRIES	5
@@ -142,11 +145,11 @@ LOCAL void tell_nav(UINT bits)
    NFR-18).  imu_task never clears STOP_IMU: motion_task does, when nav
    sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
    goes on the shared fault flag once Buddy 5's fault_set() exists. */
-LOCAL void raise_fault(const char *why)
+LOCAL void raise_fault(const char *why, UW t_first)
 {
 	mission_state_t	ms = nav_mission_state();
 	BOOL		in_mission = (ms == MS_RUNNING || ms == MS_PAUSED);
-	UW		t10;
+	UW		t10, us;
 
 	if(faulted) return;
 	faulted = TRUE;
@@ -155,10 +158,14 @@ LOCAL void raise_fault(const char *why)
 		tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_IMU);
 	}
 	tell_nav(NAV_FLG_IMU_FAULT);
+	/* NFR-19 (tilt, limit 40 ms) and NFR-13 (no data, Y = 50 ms): from
+	   the first offending sample to here, on the 1 MHz timer. */
+	us = in_w(TIMER_TIMERAWL) - t_first;
 	t10 = tilt_deg10(safety_tilt_mg());
 	tm_printf((UB *)"[imu] !!!!! IMU FAULT: %s (tilt %u.%u deg, mission %s)"
-		       " -> IMU_FAULT%s !!!!!\n", why, t10 / 10, t10 % 10,
-		  nav_state_name(ms), in_mission ? " + STOP_IMU" : "");
+		       " -> IMU_FAULT%s, %u.%u ms after the first sample"
+		       " !!!!!\n", why, t10 / 10, t10 % 10, nav_state_name(ms),
+		  in_mission ? " + STOP_IMU" : "", us / 1000, us % 1000 / 100);
 }
 
 /* Write sub-address, repeated start, read n bytes. */
@@ -505,6 +512,13 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	UINT	ev;
 	UB	line[200], *p;
 	mission_state_t	ms, ms_prev;
+	/* NFR-11 timing, 1 MHz: when each sample woke, when its work ended,
+	   the period and work range per timing window, and the worst work
+	   since boot (WCET).  tskip: the last period spans a calibration. */
+	UW	t_wake, t_prev = 0, t_end, per, per_min, per_max, work;
+	UW	work_max, wcet = 0, t_tilt = 0, t_bad = 0;
+	BOOL	tskip = TRUE;
+	INT	run_prev = 0;
 
 	(void)stacd; (void)exinf;
 
@@ -565,14 +579,27 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	n = 0;
 	sum[0] = sum[1] = sum[2] = 0;
 	zmin = 32767; zmax = -32768; amax = 0;
+	per_min = 0xFFFFFFFF; per_max = 0; work_max = 0;
 
 	for(k = 0; ; k++) {
+		t_end = in_w(TIMER_TIMERAWL);	/* last sample's work is done */
 		lost += wait_tick();
+		t_wake = in_w(TIMER_TIMERAWL);
+		if(!tskip) {
+			per = t_wake - t_prev;
+			work = t_end - t_prev;
+			if(per < per_min) per_min = per;
+			if(per > per_max) per_max = per;
+			if(work > work_max) work_max = work;
+		}
+		tskip = FALSE;
+		t_prev = t_wake;
 
 		/* Calibrating (6.4), on nav's request: the car is still for
 		   1-7 s, so the windows start again after it. */
 		if(cal_requested()) {
 			answer_cal(calibrate());
+			tskip = TRUE;
 			ds_prev = ds_win = ds_hump = motion_ds_read();
 			hsum[0] = hsum[1] = 0;
 			hn = 0;
@@ -597,6 +624,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		/* Fault checks on every sample (FR-28, NFR-13, NFR-19). */
 		ev = safety_step(ok, a[0], a[1], a[2]);
 		bad = ok ? 0 : bad + 1;
+		/* Start of a run over T, or of bad reads: the clock for the
+		   NFR-19 / NFR-13 time printed with the fault. */
+		if(safety_tilt_run() == 1 && run_prev != 1) t_tilt = t_wake;
+		run_prev = safety_tilt_run();	/* a jolt holds it at 1 */
+		if(bad == 1) t_bad = t_wake;
 		if((ev & SAFETY_EV_REINIT) != 0
 		   || (bad > 0 && bad % REINIT_EVERY == 0)) {
 			tm_printf((UB *)"[imu] reads failing: setting the IMU"
@@ -604,11 +636,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			setup();
 		}
 		if(safety_no_data()) {
-			raise_fault("no good IMU sample for 50 ms");
+			raise_fault("no good IMU sample for 50 ms", t_bad);
 		}
 		ms = nav_mission_state();
 		if(safety_tilted() && (ms == MS_RUNNING || ms == MS_PAUSED)) {
-			raise_fault("abnormal tilt");
+			raise_fault("abnormal tilt", t_tilt);
 		}
 
 		/* Mission changes (Statechart 6.4): a new mission starts the
@@ -668,6 +700,19 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		}
 
 		if((k + 1) % REPORT_SAMPLES != 0) continue;
+
+		/* NFR-11: sample period 10 ms +/- 1 ms, and the work per sample
+		   (its worst since boot is the measured WCET). */
+		if((k + 1) % (REPORT_SAMPLES * TIMING_REPORTS) == 0
+		   && per_max > 0) {
+			if(work_max > wcet) wcet = work_max;
+			tm_printf((UB *)"[imu] timing (%d s): sample period %u..%u us"
+				       " (10 ms +/- 1), work max %u us, worst since"
+				       " boot %u us\n",
+				  REPORT_SAMPLES * TIMING_REPORTS * SAMPLE_MS / 1000,
+				  per_min, per_max, work_max, wcet);
+			per_min = 0xFFFFFFFF; per_max = 0; work_max = 0;
+		}
 
 		if(n > 0) {
 			W	mx = sum[0] / n, my = sum[1] / n;

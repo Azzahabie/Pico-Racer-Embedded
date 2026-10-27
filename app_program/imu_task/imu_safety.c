@@ -24,6 +24,7 @@ EXPORT void safety_reset(void)
 
 EXPORT UW safety_tilt_mg(void)	{ return tilt_mg; }
 EXPORT BOOL safety_tilted(void)	{ return tilt_n >= SAFETY_TILT_N; }
+EXPORT INT safety_tilt_run(void)	{ return tilt_n; }
 EXPORT BOOL safety_no_data(void)	{ return bad_n >= SAFETY_BAD_N; }
 
 /* Tilt is the sideways part of gravity, |x, y|, so it works whichever
