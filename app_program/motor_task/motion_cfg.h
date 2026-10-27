@@ -106,6 +106,12 @@
    stall check is skipped.  PROPOSED: replace with the ramp-test result. */
 #define MOTION_DEADBAND_DUTY (150)
 
+/* Reverse (statechart REVERSING, scan_task's REVERSE command): PID target
+   for both wheels, counts per tick, driven backwards.  PROPOSED: 10 counts
+   per tick, about 8 cm/s (calculated: 10 x 0.079 mm every 10 ms), so
+   scan_task's 150 mm reverse takes about 2 s, inside its 5 s timeout. */
+#define MOTION_REV_TARGET (10)
+
 /* ------------------------------------------------------------------ *
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
@@ -151,6 +157,24 @@
 #define MOTION_TEST_WDT (0)
 #endif
 #define MOTION_TEST_WDT_TICKS (50u) /* 0.5 s */
+
+/* Used only when MOTION_BENCH is 1.
+   1: stop test (NFR-18).  The button starts both wheels at
+      MOTION_TEST_DUTY; a stand-in for scan_task and imu_task (a task on
+      core 1 at imu_task's priority) sets STOP_SCAN and STOP_IMU in turn
+      while they turn, and clears each again (scan_task stays print-only
+      in bench images: see motor_task_flag()).  Every stop prints how long
+      after the request the brake was written; after
+      MOTION_TEST_STOP_TRIALS stops per source the summary prints. */
+#ifndef MOTION_TEST_STOP
+#define MOTION_TEST_STOP (0)
+#endif
+#define MOTION_TEST_STOP_TRIALS (100u) /* per source                  */
+#define MOTION_TEST_STOP_DRIVE  (30u)  /* ticks driving before a stop */
+#define MOTION_TEST_STOP_HOLD   (20u)  /* stand-in steps, about 400 ms */
+#define MOTION_TEST_STOP_PRI    (12)   /* imu_task's priority         */
+/* Each stand-in step is about 20 ms, as tk_dly_tsk(10) adds one 10 ms
+   kernel tick, so a STOP stays set about 400 ms (C). */
 
 #define MOTION_TEST_DUTY       (350)  /* open-loop steps, per-mille */
 #define MOTION_TEST_STEP_TICKS (150u) /* 1.5 s per step */

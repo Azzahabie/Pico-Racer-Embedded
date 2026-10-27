@@ -29,7 +29,9 @@
 #define MOTION_EVT_TICK        (1U << 0)   /* motion_task cyclic handler */
 #define MOTION_EVT_CMD         (1U << 1)   /* queued motion command       */
 #define MOTION_EVT_STOP_SCAN   (1U << 2)   /* persistent obstacle stop   */
-#define MOTION_EVT_STOP_WAKE   (1U << 3)   /* wake after stop set/clear   */
+#define MOTION_EVT_STOP_IMU    (1U << 3)   /* imu_task stop; motion clears
+                                              it on FAULT_CLEAR(IMU)       */
+#define MOTION_EVT_STOPS       (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
 
 /* ------------------------------------------------------------------ *
  *  Shared fault bitmask (schema section 4.1)
