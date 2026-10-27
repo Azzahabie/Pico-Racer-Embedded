@@ -38,12 +38,15 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
+#include "../nav_task/nav_ctrl.h"
+#include "../obstacle_task/scan_if.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
 #include "motor.h"
 #include "encoder.h"
 #include "motion_wdt.h"
+#include "motion_sm.h"
 #include "motor_task.h"
 
 /* The motion_flg bits (common/messages.h) are four different bits. */
@@ -153,9 +156,11 @@ typedef enum
                     not stamped, rate_l = 1 if this stop
                     wrote the brake, 0 if already braked   */
     EVT_GO,      /* every STOP bit clear; val_l = ms braked */
-    EVT_STOPTEST /* stop test result for one source: val_l
-                    = STOP bit, val_r = stops, rate_l = max
-                    us, rate_r = mean us, duty_l = min us  */
+    EVT_STOPTEST, /* stop test result for one source: val_l
+                     = STOP bit, val_r = stops, rate_l = max
+                     us, rate_r = mean us, duty_l = min us  */
+    EVT_STATE     /* statechart: val_l = new state, val_r =
+                     old state, rate_l = replies sent       */
 } report_event_t;
 
 typedef struct
@@ -254,6 +259,9 @@ typedef struct
     int32_t           ds_turn;    /* deg/s, counter-clockwise +     */
     int32_t           ds_accel;   /* mm/s^2, for the status line    */
     uint32_t          ds_counter; /* publishes so far (word: 3 bits) */
+
+    /* statechart 6.2 (normal image only) */
+    motion_sm_t sm;
 
     /* reporting */
     int32_t  rep_l;
@@ -1160,6 +1168,123 @@ stop_check (motion_ctx_t *p_ctx, UINT ptn)
     p_ctx->stop_bits = stops;
 }
 
+/* ------------------------------------------------------------------ *
+ *  Statechart 6.2 (motion_sm.c), normal image only
+ * ------------------------------------------------------------------ */
+
+#if !MOTION_BENCH
+/* Set the reply bits a step asked for on nav_flg and scan_flg.  scan_flg
+   exists only once scan_task has started, so its ID is fetched here. */
+static void
+sm_send_replies (uint32_t replies)
+{
+    ID   nav_id    = nav_flag();
+    ID   scan_id   = scan_if_flag();
+    UINT nav_bits  = 0u;
+    UINT scan_bits = 0u;
+
+    if (0u != (replies & MOTION_SM_REP_MOVE_DONE))
+    {
+        nav_bits |= NAV_FLG_MOVE_DONE;
+    }
+    if (0u != (replies & MOTION_SM_REP_CMD_REJECTED))
+    {
+        nav_bits |= NAV_FLG_CMD_REJECTED;
+    }
+    if (0u != (replies & MOTION_SM_REP_MOTION_FAULT))
+    {
+        nav_bits |= NAV_FLG_MOTION_FAULT;
+    }
+    if (0u != (replies & MOTION_SM_REP_LINE_FOUND))
+    {
+        nav_bits |= NAV_FLG_LINE_FOUND;
+        if (0u != (replies & MOTION_SM_REP_TO_SCAN))
+        {
+            scan_bits |= SCAN_FLG_LINE_FOUND;
+        }
+    }
+    if (0u != (replies & MOTION_SM_REP_LINE_LOST))
+    {
+        nav_bits |= NAV_FLG_LINE_LOST;
+        if (0u != (replies & MOTION_SM_REP_TO_SCAN))
+        {
+            scan_bits |= SCAN_FLG_LINE_LOST;
+        }
+    }
+    if (0u != (replies & MOTION_SM_REP_REVERSE_DONE))
+    {
+        scan_bits |= SCAN_FLG_REVERSE_DONE;
+    }
+
+    if ((0u != nav_bits) && (nav_id > 0))
+    {
+        (void)tk_set_flg(nav_id, nav_bits);
+    }
+    if ((0u != scan_bits) && (scan_id > 0))
+    {
+        (void)tk_set_flg(scan_id, scan_bits);
+    }
+}
+
+/* Faults that send the statechart to Motion Fault (FR-30); a lost tick or
+   a failed set-up are handled elsewhere. */
+#define SM_FAULTS                                                              \
+    (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R | MOTION_FAULT_ENC_L          \
+     | MOTION_FAULT_ENC_R)
+
+/* One statechart step per tick, after the stall check.  The mission state
+   comes from nav_ctrl_task (one aligned load).  Commands (step 1.7) and
+   the progress of each manoeuvre (line following, turns, bypass and
+   search) are not built yet, so those inputs stay false and the wheels
+   stay braked in every state.  distance_state is never reset: imu_task
+   works from differences, and a jump would read as a fake movement. */
+static void
+tick_statechart (motion_ctx_t *p_ctx)
+{
+    motion_sm_in_t  in      = { 0 };
+    motion_sm_out_t out     = { 0u, false, false, false };
+    motion_state_t  before  = motion_sm_state(&p_ctx->sm);
+    mission_state_t mission = nav_mission_state();
+    motion_report_t rep;
+
+    in.b_running   = (MS_RUNNING == mission);
+    in.b_stop_scan = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_SCAN));
+    in.b_stop_imu  = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_IMU));
+    in.b_fault     = (0u != ((uint32_t)p_ctx->faults & SM_FAULTS));
+
+    motion_sm_step(&p_ctx->sm, &in, &out);
+
+    /* FAULT_CLEAR(MOTION) took it out of Motion Fault: forget the fault,
+       or the next driving tick would raise it again. */
+    if ((MOTION_ST_FAULT == before)
+        && (MOTION_ST_FAULT != motion_sm_state(&p_ctx->sm)))
+    {
+        p_ctx->faults = (uint8_t)((uint32_t)p_ctx->faults & ~SM_FAULTS);
+    }
+
+    if (out.b_clear_stop_imu)
+    {
+        (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);
+    }
+    if (out.b_changed && !motion_sm_driving(motion_sm_state(&p_ctx->sm)))
+    {
+        motor_brake_all(); /* before any reply, e.g. MOTION_FAULT */
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    sm_send_replies(out.replies);
+
+    if (out.b_changed || (0u != out.replies))
+    {
+        report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STATE);
+        rep.val_l  = (int32_t)motion_sm_state(&p_ctx->sm);
+        rep.val_r  = (int32_t)before;
+        rep.rate_l = (int32_t)out.replies;
+        report_send(p_ctx, &rep);
+    }
+}
+#endif
+
 static void
 motion_tick (motion_ctx_t *p_ctx)
 {
@@ -1189,6 +1314,9 @@ motion_tick (motion_ctx_t *p_ctx)
 #endif
 
     stall_check(p_ctx);
+#if !MOTION_BENCH
+    tick_statechart(p_ctx);
+#endif
 
     switch (p_ctx->phase)
     {
@@ -1337,6 +1465,7 @@ motion_init (motion_ctx_t *p_ctx)
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
     motion_ds_win_reset(&p_ctx->ds_win);
+    motion_sm_init(&p_ctx->sm);
 
     encoder_read_counts(&p_ctx->prev_l, &p_ctx->prev_r);
     p_ctx->prev_edges_l = encoder_read_edges_left();
@@ -1661,6 +1790,28 @@ print_boot (UB *p_line, motion_report_t const *p_rep)
     }
 }
 
+/* "[motion] state LINE_FOLLOW -> BRAKED", plus the replies it sent. */
+static void
+print_state (UB *p_line, motion_report_t const *p_rep)
+{
+    uint32_t replies = (uint32_t)p_rep->rate_l;
+
+    (void)tm_sprintf(
+        p_line, (UB *)"[motion] state %s -> %s%s%s%s%s%s%s",
+        motion_sm_name((uint32_t)p_rep->val_r),
+        motion_sm_name((uint32_t)p_rep->val_l),
+        (0u != (replies & MOTION_SM_REP_MOVE_DONE)) ? ", sent MOVE_DONE" : "",
+        (0u != (replies & MOTION_SM_REP_CMD_REJECTED)) ? ", sent CMD_REJECTED"
+                                                       : "",
+        (0u != (replies & MOTION_SM_REP_MOTION_FAULT)) ? ", sent MOTION_FAULT"
+                                                       : "",
+        (0u != (replies & MOTION_SM_REP_LINE_FOUND)) ? ", sent LINE_FOUND" : "",
+        (0u != (replies & MOTION_SM_REP_LINE_LOST)) ? ", sent LINE_LOST" : "",
+        (0u != (replies & MOTION_SM_REP_REVERSE_DONE)) ? ", sent REVERSE_DONE"
+                                                       : "");
+    print_line(p_line);
+}
+
 static char const *
 stop_name (int32_t bit)
 {
@@ -1784,6 +1935,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
         case EVT_GO:
         case EVT_STOPTEST:
             print_stop(p_line, p_rep);
+            break;
+
+        case EVT_STATE:
+            print_state(p_line, p_rep);
             break;
 
         case EVT_RAMP:
