@@ -295,12 +295,18 @@ ER tk_wai_flg(ID id, UINT waiptn, UINT mode, UINT *p_ptn, TMO tmo)
 }
 ID tk_cre_mbf(CONST T_CMBF *p)
 {
-	/* The real buffer must hold REPORT_QUEUE_LEN records exactly, and be
-	   ours (TA_USERBUF), not the kernel heap's: Week 13 RAM evidence. */
-	CHECK(p->bufsz == (SZ)(REPORT_QUEUE_LEN * (sizeof(motion_report_t) + 4u)));
 	CHECK(((p->mbfatr & TA_USERBUF) != 0u) && (p->bufptr != NULL));
-	CHECK(p->maxmsz == (INT)sizeof(motion_report_t));
-	return 2;
+	if (p->maxmsz == (INT)sizeof(motion_report_t)) {
+		/* Report queue: Week 13 RAM evidence. */
+		CHECK(p->bufsz == (SZ)(REPORT_QUEUE_LEN * (sizeof(motion_report_t) + 4u)));
+		return 2;
+	}
+	if (p->maxmsz == (INT)sizeof(uint16_t)) {
+		CHECK(p->bufsz == (SZ)(AVOID_CMD_QUEUE_LEN * (sizeof(uint16_t) + 4u)));
+		return 6;
+	}
+	CHECK(!"unexpected message buffer definition");
+	return E_PAR;
 }
 ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 {
@@ -1028,8 +1034,7 @@ scenario_stop_scan (void)
 	motor_set(MOTOR_LEFT, g_ctx.cmd_l);
 	motor_set(MOTOR_RIGHT, g_ctx.cmd_r);
 
-	CHECK(E_OK == tk_set_flg(g_flgid,
-				 MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_WAKE));
+	CHECK(E_OK == tk_set_flg(g_flgid, MOTION_EVT_STOP_SCAN));
 	motion_cycle(&g_ctx);
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 	CHECK(PHASE_IDLE == g_ctx.phase);
@@ -1040,7 +1045,7 @@ scenario_stop_scan (void)
 	CHECK(PHASE_IDLE == g_ctx.phase);
 
 	CHECK(E_OK == tk_clr_flg(g_flgid, ~MOTION_EVT_STOP_SCAN));
-	CHECK(E_OK == tk_set_flg(g_flgid, MOTION_EVT_STOP_WAKE));
+	CHECK(E_OK == tk_set_flg(g_flgid, MOTION_EVT_STOP_SCAN));
 	motion_cycle(&g_ctx);
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 	CHECK(0u == (g_flag & MOTION_EVT_STOP_SCAN));
@@ -1456,6 +1461,7 @@ main (int argc, char **argv)
 
 	CHECK(motor_task_start() == E_OK);
 	CHECK(0 < motor_task_flag());
+	CHECK(motor_task_avoid_mbfid() == 6);
 	CHECK(sizeof(motion_report_t) == 52u);
 
 #if MOTION_TEST_WDT

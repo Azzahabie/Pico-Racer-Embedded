@@ -38,7 +38,6 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
-#include "../obstacle_task/scan_if.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -46,12 +45,6 @@
 #include "encoder.h"
 #include "motion_wdt.h"
 #include "motor_task.h"
-
-/* scan_task sets these bits with its own names (scan_if.h). */
-_Static_assert(MOTION_EVT_CMD == MOTION_FLG_CMD,
-               "CMD bit differs from scan_if.h");
-_Static_assert(MOTION_EVT_STOP_SCAN == MOTION_FLG_STOP_SCAN,
-               "STOP_SCAN bit differs from scan_if.h");
 
 /* ------------------------------------------------------------------ *
  *  Constants
@@ -62,6 +55,7 @@ _Static_assert(MOTION_EVT_STOP_SCAN == MOTION_FLG_STOP_SCAN,
 #define REPORT_TASK_PRI   (24)   /* below every design task */
 #define REPORT_TASK_STACK (4096) /* SMP kernel path, see app_main */
 #define REPORT_QUEUE_LEN  (8u)   /* records in the mbf      */
+#define AVOID_CMD_QUEUE_LEN (2u) /* scan_task -> motion_task */
 #define REPORT_LINE_LEN   (192)
 #define MBF_HEADER_BYTES  (4u) /* per message, messagebuf.h */
 
@@ -299,6 +293,7 @@ static T_CMTX const g_cmtx_ds = {
 
 static ID g_flgid;
 static ID g_mbfid;
+static ID g_avoid_cmd_mbfid;
 
 /* NFR-18 request times, one word per STOP source.  Each is written only
    by its own sender (motion_stop_stamp) and read only by motion_task. */
@@ -312,6 +307,9 @@ static volatile bool gb_st_ready;
 static UW g_report_buf[(REPORT_QUEUE_LEN
                         * (sizeof(motion_report_t) + MBF_HEADER_BYTES))
                        / sizeof(UW)];
+static UW g_avoid_cmd_buf[(AVOID_CMD_QUEUE_LEN
+                           * (sizeof(uint16_t) + MBF_HEADER_BYTES))
+                          / sizeof(UW)];
 
 /* Both task stacks are ours (TA_USERBUF), not taken from the kernel heap,
    so the linker map and nm show all of motion's RAM (Week 13 evidence 2).
@@ -336,6 +334,13 @@ static T_CMBF const g_cmbf = {
     .bufsz  = sizeof(g_report_buf),
     .maxmsz = sizeof(motion_report_t),
     .bufptr = g_report_buf,
+};
+
+static T_CMBF const g_avoid_cmd_cmbf = {
+    .mbfatr = TA_TFIFO | TA_USERBUF,
+    .bufsz  = sizeof(g_avoid_cmd_buf),
+    .maxmsz = sizeof(uint16_t),
+    .bufptr = g_avoid_cmd_buf,
 };
 
 static T_CCYC const g_ccyc = {
@@ -1503,6 +1508,12 @@ motor_task_flag (void)
     return g_flgid;
 }
 
+ID
+motor_task_avoid_mbfid (void)
+{
+    return g_avoid_cmd_mbfid;
+}
+
 /* ------------------------------------------------------------------ *
  *  Report task (core 0): all printing happens here
  * ------------------------------------------------------------------ */
@@ -1977,6 +1988,19 @@ motor_task_start (void)
         else
         {
             g_mbfid = obj_id;
+        }
+    }
+
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mbf(&g_avoid_cmd_cmbf);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_avoid_cmd_mbfid = obj_id;
         }
     }
 

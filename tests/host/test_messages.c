@@ -279,6 +279,62 @@ static void test_sizes_and_wrap(void)
     ok(comm_w_dist_delta_mm(1500, 1000) == 500, "no wrap", "dist wrap");
 }
 
+static void test_avoid_command(void)
+{
+    uint16_t word = 0U;
+    uint16_t dist_mm = 0U;
+    uint8_t op = 0U;
+    uint8_t side = 0U;
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                             MOTION_AVOID_SIDE_NONE, 150U, &word),
+       "reverse command packs", "avoid command");
+    ok(word == 0x0961U, "reverse payload has the specified bit layout",
+       "avoid command");
+    ok(motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_REVERSE) &&
+       (side == MOTION_AVOID_SIDE_NONE) && (dist_mm == 150U),
+       "reverse payload round-trips", "avoid command");
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                             MOTION_AVOID_SIDE_RIGHT, 300U, &word),
+       "right bypass command packs", "avoid command");
+    ok(word == 0x12CAU, "bypass payload has the specified bit layout",
+       "avoid command");
+    ok(motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_BYPASS) &&
+       (side == MOTION_AVOID_SIDE_RIGHT) && (dist_mm == 300U),
+       "bypass payload round-trips", "avoid command");
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                             MOTION_AVOID_SIDE_LEFT, 300U, &word) &&
+       (word == 0x12C2U),
+       "left bypass uses side bit zero", "avoid command");
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                             MOTION_AVOID_SIDE_NONE,
+                             MOTION_AVOID_DIST_MAX, &word) &&
+       (word == 0xFFF1U),
+       "12-bit maximum distance is supported", "avoid command");
+
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                              MOTION_AVOID_SIDE_LEFT, 150U, &word),
+       "reverse rejects a side", "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                              MOTION_AVOID_SIDE_NONE, 300U, &word),
+       "bypass requires a side", "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                              MOTION_AVOID_SIDE_LEFT,
+                              MOTION_AVOID_DIST_MAX + 1U, &word),
+       "distance overflow is rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack(0x0000U, &op, &side, &dist_mm),
+       "zero operation and distance are rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack(0x0004U, &op, &side, &dist_mm),
+       "undefined operation is rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack((uint16_t)(0x12CAU | 0x8000U),
+                                &op, &side, &dist_mm),
+       "all 16 bits belong to defined fields", "avoid command");
+}
+
 int main(void)
 {
     test_s_v2_sanity();
@@ -289,6 +345,7 @@ int main(void)
     test_vectors();
     test_reject();
     test_sizes_and_wrap();
+    test_avoid_command();
 
     printf("%d checks passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

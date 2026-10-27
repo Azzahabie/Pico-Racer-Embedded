@@ -481,6 +481,7 @@ EXPORT INT usermain(void)
 {
 	ID	tid;
 	ER	nav_er;
+	ER	motion_ercd;
 
 	(void)tid;		/* unused when no task below is built in */
 
@@ -505,25 +506,19 @@ EXPORT INT usermain(void)
 		tm_printf((UB *)"[init] nav_flg failed: nav/scan not started\n");
 	}
 
-	/* Buddy 2: motion_task (priority 11, core 1) and motion_report
-	   (priority 24, core 0), both created in motor_task.c with TA_ASSPRC.
-	   Before scan_task is bound, so motion_flg exists; outside the nav
-	   block so the motors are braked even if nav_flg failed. */
-	{
-		ER er = motor_task_start();
-		if(er < E_OK) tm_printf((UB *)"[init] motor_task_start failed, er=%d\n", er);
-	}
+	/* Motion was started before nav initialization so its interface exists
+	   before scan_task is bound. */
 
-	/* Buddy 5: tell scan_task where the mission state, nav_flg and
-	 * motion_flg are, so its STOP_SCAN brakes the car. avoid_cmd_mbf stays
-	 * 0 until Buddy 2 adds it (step 1.7), so scan_task still simulates
-	 * motion_task's replies to its commands. */
+	/* Buddy 5: tell scan_task where the mission and motion interfaces are.
+	 * Motion queues avoid commands but does not yet execute them or generate
+	 * maneuver replies. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
-			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
-			.motion_flgid		= motion_flag(),
+			.motion_flgid		= (E_OK == motion_ercd) ? motion_flag() : 0,
+			.avoid_mbfid		= (E_OK == motion_ercd) ?
+					  motor_task_avoid_mbfid() : 0,
 		};
 		scan_if_bind(&scan_bind);
 

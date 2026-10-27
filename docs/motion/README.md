@@ -505,9 +505,13 @@ Found while writing this; each needs its owner.
 
 ## Not done yet
 
-- avoid_cmd_mbf and nav_cmd_mbf are not created or bound yet, so
-  scan_task still simulates motion's replies to its commands. motion_flg
-  is bound, so its STOP_SCAN does brake the car.
+- `avoid_cmd_mbf` is created by `motor_task_start()` with room for two
+  packed 16-bit commands and bound to `scan_task` in `app_main.c`. The
+  payload uses 3 operation bits, 1 bypass-side bit (0=left, 1=right), and
+  12 distance-in-mm bits; reverse uses side zero. Motion does not consume
+  the queue or execute maneuvers yet; `nav_cmd_mbf` is also pending.
+  `scan_task` does not simulate motion replies. `motion_flg` is bound for
+  STOP_SCAN.
 - Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
   STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
   FAULT_CLEAR(MOTION).

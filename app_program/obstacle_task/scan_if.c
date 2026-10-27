@@ -13,6 +13,7 @@
 #include <tm/tmonitor.h>
 
 #include "scan_if.h"
+#include "../motor_task/motor_task.h"
 
 LOCAL scan_if_bind_t	g_bind;			/* all 0 / NULL = standalone */
 LOCAL ID		g_scan_flgid = 0;
@@ -104,8 +105,8 @@ EXPORT void scan_if_stop_set(void)
 	ER ercd;
 
 	if(0 < g_bind.motion_flgid) {
-		ercd = tk_set_flg(g_bind.motion_flgid,
-				  MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_WAKE);
+		motion_stop_stamp(MOTION_EVT_STOP_SCAN);
+		ercd = tk_set_flg(g_bind.motion_flgid, MOTION_EVT_STOP_SCAN);
 		if(E_OK != ercd) {
 			tm_printf((UB *)"[scan_if] STOP_SCAN request failed, er=%d\n",
 				  (INT)ercd);
@@ -126,11 +127,6 @@ EXPORT void scan_if_stop_clear(void)
 			tm_printf((UB *)"[scan_if] STOP_SCAN clear failed, er=%d\n",
 				  (INT)ercd);
 		}
-		ercd = tk_set_flg(g_bind.motion_flgid, MOTION_EVT_STOP_WAKE);
-		if(E_OK != ercd) {
-			tm_printf((UB *)"[scan_if] motion wake after STOP_SCAN clear "
-				  "failed, er=%d\n", (INT)ercd);
-		}
 	} else {
 		tm_printf((UB *)"[scan_if] STOP_SCAN cleared locally; motion flag "
 			  "is not bound\n");
@@ -142,9 +138,16 @@ EXPORT bool scan_if_send_cmd(const avoid_cmd_t *p_cmd)
 {
 	bool	sent = false;
 	ER	ercd;
+	uint16_t packed_cmd;
 
 	if((NULL != p_cmd) && !scan_if_standalone()) {
-		ercd = tk_snd_mbf(g_bind.avoid_mbfid, p_cmd, (INT)sizeof(*p_cmd), TMO_POL);
+		if(!motion_avoid_cmd_pack(p_cmd->type, p_cmd->side, p_cmd->dist_mm,
+					  &packed_cmd)) {
+			tm_printf((UB *)"[scan_if] invalid avoid command rejected\n");
+			return false;
+		}
+		ercd = tk_snd_mbf(g_bind.avoid_mbfid, &packed_cmd,
+				  (INT)sizeof(packed_cmd), TMO_POL);
 		if(E_OK != ercd) {
 			sent = false;			/* full: caller retries next tick */
 		} else {

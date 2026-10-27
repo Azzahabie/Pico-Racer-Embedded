@@ -72,6 +72,11 @@
 #define T_BLOCK_MS		10000	/* [t_block] proposed                     */
 #define REVERSE_TIMEOUT_MS	5000	/* no REVERSE_DONE by then: Blocked [TBD] */
 
+_Static_assert(SL_MAX_OFFSET_MM <= MOTION_AVOID_DIST_MAX,
+	       "bypass offset exceeds the packed avoid-command distance");
+_Static_assert(SL_REV_DIST_MM <= MOTION_AVOID_DIST_MAX,
+	       "reverse distance exceeds the packed avoid-command distance");
+
 LOCAL const INT g_coarse_deg[NUM_COARSE] = { -45, -25, 0, 25, 45 };
 
 /* ------------------------------------------------------------------ */

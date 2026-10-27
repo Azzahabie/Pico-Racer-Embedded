@@ -17,14 +17,13 @@
 #define MOTOR_TASK_H
 
 #include <tk/tkernel.h>
+#include "../common/messages.h"
 
 /* ------------------------------------------------------------------ *
  *  motion_flg (design Section 4)
  *
- *  The event flag motion_task waits on.  CMD and STOP_SCAN have the
- *  values in Buddy 5's scan_if.h (MOTION_FLG_CMD, MOTION_FLG_STOP_SCAN);
- *  motor_task.c checks that they match.  PROPOSED: all four move to
- *  common/messages.h through the team pull request.
+ *  The event flag motion_task waits on. Shared bit values are defined in
+ *  common/messages.h.
  *
  *    TICK       set by motion's 10 ms cyclic handler.
  *    CMD        set by a command sender after it has placed a command
@@ -39,12 +38,6 @@
  *  tk_clr_flg) on motion_flag(); never wait on this flag (only
  *  motion_task may).
  * ------------------------------------------------------------------ */
-
-#define MOTION_EVT_TICK      (1u << 0)
-#define MOTION_EVT_CMD       (1u << 1)
-#define MOTION_EVT_STOP_SCAN (1u << 2)
-#define MOTION_EVT_STOP_IMU  (1u << 3)
-#define MOTION_EVT_STOPS     (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
 
 /* motion_flg's ID, valid once motor_task_start() has returned E_OK
    (0 before, and always 0 in bench images, MOTION_BENCH 1).  For the STOP
@@ -69,6 +62,10 @@ void motor_task(INT stacd, void *exinf);
 
 /* Event flag used by motion_task; valid after successful motor_task_start(). */
 ID motor_task_flag(void);
+
+/* avoid_cmd_mbf, created before motion_task starts; Buddy 5 sends one packed
+   16-bit avoid command per message. */
+ID motor_task_avoid_mbfid(void);
 
 /* Create and start everything motion needs: its event flag, the 10 ms
    cyclic handler, motion_task (priority 11, pinned to core 1 under SMP)

@@ -5,7 +5,7 @@
  *	  scan_flg       OWNED HERE. TICK (60 ms cyclic handler), ECHO (ECHO_ISR),
  *	                 REVERSE_DONE / LINE_FOUND / LINE_LOST (from motion_task).
  *	  motion_flg     Buddy 2. scan_task sets STOP_SCAN and CMD.
- *	  avoid_cmd_mbf  Buddy 2. scan_task -> motion_task, 4-byte avoid_cmd_t, room 2.
+ *	  avoid_cmd_mbf  Buddy 2. scan_task -> motion_task, packed 16-bit command, room 2.
  *	  nav_flg        nav_ctrl_task. scan_task sets BLOCKED.
  *	  tele_mbfid     Buddy 1. scan_task sends profile / sensor-fault records,
  *	                 non-blocking; a full queue drops the record and counts it.
@@ -16,8 +16,8 @@
  *	STOP_SCAN can still be sent when possible, but avoid commands fail
  *	instead of pretending that motion or line reacquisition succeeded.
  *
- *	The bit values and structs marked PROPOSED belong in common/messages.h
- *	and move there through a pull request agreed with Buddies 1, 2 and 3.
+ *	The packed avoid-command layout is shared in common/messages.h. The
+ *	planner command and telemetry profile remain scan_task interfaces.
  */
 
 #ifndef SCAN_IF_H
@@ -39,21 +39,21 @@
 
 #define SCAN_TICK_MS		60	/* one HC-SR04 cycle */
 
-/* ---- PROPOSED shared definitions (move to common/messages.h) ---- */
+/* ---- Buddy 5 planning interface ---- */
 #define NAV_FLG_BLOCKED		0x0100U	/* path blocked / sensor lost > t_block */
 
 typedef enum {
-	AVOID_REVERSE = 1,
-	AVOID_BYPASS  = 2
+	AVOID_REVERSE = MOTION_AVOID_OP_REVERSE,
+	AVOID_BYPASS  = MOTION_AVOID_OP_BYPASS
 } avoid_type_t;
 
 typedef enum {
-	AVOID_SIDE_NONE  = 0,
-	AVOID_SIDE_LEFT  = 1,
-	AVOID_SIDE_RIGHT = 2
+	AVOID_SIDE_NONE  = MOTION_AVOID_SIDE_NONE,
+	AVOID_SIDE_LEFT  = MOTION_AVOID_SIDE_LEFT,
+	AVOID_SIDE_RIGHT = MOTION_AVOID_SIDE_RIGHT
 } avoid_side_t;
 
-typedef struct {		/* 4 bytes, distances in mm (Section 4) */
+typedef struct {		/* scan planner form; packed before MBF send */
 	uint8_t		type;		/* avoid_type_t                     */
 	uint8_t		side;		/* avoid_side_t (bypass only)       */
 	uint16_t	dist_mm;	/* bypass: lateral offset; reverse: distance */
@@ -98,7 +98,7 @@ EXPORT void	scan_if_clear(UINT bits);
 
 EXPORT void	scan_if_stop_set(void);
 EXPORT void	scan_if_stop_clear(void);
-EXPORT bool	scan_if_send_cmd(const avoid_cmd_t *p_cmd);	/* false = buffer full */
+EXPORT bool	scan_if_send_cmd(const avoid_cmd_t *p_cmd);	/* false = unavailable/full/invalid */
 EXPORT void	scan_if_set_blocked(void);
 EXPORT void	scan_if_send_tele(const scan_tele_t *p_rec);
 
