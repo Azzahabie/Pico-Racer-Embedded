@@ -536,6 +536,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		  (chip == CHIP_DLHC || chip == CHIP_AGR) ? 0x19 : addr,
 		  (chip == CHIP_ADXL345 || chip == CHIP_MMA845X || acc_only)
 		  ? " (accel only, no magnetometer)" : "");
+	/* The fault thresholds in force, so a log shows which build ran. */
+	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg for %d samples (in a"
+		       " mission), no data for %d ms\n",
+		  tilt_deg10(SAFETY_TILT_MG) / 10, tilt_deg10(SAFETY_TILT_MG) % 10,
+		  SAFETY_TILT_N, SAFETY_BAD_N * SAMPLE_MS);
 
 	er = start_ticks();
 	if(er < E_OK) {
