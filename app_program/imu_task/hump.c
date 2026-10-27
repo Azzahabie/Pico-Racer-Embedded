@@ -91,6 +91,11 @@ EXPORT W hump_height_mm(void)
 	return (hump_state == HUMP_NONE) ? 0 : h_um / 1000;
 }
 
+EXPORT W hump_height_um(void)
+{
+	return (hump_state == HUMP_NONE) ? 0 : h_um;
+}
+
 EXPORT void hump_abort(void)
 {
 	if(hump_state != HUMP_NONE || on_top) {

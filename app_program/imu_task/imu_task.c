@@ -56,6 +56,10 @@
 #define REPORT_SAMPLES	100		/* one status line every 1 s (FR-29)  */
 #define IDLE_REPORTS	5		/* still, no hump, no errors: only
 					   every 5th line (5 s)              */
+#ifndef IMU_CSV
+#define IMU_CSV		0		/* 1: one CSV row per 10 ms sample
+					   (plan 2.4), lines start "csv,"   */
+#endif
 #ifndef IMU_VERBOSE
 #define IMU_VERBOSE	0		/* 1: also the raw axes, z range,
 					   distance_state count and mag      */
@@ -580,6 +584,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	sum[0] = sum[1] = sum[2] = 0;
 	zmin = 32767; zmax = -32768; amax = 0;
 	per_min = 0xFFFFFFFF; per_max = 0; work_max = 0;
+#if IMU_CSV
+	tm_printf((UB *)"csv,t_us,ok,ax_mg,ay_mg,az_mg,tilt_mg,dist_mm,dmm,"
+		       "turn_dps,ds_state,class,hump_state,height_um\n");
+#endif
 
 	for(k = 0; ; k++) {
 		t_end = in_w(TIMER_TIMERAWL);	/* last sample's work is done */
@@ -682,6 +690,17 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			tm_printf((UB *)"[imu] motion: %s\n",
 				  mclass_name(mclass_get()));
 		}
+
+#if IMU_CSV
+		/* One row per sample, for plots and for replaying a run through
+		   the PC tests.  ax..az are 0 on a bad read (ok = 0). */
+		tm_printf((UB *)"csv,%u,%d,%d,%d,%d,%u,%u,%d,%d,%u,%u,%u,%d\n",
+			  t_wake, ok, ok ? a[0] : 0, ok ? a[1] : 0,
+			  ok ? a[2] : 0, safety_tilt_mg(), motion_ds_mm(ds), dmm,
+			  motion_ds_turn_dps(ds), (UINT)motion_ds_state(ds),
+			  (UINT)mclass_get(), (UINT)hump_get_state(),
+			  hump_height_um());
+#endif
 
 		if((k + 1) % HUMP_SAMPLES == 0) {
 			/* In Fault, or tilted past T, it is not driving over a
