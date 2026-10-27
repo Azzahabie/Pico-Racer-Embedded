@@ -1,26 +1,11 @@
 #ifndef COMMON_MESSAGES_H
 #define COMMON_MESSAGES_H
 
-/* Shared message structs, mailbox/queue IDs, and pin assignments.
+/* Shared message structs and mailbox/queue IDs.
  * Every buddy's task depends on this file -- route changes through
  * a pull request so nobody's build breaks silently. */
 
-/*
- * Provisional project assignments only. The repository does not document
- * the physical wiring; confirm these against the robot before enabling
- * powered motion.
- */
-#define LINE_LEFT_SENSOR_GPIO       6u
-#define LINE_CENTRE_SENSOR_GPIO     8u
-#define BARCODE_SENSOR_GPIO         26u
-#ifndef BARCODE_SENSOR_AVAILABLE
-#define BARCODE_SENSOR_AVAILABLE    1u
-#endif
-
-/* Set to the measured DO level when a KY-033 is over the black line. */
-#ifndef KY033_DARK_LEVEL
-#define KY033_DARK_LEVEL            1u
-#endif
+#include "robot_config.h"
 
 #if (BARCODE_SENSOR_AVAILABLE != 0u) && (BARCODE_SENSOR_AVAILABLE != 1u)
 #error "BARCODE_SENSOR_AVAILABLE must be 0 or 1"
@@ -35,22 +20,6 @@
 
 #if (KY033_DARK_LEVEL != 0u) && (KY033_DARK_LEVEL != 1u)
 #error "KY033_DARK_LEVEL must be 0 or 1"
-#endif
-
-#if (LINE_LEFT_SENSOR_GPIO > 29u) || \
-    (LINE_CENTRE_SENSOR_GPIO > 29u) || \
-    (BARCODE_SENSOR_GPIO > 29u)
-#error "Buddy 3 sensor GPIOs must be RP2040 GPIO numbers in the range 0..29"
-#endif
-
-#if (LINE_LEFT_SENSOR_GPIO == LINE_CENTRE_SENSOR_GPIO)
-#error "The two line sensors must use distinct GPIOs"
-#endif
-
-#if BARCODE_SENSOR_AVAILABLE && \
-    ((BARCODE_SENSOR_GPIO == LINE_LEFT_SENSOR_GPIO) || \
-     (BARCODE_SENSOR_GPIO == LINE_CENTRE_SENSOR_GPIO))
-#error "The barcode sensor GPIO must not duplicate a line sensor GPIO"
 #endif
 
 #endif /* COMMON_MESSAGES_H */

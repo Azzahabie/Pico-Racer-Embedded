@@ -4,22 +4,35 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <tk/tkernel.h>
-
-#include "line_config.h"
-
-#define BARCODE_SCANNER_GPIO        BARCODE_SENSOR_GPIO
-#define BARCODE_SCANNER_ADC_CHANNEL BARCODE_SENSOR_ADC_CHANNEL
-#define BARCODE_SCANNER_RESULT_SIZE (BARCODE_MAX_CHARACTERS + 1u)
+#include "../common/robot_config.h"
 
 typedef struct {
     uint16_t black_rising_threshold;
-    uint16_t black_falling_threshold;
+    uint16_t white_falling_threshold;
     bool black_is_high;
 } barcode_scanner_config_t;
 
+typedef enum {
+    BARCODE_DECODE_OK = 0,
+    BARCODE_DECODE_BAD_LENGTH,
+    BARCODE_DECODE_BAD_WIDTH,
+    BARCODE_DECODE_BAD_PATTERN,
+    BARCODE_DECODE_BAD_FRAME,
+    BARCODE_DECODE_TOO_LONG
+} barcode_decode_error_t;
+
+typedef struct {
+    bool valid;
+    bool reversed;
+    barcode_decode_error_t error;
+    uint16_t error_character;
+    uint16_t elements;
+    char text[BARCODE_MAX_CHARACTERS + 1u];
+} barcode_decode_result_t;
+
 /**
- * Creates the configured 12-bit ADC thresholds and signal polarity.
+ * Creates a barcode-sensor configuration using the board thresholds in
+ * robot_config.h.
  *
  * @return A complete configuration for barcode_scanner_init().
  */
@@ -28,21 +41,21 @@ barcode_scanner_config_t barcode_scanner_default_config(void);
 /**
  * Initializes the ADC and configures GP26 as an analogue input.
  *
- * @param config Edge thresholds and signal polarity. Pass NULL to use
- *               barcode_scanner_default_config(). The configuration is copied.
+ * @param config Rising/falling thresholds and signal polarity. Pass NULL to
+ *               use barcode_scanner_default_config(). The configuration is copied.
  */
-ER barcode_scanner_init(const barcode_scanner_config_t *config);
+void barcode_scanner_init(const barcode_scanner_config_t *config);
 
 /**
- * Reads and averages the barcode sensor.
+ * Reads the barcode sensor once.
  *
  * @return The raw 12-bit ADC reading, in the range 0-4095.
  */
 uint16_t barcode_scanner_read_raw(void);
 
 /**
- * Reads GP26 and classifies the surface using hysteresis. This sensor is only
- * used to capture barcode transitions and does not control line steering.
+ * Reads GP26 and classifies the surface using separate black/white thresholds.
+ * This sensor only captures barcode transitions and does not steer.
  *
  * @return true when the barcode sensor sees black; otherwise false.
  */
@@ -51,10 +64,22 @@ bool barcode_scanner_read_black(void);
 /** Returns the raw ADC value captured by the most recent classified read. */
 uint16_t barcode_scanner_get_last_raw(void);
 
-/** Publishes the latest decoded text for other tasks to read safely. */
-ER barcode_scanner_publish_decoded(const char *text);
+/**
+ * Samples the sensor and returns true once a complete scan or scan error is
+ * available. Widths are timestamped from the RP2040 hardware timer in us.
+ */
+bool barcode_scanner_poll(barcode_decode_result_t *result);
 
-/** Copies the most recently decoded text, including its terminator. */
-ER barcode_scanner_get_decoded(char *buffer, uint32_t buffer_size);
+/**
+ * Decodes a Code 39 A-Z scan from alternating bar/space widths in microseconds.
+ * The array includes the start/stop '*' symbols and their inter-character gaps.
+ */
+void barcode_decode_widths(const uint32_t *widths, uint16_t width_count,
+                           barcode_decode_result_t *result);
+
+/** Copies the most recently decoded text into caller-provided storage. */
+uint16_t barcode_scanner_copy_decoded(char *output, uint16_t output_size);
+
+const char *barcode_decode_error_name(barcode_decode_error_t error);
 
 #endif

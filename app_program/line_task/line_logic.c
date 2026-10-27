@@ -66,10 +66,8 @@ static uint16_t pin_level(uint32_t pin)
 line_reader_config_t line_reader_default_config(void)
 {
     line_reader_config_t config = {
-        .right_guard_black_is_high =
-            (LINE_SENSOR_RIGHT_BLACK_IS_HIGH != 0u),
-        .left_guard_black_is_high =
-            (LINE_SENSOR_LEFT_BLACK_IS_HIGH != 0u),
+        .right_guard_black_is_high = (LINE_BLACK_IS_HIGH != 0u),
+        .left_guard_black_is_high = (LINE_BLACK_IS_HIGH != 0u),
     };
 
     return config;
@@ -82,16 +80,16 @@ void line_reader_init(const line_reader_config_t *config)
     state.last_raw.right_guard = 0u;
     state.last_raw.left_guard = 0u;
 
-    input_pin_init(LINE_READER_RIGHT_GUARD_GPIO);
-    input_pin_init(LINE_READER_LEFT_GUARD_GPIO);
+    input_pin_init(LINE_RIGHT_GPIO);
+    input_pin_init(LINE_LEFT_GPIO);
 }
 
 line_reader_raw_t line_reader_read_raw(void)
 {
     line_reader_raw_t raw;
 
-    raw.left_guard = pin_level(LINE_READER_LEFT_GUARD_GPIO);
-    raw.right_guard = pin_level(LINE_READER_RIGHT_GUARD_GPIO);
+    raw.left_guard = pin_level(LINE_LEFT_GPIO);
+    raw.right_guard = pin_level(LINE_RIGHT_GPIO);
 
     return raw;
 }
