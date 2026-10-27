@@ -1,11 +1,12 @@
 # Motion control (Buddy 2): bring-up guide
 
-`motion_task` owns the two motors and the two wheel encoders. It proves the
-hardware on the bench: PWM on the H-bridge, both encoders counting the right
-way, the 10 ms tick on core 1, the FR-30 stall check and the hardware
-watchdog. It also handles Buddy 5's urgent
-`STOP_SCAN` request and brakes both motors. The command interface from
-`nav_ctrl_task`, obstacle maneuver commands and `STOP_IMU` are still pending.
+`motion_task` owns the two motors and the two wheel encoders. This first
+version proves the hardware on the bench: PWM on the H-bridge, both
+encoders counting the right way, the 10 ms tick on core 1, the FR-30
+stall check, the hardware watchdog and the emergency stop (STOP_SCAN and
+STOP_IMU). It also publishes `distance_state`, the distance and turn rate
+`imu_task` needs. The command interface from `nav_ctrl_task` and
+`scan_task` comes next.
 
 ## What is in the code
 
@@ -262,6 +263,83 @@ doubling (erratum RP2040-E1) is wrong for this chip.
 hold the Robo Pico's RESET button (it holds RUN low) and measure GP8, GP9,
 GP10 and GP11 to GND. All four should read about 0 V (brake).
 
+### Emergency stop (NFR-18)
+
+`motion_flg` (`motor_task.h`) has four bits: TICK 0x01, CMD 0x02,
+STOP_SCAN 0x04 and STOP_IMU 0x08. CMD and STOP_SCAN are the values in
+Buddy 5's `scan_if.h`, and the build fails if they ever differ.
+
+- **scan_task sets and clears STOP_SCAN;** motion never clears it.
+  **imu_task sets STOP_IMU** and never clears it; motion clears it when
+  nav_ctrl_task sends FAULT_CLEAR(IMU). That comes with the commands
+  (step 1.7), so until then nothing clears STOP_IMU.
+- **Motion brakes in the wake that first sees a STOP bit**, before
+  anything else. While running it waits on the STOP bits too, so a STOP
+  wakes it at once, not at the next tick.
+- **While any STOP bit is set** the motors stay braked. Motion checks the
+  bits on every tick, but leaves them out of its wait: a bit that stays
+  set would otherwise wake it again and again.
+- **When every STOP bit clears**, the motors stay braked until a command.
+  Resuming what the car was doing (the history state) comes with the
+  statechart, step 1.3. A STOP also ends any bench test.
+
+How a sender raises a stop (`scan_task` already does the second line):
+
+```c
+motion_stop_stamp(MOTION_EVT_STOP_SCAN);               /* optional: NFR-18 timing */
+(void)tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN);
+```
+
+Never wait on `motion_flg`; only motion_task does.
+
+What the console prints:
+
+```
+[motion] STOP_SCAN set: brake written NN us after the request.
+[motion] every STOP bit clear, after NNN ms braked. Motors stay braked until a command.
+```
+
+Without `motion_stop_stamp()` the first line says the sender did not stamp
+the request. NN is from the request to the brake register write, on the
+1 MHz timer (the method the prof approved on 21 Oct). The motor pins
+follow at the next PWM cycle, up to 100 us later at 10 kHz (E, datasheet).
+Stopping distance is separate (NFR-08).
+
+**Test 1, stop test** (wheels off). Build a bench image with `MOTION_BENCH`
+1 and `MOTION_TEST_STOP` 1 (locally, never committed); its ready line says
+`test=stop (NFR-18)`. Press the button: both wheels turn, and a stand-in
+for scan_task and imu_task (a task on core 1 at imu_task's priority) sets
+STOP_SCAN and STOP_IMU in turn, 100 times each, after at least 300 ms of
+driving each time, and clears each after about 400 ms (C). Every stop
+prints its time; only stops that wrote the brake count. At the end:
+
+```
+[motion] STOP TEST STOP_SCAN: 100 stops, request to brake min NN / mean NN / max NN us (NFR-18: within 20000 us)
+[motion] STOP TEST STOP_IMU: 100 stops, request to brake min NN / mean NN / max NN us (NFR-18: within 20000 us)
+```
+
+Run it again with Wi-Fi streaming once motion runs in the Wi-Fi build
+(PostTri1 row 8). Since 27 Oct the prof no longer asks for a comparison
+with the original design, so the `MOTION_PACKED` 0 run is optional. The port measured 16 to
+43 us for a same-core wake (docs/PORT_RP2040.md), so expect tens of us.
+
+In every bench image (`MOTION_BENCH` 1) `motion_flag()` returns 0, so
+scan_task stays print-only: the GP20 press that starts a bench test also
+starts nav's mission, and scan_task's own STOP_SCAN (anything within
+25 cm, or no sensor at all) would otherwise end the test.
+
+**Test 2, with scan_task** (the normal image, `MOTION_BENCH` 0, Buddy 5's
+sensor on GP4/GP5, `OBSTACLE_TEST_MODE` 4 as committed, wheels off).
+`app_main.c` binds motion_flg to scan_task. scan_task acts only while the
+mission is Running: once nav prints `[nav] mission ... -> READY`, press
+GP20 and look for `-> RUNNING`. Then hold a hand within 25 cm in front of
+the sensor: expect
+`STOP_SCAN set: motors braked (the sender did not stamp the request).`
+`every STOP bit clear` follows when scan_task's own scan decides the way
+is free, which may be while the hand is still there. scan_task still
+prints its STANDALONE banner, because its command buffer is not bound
+yet.
+
 ### distance_state (for imu_task, Buddy 4)
 
 Every completed tick, motion_task builds one 32-bit word from the encoder
@@ -352,6 +430,8 @@ run, and STEADY while gliding.
 | Watchdog: longest gap between feeds (us) | | |
 | Watchdog test: reset after the last feed (us), wheel stopped (yes/no) | | |
 | GP8 / GP9 / GP10 / GP11 with RESET held (V) | | |
+| Stop test: request to brake, max over 100 (us), STOP_SCAN / STOP_IMU | | |
+| Stop test with Wi-Fi streaming, max (us) | | |
 | distance_state: pushed 1000 mm by ruler, `net` reads (mm) | | |
 | distance_state: turn sign correct, left / right (yes/no) | | |
 
@@ -408,18 +488,34 @@ Found while writing this; each needs its owner.
    the state numbers (0 STEADY, 1 ACCEL, 2 DECEL) and the turn rate stored
    with an offset of 2048 (as the telemetry turn rate is). The layout
    moves to `common/messages.h` through the team PR.
-9. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
+9. **STOP bits (Buddies 4 and 5).** Set STOP_SCAN or STOP_IMU with
+   `tk_set_flg(motion_flag(), MOTION_EVT_STOP_SCAN or _IMU)` from
+   `motor_task.h`; never wait on motion_flg. imu_task never clears
+   STOP_IMU: motion does, when nav_ctrl_task sends FAULT_CLEAR(IMU). For the NFR-18 timing, call
+   `motion_stop_stamp(bit)` just before the set: Buddy 5's
+   `scan_if_stop_set()` could add that one line. Buddy 5: the comment
+   above `scan_if_wait()` says TWF_BITCLR clears only the bits that ended
+   the wait; the kernel clears every bit in the wait pattern
+   (eventflag.c). It does no harm in scan_task, which gets every set bit
+   back, but it is why motion never waits on a STOP bit with a clear.
+10. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
    `TM_BLINK_LED=1`, blink's diagnostic pulse (`demo_tasks.c`) takes
    GP8-GP11 and GP2/GP3 back after motion has set them up. Keep both off
    on the car.
 
 ## Not done yet
 
-- `STOP_SCAN` is wired from scan_task to motion_task, but its response time
-  has not yet been measured on the car. The avoid-command buffer is not
-  created or bound, so bypass/reverse commands and their replies are simulated.
-- Command interface from `nav_ctrl_task` (CMD bit), `STOP_IMU`,
-  Motion Fault exit on FAULT_CLEAR(MOTION).
+- avoid_cmd_mbf and nav_cmd_mbf are not created or bound yet, so
+  scan_task still simulates motion's replies to its commands. motion_flg
+  is bound, so its STOP_SCAN does brake the car.
+- Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
+  STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
+  FAULT_CLEAR(MOTION).
+- After a STOP clears, resuming what the car was doing (history state),
+  and braking whenever the mission is not Running: the statechart, step
+  1.3.
+- The shared 1 MHz timer helper in `messages.h` that Buddy 4 agreed to
+  (`motion_stop_stamp()` is motion's half of it, for now).
 - Straight-line correction, encoder turns.
 - `distance_state` is not reset at a new mission yet (it needs the
   mission state from nav_ctrl_task). Readers use differences, so this
@@ -434,3 +530,4 @@ Found while writing this; each needs its owner.
   channel, in every build and the same in both MOTION_PACKED settings; it
   is not the Week 13 "before" (see week13/baseline.md).
 - Watchdog tests 2 and 3 on the car, and the feed gap with Wi-Fi on.
+- Stop tests 1 and 2 on the car, and test 1 again with Wi-Fi.

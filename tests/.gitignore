@@ -13,6 +13,7 @@ motion_task_sim/sim_off_unpacked
 motion_task_sim/sim_open
 motion_task_sim/sim_pid
 motion_task_sim/sim_wdt
+motion_task_sim/sim_stop
 motion_wdt/test_motion_wdt
 # macOS clang debug folders, if the tests are run outside Docker
 *.dSYM/
