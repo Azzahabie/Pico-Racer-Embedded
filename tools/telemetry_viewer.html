@@ -88,6 +88,20 @@ dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-varia
 #events .t { color: var(--muted); margin-right: 6px; }
 .muted { color: var(--muted); font-size: 12px; }
 .age.stale { color: var(--bad); font-weight: 600; }
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+         width: min(520px, calc(100vw - 32px)); padding: 18px; }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h3 { margin: 0 0 8px; font-size: 16px; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; padding: 8px 12px 10px;
+           display: grid; gap: 8px; }
+legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+fieldset label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 13px; }
+fieldset label.check { display: block; }
+fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5px 8px; border-radius: 6px;
+           border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
+#refresh-ports { justify-self: start; }
+.dlg-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.err { color: var(--bad); font-size: 13px; margin: 4px 0; min-height: 1em; }
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
   aside { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -102,6 +116,7 @@ dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-varia
   <span class="pill" id="st-serial">serial</span>
   <span class="pill" id="st-broker">broker</span>
   <span class="spacer"></span>
+  <button id="open-settings" title="Broker, serial port, save folder">Settings</button>
   <label class="btn" title="Open a saved log (Attempt N.md, *.log)">Open log file
     <input type="file" id="file" accept=".md,.log,.txt" hidden></label>
   <button id="theme" title="Toggle light / dark">◐</button>
@@ -147,6 +162,36 @@ dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-varia
   </aside>
 </main>
 <div id="drop">Drop a log file to view it</div>
+
+<dialog id="settings">
+  <form method="dialog" id="settings-form">
+    <h3>Settings</h3>
+    <p class="muted" id="first-run" hidden>First run: check these, then Save. Nothing is built in — they are kept on this PC only.</p>
+    <fieldset>
+      <legend>MQTT broker to watch</legend>
+      <label>Address <input name="broker_host" required placeholder="IP or host name of the broker PC"></label>
+      <label>Port <input name="broker_port" type="number" min="1" max="65535" required></label>
+      <label>Car client ID <input name="client_id" required placeholder="UTK_MQTT_CLIENT_ID in config/broker_config.h"></label>
+      <label class="check"><input name="run_broker" type="checkbox"> Run the broker inside this viewer
+        <span class="muted">(listens on every network interface at the port above; leave off if run_broker.py is already running)</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Pico serial console</legend>
+      <label>Port <select name="serial"></select></label>
+      <button type="button" id="refresh-ports">Rescan ports</button>
+    </fieldset>
+    <fieldset>
+      <legend>Save logs</legend>
+      <label>Folder <input name="save_dir" placeholder="empty = do not save, e.g. C:\logs\attempt2"></label>
+    </fieldset>
+    <p class="muted">Stored in <span id="settings-file"></span>. The page port (<span id="http-port"></span>) applies on next start.</p>
+    <p class="err" id="settings-err"></p>
+    <div class="dlg-buttons">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button id="settings-save" value="default" class="on">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 "use strict";
@@ -365,7 +410,7 @@ function setPill(id, text) {
   const el = $(id);
   el.textContent = id.slice(3) + ": " + text;
   el.className = "pill " + (/^(connected|open|running)/.test(text) ? "ok"
-    : /^off$/.test(text) ? "" : /missing|busy|exited/.test(text) ? "bad" : "warn");
+    : /^off$/.test(text) ? "" : /missing|busy|exited|failed/.test(text) ? "bad" : "warn");
 }
 function connect() {
   const es = new EventSource("/events");
@@ -477,6 +522,55 @@ const PRESETS = {
 for (const b of document.querySelectorAll("[data-preset]")) {
   b.onclick = () => { hidden = PRESETS[b.dataset.preset]([...tagCounts.keys()]); changed(); };
 }
+/* ---- settings (stored by the viewer, never in this page) ------------ */
+const dlg = $("settings"), form = $("settings-form");
+function fillPorts(ports, current) {
+  const sel = form.elements.serial;
+  const opts = [["auto", "auto — find the Pico"], ["none", "none — don't open a port"]];
+  for (const p of ports) opts.push([p.device, `${p.device} — ${p.desc}${p.pico ? " (Pico)" : ""}`]);
+  if (current && !opts.some(([v]) => v === current)) opts.push([current, `${current} (not connected now)`]);
+  sel.replaceChildren(...opts.map(([v, t]) => new Option(t, v)));
+  sel.value = current || "auto";
+}
+async function openSettings() {
+  $("settings-err").textContent = "";
+  try {
+    const cfg = await (await fetch("/config")).json();
+    const s = cfg.settings;
+    for (const k of ["broker_host", "broker_port", "client_id", "save_dir"]) form.elements[k].value = s[k];
+    form.elements.run_broker.checked = !!s.run_broker;
+    fillPorts(cfg.ports, s.serial);
+    $("settings-file").textContent = cfg.settings_file;
+    $("http-port").textContent = s.http_port;
+    $("first-run").hidden = !cfg.first_run;
+    dlg.showModal();
+  } catch {
+    alert("Settings need the viewer running (start TelemetryViewer.exe or telemetry_viewer.py).");
+  }
+}
+$("open-settings").onclick = openSettings;
+$("refresh-ports").onclick = async () => {
+  const cfg = await (await fetch("/config")).json();
+  fillPorts(cfg.ports, form.elements.serial.value);
+};
+form.addEventListener("submit", async (e) => {
+  if (e.submitter && e.submitter.value === "cancel") return;
+  e.preventDefault();
+  const f = form.elements;
+  const body = { broker_host: f.broker_host.value, broker_port: +f.broker_port.value,
+    client_id: f.client_id.value, serial: f.serial.value, run_broker: f.run_broker.checked,
+    save_dir: f.save_dir.value };
+  const res = await fetch("/config", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  if (out.ok) dlg.close(); else $("settings-err").textContent = out.error;
+});
+if (location.protocol.startsWith("http")) {
+  fetch("/config").then((r) => r.json()).then((cfg) => { if (cfg.first_run) openSettings(); }).catch(() => {});
+} else {
+  $("open-settings").hidden = true;
+}
+
 $("theme").onclick = () => {
   const root = document.documentElement;
   const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
