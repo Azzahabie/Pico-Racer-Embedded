@@ -15,6 +15,7 @@
 
 #include "imu_safety.h"
 #include "imu_class.h"
+#include "imu_task.h"		/* hump_state word layout */
 
 /* hump.c prints; nothing here needs its lines. */
 INT tm_printf(const UB *format, ...)
@@ -222,6 +223,31 @@ int main(void)
 	expect(mclass_get() != MC_IMPACT, "class: bad read is not an impact");
 
 	expect(mclass_name(MC_CLIMBING)[0] == 'c', "class: names");
+
+	/* ---- hump_state word ---- */
+	{
+		UW w = imu_w_pack(1, MC_MOVING, 9, 3, 23, 1, 7);
+
+		expect(IMU_W_GET(w, HUMP) == 1, "word: hump state");
+		expect(IMU_W_GET(w, CLASS) == MC_MOVING, "word: class");
+		expect(IMU_W_GET(w, HEIGHT) == 9, "word: height");
+		expect(IMU_W_GET(w, COUNT) == 3, "word: count");
+		expect(IMU_W_GET(w, MAX) == 23, "word: highest");
+		expect(IMU_W_GET(w, FAULT) == 1, "word: fault");
+		expect(IMU_W_GET(w, TILT) == 7, "word: tilt");
+
+		/* Past the range: clamped, never spilling into the next field. */
+		w = imu_w_pack(0, 0, 300, 20, 999, 0, 90);
+		expect(IMU_W_GET(w, HEIGHT) == 255, "word: height clamped");
+		expect(IMU_W_GET(w, COUNT) == 15, "word: count clamped");
+		expect(IMU_W_GET(w, MAX) == 255, "word: highest clamped");
+		expect(IMU_W_GET(w, TILT) == 63, "word: tilt clamped");
+		expect(IMU_W_GET(w, FAULT) == 0 && IMU_W_GET(w, HUMP) == 0,
+		       "word: clamping leaves the others alone");
+
+		/* The fields fill exactly 32 bits. */
+		expect(IMU_W_TILT_SHIFT + IMU_W_TILT_BITS == 32, "word: 32 bits");
+	}
 
 	printf("imu_safety: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;

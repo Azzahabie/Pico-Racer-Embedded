@@ -11,6 +11,7 @@ typedef int		INT;
 typedef unsigned int	UINT;
 typedef unsigned char	UB;
 typedef UINT		BOOL;
+typedef INT		ID;
 
 #define LOCAL	static
 #define EXPORT

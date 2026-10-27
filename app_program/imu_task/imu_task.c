@@ -112,6 +112,10 @@ LOCAL CHIP	chip;
 LOCAL UW	addr;			/* LSM303D / ADXL345 / MMA845x      */
 LOCAL BOOL	acc_only;		/* DLHC/AGR: mag not identified     */
 LOCAL ID	imu_flgid;		/* CAL_REQ from nav_ctrl_task       */
+LOCAL volatile UW imu_word;		/* hump_state word (imu_task.h):
+					   written whole, by imu_task only  */
+
+EXPORT UW imu_word_read(void)	{ return imu_word; }
 LOCAL BOOL	faulted;		/* Fault (6.4): left only by a
 					   calibration that passes          */
 
@@ -690,6 +694,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			tm_printf((UB *)"[imu] motion: %s\n",
 				  mclass_name(mclass_get()));
 		}
+
+		/* Publish the hump_state word: built in a local, then one
+		   aligned 32-bit store, so a reader never sees half of it. */
+		imu_word = imu_w_pack((UW)hump_get_state(), (UW)mclass_get(),
+				      (hump_height_mm() > 0)
+				      ? (UW)hump_height_mm() : 0U, hump_get_count(),
+				      hump_get_max_mm(), faulted ? 1U : 0U,
+				      tilt_deg10(safety_tilt_mg()) / 10);
 
 #if IMU_CSV
 		/* One row per sample, for plots and for replaying a run through
