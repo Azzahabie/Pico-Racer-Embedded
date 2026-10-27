@@ -102,6 +102,14 @@ EXPORT void hump_abort(void)
 	pend_win = 0;
 }
 
+EXPORT void hump_mission_reset(void)
+{
+	hump_abort();
+	hump_count = 0;
+	hump_last_mm = 0;
+	hump_max_mm = 0;
+}
+
 /* End the hump in progress: count it if it rose high enough.  The height
    is the larger of the highest rise and the deepest drop, so it still
    comes out right if uphill was ever taken the wrong way round. */

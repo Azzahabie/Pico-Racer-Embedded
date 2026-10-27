@@ -1,17 +1,20 @@
 /*
  *	test_imu_safety.c
- *	Host tests for app_program/imu_task/imu_safety.c (Buddy 4).
+ *	Host tests for app_program/imu_task/imu_safety.c and imu_class.c
+ *	(Buddy 4).
  *
  *	    make -C tests/imu_safety
  *
  *	Feeds safety_step() 10 ms samples as imu_task would and checks when
- *	the abnormal-tilt (FR-28) and no-data (NFR-13) events fire.
+ *	the abnormal-tilt (FR-28) and no-data (NFR-13) events fire; then
+ *	feeds mclass_step() and checks the motion classes (FR-27).
  */
 
 #include <stdio.h>
 #include <math.h>
 
 #include "imu_safety.h"
+#include "imu_class.h"
 
 /* hump.c prints; nothing here needs its lines. */
 INT tm_printf(const UB *format, ...)
@@ -134,6 +137,76 @@ int main(void)
 		ev |= safety_step((i % 5) == 4, 0, 0, 1000);
 	}
 	expect((ev & SAFETY_EV_NO_DATA) == 0, "4 bad in 5: no fault");
+
+	/* ---- motion classifier (FR-27) ---- */
+
+	/* Still: no mm, no turn, 1 g. */
+	mclass_reset();
+	for (i = 0; i < 30; i++) mclass_step(TRUE, 1000, 0, 0, FALSE, 0);
+	expect(mclass_get() == MC_STATIONARY, "class: still");
+
+	/* Straight at ~50 mm/s: a mm every other sample, never "still". */
+	for (i = 0; i < 50; i++) mclass_step(TRUE, 1000, i % 2, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: moving straight");
+
+	/* Slow, 1 mm per 40 ms: still moving, not still. */
+	for (i = 0; i < 50; i++) mclass_step(TRUE, 1000, (i % 4) == 0, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: slow is still moving");
+
+	/* Turning 30 deg/s. */
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 0);
+	expect(mclass_get() == MC_TURNING, "class: turning");
+
+	/* Turning on the spot: no mm, but turning. */
+	for (i = 0; i < 30; i++) mclass_step(TRUE, 1000, 0, -40, FALSE, 0);
+	expect(mclass_get() == MC_TURNING, "class: turning on the spot");
+
+	/* One sample of turn noise does not change the class. */
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: back to moving");
+	mclass_step(TRUE, 1000, 1, 40, FALSE, 0);
+	mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: one-sample spike ignored");
+
+	/* Accelerating (distance_state says so). */
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, TRUE, 0);
+	expect(mclass_get() == MC_ACCELERATING, "class: accelerating");
+
+	/* On a hump, climbing then descending outrank a turn. */
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 30, FALSE, 1);
+	expect(mclass_get() == MC_CLIMBING, "class: climbing");
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 2);
+	expect(mclass_get() == MC_DESCENDING, "class: descending");
+
+	/* Impact while moving: at once, held 500 ms, then back. */
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_step(TRUE, 2000, 1, 0, FALSE, 0) == TRUE
+	       && mclass_get() == MC_IMPACT, "class: impact reported at once");
+	for (i = 0; i < MC_IMPACT_HOLD - 2; i++) {
+		mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	}
+	expect(mclass_get() == MC_IMPACT, "class: impact held 500 ms");
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_get() == MC_MOVING, "class: impact over");
+
+	/* Hit just after stopping (a crash brakes the car): still impact. */
+	for (i = 0; i < 30; i++) mclass_step(TRUE, 1000, 0, 0, FALSE, 0);
+	mclass_step(TRUE, 1800, 0, 0, FALSE, 0);
+	expect(mclass_get() == MC_IMPACT, "class: impact 0.3 s after stopping");
+
+	/* Carried by hand long after stopping: 2.4 g is not an impact. */
+	mclass_reset();
+	for (i = 0; i < 300; i++) mclass_step(TRUE, 1000, 0, 0, FALSE, 0);
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 2400, 0, 0, FALSE, 0);
+	expect(mclass_get() == MC_STATIONARY, "class: handled while still");
+
+	/* A failed read never counts as an impact. */
+	mclass_reset();
+	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	mclass_step(FALSE, 9000, 1, 0, FALSE, 0);
+	expect(mclass_get() != MC_IMPACT, "class: bad read is not an impact");
+
+	expect(mclass_name(MC_CLIMBING)[0] == 'c', "class: names");
 
 	printf("imu_safety: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;

@@ -44,6 +44,7 @@
 #include "../nav_task/nav_ctrl.h"	/* nav_flg, mission state      */
 #include "hump.h"
 #include "imu_safety.h"
+#include "imu_class.h"
 
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
@@ -494,7 +495,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	UW	ds_hump;
 	INT	hn;
 	BOOL	has_mag = FALSE, got_mag;
-	UW	amag, amax;
+	UW	amag = 0, amax;
+	W	dmm;
 	UW	ds, ds_prev, ds_win, ds_pub;
 	UW	lost, rderr, k, bad;
 	INT	n, i, idle_n = 0;
@@ -502,7 +504,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	BOOL	ok;
 	UINT	ev;
 	UB	line[200], *p;
-	mission_state_t	ms;
+	mission_state_t	ms, ms_prev;
 
 	(void)stacd; (void)exinf;
 
@@ -552,6 +554,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	ok = calibrate();
 	if(cal_requested()) answer_cal(ok);
 	bad = 0;
+	ms_prev = nav_mission_state();
 
 	ds_prev = ds_win = ds_hump = motion_ds_read();
 	hsum[0] = hsum[1] = 0;
@@ -580,6 +583,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		   shows up as ds well under REPORT_SAMPLES. */
 		ds = motion_ds_read();
 		ds_pub += motion_ds_updates(ds, ds_prev);
+		dmm = motion_ds_delta_mm(ds, ds_prev);	/* this sample */
 		ds_prev = ds;
 
 		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0:
@@ -607,6 +611,21 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			raise_fault("abnormal tilt");
 		}
 
+		/* Mission changes (Statechart 6.4): a new mission starts the
+		   hump count and highest hump from zero (FR-12); Paused ->
+		   Running keeps them; pause, end or fault drops an unfinished
+		   hump. */
+		if(ms != ms_prev) {
+			if(ms_prev == MS_READY && ms == MS_RUNNING) {
+				hump_mission_reset();
+				tm_printf((UB *)"[imu] mission start: humps and"
+					       " highest hump reset\n");
+			} else if(ms_prev == MS_RUNNING) {
+				hump_abort();
+			}
+			ms_prev = ms;
+		}
+
 		if(!ok) {
 			rderr++;
 		} else {
@@ -621,6 +640,15 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			hsum[0] += a[0];
 			hsum[1] += a[1];
 			hn++;
+		}
+
+		/* Motion event class (FR-27), every sample, printed when it
+		   changes. */
+		if(mclass_step(ok, ok ? amag : 0, dmm, motion_ds_turn_dps(ds),
+			       motion_ds_state(ds) == MOTION_DS_ACCEL,
+			       (UINT)hump_get_state())) {
+			tm_printf((UB *)"[imu] motion: %s\n",
+				  mclass_name(mclass_get()));
 		}
 
 		if((k + 1) % HUMP_SAMPLES == 0) {
@@ -658,10 +686,9 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				idle_n = 0;
 				/* One tm_printf per line: built up first. */
 				p = line;
-				p += tm_sprintf(p, (UB *)"[imu] %-6s tilt %2u.%u"
+				p += tm_sprintf(p, (UB *)"[imu] %-10s tilt %2u.%u"
 						" deg  %4d mm/s  turn %+4d dps",
-						(v > 0) ? "moving"
-						: (v < 0) ? "back" : "still",
+						mclass_name(mclass_get()),
 						t10 / 10, t10 % 10, v,
 						motion_ds_turn_dps(ds));
 				if(hs != HUMP_NONE) {

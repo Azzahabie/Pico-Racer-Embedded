@@ -20,6 +20,11 @@ IMPORT void hump_step(W ax, W ay, W dmm, BOOL steady);
  * unfinished hump). */
 IMPORT void hump_abort(void);
 
+/* A new mission (Ready -> Running, Statechart 6.4): drop any hump in
+ * progress and start the count, last and highest (FR-12) from zero.
+ * Paused -> Running keeps them. */
+IMPORT void hump_mission_reset(void);
+
 IMPORT HUMP_STATE hump_get_state(void);
 IMPORT const char *hump_state_name(HUMP_STATE s);
 IMPORT W  hump_height_mm(void);		/* on the hump now; 0 if none */
