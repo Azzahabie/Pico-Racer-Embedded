@@ -509,13 +509,14 @@ EXPORT INT usermain(void)
 			  (INT)motion_ercd);
 	}
 
-	/* Buddy 5: tell scan_task where the mission and motion interfaces are.
-	 * Motion queues avoid commands but does not yet execute them or generate
-	 * maneuver replies. */
+	/* Buddy 5: tell scan_task where the mission and motion interfaces are,
+	 * so its STOP_SCAN brakes the car. avoid_cmd_mbf stays 0 until Buddy 2
+	 * adds it (step 1.7), so bypass and reverse commands fail closed. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
+			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 		};
 		scan_if_bind(&scan_bind);
 

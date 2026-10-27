@@ -106,6 +106,12 @@
    stall check is skipped.  PROPOSED: replace with the ramp-test result. */
 #define MOTION_DEADBAND_DUTY (150)
 
+/* Reverse (statechart REVERSING, scan_task's REVERSE command): PID target
+   for both wheels, counts per tick, driven backwards.  PROPOSED: 10 counts
+   per tick, about 8 cm/s (calculated: 10 x 0.079 mm every 10 ms), so
+   scan_task's 150 mm reverse takes about 2 s, inside its 5 s timeout. */
+#define MOTION_REV_TARGET (10)
+
 /* ------------------------------------------------------------------ *
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */

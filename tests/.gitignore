@@ -1,5 +1,6 @@
 # Host test binaries
 motion_lib/test_motion_lib
+motion_sm/test_motion_sm
 motor/test_motor
 encoder/test_encoder_usb
 encoder/test_encoder_uart

@@ -17,7 +17,6 @@
 #define MOTOR_TASK_H
 
 #include <tk/tkernel.h>
-#include "../common/messages.h"
 
 #include "../common/messages.h"
 
@@ -35,10 +34,12 @@
  *                     clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
  *                     (step 1.7; until then nothing clears it).
  *
- *  A STOP bit is a level: motion brakes as soon as it sees one and stays
- *  braked while any is set.  Senders use tk_set_flg (and scan_task
- *  tk_clr_flg) on motor_task_flag(); never wait on this flag (only
- *  motion_task may).
+ *  A STOP bit is a level: motion brakes in the wake that first sees it
+ *  and stays braked while any is set, except that a reverse commanded by
+ *  scan_task runs while STOP_SCAN alone is set (design 6.2); a new STOP
+ *  bit during the reverse brakes it in that wake.  Senders use tk_set_flg
+ *  (and scan_task tk_clr_flg) on motor_task_flag(); never wait on this
+ *  flag (only motion_task may).
  * ------------------------------------------------------------------ */
 
 /* motion_flg's ID, valid once motor_task_start() has returned E_OK
