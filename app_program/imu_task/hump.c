@@ -30,6 +30,8 @@
 #define HUMP_MIN_MM	4		/* shorter climbs are not humps       */
 #define HUMP_STILL_WIN	10		/* stopped 1 s, any tilt: hump over   */
 #define HUMP_STILL_MM	1		/* per window: encoder jitter, still  */
+#define HUMP_SLOPE_MG	65		/* stopped tilted this much, under
+					   HUMP_MIN_MM: still on the way up   */
 #define HUMP_CONFIRM_WIN 3		/* tilt held 300 ms, one way: a hump  */
 #define HUMP_FLIP_WIN	2		/* 200 ms the other way: up <-> down  */
 #define HUMP_HAND_MG	60		/* tilt change between two stopped
@@ -104,6 +106,18 @@ EXPORT void hump_abort(void)
 	}
 	hump_state = HUMP_NONE;
 	on_top = FALSE;
+	pend_win = 0;
+}
+
+/* Paused on top, hump_abort() forgot the car was up there, and backing
+   down the slope counted as HUMP 2 (2026-10-28).  A pause does not move
+   the car, so only the unfinished hump goes. */
+EXPORT void hump_pause(void)
+{
+	if(hump_state != HUMP_NONE) {
+		tm_printf((UB *)"[imu] hump discarded (mission paused)\n");
+	}
+	hump_state = HUMP_NONE;
 	pend_win = 0;
 }
 
@@ -300,6 +314,18 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 	   top of a hump this keeps the height so far, and top_step()
 	   follows the way back down so it is not counted again. */
 	still_win = (ad <= HUMP_STILL_MM) ? still_win + 1 : 0;
+	/* Stopped part way up, still on the slope, and too low to count yet:
+	   the climb is not over, so hold it for the next push.  Ending it
+	   there lost a 9 mm ramp twice (2026-10-28): "ignored, 2.4 mm", then
+	   the rest of the climb was only followed as "on top"; or a new climb
+	   from 0 that was "ignored, 3.0 mm" too.  Not below HUMP_SLOPE_MG: a
+	   wheel left on the edge after a pivot rests at ~50 mg. */
+	if(still_win >= HUMP_STILL_WIN && tilt >= HUMP_SLOPE_MG
+	   && (peak_um + 500) / 1000 < HUMP_MIN_MM
+	   && (-trough_um + 500) / 1000 < HUMP_MIN_MM) {
+		still_win = HUMP_STILL_WIN;
+		return;
+	}
 	if(still_win >= HUMP_STILL_WIN) {
 		hump_finish();
 		/* Any height above ground, not HUMP_MIN_MM: a 3.5 mm climb

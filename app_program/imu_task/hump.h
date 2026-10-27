@@ -20,6 +20,10 @@ IMPORT void hump_step(W ax, W ay, W dmm, BOOL steady);
  * unfinished hump). */
 IMPORT void hump_abort(void);
 
+/* Mission paused: drop a hump in progress like hump_abort(), but keep
+ * the "on top" follow, since the car is still where it stopped. */
+IMPORT void hump_pause(void);
+
 /* A new mission (Ready -> Running, Statechart 6.4): drop any hump in
  * progress and start the count, last and highest (FR-12) from zero.
  * Paused -> Running keeps them. */

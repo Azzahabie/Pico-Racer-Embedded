@@ -283,6 +283,42 @@ static void abort_mid_climb(void)
 	drive(100, 60); stop(2); drive(700, 50); stop(2);
 }
 
+/* Stopped on top, the mission paused, then backed down (2026-10-28:
+   the pause forgot it was on top, and the way down counted as HUMP 2). */
+static void pause_on_top(void)
+{
+	USE(HUMP); stop(2); drive(310, 50); stop(2); hump_pause();
+	drive(100, 60); stop(2);
+}
+
+/* Paused halfway up: that climb is dropped, then the next pass counts. */
+static void pause_mid_climb(void)
+{
+	USE(HUMP); stop(2); drive(280, 50); hump_pause();
+	drive(100, 60); stop(2); drive(700, 50); stop(2);
+}
+
+/* Stopped part way up, 2.5 mm, then pushed on over (2026-10-28: "ignored,
+   2.4 mm", then the rest of the climb was only followed as "on top"). */
+static void stop_on_slope_over(void)
+{
+	USE(HUMP); stop(2); drive(230, 50); stop(2); drive(700, 50); stop(2);
+}
+
+/* Stopped part way up, under 2 mm, then pushed on over (2026-10-28:
+   "ignored, 2.1 mm", then a new climb from 0 was "ignored, 3.0 mm"). */
+static void stop_low_on_slope_over(void)
+{
+	USE(HUMP); stop(2); drive(220, 50); stop(2); drive(700, 50); stop(2);
+}
+
+/* Stopped part way up, then backed down: still one hump at most, and
+   too low to count. */
+static void stop_on_slope_back(void)
+{
+	USE(HUMP); stop(2); drive(230, 50); stop(2); drive(100, 50); stop(2);
+}
+
 /* Off a drop the hump never reads as DESCENDING, so only the
    HUMP_TOP_MAX_MM cap ends it, before the next wedge. */
 static void wedges(void)
@@ -315,6 +351,11 @@ static const SCENARIO scenarios[] = {
 	{ "two wedges, drop-off far sides",	wedges,			2 },
 	{ "long top, stop, carried back, over",	long_top_carry,		2 },
 	{ "fault mid-climb, then over",		abort_mid_climb,	1 },
+	{ "stop on top, pause, back down",	pause_on_top,		1 },
+	{ "pause mid-climb, then over",		pause_mid_climb,	1 },
+	{ "stop 2.5 mm up the slope, on over",	stop_on_slope_over,	1 },
+	{ "stop 1.7 mm up the slope, on over",	stop_low_on_slope_over,	1 },
+	{ "stop part way up, back down",	stop_on_slope_back,	0 },
 	{ "flat floor only",			flat,			0 },
 };
 

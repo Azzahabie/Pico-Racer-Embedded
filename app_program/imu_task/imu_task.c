@@ -658,12 +658,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		/* Mission changes (Statechart 6.4): a new mission starts the
 		   hump count and highest hump from zero (FR-12); Paused ->
 		   Running keeps them; pause, end or fault drops an unfinished
-		   hump. */
+		   hump.  A pause keeps "on top": the car has not moved. */
 		if(ms != ms_prev) {
 			if(ms_prev == MS_READY && ms == MS_RUNNING) {
 				hump_mission_reset();
 				tm_printf((UB *)"[imu] mission start: humps and"
 					       " highest hump reset\n");
+			} else if(ms_prev == MS_RUNNING && ms == MS_PAUSED) {
+				hump_pause();
 			} else if(ms_prev == MS_RUNNING) {
 				hump_abort();
 			}
