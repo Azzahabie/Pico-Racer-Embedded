@@ -40,6 +40,7 @@
 #include "../common/messages.h"
 #include "../usb_console_compat.h"
 #include "../motor_task/motion_ds.h"
+#include "hump.h"
 
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
@@ -53,25 +54,6 @@
 #define CAL_SPREAD_MG	80		/* max - min on any axis while still  */
 #define CAL_TILT_MG	150		/* x, y within 0 +/- this, z 1000 +/- */
 
-/* Hump detection runs on 100 ms means of x and y.  Tilted by angle t, the
-   car rises sin(t) mm per mm driven, and sin(t) is the tilt in mg / 1000,
-   so tilt mg * distance mm = rise in um.  Checked against the course
-   humps (9 mm, 23 mm): the 500 ms logs summed to 10 mm and 24 mm. */
-#define HUMP_SAMPLES	10		/* 100 ms detection window            */
-#define HUMP_ENTER_MG	50		/* ~3 deg: a hump starts (while moving)*/
-#define HUMP_EXIT_MG	35		/* below this the car counts as level;
-					   floor spots differ by up to ~30   */
-#define HUMP_GROUND_UM	2000		/* back within 2 mm of the start      */
-#define HUMP_END_MM	40		/* level this far: the hump is over   */
-#define HUMP_MIN_MM	4		/* shorter climbs are not humps       */
-#define HUMP_STILL_WIN	10		/* stopped 1 s, any tilt: hump over   */
-#define HUMP_STILL_MM	1		/* per window: encoder jitter, still  */
-#define HUMP_CONFIRM_WIN 3		/* tilt held 300 ms, one way: a hump  */
-#define HUMP_FLIP_WIN	2		/* 200 ms the other way: up <-> down  */
-#define BASE_DIV	8		/* level tilt tracking, per window    */
-#define BASE_MAX_MG	40		/* level is only learned this close to
-					   the calibration level, stopped     */
-
 /* Accel zero-g offsets in mg, subtracted from every sample.  calibrate()
    replaces them at boot; these are the fallback if it never sees the car
    still.  Measured on our LSM303D: reading flat and upside down, the
@@ -81,49 +63,6 @@ LOCAL W acc_ofs[3] = { 30, 0, 101 };
 
 LOCAL const char * const ds_state_name[] = { "steady", "accel", "decel", "?" };
 
-/* Agreed hump_state values (2 bits, Tribunal Section 4). */
-typedef enum { HUMP_NONE, HUMP_CLIMBING, HUMP_DESCENDING } HUMP_STATE;
-
-LOCAL const char * const hump_name[] = { "none", "climbing", "descending" };
-
-LOCAL HUMP_STATE hump_state = HUMP_NONE;
-LOCAL UW	hump_count;		/* humps finished since boot         */
-LOCAL UW	hump_last_mm;		/* height of the last one            */
-LOCAL W		base[2];		/* level x, y: the floor's own tilt  */
-LOCAL W		onset[2];		/* tilt as the hump began = uphill   */
-LOCAL W		h_um, peak_um, trough_um; /* height now / highest / lowest, um */
-LOCAL W		hump_len, level_mm;	/* distance on the hump / level      */
-LOCAL UW	tilt_peak;
-LOCAL INT	still_win;		/* windows stopped                   */
-LOCAL INT	flip_win;		/* windows tilted against the state  */
-LOCAL INT	pend_win;		/* windows of a hump not yet confirmed*/
-LOCAL W		pend_sum[2], pend_h, pend_len;
-LOCAL UW	pend_peak;
-
-/* End the hump in progress: count it if it rose high enough.  The height
-   is the larger of the highest rise and the deepest drop, so it still
-   comes out right if uphill was ever taken the wrong way round. */
-LOCAL void hump_finish(void)
-{
-	W	top = (peak_um > -trough_um) ? peak_um : -trough_um;
-	W	mm = (top + 500) / 1000;
-	W	tenths = (top + 50) / 100;	/* 0.1 mm, for tuning logs */
-
-	if(mm >= HUMP_MIN_MM) {
-		hump_count++;
-		hump_last_mm = (UW)mm;
-		tm_printf((UB *)"[imu] HUMP %u: height %d.%d mm (up %d.%d,"
-			       " down %d.%d), peak tilt %u mg, %d mm long\n",
-			  hump_count, tenths / 10, tenths % 10,
-			  (peak_um + 50) / 100 / 10, (peak_um + 50) / 100 % 10,
-			  (-trough_um + 50) / 100 / 10,
-			  (-trough_um + 50) / 100 % 10, tilt_peak, hump_len);
-	} else {
-		tm_printf((UB *)"[imu] hump ignored: only %d.%d mm high\n",
-			  tenths / 10, tenths % 10);
-	}
-	hump_state = HUMP_NONE;
-}
 typedef enum {
 	CHIP_NONE, CHIP_LSM303D, CHIP_DLHC, CHIP_AGR, CHIP_ADXL345, CHIP_MMA845X
 } CHIP;
@@ -173,20 +112,6 @@ LOCAL UB reg8(UW sadr, UB reg)
 
 LOCAL H le16(const UB *p) { return (H)(p[0] | (p[1] << 8)); }
 LOCAL H be16(const UB *p) { return (H)((p[0] << 8) | p[1]); }
-
-/* Integer square root, for |a| without pulling in libm. */
-LOCAL UW isqrt(UW v)
-{
-	UW	r = 0, bit = 1UL << 30;
-
-	while(bit > v) bit >>= 2;
-	while(bit != 0) {
-		if(v >= r + bit) { v -= r + bit; r = (r >> 1) + bit; }
-		else		 { r >>= 1; }
-		bit >>= 2;
-	}
-	return r;
-}
 
 /* Which addresses answer, and what their usual ID registers hold, so an
    unsupported chip can still be identified from the log. */
@@ -458,141 +383,6 @@ LOCAL void calibrate(void)
 		       " z=%d mg\n", acc_ofs[0], acc_ofs[1], acc_ofs[2]);
 }
 
-/* One 100 ms step of hump detection.  ax, ay: mean tilt in mg; dmm:
-   distance driven in the window (- reversing); steady: motion_task
-   reports neither ACCELERATING nor DECELERATING.
-
-   The mounting angle does not matter: tilt is measured from the level
-   baseline as a magnitude, and a hump always starts with a climb, so the
-   tilt then, flipped if reversing, is "nose up".  The car rises by
-   +/- tilt * dmm: nose up and forward, or nose down and reversing, is
-   up.  dmm keeps its sign, so backing down a slope lowers the car again
-   (counting distance unsigned once added 9 mm per push up the same
-   slope).  CLIMBING and DESCENDING follow which way the car is going.
-   The height is the highest point of the running rise.
-
-   A lurch reads as tilt too: one jolting window as the wheel struck the
-   hump once set uphill backwards and lost a 23 mm hump.  So a hump only
-   starts after HUMP_CONFIRM_WIN steady windows tilted the same way, and
-   uphill is their sum; the state only flips after HUMP_FLIP_WIN.
-
-   Level starts as the calibration level (0, 0) and only follows the
-   floor while the car is stopped near it: following it while driving
-   let a gentle ramp drag level up with it, so the climb never crossed
-   HUMP_ENTER_MG and the way back down looked like a hump. */
-LOCAL void hump_step(W ax, W ay, W dmm, BOOL steady)
-{
-	W	dx, dy, ad, dot, rise, fx, fy;
-	UW	tilt;
-
-	dx = ax - base[0];
-	dy = ay - base[1];
-	tilt = isqrt((UW)(dx * dx + dy * dy));
-	ad = (dmm < 0) ? -dmm : dmm;
-	/* Tilt as if driving forward: reversing up a slope is nose down. */
-	fx = (dmm < 0) ? -dx : dx;
-	fy = (dmm < 0) ? -dy : dy;
-
-	if(hump_state == HUMP_NONE) {
-		if(tilt < HUMP_ENTER_MG) {
-			pend_win = 0;
-			if(ad == 0
-			   && ax > -BASE_MAX_MG && ax < BASE_MAX_MG
-			   && ay > -BASE_MAX_MG && ay < BASE_MAX_MG) {
-				base[0] += (ax - base[0]) / BASE_DIV;
-				base[1] += (ay - base[1]) / BASE_DIV;
-			}
-			return;
-		}
-		if(ad == 0) {		/* tilted by hand, not driven */
-			pend_win = 0;
-			return;
-		}
-		if(!steady) return;	/* lurching: neither count nor reset */
-
-		/* Pending: restart if this window points the other way. */
-		if(pend_win > 0
-		   && fx * pend_sum[0] + fy * pend_sum[1] < 0) {
-			pend_win = 0;
-		}
-		if(pend_win == 0) {
-			pend_sum[0] = pend_sum[1] = 0;
-			pend_h = pend_len = 0;
-			pend_peak = 0;
-		}
-		pend_sum[0] += fx;
-		pend_sum[1] += fy;
-		pend_h += (W)tilt * ad;
-		pend_len += ad;
-		if(tilt > pend_peak) pend_peak = tilt;
-		if(++pend_win < HUMP_CONFIRM_WIN) return;
-
-		/* Confirmed: the pending windows were the start of the climb. */
-		onset[0] = pend_sum[0]; onset[1] = pend_sum[1];
-		h_um = peak_um = pend_h;
-		trough_um = 0;
-		hump_len = pend_len;
-		tilt_peak = pend_peak;
-		level_mm = 0;
-		still_win = flip_win = pend_win = 0;
-		hump_state = HUMP_CLIMBING;
-		tm_printf((UB *)"[imu] hump: climbing (tilt %u mg, up %d mm)\n",
-			  tilt, h_um / 1000);
-		return;
-	}
-
-	hump_len += ad;
-	dot = dx * onset[0] + dy * onset[1];	/* > 0: nose up */
-	rise = (W)tilt * dmm;
-	h_um += (dot >= 0) ? rise : -rise;
-	if(h_um > peak_um) peak_um = h_um;
-	if(h_um < trough_um) trough_um = h_um;
-	if(tilt > tilt_peak) tilt_peak = tilt;
-
-	/* Stopped: the pass is over, however the car is tilted.  It once
-	   rested at ~50 mg after a pivot left a wheel on the hump's edge,
-	   the hump stayed open, and the next pass was merged into it.  On
-	   top of a hump this keeps the height so far; the roll down after
-	   adds well under HUMP_MIN_MM, so it is not counted again. */
-	still_win = (ad <= HUMP_STILL_MM) ? still_win + 1 : 0;
-	if(still_win >= HUMP_STILL_WIN) {
-		hump_finish();
-		return;
-	}
-
-	if(tilt >= HUMP_ENTER_MG) {
-		level_mm = 0;
-		if(dmm != 0 && steady) {
-			HUMP_STATE s = ((dot >= 0) == (dmm > 0))
-				       ? HUMP_CLIMBING : HUMP_DESCENDING;
-
-			if(s == hump_state) {
-				flip_win = 0;
-			} else if(++flip_win >= HUMP_FLIP_WIN) {
-				flip_win = 0;
-				hump_state = s;
-				tm_printf((UB *)"[imu] hump: %s (tilt %u mg,"
-					       " up %d mm)\n", hump_name[s],
-					  tilt, h_um / 1000);
-			}
-		}
-		return;
-	}
-	flip_win = 0;
-
-	/* Back down to where it started (driven over, or backed off). */
-	if(h_um < HUMP_GROUND_UM && h_um > -HUMP_GROUND_UM
-	   && (peak_um >= HUMP_MIN_MM * 1000
-	       || -trough_um >= HUMP_MIN_MM * 1000)) {
-		hump_finish();
-		return;
-	}
-	if(tilt < HUMP_EXIT_MG) {
-		level_mm += ad;
-		if(level_mm >= HUMP_END_MM) hump_finish();
-	}
-}
-
 EXPORT void imu_task(INT stacd, void *exinf)
 {
 	W	a[3], m[3];
@@ -670,7 +460,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				a[i] -= acc_ofs[i];
 				sum[i] += a[i];
 			}
-			amag = isqrt((UW)(a[0] * a[0] + a[1] * a[1]
+			amag = imu_isqrt((UW)(a[0] * a[0] + a[1] * a[1]
 					  + a[2] * a[2]));
 			if(amag > amax) amax = amag;
 			if(a[2] < zmin) zmin = a[2];
@@ -708,9 +498,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				  ds_state_name[motion_ds_state(ds)],
 				  motion_ds_turn_dps(ds), ds_pub, lost, rderr);
 			tm_printf((UB *)"[imu] hump %s  up %d mm  humps %u"
-				       " (last %u mm)\n", hump_name[hump_state],
-				  (hump_state == HUMP_NONE) ? 0 : h_um / 1000,
-				  hump_count, hump_last_mm);
+				       " (last %u mm)\n",
+				  hump_state_name(hump_get_state()),
+				  hump_height_mm(), hump_get_count(),
+				  hump_get_last_mm());
 		} else {
 			tm_printf((UB *)"[imu] no good reads in %d ms,"
 				       " rderr %u\n",
