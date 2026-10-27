@@ -30,7 +30,7 @@ Mission requirements you own: #4 detect humps, #5 measure and report the **highe
 **Ramp change.** The final ramp is about the height of the **lower practice ramp** (slightly lower or slightly higher). Ignore the higher ramp.
 - Tune θ_on, T and the correction factor on the lower ramp only.
 - Test at the lower ramp height and at least one slightly lower and one slightly higher setup (shim it with a book or card) so you show it generalises.
-- Smaller hump means smaller height, so NFR-05's 0.5 cm floor and sub-mm accumulator precision matter more.
+- Smaller hump means smaller height, so NFR-05's 2 mm floor and sub-mm accumulator precision matter more.
 
 **Tribunal 1 comparison dropped.** You do **not** need to compare original vs revised design. Implement the additional requirement (minimum-bit) and give evidence for the **final** implementation only. The "unpacked baseline" and "before/after" plans from Tribunal 1 become optional. (The Change Requirement's Week 13 list still names RAM and message-size "comparison"; by the lecturer's note, report the final numbers, and add a baseline only if the team decides to.)
 
@@ -55,7 +55,7 @@ Mission requirements you own: #4 detect humps, #5 measure and report the **highe
 | FR-27 | Classify stationary, turning, climbing, descending, sudden impact; report each change | Stop/start/turn/hump/bump tests |
 | FR-28 | Abnormal motion = tilt > T for N = 3 samples; a normal hump must **not** trigger; T ≥ steepest hump pitch + 5° | Humps at several speeds (no fault); tilt past T (fault) |
 | FR-29 | Tilt (accel) and turn rate (encoders) in status telemetry ≥ 1 Hz | Known tilt angle and known turn rate |
-| NFR-05 | Peak height within **0.5 cm or 20%** (whichever larger), 5 traversals per reference hump | Ramp runs vs measured height |
+| NFR-05 | Peak height within **±2 mm or 20%** (whichever larger), never more than **±5 mm**, 5 traversals per reference hump with the car driving itself; skidding traversals reported separately. *(Revised 2026-10-28 from 0.5 cm or 20%, which allowed ±5 mm on every hump under 25 mm; see terrain_analysis_report.md §4.)* | Ramp runs vs measured height |
 | NFR-11 | imu_task runs every **10 ms ± 1 ms** | Log task start times |
 | NFR-13 | IMU fault = init fail, cal fail, abnormal motion, or no valid sample within **Y = 50 ms**. Before a mission: block movement, go to Fault. During a mission: urgent stop + report | Simulate each fault separately (incl. unplugging the IMU) |
 | NFR-18 | motion_task brakes within 20 ms of STOP_IMU (Buddy 2's side, your trigger) | Time request → stop |

@@ -60,7 +60,7 @@ build of commit `1081a5f` (`arm-none-eabi-size -B` and `nm -S` on the
 
 | Requirement | Measured on the final build |
 |---|---|
-| NFR-05 | 10 mm ramp 8/8; 23.5 mm 3/3 clean (terrain_analysis_report.md §4) |
+| NFR-05 | revised to ±2 mm / 20 % (limit ±5 mm): every clean hand pass within target; limit 10 mm 8/8, 9 mm 3/3 on the final build (terrain_analysis_report.md §4); self-driven passes pending |
 | NFR-11 | sample period 9 653-10 352 µs over 22 windows of 10 s; worst work 1 466 µs |
-| NFR-19 | 20.5-20.8 ms, 4 trials (limit 40 ms) |
+| NFR-19 | 20.5-20.8 ms, 6 trials (limit 40 ms) |
 | NFR-18 | brake 47-61 µs after STOP_IMU (motion's stamp) |
