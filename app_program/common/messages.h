@@ -23,6 +23,15 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ *
+ *  motion_flg bits (Buddy 2 / Buddy 5 integration)
+ * ------------------------------------------------------------------ */
+
+#define MOTION_EVT_TICK        (1U << 0)   /* motion_task cyclic handler */
+#define MOTION_EVT_CMD         (1U << 1)   /* queued motion command       */
+#define MOTION_EVT_STOP_SCAN   (1U << 2)   /* persistent obstacle stop   */
+#define MOTION_EVT_STOP_WAKE   (1U << 3)   /* wake after stop set/clear   */
+
+/* ------------------------------------------------------------------ *
  *  Shared fault bitmask (schema section 4.1)
  * ------------------------------------------------------------------ */
 

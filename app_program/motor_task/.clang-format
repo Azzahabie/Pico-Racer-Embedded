@@ -1,0 +1,38 @@
+# Layout for Buddy 2's files, following Barr-C 2018: no tabs (3.5.a),
+# 4-space indent (3.4.a), 80-column lines (1.2.a), braces on their own
+# lines (1.3), return type on its own line in definitions (Appendix D).
+# Run: clang-format -i app_program/motor_task/*.[ch]
+#      clang-format -i --style=file:app_program/motor_task/.clang-format \
+#          app_program/common/gpio_irq.[ch]
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
+ColumnLimit: 80
+BreakBeforeBraces: Allman
+IndentCaseLabels: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterFunctionDefinitionName: true
+  AfterFunctionDeclarationName: false
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveAssignments: Consecutive
+AlignTrailingComments: true
+AlignOperands: Align
+BreakBeforeBinaryOperators: NonAssignment
+PointerAlignment: Right
+SortIncludes: Never
+ReflowComments: true
+BreakStringLiterals: true
+MaxEmptyLinesToKeep: 1
+Cpp11BracedListStyle: false
+KeepEmptyLinesAtTheStartOfBlocks: false
