@@ -438,59 +438,23 @@ LOCAL T_CTSK ctsk_nav = {
 	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
 #else
 	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_blink = {
-	.itskpri	= 10,
-	.stksz		= STACK_SZ,
-	.task		= blink_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_led_test = {
-	.itskpri	= 9,
-	.stksz		= STACK_SZ,
-	.task		= led_test_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CTSK ctsk_line = {
-	.itskpri	= 9,
-	.stksz		= STACK_SZ,
-	.task		= line_task,
-	.tskatr		= TA_HLNG | TA_RNG3,
-};
-
-LOCAL T_CMPF cmpf = {
-	.mpfatr		= TA_TFIFO | TA_RNG3,
-	.mpfcnt		= N_RECORDS,
-	.blfsz		= sizeof(RECORD),
-	.bufptr		= mpf_buf,
-};
-
-LOCAL T_CMTX cmtx = {
-	.mtxatr		= TA_TFIFO | TA_INHERIT,
-};
-
-LOCAL T_CMBF cmbf = {
-	.mbfatr		= TA_TFIFO,
-	.bufsz		= sizeof mbf_buf,
-	.maxmsz		= sizeof(RECORD),
-	.bufptr		= mbf_buf,
-};
-
-LOCAL T_CSEM csem = {
-	.sematr		= TA_TFIFO,
-	.isemcnt	= CREDITS,
-	.maxsem		= CREDITS,
-};
-
-LOCAL T_CFLG cflg = {
-	.flgatr		= TA_TFIFO | TA_WMUL,
-	.iflgptn	= 0,
-};
 #endif
 };
+
+#if TM_LINE_TASK
+// Buddy 3 line_task (line reader + barcode): ir_sense_task's slot, priority 10, core 1
+LOCAL T_CTSK ctsk_line = {
+	.itskpri	= 10,
+	.stksz		= STACK_SZ,
+	.task		= line_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+#endif
 
 
 /* ------------------------------------------------------------------ *
@@ -594,6 +558,10 @@ EXPORT INT usermain(void)
 	/* Buddy 4: imu_task (priority 12, core 1). */
 	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 
+#if TM_LINE_TASK
+	/* Buddy 3: line_task (priority 10, core 1). */
+	tid = tk_cre_tsk(&ctsk_line);     if(made("tsk(line)",     tid)) tk_sta_tsk(tid, 0);
+#endif
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 #endif

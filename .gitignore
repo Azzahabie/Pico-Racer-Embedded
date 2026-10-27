@@ -32,3 +32,6 @@ __pycache__/
 .qwen
 .claude
 .chatgpt
+
+# Build output
+build.log
