@@ -20,6 +20,7 @@ IMPORT const char *hump_state_name(HUMP_STATE s);
 IMPORT W  hump_height_mm(void);		/* on the hump now; 0 if none */
 IMPORT UW hump_get_count(void);		/* humps finished since boot  */
 IMPORT UW hump_get_last_mm(void);	/* height of the last one     */
+IMPORT UW hump_get_max_mm(void);	/* highest since boot (FR-12) */
 
 IMPORT UW imu_isqrt(UW v);
 

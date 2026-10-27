@@ -47,7 +47,13 @@
 
 #define SAMPLE_MS	10		/* accel period; every chip runs 100 Hz */
 #define MAG_EVERY	25		/* mag every 250 ms (LSM303D: 6.25 Hz) */
-#define REPORT_SAMPLES	50		/* one summary line every 500 ms      */
+#define REPORT_SAMPLES	100		/* one status line every 1 s (FR-29)  */
+#define IDLE_REPORTS	5		/* still, no hump, no errors: only
+					   every 5th line (5 s)              */
+#ifndef IMU_VERBOSE
+#define IMU_VERBOSE	0		/* 1: also the raw axes, z range,
+					   distance_state count and mag      */
+#endif
 
 #define CAL_SAMPLES	100		/* 1 s of samples per attempt         */
 #define CAL_TRIES	5
@@ -61,7 +67,20 @@
    x flipped sign in the same pair, giving +30.  y is unmeasured. */
 LOCAL W acc_ofs[3] = { 30, 0, 101 };
 
+#if IMU_VERBOSE
 LOCAL const char * const ds_state_name[] = { "steady", "accel", "decel", "?" };
+#endif
+
+/* Tilt in 0.1 deg from its sine in mg, without libm: asin(s) is about
+   s + s^3 / 6, within 0.3 deg up to 30 deg (well past any hump). */
+LOCAL UW tilt_deg10(UW mg)
+{
+	UW	s3;
+
+	if(mg > 1000) mg = 1000;
+	s3 = mg * mg / 1000 * mg / 1000;
+	return (mg + s3 / 6) * 573 / 1000;
+}
 
 typedef enum {
 	CHIP_NONE, CHIP_LSM303D, CHIP_DLHC, CHIP_AGR, CHIP_ADXL345, CHIP_MMA845X
@@ -394,8 +413,9 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	UW	amag, amax;
 	UW	ds, ds_prev, ds_win, ds_pub;
 	UW	lost, rderr, k;
-	INT	n, i;
+	INT	n, i, idle_n = 0;
 	ER	er;
+	UB	line[200], *p;
 
 	(void)stacd; (void)exinf;
 
@@ -485,32 +505,63 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		if((k + 1) % REPORT_SAMPLES != 0) continue;
 
 		if(n > 0) {
-			/* Window is REPORT_SAMPLES * SAMPLE_MS = 500 ms, so
-			   mm per window * 2 is mm/s. */
-			tm_printf((UB *)"[imu] acc mg x=%5d y=%5d z=%5d"
-				       "  z %5d..%5d |a|max %5u"
-				       "  car %5d mm/s %s turn %4d dps"
-				       "  ds %2u  lost %u  rderr %u\n",
-				  sum[0] / n, sum[1] / n, sum[2] / n,
-				  zmin, zmax, amax,
-				  motion_ds_delta_mm(ds, ds_win)
-				  * (1000 / (REPORT_SAMPLES * SAMPLE_MS)),
-				  ds_state_name[motion_ds_state(ds)],
-				  motion_ds_turn_dps(ds), ds_pub, lost, rderr);
-			tm_printf((UB *)"[imu] hump %s  up %d mm  humps %u"
-				       " (last %u mm)\n",
-				  hump_state_name(hump_get_state()),
-				  hump_height_mm(), hump_get_count(),
-				  hump_get_last_mm());
+			W	mx = sum[0] / n, my = sum[1] / n;
+			/* mm per REPORT_SAMPLES window, as mm/s. */
+			W	v = motion_ds_delta_mm(ds, ds_win)
+				    * (1000 / (REPORT_SAMPLES * SAMPLE_MS));
+			UW	t10 = tilt_deg10(imu_isqrt((UW)(mx * mx
+							      + my * my)));
+			HUMP_STATE hs = hump_get_state();
+
+			/* Still and level, nothing wrong: one line in
+			   IDLE_REPORTS, so moving lines stand out. */
+			if(v != 0 || hs != HUMP_NONE || rderr != 0
+			   || lost != 0 || ++idle_n >= IDLE_REPORTS) {
+				idle_n = 0;
+				/* One tm_printf per line: built up first. */
+				p = line;
+				p += tm_sprintf(p, (UB *)"[imu] %-6s tilt %2u.%u"
+						" deg  %4d mm/s  turn %+4d dps",
+						(v > 0) ? "moving"
+						: (v < 0) ? "back" : "still",
+						t10 / 10, t10 % 10, v,
+						motion_ds_turn_dps(ds));
+				if(hs != HUMP_NONE) {
+					p += tm_sprintf(p, (UB *)"  | %s %d mm",
+							hump_state_name(hs),
+							hump_height_mm());
+				}
+				p += tm_sprintf(p, (UB *)"  | humps %u  last %u mm"
+						"  max %u mm",
+						hump_get_count(),
+						hump_get_last_mm(),
+						hump_get_max_mm());
+				if(rderr != 0 || lost != 0) {
+					p += tm_sprintf(p, (UB *)"  | rderr %u"
+							"  lost %u", rderr, lost);
+				}
+				tm_printf((UB *)"%s\n", line);
+			}
+#if IMU_VERBOSE
+			tm_printf((UB *)"[imu]   acc mg x=%5d y=%5d z=%5d"
+				       "  z %5d..%5d |a|max %5u  %s  ds %2u\n",
+				  mx, my, sum[2] / n, zmin, zmax, amax,
+				  ds_state_name[motion_ds_state(ds)], ds_pub);
+#endif
 		} else {
-			tm_printf((UB *)"[imu] no good reads in %d ms,"
+			tm_printf((UB *)"[imu] NO GOOD READS in %d ms,"
 				       " rderr %u\n",
 				  REPORT_SAMPLES * SAMPLE_MS, rderr);
 		}
+#if IMU_VERBOSE
 		if(has_mag) {
-			tm_printf((UB *)"[imu] mag mG x=%6d y=%6d z=%6d\n",
+			tm_printf((UB *)"[imu]   mag mG x=%6d y=%6d z=%6d\n",
 				  m[0], m[1], m[2]);
 		}
+#else
+		(void)has_mag; (void)zmin; (void)zmax; (void)amax;
+		(void)ds_pub;
+#endif
 
 		ds_win = ds;
 		ds_pub = 0;

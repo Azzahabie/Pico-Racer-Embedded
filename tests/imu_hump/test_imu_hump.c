@@ -73,6 +73,17 @@ static const PT FLAT_TOP[] = {
 	{ 0, 0 }, { 200, 0 }, { 320, 10 }, { 360, 10 }, { 480, 0 },
 	{ 2000, 0 },
 };
+/* The practice ramp measured on 2026-10-27: 10 mm, with a level top
+   longer than HUMP_END_MM (log 11: level from 300 to past 336). */
+static const PT LONG_TOP[] = {
+	{ 0, 0 }, { 200, 0 }, { 300, 10 }, { 400, 10 }, { 500, 0 },
+	{ 2000, 0 },
+};
+/* Two wedges whose far side drops straight off: no way down to read. */
+static const PT WEDGES[] = {
+	{ 0, 0 }, { 200, 0 }, { 300, 10 }, { 400, 10 }, { 401, 0 },
+	{ 800, 0 }, { 900, 10 }, { 1000, 10 }, { 1001, 0 }, { 2000, 0 },
+};
 /* Two humps, 9 mm and 23 mm, 300 mm apart. */
 static const PT TWO[] = {
 	{ 0, 0 }, { 200, 0 }, { 310, 9 }, { 420, 0 }, { 720, 0 },
@@ -86,6 +97,7 @@ static const PT TWO[] = {
 static double pos;		/* mm along the track            */
 static double enc;		/* mm the encoders have counted  */
 static double enc_scale = 1;	/* < 1: a pivot, under-reads     */
+static int hand;		/* mg added while carried        */
 static int dir = 1;		/* last way it moved             */
 static unsigned rng = 12345;
 
@@ -110,8 +122,23 @@ static void window(double dmm, int steady)
 	sn = slope_at(mid, dir);
 	sn = sn / sqrt(1 + sn * sn);
 	d = (int)lround(enc) - (int)lround(efrom);
-	hump_step((W)lround(-600 * sn) + noise(), (W)lround(-800 * sn) + noise(),
-		  d, steady);
+	hump_step((W)lround(-600 * sn) + noise() + hand,
+		  (W)lround(-800 * sn) + noise() + hand, d, steady);
+}
+
+/* Picked up and put down at `to`: the wheels do not turn, the tilt
+   swings (log 13: x -40..+111 mg while carried). */
+static void carry(double to)
+{
+	int	i;
+
+	for (i = 0; i < 10; i++) {
+		hand = (i % 2) ? 110 : -60;
+		window(0, 1);
+	}
+	hand = 0;
+	pos = to;
+	for (i = 0; i < 10; i++) window(0, 1);	/* put down: 1 s still */
 }
 
 /* Drive to `to` at `speed` mm/s. */
@@ -216,6 +243,46 @@ static void mixed(void)
 	drive(700, 50); stop(2);
 }
 
+/* Long level top: over and down the far side without stopping.  The
+   hump must not end on the top and count the way down again. */
+static void long_top_over(void)
+{
+	USE(LONG_TOP); stop(2); drive(700, 70); stop(2);
+}
+
+/* Long level top: up, stopped, nudged on, backed down over the top and
+   the slope (log 11: HUMP 5, then the way down counted as HUMP 6). */
+static void long_top_nudge_back(void)
+{
+	USE(LONG_TOP); stop(2); drive(325, 40); stop(2);
+	drive(336, 20); stop(1); drive(107, 60); stop(2);
+}
+
+/* Log 11 whole: three climbs, each stopped on top and backed down, the
+   middle one missed after the false count. */
+static void long_top_three(void)
+{
+	USE(LONG_TOP); stop(2);
+	drive(325, 40); stop(2); drive(336, 20); stop(1); drive(107, 60); stop(2);
+	drive(330, 60); stop(1); drive(16, 80); stop(2);
+	drive(320, 40); stop(2);
+}
+
+/* Up, stopped on the long top, carried back to the start, over again
+   (log 14: the second climb was taken as still being on top). */
+static void long_top_carry(void)
+{
+	USE(LONG_TOP); stop(2); drive(340, 50); stop(2);
+	carry(100); drive(700, 50); stop(2);
+}
+
+/* Off a drop the hump never reads as DESCENDING, so only the
+   HUMP_TOP_MAX_MM cap ends it, before the next wedge. */
+static void wedges(void)
+{
+	USE(WEDGES); stop(2); drive(1500, 70); stop(2);
+}
+
 /* Flat floor, back and forth: nothing to count. */
 static void flat(void)
 {
@@ -235,6 +302,11 @@ static const SCENARIO scenarios[] = {
 	{ "pivot up, stop, back down",		pivot_up_stop_back,	1 },
 	{ "two course humps",			two_humps,		2 },
 	{ "up/stop/back, then over",		mixed,			2 },
+	{ "long top, straight over",		long_top_over,		1 },
+	{ "long top, nudge, back down",		long_top_nudge_back,	1 },
+	{ "long top, three up/back",		long_top_three,		3 },
+	{ "two wedges, drop-off far sides",	wedges,			2 },
+	{ "long top, stop, carried back, over",	long_top_carry,		2 },
 	{ "flat floor only",			flat,			0 },
 };
 
