@@ -38,9 +38,6 @@
 #include "imu_task/imu_task.h" // buddy4: imu_task
 #include "motor_task/motor_task.h"      // buddy 2: motion_task (motors, encoders)
 
-=========
-#include "imu_task/imu_task.h" // buddy4: imu_task
->>>>>>>>> Temporary merge branch 2
 #if TM_WIFI_CYW43
 /* Plain C types on purpose - see the note in cyw43_utk.h. */
 #include "cyw43_utk.h"
