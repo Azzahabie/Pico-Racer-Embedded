@@ -1,4 +1,4 @@
-"""Minimum-bit layout for the MQTT records (Change Requirement 1), schema v3.
+"""Minimum-bit layout for the MQTT records (Change Requirement 1), schema v5.
 
 Week 13 evidence, Test 1.  Run it and the printed tables are the data
 representation table, the per-kind event table with its headroom, the message
@@ -20,14 +20,16 @@ History: 2026-10-19 (Tribunal 1) schema v2: 53-bit header, H, D, cmd, map.
 `mot` in S widened from 2 to 4 bits (S stays 15 bytes), IMU event class added.
 2026-10-23 schema v4: fault bitmask 5 -> 6 bits as agreed with Buddy 5 (bit 4
 line sensor, bit 5 Wi-Fi loss), so S is 16 bytes; D stays 21.
+2026-10-28 schema v5: tilt and turn rate in S for FR-29 (S 18 bytes, D 23),
+the outbound record limit 21 -> 24 bytes, IMU motion class 0..6.
 """
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # field, meaning, proposed range, bits, note
 HEADER = [
     ("t",     "record type",              "0 S, 1 E, 2 H, 3 D",    2, "same position in every record"),
-    ("v",     "schema version",           "0..7",                  3, "4 = this layout (3 = 5 fault bits, 2 = Tribunal 1, JSON was 1)"),
+    ("v",     "schema version",           "0..7",                  3, "5 = this layout (4 = no tilt/turn, 3 = 5 fault bits, 2 = Tribunal 1, JSON was 1)"),
     ("s",     "sequence number",          "0..65535 over a run",  16, "a 5 min run is under 300 lines"),
     ("up",    "ms since boot",            "0..2^32-1",            32, "boot semantics kept; run-relative would be 19"),
 ]
@@ -47,6 +49,8 @@ S_BODY = [
     ("mis",   "mission state",            "7 states",              3, "matches the requirement's own example"),
     ("mpv",   "barcode table version",    "0..15",                 4, "wraps"),
     ("drp",   "dropped count",            "0..15",                 4, "saturates"),
+    ("tlt",   "tilt from level",          "0..62 deg, 63 n/a",     6, "FR-29; from imu_task's tilt-state word"),
+    ("trn",   "turn rate",                "-2047..2047 deg/s, 0 n/a", 12, "FR-29; offset-encoded, stored + 2048"),
 ]
 
 # Event bodies, one per kind: kind in bits 0-2, then the kind's fields.
@@ -75,7 +79,7 @@ E_BODIES = {
     ]),
     3: ("imu", "Buddy 4", [
         KIND,
-        ("class",     "motion event class",  "0..4 (FR-27)",          3, ""),
+        ("class",     "motion event class",  "0..6 (FR-27 and more)", 3, "7 reserved"),
         ("hump_count","humps detected",      "0..15",                 4, ""),
         ("hump_height_mm", "hump height",    "0..255 mm",             8, "clamped"),
     ]),
@@ -91,7 +95,7 @@ E_BODIES = {
 }
 
 # CYW43_MQTT_RECORD_MAX: the largest record the radio's outbound queue takes.
-E_SIZE_LIMIT = 21
+E_SIZE_LIMIT = 24
 
 D_EXTRA = [
     ("rssi", "signal strength",   "0..127, stores -dBm", 7, ""),
@@ -166,7 +170,7 @@ def show(name, fields):
 EXAMPLES = {
     "S": (S_FIELDS, dict(t=0, v=SCHEMA_VERSION, s=137, up=41230, faults=0, mot=2, dst=20,
                          lin=1, dev=3 + 128, bar=4, act=2, hum=3, hgt=12, obs=0, byp=0,
-                         mis=1, mpv=3, drp=0)),
+                         mis=1, mpv=3, drp=0, tlt=4, trn=-30 + 2048)),
     "E motion": (e_fields(0), dict(t=1, v=SCHEMA_VERSION, s=138, up=41310, k=0, state=2,
                                    speed_l=20 + 128, speed_r=24 + 128, dist_mm=1500,
                                    turn_rate=-30 + 512, fault=0, ovf=0)),

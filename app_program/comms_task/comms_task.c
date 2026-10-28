@@ -87,8 +87,10 @@ typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
    are stored as on the wire (MQTT_SCHEMA.md section 4).  Only comms_task
    touches it.  faults (the FAULT_* bits) stays 0 until Buddy 5's fault flag
    exists (schema section 12), and mpv stays 0 until the map command (M8) is
-   built. */
-LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE };
+   built.  tlt and trn read "not available" until imu_task publishes its
+   tilt-state word (FR-29). */
+LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
+			     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
 LOCAL BOOL	have_dist;
 LOCAL UH	dist_at_change;		/* dist_mm when mot last changed */
 

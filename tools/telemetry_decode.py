@@ -1,4 +1,4 @@
-"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v4).
+"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v5).
 
     python tools/telemetry_decode.py [--broker HOST] [--port N] [--id CLIENT_ID]
 
@@ -16,13 +16,13 @@ import argparse
 import datetime
 import time
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 HEADER = [("t", 2), ("v", 3), ("s", 16), ("up", 32)]  # 53 bits, section 3.6
 HEADER_BITS = 53
 
 S_BODY = [("faults", 6), ("mot", 4), ("dst", 8), ("lin", 2), ("dev", 8), ("bar", 5),
           ("act", 2), ("hum", 4), ("hgt", 8), ("obs", 8), ("byp", 2), ("mis", 3),
-          ("mpv", 4), ("drp", 4)]
+          ("mpv", 4), ("drp", 4), ("tlt", 6), ("trn", 12)]
 D_EXTRA = [("rssi", 7), ("ip", 32), ("qd", 3), ("mqv", 2)]
 
 # Event bodies after the 3-bit kind (section 5.1).  `k`: (name, fields).
@@ -38,7 +38,10 @@ E_BODIES = {
 # The shared fault bitmask, bit 0 first (section 4.1, messages.h FAULT_*).
 FAULT_NAMES = ["motor_stall", "encoder", "imu", "scan_sensor_lost", "line_sensor", "wifi_loss"]
 # Offset-encoded fields: stored = value + offset (section 3 rule 5).
-OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_rate": 512}
+OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_rate": 512,
+           "trn": 2048}
+# "Not available" codes (section 4): FR-29 reports tilt and turn rate when available.
+NOT_AVAILABLE = {"tlt": 63, "trn": 0}
 
 
 def nbytes(bits):
@@ -100,7 +103,9 @@ def describe(values):
     for key, val in values.items():
         if key in ("t", "v", "s", "up", "k"):
             continue
-        if key in OFFSETS:
+        if NOT_AVAILABLE.get(key) == val:
+            val = "n/a"
+        elif key in OFFSETS:
             val = val - OFFSETS[key]
         elif key in ("bar", "letter"):
             val = "none" if val == 31 else chr(65 + val) if val <= 25 else f"?{val}"

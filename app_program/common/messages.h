@@ -5,7 +5,7 @@
  * Every buddy's task depends on this file -- route changes through
  * a pull request so nobody's build breaks silently.
  *
- * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v4).
+ * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v5).
  * Packed with explicit shifts and masks, never C bit-fields, LSB-first and
  * little-endian: bit n of a record is bit (n mod 8) of byte (n div 8).  Plain
  * C with no kernel or hardware calls, so the same code runs in the PC unit
@@ -60,7 +60,7 @@
  *  Record header -- every outbound record starts with it (schema 3.6)
  * ------------------------------------------------------------------ */
 
-#define COMM_W_SCHEMA_VERSION   4U
+#define COMM_W_SCHEMA_VERSION   5U
 
 #define COMM_W_REC_S            0U   /* periodic state line, ...telemetry */
 #define COMM_W_REC_E            1U   /* edge event, ...telemetry          */
@@ -136,7 +136,7 @@ typedef struct {
                                    + COMM_W_BARCODE_ACTION_BITS)          /* 10 */
 
 /* imu (Buddy 4) */
-#define COMM_W_IMU_CLASS_BITS      3U   /* FR-27 event class, 0-4 */
+#define COMM_W_IMU_CLASS_BITS      3U   /* motion class, 0-6      */
 #define COMM_W_IMU_COUNT_BITS      4U   /* humps, 0-15            */
 #define COMM_W_IMU_HEIGHT_BITS     8U   /* mm, 0-255, clamped     */
 #define COMM_W_BODY_BITS_IMU      (COMM_W_KIND_BITS + COMM_W_IMU_CLASS_BITS \
@@ -169,8 +169,8 @@ typedef struct {
 #define COMM_W_E_SIZE_MISSION  COMM_W_BYTES(COMM_W_HDR_BITS + COMM_W_BODY_BITS_MISSION)  /* 8 */
 
 /* A wire E may not exceed the radio's outbound record limit
-   (CYW43_MQTT_RECORD_MAX, 21 B), i.e. a body of at most 115 bits. */
-#define COMM_W_E_SIZE_LIMIT    21U
+   (CYW43_MQTT_RECORD_MAX, 24 B), i.e. a body of at most 139 bits. */
+#define COMM_W_E_SIZE_LIMIT    24U
 #define COMM_W_E_SIZE_MAX      COMM_W_E_SIZE_MOTION
 
 typedef char comm_w_e_fits[(COMM_W_E_SIZE_MAX <= COMM_W_E_SIZE_LIMIT
@@ -308,7 +308,7 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 }
 
 /* ------------------------------------------------------------------ *
- *  Record S -- the periodic state line (schema section 4), 16 bytes
+ *  Record S -- the periodic state line (schema section 4), 18 bytes
  * ------------------------------------------------------------------ */
 
 #define COMM_W_S_FAULTS_BITS    FAULT_COUNT /* shared fault bitmask, 4.1  */
@@ -325,6 +325,10 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 #define COMM_W_S_MIS_BITS       3U   /* mission state                       */
 #define COMM_W_S_MPV_BITS       4U   /* barcode table version running       */
 #define COMM_W_S_DRP_BITS       4U   /* intake drops, saturating            */
+#define COMM_W_S_TLT_BITS       6U   /* tilt from level, deg; 63 = n/a      */
+#define COMM_W_S_TRN_BITS      12U   /* turn rate, deg/s +2048; 0 = n/a     */
+#define COMM_W_S_TLT_NA        63U
+#define COMM_W_S_TRN_NA         0U
 #define COMM_W_S_BITS          (COMM_W_HDR_BITS + COMM_W_S_FAULTS_BITS        \
                                 + COMM_W_S_MOT_BITS + COMM_W_S_DST_BITS       \
                                 + COMM_W_S_LIN_BITS + COMM_W_S_DEV_BITS       \
@@ -332,13 +336,16 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
                                 + COMM_W_S_HUM_BITS + COMM_W_S_HGT_BITS       \
                                 + COMM_W_S_OBS_BITS + COMM_W_S_BYP_BITS       \
                                 + COMM_W_S_MIS_BITS + COMM_W_S_MPV_BITS       \
-                                + COMM_W_S_DRP_BITS)                  /* 121 */
-#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 16 */
+                                + COMM_W_S_DRP_BITS + COMM_W_S_TLT_BITS       \
+                                + COMM_W_S_TRN_BITS)                  /* 139 */
+#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 18 */
 
 /* The latest value per source, as stored on the wire (offset-encoded fields
-   keep their offset).  comms_task keeps one and folds every event into it. */
+   keep their offset).  comms_task keeps one and folds every event into it;
+   tlt and trn it reads from imu_task's tilt-state word instead (FR-29). */
 typedef struct {
-    uint8_t faults, mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, mpv, drp;
+    uint8_t faults, mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, mpv, drp, tlt;
+    uint16_t trn;
 } T_COMM_W_S;
 
 /* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
@@ -366,6 +373,8 @@ static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mis, COMM_W_S_MIS_BITS, &clamped), COMM_W_S_MIS_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mpv, COMM_W_S_MPV_BITS, &clamped), COMM_W_S_MPV_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->drp, COMM_W_S_DRP_BITS, &clamped), COMM_W_S_DRP_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->tlt, COMM_W_S_TLT_BITS, &clamped), COMM_W_S_TLT_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->trn, COMM_W_S_TRN_BITS, &clamped), COMM_W_S_TRN_BITS);
     return COMM_W_S_SIZE;
 }
 
@@ -471,7 +480,9 @@ static inline uint32_t comm_w_pack_barcode(uint8_t out[COMM_W_INTAKE_SIZE_BARCOD
     return COMM_W_INTAKE_SIZE_BARCODE;
 }
 
-/* event_class 0-4 (FR-27); hump_count 0-15; hump height in mm. */
+/* event_class 0-6: 0 still, 1 turning, 2 climbing, 3 descending, 4 impact,
+   5 accelerating, 6 moving (FR-27 and more; 7 reserved); hump_count 0-15;
+   hump height in mm. */
 static inline uint32_t comm_w_pack_imu(uint8_t out[COMM_W_INTAKE_SIZE_IMU],
                                        uint32_t event_class, uint32_t hump_count,
                                        uint32_t hump_height_mm)

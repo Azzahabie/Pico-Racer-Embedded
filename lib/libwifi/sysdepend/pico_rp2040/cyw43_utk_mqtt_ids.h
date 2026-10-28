@@ -24,11 +24,12 @@
 #define CYW43_MQTT_FAILED       4
 
 /* Outbound record queue (cyw43_utk_kernel.c).  Packed records only: the
-   largest is the 21-byte D snapshot (docs/comms/MQTT_SCHEMA.md section 7).
-   The buffer is sized for QUEUE_DEPTH records of that largest size (112 B);
+   largest is the 23-byte D snapshot (docs/comms/MQTT_SCHEMA.md section 7);
+   24 leaves room for one more byte.  The buffer is sized for QUEUE_DEPTH
+   records of RECORD_MAX (128 B);
    smaller records take less, so more of them fit -- 9 H records, measured
    on hardware 2026-10-21. */
-#define CYW43_MQTT_RECORD_MAX   21
+#define CYW43_MQTT_RECORD_MAX   24
 #define CYW43_MQTT_QUEUE_DEPTH  4
 
 #endif
