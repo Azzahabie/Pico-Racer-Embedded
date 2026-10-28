@@ -178,8 +178,13 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 > `comms_task` reads it once per `S`. Pulling sends nothing extra and is never
 > stale. A new `S` field asks the same question.
 
-> **`tlt` and `trn` are wired on Buddy 4's side.** Until `imu_task` publishes
-> its tilt-state word, both read "not available".
+> **Where `tlt` and `trn` come from.** `imu_task` writes the **tilt-state
+> word** ([`app_program/imu_task/imu_ts.h`](../../app_program/imu_task/imu_ts.h))
+> every 10 ms sample — one store, stored exactly as `S` carries both fields —
+> and `comms_task` copies it with `imu_ts_read()` just before packing each `S`.
+> Tilt is the same whole-degree value as Buddy 4's `hump_state` word; that
+> word is full and has no "not available" code, hence a second word. Until
+> `imu_task` runs (or in a build without it), the word reads "not available".
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
@@ -207,8 +212,10 @@ measured on the link on 2026-10-22; v5's 18 bytes is calculated until
 re-checked.)
 
 > **"Not available" (FR-29 says "when available").** `tlt` = 63 means the IMU
-> cannot give a tilt (no good samples, or `FAULT_IMU`); `trn` = 0 means
-> `distance_state` has stopped updating. The producer clamps a real turn rate
+> has had no good sample for 50 ms (NFR-13's Y); `trn` = 0 means
+> `distance_state` has not changed for 50 ms (motion_task stalled or not
+> running). An abnormal-tilt fault does **not** make `tlt` n/a: the tilt is
+> still measured, and is what the laptop most wants to see then. The producer clamps a real turn rate
 > to ±2047, so stored 0 (−2048) never means a real value. The decoder prints
 > both as `n/a`.
 
