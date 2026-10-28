@@ -18,6 +18,7 @@
  *	call pwm_set_enabled(). Tabs/brace placement follow the repo.
  */
 
+#include <stdint.h>
 #include <tk/tkernel.h>
 #include <tk/syslib.h>
 #include <sys/sysdef.h>
@@ -29,7 +30,7 @@
 #define SERVO_DIV_REG		(PWM_BASE + PWM_CHx_DIV + (SERVO_SLICE * 0x14))
 #define SERVO_DIV_INT		125U	/* DIV register: integer part in bits 11:4 */
 
-LOCAL INT g_servo_angle_deg;
+LOCAL int8_t g_servo_angle_deg;	/* -45..+45 deg (SERVO_LIMIT_DEG) */
 
 EXPORT void servo_init(void)
 {
@@ -73,7 +74,7 @@ EXPORT UW servo_set_angle(INT angle_deg)
 	}
 
 	pwm_set_cc(SERVO_PIN, (UW)pulse_us);
-	g_servo_angle_deg = angle_deg;
+	g_servo_angle_deg = (int8_t)angle_deg;	/* clamped above */
 	return (UW)pulse_us;
 }
 

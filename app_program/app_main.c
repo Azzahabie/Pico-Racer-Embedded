@@ -457,6 +457,15 @@ LOCAL T_CTSK ctsk_line = {
 #endif
 
 
+/* Buddy 5 <- Buddy 4: scan_task's "on a hump" test (Statechart 5,
+ * N_hump = 4).  imu_task publishes hump_state in its packed word, one
+ * writer and one aligned load, so no mutex.  Climbing or descending is a
+ * hump; NONE is not. */
+LOCAL bool scan_on_hump(void)
+{
+	return (0U != IMU_W_GET(imu_word_read(), HUMP));
+}
+
 /* ------------------------------------------------------------------ *
  *  Entry point
  * ------------------------------------------------------------------ */
@@ -525,15 +534,15 @@ EXPORT INT usermain(void)
 			  (INT)motion_ercd);
 	}
 
-	/* Buddy 5: tell scan_task where the mission state, nav_flg and
-	 * motion_flg are, so its STOP_SCAN brakes the car. avoid_cmd_mbf stays
-	 * 0 until Buddy 2 adds it (step 1.7), so scan_task still simulates
-	 * motion_task's replies to its commands. */
+	/* Buddy 5: tell scan_task where the mission and motion interfaces are,
+	 * so its STOP_SCAN brakes the car. avoid_cmd_mbf stays 0 until Buddy 2
+	 * adds it (step 1.7), so bypass and reverse commands fail closed. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
-			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
+			.p_hump_active		= scan_on_hump,
+			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 		};
 		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the
 		 * mission waits for CAL_OK_IMU (FR-02). ir_flgid stays 0 until

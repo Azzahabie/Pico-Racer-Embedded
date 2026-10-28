@@ -60,9 +60,14 @@
 					   different objects, not one */
 #define SL_CLEAR_OPEN_MM	9999	/* clearance when no other object is seen */
 
-/* Beam spread: the HC-SR04 cone (~15 deg, +/-7.5) makes edges read too far
- * out by about d * tan(7.5 deg) = d * 0.1317. Replace with a bench value. */
-#define SL_BEAM_CORR_PER_1000	132
+/* Beam spread: the HC-SR04 cone makes edges read too far out, by about
+ * d * k. Theory (+/-7.5 deg cone) gave k = 0.132; bench value 0.080
+ * (29 Oct, NFR-20, boxes centred at ~20 cm, mode 3): 0.132 read a 200 mm
+ * box 25-39 % narrow (1 of 3 within 30 %, and a narrow width shortens the
+ * bypass offset); 0.080 passed both the 100 mm box (4/5) and the 200 mm
+ * box (3/3). The 5-deg steps already land inside the true edge, which is
+ * why the full theoretical correction is too much. */
+#define SL_BEAM_CORR_PER_1000	80
 
 /* ---- "N in a row" rules (Statechart 5) ---- */
 #define SL_N_STOP		2	/* close readings to set STOP_SCAN           */
@@ -79,22 +84,28 @@ typedef enum {
 	SL_BLOCKED		/* no side is passable: stop                */
 } sl_action_t;
 
+/* Minimum-bit sizes: every distance and offset is within -4000..+9999 mm
+ * (SL_CLEAR_OPEN_MM is the largest) and every angle within -45..+45, so
+ * int16_t; the arithmetic is done in int32_t and stored. Sizes before
+ * and after: docs/obstacle/week13_representation.md. */
+_Static_assert(SL_CLEAR_OPEN_MM <= INT16_MAX, "profile fields must fit int16_t");
+
 typedef struct {
+	int16_t	d_close_mm;		/* closest reading d_c                    */
+	int16_t	close_deg;		/* angle of d_c                           */
+	int16_t	left_deg;		/* outermost hit on the left              */
+	int16_t	right_deg;		/* outermost hit on the right             */
+	int16_t	x_left_mm;		/* lateral position of left edge          */
+	int16_t	x_right_mm;		/* lateral position of right edge         */
+	int16_t	width_mm;		/* W, beam-corrected                      */
+	int16_t	offset_left_mm;		/* sideways move to pass left             */
+	int16_t	offset_right_mm;	/* sideways move to pass right            */
+	int16_t	clear_left_mm;		/* free space beyond the left edge        */
+	int16_t	clear_right_mm;		/* free space beyond the right edge       */
 	bool	found;			/* any reading <= D_obs                   */
-	int32_t	d_close_mm;		/* closest reading d_c                    */
-	int32_t	close_deg;		/* angle of d_c                           */
-	int32_t	left_deg;		/* outermost hit on the left              */
-	int32_t	right_deg;		/* outermost hit on the right             */
-	int32_t	x_left_mm;		/* lateral position of left edge          */
-	int32_t	x_right_mm;		/* lateral position of right edge         */
-	int32_t	width_mm;		/* W, beam-corrected                      */
 	bool	left_open;		/* free space found left of the edge      */
 	bool	right_open;		/* free space found right of the edge     */
 	bool	in_path;		/* overlaps the car's corridor +/-C_pass  */
-	int32_t	offset_left_mm;		/* sideways move to pass left             */
-	int32_t	offset_right_mm;	/* sideways move to pass right            */
-	int32_t	clear_left_mm;		/* free space beyond the left edge        */
-	int32_t	clear_right_mm;		/* free space beyond the right edge       */
 } sl_profile_t;
 
 /* ---- one forward ping, classified for the counters ---- */
@@ -104,11 +115,16 @@ typedef enum {
 	SL_PING_NO_ECHO		/* no echo pulse at all: possible sensor fault     */
 } sl_ping_t;
 
+/* The four "in a row" counters packed into 9 bits (minimum-bit
+ * requirement). Each saturates at its field maximum, which is at least
+ * the largest threshold it is compared with, so ">= N" still works:
+ *   bits 0-2 close   0-7  (SL_N_STOP_HUMP = 4)
+ *   bits 3-4 clear   0-3  (SL_N_CLEAR = 3)
+ *   bits 5-6 no_echo 0-3  (SL_N_NO_ECHO = 3)
+ *   bits 7-8 echo    0-3  (SL_N_ECHO = 3)
+ * Owned by one task; read it only through the sl_runs_* accessors. */
 typedef struct {
-	uint8_t	close_run;	/* close readings in a row  */
-	uint8_t	clear_run;	/* clear readings in a row  */
-	uint8_t	no_echo_run;	/* no-echo pings in a row   */
-	uint8_t	echo_run;	/* valid echoes in a row    */
+	uint16_t	packed;
 } sl_runs_t;
 
 /* sin(deg) * 1000 for deg in -45..+45 (5 deg steps). */
@@ -121,6 +137,19 @@ int32_t		sl_sin1000(int32_t deg);
 void		sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 			   sl_profile_t *p_prof);
 
+/* Where the fine scan starts (FR-15), from the coarse grid: the coarse
+ * edges of the object in the car's path, not the outermost coarse hits.
+ * With other objects either side, the outermost hits are those objects,
+ * and fine-stepping outward from them never measures the edges of the
+ * one in the way (its width then reads 0 and the bypass offset is too
+ * short). Returns false if there is no hit. */
+bool		sl_fine_starts(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+			       int32_t *p_left_deg, int32_t *p_right_deg);
+
+/* Fine scan stepping outward: is this reading still the same object as
+ * the previous hit (a hit, with no depth jump > SL_DEPTH_JUMP_MM)? */
+bool		sl_same_object(uint16_t prev_mm, uint16_t dist_mm, int32_t d_obs_mm);
+
 /* Choose the action from a profile (FR-17, NFR-07: larger clearance side). */
 sl_action_t	sl_decide(const sl_profile_t *p_prof, bool reverse_tried);
 
@@ -130,5 +159,9 @@ const char	*sl_action_name(sl_action_t action);
 sl_ping_t	sl_classify(bool no_echo, uint32_t dist_mm);
 void		sl_runs_reset(sl_runs_t *p_runs);
 void		sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping);
+uint8_t		sl_runs_close(const sl_runs_t *p_runs);
+uint8_t		sl_runs_clear(const sl_runs_t *p_runs);
+uint8_t		sl_runs_no_echo(const sl_runs_t *p_runs);
+uint8_t		sl_runs_echo(const sl_runs_t *p_runs);
 
 #endif /* SCAN_LOGIC_H */

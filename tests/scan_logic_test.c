@@ -198,25 +198,80 @@ int main(void)
 	printf("Test 13: Monitoring / Blocked / Sensor Lost counters\n");
 	sl_runs_reset(&runs);
 	sl_runs_add(&runs, sl_classify(false, 200U));
-	check("one close reading is not enough", runs.close_run < SL_N_STOP);
+	check("one close reading is not enough", sl_runs_close(&runs) < SL_N_STOP);
 	sl_runs_add(&runs, sl_classify(false, 210U));
-	check("two close in a row -> stop", runs.close_run >= SL_N_STOP);
+	check("two close in a row -> stop", sl_runs_close(&runs) >= SL_N_STOP);
 	sl_runs_reset(&runs);
 	sl_runs_add(&runs, sl_classify(false, 200U));
 	sl_runs_add(&runs, sl_classify(true, 0U));
 	sl_runs_add(&runs, sl_classify(false, 200U));
-	check("a no-echo in between breaks the run", runs.close_run < SL_N_STOP);
+	check("a no-echo in between breaks the run", sl_runs_close(&runs) < SL_N_STOP);
 	sl_runs_reset(&runs);
 	sl_runs_add(&runs, sl_classify(true, 0U));
 	sl_runs_add(&runs, sl_classify(true, 0U));
 	sl_runs_add(&runs, sl_classify(true, 0U));
-	check("three no-echo -> sensor lost", runs.no_echo_run >= SL_N_NO_ECHO);
+	check("three no-echo -> sensor lost", sl_runs_no_echo(&runs) >= SL_N_NO_ECHO);
 	sl_runs_add(&runs, sl_classify(false, SL_FAR));
 	check("out of range is a valid echo, not a fault",
-	      0U == runs.no_echo_run && 1U == runs.echo_run && 1U == runs.clear_run);
+	      0U == sl_runs_no_echo(&runs) && 1U == sl_runs_echo(&runs) && 1U == sl_runs_clear(&runs));
 	check("D_stop boundary: 250 mm is clear, 249 mm is close",
 	      SL_PING_CLEAR == sl_classify(false, 250U) &&
 	      SL_PING_CLOSE == sl_classify(false, 249U));
+
+	/* 14. packed counters: saturate inside their field, never spill */
+	printf("Test 14: packed run counters (minimum-bit requirement)\n");
+	{
+		int	idx;
+
+		sl_runs_reset(&runs);
+		for(idx = 0; idx < 20; idx++) {
+			sl_runs_add(&runs, sl_classify(false, 100U));
+		}
+		check("close saturates at 7, still >= N_stop on a hump",
+		      7U == sl_runs_close(&runs) && sl_runs_close(&runs) >= SL_N_STOP_HUMP);
+		check("echo saturates at 3 without touching close",
+		      3U == sl_runs_echo(&runs) && 0U == sl_runs_clear(&runs) &&
+		      0U == sl_runs_no_echo(&runs));
+		check("whole word stays within 9 bits", 0U == (runs.packed & ~0x01FFU));
+		for(idx = 0; idx < 20; idx++) {
+			sl_runs_add(&runs, sl_classify(true, 0U));
+		}
+		check("no-echo saturates at 3 and zeroes the others",
+		      3U == sl_runs_no_echo(&runs) && 0U == sl_runs_close(&runs) &&
+		      0U == sl_runs_echo(&runs) && 0U == sl_runs_clear(&runs));
+		check("4 bytes of counters now fit in 2", 2U == sizeof(sl_runs_t));
+	}
+
+	/* 15. fine scan starts at the object in the path, not the outermost
+	 * coarse hits. Box ahead, walls either side: starting from the walls
+	 * (+/-45) never measured the box edges, so its width read 0 and the
+	 * bypass offset came out 94 mm for a box 50 mm either side of centre
+	 * (bench simulation, layout 8). */
+	printf("Test 15: fine scan starts between two walls (FR-15, FR-18)\n");
+	{
+		int32_t	left_deg = 99;
+		int32_t	right_deg = 99;
+
+		grid_clear(grid);
+		set(grid, -45, 300);		/* wall, left                  */
+		set(grid, -25, SL_FAR);
+		set(grid,   0, 200);		/* box straight ahead          */
+		set(grid,  25, SL_FAR);
+		set(grid,  45, 290);		/* wall, right                 */
+		check("fine scan starts at the box (0..0), not the walls",
+		      sl_fine_starts(grid, SL_D_OBS_MM, &left_deg, &right_deg) &&
+		      0 == left_deg && 0 == right_deg);
+		grid_clear(grid);
+		check("no hit: no fine start",
+		      !sl_fine_starts(grid, SL_D_OBS_MM, &left_deg, &right_deg));
+		check("same object: small depth change",
+		      sl_same_object(200U, 230U, SL_D_OBS_MM));
+		check("different object: depth jump over 150 mm",
+		      !sl_same_object(200U, 380U, SL_D_OBS_MM));
+		check("a miss ends the object",
+		      !sl_same_object(200U, SL_FAR, SL_D_OBS_MM) &&
+		      !sl_same_object(200U, 450U, SL_D_OBS_MM));
+	}
 
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);

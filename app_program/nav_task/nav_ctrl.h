@@ -63,7 +63,8 @@ typedef struct {
 	ID	nav_cmd_mbfid;		/* nav -> motion_task, for FAULT_CLEAR (0 = none) */
 } nav_bind_t;
 
-/* Call in usermain() BEFORE creating any task that uses nav_flg. */
+/* Call in usermain() BEFORE creating any task that uses nav_flg or
+ * fault_flg. Creates both. */
 EXPORT ER		nav_ctrl_init(void);
 EXPORT void		nav_bind(const nav_bind_t *p_bind);	/* optional, before start */
 EXPORT ID		nav_flag(void);
@@ -72,6 +73,19 @@ EXPORT ID		nav_flag(void);
 EXPORT mission_state_t	nav_mission_state(void);
 EXPORT bool		nav_mission_running(void);
 EXPORT const char	*nav_state_name(mission_state_t state);
+
+/* Shared fault bitmask (Change Requirement; Tribunal Version C row 3).
+ * One uT-Kernel event flag, created by nav_ctrl_init() and owned by Buddy 5.
+ * Bits are the FAULT_* masks in common/messages.h. Each task sets and
+ * clears only its own bit, and a bit stays set until its owner clears it.
+ * tk_set_flg / tk_clr_flg run inside the kernel's cross-core lock, so two
+ * cores can write different bits without losing either (the M0+ has no
+ * atomic read-modify-write of its own). Reporting and the Fault transition
+ * only: no stop path waits on this flag. Safe from either core; a no-op
+ * if the flag was not created. */
+EXPORT void		fault_set(UINT bits);
+EXPORT void		fault_clear(UINT bits);
+EXPORT UINT		fault_bits(void);	/* snapshot, 0 if no flag */
 
 EXPORT void		nav_ctrl_task(INT stacd, void *exinf);
 
