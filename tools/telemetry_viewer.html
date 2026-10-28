@@ -201,7 +201,8 @@ const FAULTS = ["motor_stall", "encoder", "imu", "scan_sensor_lost", "line_senso
 const SRC_LABEL = { mqtt: "MQTT (decoder)", serial: "Serial console", broker: "Broker", viewer: "Viewer" };
 const S_FIELDS = { mot: "motion state", dst: "dist since change (cm)", lin: "line", dev: "deviation",
   bar: "barcode", act: "action", hum: "humps", hgt: "hump height (mm)", obs: "obstacle (cm)",
-  byp: "bypass", mpv: "map version", drp: "intake drops" };
+  byp: "bypass", mpv: "map version", drp: "intake drops", tlt: "tilt (deg)",
+  trn: "turn rate (deg/s)" };
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },

@@ -26,7 +26,7 @@ anything in the `[HH:MM:SS.mmm] text` format) can be dropped onto the page.
 The save folder gets serial.log, decoder.log and broker.log in that format.
 
 Only one program can hold a COM port: close the serial monitor first, or set
-the serial port to none.  Build the exe with tools/build_viewer.ps1.
+the serial port to none.  Build the exe with tools/build_viewer.bat.
 """
 
 import argparse
