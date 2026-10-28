@@ -25,8 +25,9 @@ build of commit `1081a5f` (`arm-none-eabi-size -B` and `nm -S` on the
 | 10 | CAL_OK_IMU, CAL_FAIL, IMU_FAULT | imu_task (core 1) -> nav_ctrl_task (core 0) | set | 1 each | bits 0x0008, 0x0010, 0x0020 of `nav_flg` | 0 B | built |
 | 11 | CAL_REQ | nav_ctrl_task -> imu_task | set, cleared on read | 1 | bit 0 of `imu_flg` [PROPOSED, agree with Buddies 3, 5] | 0 B | built |
 | 12 | FAULT_IMU in the shared fault mask | imu_task -> all | 0/1 | 1 | bit 2 of `fault_flg` (`messages.h`) | 0 B | waits for Buddy 5's `fault_set()` |
-| 13 | Telemetry event, kind 3 imu | imu_task -> comms_task (core 0) via `tele_mbf` | class 0-4 (schema), count 0-15, height 0-255 mm | 3 + 3 + 4 + 8 = 18 | `comm_w_pack_imu()` (Buddy 1, `messages.h`) | 3 B in the queue, 9 B record E on the wire (C, `COMM_W_*_SIZE_IMU`) | packer exists; imu_task does not send yet (Buddy 1, plan 2.3). Schema class range is 0-4; ours uses 0-6 |
-| 14 | Status S: `hum`, `hgt` | comms_task's fold of row 13 | 0-15; 0-255 mm | 4 + 8 | fields of record S | in Buddy 1's 16 B S record | as row 13 |
+| 13 | Telemetry event, kind 3 imu | imu_task -> comms_task (core 0) via `tele_mbf` | class 0-6 (schema v5), count 0-15, height 0-255 mm | 3 + 3 + 4 + 8 = 18 | `comm_w_pack_imu()` (Buddy 1, `messages.h`) | 3 B in the queue, 9 B record E on the wire (C, `COMM_W_*_SIZE_IMU`) | packer exists; imu_task does not send yet (plan 2.3) |
+| 14 | Status S: `hum`, `hgt` | comms_task's fold of row 13 | 0-15; 0-255 mm | 4 + 8 | fields of record S | in Buddy 1's 18 B S record (schema v5) | as row 13 |
+| 14a | tilt-state word (FR-29): tilt, turn rate | imu_task (core 1) -> comms_task (core 0) | tilt 0-62 deg, 63 = n/a; turn -2047..+2047 deg/s stored +2048, 0 = n/a | 6 + 12 (+14 zero) | one aligned `uint32_t`, rebuilt in a local and stored once per 10 ms sample; one load to read (`imu_ts_read`); no mutex. `imu_ts.h`: `IMU_TS_*`, `imu_ts_pack`, `imu_ts_*_raw`. Tilt n/a after 50 ms with no good sample; turn rate (copied from `distance_state`) n/a after 50 ms with no update | 4 B RAM (C) | built; read into `S.tlt`, `S.trn` once a second |
 
 ## Data imu_task reads
 
@@ -53,7 +54,7 @@ build of commit `1081a5f` (`arm-none-eabi-size -B` and `nm -S` on the
 | Static RAM (data + bss) | 200 B (16 + 184) |
 | Stack | 4 096 B allocated (`STACK_SZ`, shared constant); high-water mark not measured yet |
 | Kernel objects | 1 task, 1 cyclic handler, 1 event flag; **0 of the 4 mutexes** |
-| Shared word | 4 B (`hump_state` word) |
+| Shared word | 4 B (`hump_state` word); +4 B tilt-state word (C, added after the measurement) |
 | Telemetry per IMU event | 3 B queued, 9 B on the wire |
 
 ## Requirements still met on this build

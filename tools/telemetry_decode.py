@@ -1,28 +1,26 @@
-"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v4).
+"""Decode the car's packed MQTT records (docs/comms/MQTT_SCHEMA.md, schema v5).
 
-    python tools/telemetry_decode.py [--broker HOST] [--port N] [--id CLIENT_ID]
+A module, not a program: tools/telemetry_viewer.py (TelemetryViewer.exe) feeds
+it every record it receives and shows the lines.  Dispatches on the record type
+`t`, and for E on the event kind `k`; checks what the M7 gates check: the schema
+version, the exact length for the type (and for E, the kind), and that s goes
+up by exactly 1 (a gap is flagged).  Decodes every field.  Needs no MQTT
+library.
 
-Subscribes to robocar/<id>/# and prints one line per record.  Dispatches on the
-record type `t`, and for E on the event kind `k`; checks what the M7 gates
-check: the schema version, the exact length for the type (and for E, the kind),
-and that s goes up by exactly 1 (a gap is flagged).  Decodes every field.
-
-Needs paho-mqtt 2.x (pip install paho-mqtt) to connect; decode() alone does not.
 The field tables mirror docs/comms/Tribunal/packed_size.py and
 app_program/common/messages.h; tests/host/test_decoder.py checks all three agree.
 """
 
-import argparse
 import datetime
 import time
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 HEADER = [("t", 2), ("v", 3), ("s", 16), ("up", 32)]  # 53 bits, section 3.6
 HEADER_BITS = 53
 
 S_BODY = [("faults", 6), ("mot", 4), ("dst", 8), ("lin", 2), ("dev", 8), ("bar", 5),
           ("act", 2), ("hum", 4), ("hgt", 8), ("obs", 8), ("byp", 2), ("mis", 3),
-          ("mpv", 4), ("drp", 4)]
+          ("mpv", 4), ("drp", 4), ("tlt", 6), ("trn", 12)]
 D_EXTRA = [("rssi", 7), ("ip", 32), ("qd", 3), ("mqv", 2)]
 
 # Event bodies after the 3-bit kind (section 5.1).  `k`: (name, fields).
@@ -38,7 +36,10 @@ E_BODIES = {
 # The shared fault bitmask, bit 0 first (section 4.1, messages.h FAULT_*).
 FAULT_NAMES = ["motor_stall", "encoder", "imu", "scan_sensor_lost", "line_sensor", "wifi_loss"]
 # Offset-encoded fields: stored = value + offset (section 3 rule 5).
-OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_rate": 512}
+OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_rate": 512,
+           "trn": 2048}
+# "Not available" codes (section 4): FR-29 reports tilt and turn rate when available.
+NOT_AVAILABLE = {"tlt": 63, "trn": 0}
 
 
 def nbytes(bits):
@@ -100,7 +101,9 @@ def describe(values):
     for key, val in values.items():
         if key in ("t", "v", "s", "up", "k"):
             continue
-        if key in OFFSETS:
+        if NOT_AVAILABLE.get(key) == val:
+            val = "n/a"
+        elif key in OFFSETS:
             val = val - OFFSETS[key]
         elif key in ("bar", "letter"):
             val = "none" if val == 31 else chr(65 + val) if val <= 25 else f"?{val}"
@@ -146,44 +149,3 @@ class Decoder:
         fields = f" {fields}" if fields else ""
         log(f"{name} s={values['s']} up={values['up']}ms{fields}  "
             f"{len(payload)}B [{raw}]{gap}{note}")
-
-
-def main():
-    import paho.mqtt.client as mqtt
-
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--broker", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=1883)
-    ap.add_argument("--id", default="pico-racer-01",
-                    help="the car's UTK_MQTT_CLIENT_ID (config/broker_config.h)")
-    args = ap.parse_args()
-
-    topic = f"robocar/{args.id}/#"
-    decoder = Decoder()
-
-    def on_connect(client, userdata, flags, reason_code, properties=None):
-        log(f"connected to {args.broker}:{args.port} (rc={reason_code}), "
-            f"subscribing to {topic}")
-        client.subscribe(topic, qos=0)
-
-    def on_disconnect(client, userdata, flags, reason_code, properties=None):
-        log(f"disconnected from {args.broker}:{args.port} (rc={reason_code}); "
-            f"retrying")
-
-    def on_message(client, userdata, msg):
-        decoder.record(msg.topic, msg.payload)
-
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                         client_id="robocar-decoder")
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
-    client.on_message = on_message
-    # Retry until the broker is up, instead of dying if it is started second.
-    client.reconnect_delay_set(min_delay=1, max_delay=5)
-    log(f"waiting for broker {args.broker}:{args.port}")
-    client.connect_async(args.broker, args.port, 60)
-    client.loop_forever(retry_first_connection=True)
-
-
-if __name__ == "__main__":
-    main()

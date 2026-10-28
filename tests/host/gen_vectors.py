@@ -94,6 +94,7 @@ RECORDS = [
     ("S example", ps.EXAMPLES["S"]),
     ("S all faults", (ps.S_FIELDS, dict(ps.EXAMPLES["S"][1], faults=0x3F))),
     ("S Wi-Fi loss", (ps.S_FIELDS, dict(ps.EXAMPLES["S"][1], faults=0x20))),
+    ("S tilt/turn n/a", (ps.S_FIELDS, dict(ps.EXAMPLES["S"][1], tlt=63, trn=0))),
     ("H example", ps.EXAMPLES["H"]),
     ("D example", (ps.D_FIELDS, dict(ps.EXAMPLES["S"][1], t=3, rssi=58, ip=0x0732A8C0, qd=2, mqv=2))),
 ]
@@ -141,7 +142,7 @@ def main():
         "    uint8_t  body_len;",
         "    uint8_t  body[8];",
         "    uint8_t  e_len;",
-        "    uint8_t  e[21];",
+        "    uint8_t  e[24];",
         "} T_VECTOR;",
         "",
         "static const T_VECTOR vectors[] = {",

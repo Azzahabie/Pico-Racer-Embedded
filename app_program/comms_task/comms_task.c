@@ -26,6 +26,7 @@
 
 #include "comms_task.h"
 #include "../common/messages.h"
+#include "../imu_task/imu_ts.h"
 
 /* ------------------------------------------------------------------ *
  *  Intake queue -- every build
@@ -87,8 +88,10 @@ typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
    are stored as on the wire (MQTT_SCHEMA.md section 4).  Only comms_task
    touches it.  faults (the FAULT_* bits) stays 0 until Buddy 5's fault flag
    exists (schema section 12), and mpv stays 0 until the map command (M8) is
-   built. */
-LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE };
+   built.  tlt and trn are not folded from events: they are copied from
+   imu_task's tilt-state word before each S (FR-29). */
+LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
+			     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
 LOCAL BOOL	have_dist;
 LOCAL UH	dist_at_change;		/* dist_mm when mot last changed */
 
@@ -219,7 +222,7 @@ LOCAL void comms_task(INT stacd, void *exinf)
 	UB	rec[COMM_W_S_SIZE];		/* H or S */
 	UB	body[COMM_W_INTAKE_SIZE_MAX];
 	UH	seq = 0;	/* s: one counter for every record this run */
-	UW	next, up, len, beats = 0;
+	UW	next, up, len, beats = 0, ts;
 	INT	wait, size;
 	ER	er;
 
@@ -243,13 +246,21 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		}
 
 		s_cache.drp = (UB)((tele_dropped > 15U) ? 15U : tele_dropped);
+		/* Pulled, not queued: the latest tilt and turn rate (FR-29),
+		   stored as S carries them; "not available" codes included. */
+		ts = imu_ts_read();
+		s_cache.tlt = (UB)imu_ts_tilt_raw(ts);
+		s_cache.trn = (UH)imu_ts_turn_raw(ts);
 
 		up = now_ms();
 		len = comm_w_pack_h(rec, seq, up);
 		er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_HEARTBEAT, rec, len);
 		print_record("H", seq, up, rec, len, er);
-		/* s advances even when the record was dropped: a gap in s with
-		   the drop counter rising says the car lost it, not the network. */
+		/* s advances even when the record was dropped, so the laptop sees
+		   a gap.  drp counts only intake (tele_mbf) drops; a record refused
+		   here because the outbound queue is full (not connected) leaves
+		   drp unchanged and shows only in the radio's drop count
+		   (MQTT_SCHEMA.md section 3). */
 		seq++;
 
 		/* S, the fold of the latest value per source (NFR-10), on the same

@@ -208,7 +208,7 @@ exists. Only the radio task predates `usermain()`, and §6.3 handles that.
 | Object | Type | Direction | Chosen by | Proposal |
 |---|---|---|---|---|
 | `tele_mbfid` | message buffer | buddies → `comms_task` | §16 decision 4 | 16 records |
-| `tele_pub_mbfid` | message buffer | `comms_task` → radio task | §6.3 | 4 records × ~64 B (topic + ≤21-byte packed payload, §8.3). *Updated from Tribunal 1: was ~320 B for a 256-byte JSON payload* |
+| `tele_pub_mbfid` | message buffer | `comms_task` → radio task | §6.3 | 4 records × ~64 B (topic + ≤24-byte packed payload, §8.3; 21 before schema v5). *Updated from Tribunal 1: was ~320 B for a 256-byte JSON payload* |
 | `tele_cmd_mbfid` | message buffer | `comms_task` → `line_task` | §16 decision 4 | 4 records |
 | `tele_rx_mbfid` | message buffer | radio task → `comms_task` | §9.3 | 4 records × ~192 B |
 
@@ -276,7 +276,8 @@ interface *they* write against. Option **A** was chosen this session
 >   first in `usermain()`. Its ID `tele_mbfid` is declared in `comms_task.h`
 >   rather than `messages.h`, so `messages.h` stays plain C for the PC test.
 > - `ovf` (clamped) is now a field of the motion body only (PLACEHOLDER); other
->   kinds clamp silently, and `S.drp` counts queue drops.
+>   kinds clamp silently, and `S.drp` counts **intake**-queue drops (not
+>   outbound drops while disconnected — `MQTT_SCHEMA.md` §3).
 >
 > The original v1 design follows, kept as the **unpacked baseline** for the
 > Week 13 before-and-after comparison. Its `EVT_*` enum numbered the kinds
@@ -405,7 +406,7 @@ owned by its producer** — how an owner asks for a change is
 | 0 | motion | Buddy 2 | state 4, speed_l 8\*, speed_r 8\*, dist_mm 15 (wraps), turn_rate 10 (+512), fault 2, ovf 1\* | 51 | 7 / 13 |
 | 1 | line | Buddy 3 | state 2, deviation 8 (+128) | 13 | 2 / 9 |
 | 2 | barcode | Buddy 3 | letter 5 (0–25, 31 unreadable), action 2 | 10 | 2 / 8 |
-| 3 | imu | Buddy 4 | class 3 (FR-27), hump_count 4, hump_height_mm 8 | 18 | 3 / 9 |
+| 3 | imu | Buddy 4 | class 3 (0–6: FR-27 and more), hump_count 4, hump_height_mm 8 | 18 | 3 / 9 |
 | 4 | obstacle | Buddy 5 | width_cm 8, bypass 2 | 13 | 2 / 9 |
 | 5 | mission | Vehicle Controller | state 3 | 6 | 1 / 8 |
 
@@ -693,15 +694,17 @@ first byte. Fields are packed LSB-first, little-endian, in table order
 
 | Record | Topic | Size | Contents |
 |---|---|---|---|
-| `S` | `…/telemetry`, 1 Hz | **16 B** (121 bits, v4) | header + fault bitmask (6) + the latest-state table: `mot` 4, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4 |
+| `S` | `…/telemetry`, 1 Hz | **18 B** (139 bits, v5) | header + fault bitmask (6) + the latest-state table: `mot` 4, `dst` 8, `lin` 2, `dev` 8, `bar` 5, `act` 2, `hum` 4, `hgt` 8, `obs` 8, `byp` 2, `mis` 3, `mpv` 4, `drp` 4, `tlt` 6, `trn` 12 (FR-29, read from Buddy 4's tilt-state word) |
 | `E` | `…/telemetry`, on the event | **8–13 B** per kind (v3) | header + the producer's event body: `k` 3 + that kind's fields (`MQTT_SCHEMA.md` §5.1) |
 | `H` | `…/heartbeat` | **7 B** (53 bits) | header only |
-| `D` | `…/state`, on `snap` | **21 B** (162 bits) | `S` + `rssi` 7, `ip` 32, `qd` 3, `mqv` 2 |
+| `D` | `…/state`, on `snap` | **23 B** (183 bits, v5) | `S` + `rssi` 7, `ip` 32, `qd` 3, `mqv` 2 |
 | `cmd` | `…/cmd` | **1 B** | `op` 3 (1 snap, 2 ping) + 5 reserved zero bits |
 | `map` | `…/map`, retained | **7 B** (56 bits) | `mv` 4 + 26 × 2-bit action codes |
 
 The `s`, `drp` and `mpv` mechanisms are unchanged: `s` makes gaps visible, `drp`
-says whether the car dropped them, and `mpv` lets the laptop verify a remap.
+says whether the car dropped them at its intake queue, and `mpv` lets the laptop
+verify a remap. *Corrected 2026-10-23:* drops at the outbound queue while the
+car is disconnected leave `drp` unchanged (`MQTT_SCHEMA.md` §3, §12 item 20).
 
 ### 8.3 Size
 
@@ -964,7 +967,16 @@ not worth blocking M7.
 
 ## 11. One build-gate change this design requires
 
-Today `WIFI_MQTT=1` requires `WIFI_TCP=1` (`build_make/pico_rp2040.mk:155`), and
+> **Done 2026-10-25.** `lwipopts.h` enables `LWIP_TCP`, `MEM_SIZE` 12 KB and the
+> TCP pools for `TM_WIFI_TCP || TM_WIFI_MQTT`. The make gate is
+> `WIFI_MQTT=1 requires WIFI_DNS=1` rather than `WIFI_DHCP=1` as proposed
+> below, so the ladder stays strict and matches the build string at the end of
+> this section. The car build links no echo-test code (flash −3.4 KB, data
+> −1.9 KB). The full chain with the echo tests and the TCP-only build still
+> build. With `WIFI_MQTT=0` the lwIP options are unchanged. The text below is
+> the original proposal.
+
+Before the change, `WIFI_MQTT=1` required `WIFI_TCP=1` (`build_make/pico_rp2040.mk:155`), and
 `WIFI_TCP` enables *two different things at once*: the TCP **stack**, and the TCP
 **echo test**. MQTT needs the first and not the second.
 
@@ -1078,7 +1090,7 @@ that **Docker's daemon was not running on this machine at the time of writing**
       decoder shows `k = B`, and an `EVT_IMU` and it shows `k = I`.
 - [ ] **Gate (updated from Tribunal 1, 2026-10-19):** the laptop decoder
       decodes every record type, and every payload has the fixed length of its
-      type (S 16 B, H 7 B, D 21 B; E 8–13 B by kind, schema v4). This replaces the JSON-era gate
+      type (S 18 B, H 7 B, D 23 B; E 8–13 B by kind, schema v5). This replaces the JSON-era gate
       "a generic client renders the JSON as a tree" (§8.1).
 - [ ] **Gate (Tribunal 1):** pack/unpack round trip on a PC for every field at
       its minimum, maximum and one past (clamped, `ovf` set).
@@ -1207,7 +1219,7 @@ recommendation for each so a decision is a yes/no rather than new analysis.
 | 7 | The reporter: keep `wifi_status_task` as-is, rename it, or fold it into `comms_task`? | keep it as a read-only reporter and **rename** it `wifi_report_task` | fold — one task, but it then prints radio internals it does not own |
 | 8 | `comms_task` affinity: unpinned, or pinned to processor 2? | **Updated 2026-10-21:** pin to processor 1 (core 0, with the radio), priority 16 per the Week 6 report; the team is pinning every task (Buddy 2's request). Being agreed with Buddy 2. *Superseded:* unpinned at priority 8 | `TP_PRC2` would put it on the control core |
 | 9 | **Outbound** wire format: JSON, key=value, or compact positional? | **Taken 2026-10-19 (Tribunal 1): packed binary, schema v2 (§8).** Change Requirement 1 requires compact binary MQTT payloads; recorded as Major redesign in the tribunal change log. *Superseded:* changed 2026-09-28: JSON (§8). The reader may be the instructor's client, and every generic MQTT tool renders JSON with no help; producing it costs one `tm_sprintf`. The earlier `key=value` recommendation assumed you own the reader, which you do not | key=value saves ~35% of the bytes; positional saves more, but neither is readable by the instructor's client |
-| 10 | Payload maximum: 256 bytes, or larger? | **Updated 2026-10-19 (Tribunal 1): keep 48** — the largest packed record is 21 B (§6.4). *Superseded:* changed 2026-09-28: 256 (was 192), **plus** raising the client's ring buffer to 512 and its receive buffer to 256 (§6.4) — the JSON state line is 141 B and the diagnostic snapshot is longer (§8.3) | smaller forces shorter lines and breaks the snapshot; larger costs RAM in the lib's queues |
+| 10 | Payload maximum: 256 bytes, or larger? | **Updated 2026-10-19 (Tribunal 1): keep 48** — the largest packed record is 21 B (§6.4); 23 B since schema v5 (2026-10-28), under a 24-byte record limit. *Superseded:* changed 2026-09-28: 256 (was 192), **plus** raising the client's ring buffer to 512 and its receive buffer to 256 (§6.4) — the JSON state line is 141 B and the diagnostic snapshot is longer (§8.3) | smaller forces shorter lines and breaks the snapshot; larger costs RAM in the lib's queues |
 | 11 | QoS on the wire: QoS 0 everywhere, or QoS 1 for the remap? | **changed 2026-09-27: QoS 0 for telemetry *and* for `…/cmd`; QoS 1 on the `…/map` *subscription* only.** lwIP never retransmits a QoS 1 publish — the request just expires with `ERR_TIMEOUT` (`mqtt.c:390-413`) — so QoS 1 outbound buys detection, not delivery. QoS 1 *inbound* is acknowledged by the library (`mqtt.c:776-783`), so subscribing at QoS 1 costs no application code | QoS 1 outbound on `cmd`; costs a request slot and a callback for a signal the design does not act on |
 | 12 | Decouple the TCP stack from the TCP echo test (§11)? | yes — it removes the noise and the `-3` lines | leave as-is; telemetry builds stay noisy |
 | 13 | Remap transport: a **retained `…/map` topic** (converges on subscribe), or plain commands on `…/cmd` re-sent by the laptop? | retained `…/map` — a rebooting car is handed the current table for free (§9.2) | one command topic is marginally simpler to explain; costs a re-publish loop on the laptop and has no answer for a car that missed the message |
