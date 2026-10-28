@@ -22,8 +22,11 @@
 /* GPIO Contrl */
 #define GPIO_MODE_OUT	1			// GPIO output mode
 #define GPIO_MODE_IN	0			// GPIO input mode
+#define GPIO_PULL_DOWN	0			// Input pull-down
+#define GPIO_PULL_UP	1			// Input pull-up
 
 ER	gpio_set_pin(UINT no, UINT mode);	// Set GPIO pin
+ER	gpio_set_pull(UINT no, UINT pull);	// Set GPIO input pull
 ER	gpio_set_val(UINT no, UINT val);	// Set output value
 UINT	gpio_get_val(UINT no);			// Get Input value
 

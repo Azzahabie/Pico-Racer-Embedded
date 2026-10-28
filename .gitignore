@@ -35,3 +35,6 @@ __pycache__/
 
 # Built by tools/build_viewer.bat
 tools/dist/
+
+# Build output
+build.log

@@ -38,12 +38,15 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
+#include "../nav_task/nav_ctrl.h"
+#include "../obstacle_task/scan_if.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
 #include "motor.h"
 #include "encoder.h"
 #include "motion_wdt.h"
+#include "motion_sm.h"
 #include "motor_task.h"
 
 /* The motion_flg bits (common/messages.h) are four different bits. */
@@ -142,20 +145,22 @@ typedef enum
     EVT_READY = 0, /* val_l = init ercd, val_r = processor    */
     EVT_START,     /* val_l = PID target in counts/s (or 0)   */
     EVT_DONE,
-    EVT_ABORT,   /* button                                  */
-    EVT_FAULT,   /* faults byte says which                  */
-    EVT_RAMP,    /* val = first duty that moved, 0 = none   */
-    EVT_BOOT,    /* val_l = motion_boot_t, val_r = watchdog
-                    test result in us or -1, rate_l = watchdog
-                    timeout in ms, 0 = not armed            */
-    EVT_STOP,    /* val_l = STOP bit newly seen, val_r = us
-                    from the request to the brake, or -1 if
-                    not stamped, rate_l = 1 if this stop
-                    wrote the brake, 0 if already braked   */
-    EVT_GO,      /* every STOP bit clear; val_l = ms braked */
-    EVT_STOPTEST /* stop test result for one source: val_l
-                    = STOP bit, val_r = stops, rate_l = max
-                    us, rate_r = mean us, duty_l = min us  */
+    EVT_ABORT,    /* button                                  */
+    EVT_FAULT,    /* faults byte says which                  */
+    EVT_RAMP,     /* val = first duty that moved, 0 = none   */
+    EVT_BOOT,     /* val_l = motion_boot_t, val_r = watchdog
+                     test result in us or -1, rate_l = watchdog
+                     timeout in ms, 0 = not armed            */
+    EVT_STOP,     /* val_l = STOP bit newly seen, val_r = us
+                     from the request to the brake, or -1 if
+                     not stamped, rate_l = 1 if this stop
+                     wrote the brake, 0 if already braked   */
+    EVT_GO,       /* every STOP bit clear; val_l = ms since the first */
+    EVT_STOPTEST, /* stop test result for one source: val_l
+                     = STOP bit, val_r = stops, rate_l = max
+                     us, rate_r = mean us, duty_l = min us  */
+    EVT_STATE     /* statechart: val_l = new state, val_r =
+                     old state, rate_l = replies sent       */
 } report_event_t;
 
 typedef struct
@@ -254,6 +259,14 @@ typedef struct
     int32_t           ds_turn;    /* deg/s, counter-clockwise +     */
     int32_t           ds_accel;   /* mm/s^2, for the status line    */
     uint32_t          ds_counter; /* publishes so far (word: 3 bits) */
+
+    /* statechart 6.2 (normal image only) */
+    motion_sm_t sm;
+    int32_t     man_start_l; /* positions when the manoeuvre began */
+    int32_t     man_start_r;
+    int32_t     man_mm;    /* distance it was asked to drive, mm */
+    uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
+    uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
 
     /* reporting */
     int32_t  rep_l;
@@ -837,10 +850,18 @@ stall_fault_bit (motion_stall_result_t result, uint8_t motor_bit,
 static void
 stall_check (motion_ctx_t *p_ctx)
 {
-    bool                  b_dir = (PHASE_PID == p_ctx->phase);
+    bool                  b_sm_drive = false;
+    bool                  b_dir;
     motion_stall_result_t result;
 
-    if ((PHASE_STEPS == p_ctx->phase) || (PHASE_PID == p_ctx->phase))
+#if !MOTION_BENCH
+    /* Every state that may drive is checked (design FR-30). */
+    b_sm_drive = motion_sm_driving(motion_sm_state(&p_ctx->sm));
+#endif
+    b_dir = (PHASE_PID == p_ctx->phase) || b_sm_drive; /* closed loop */
+
+    if ((PHASE_STEPS == p_ctx->phase) || (PHASE_PID == p_ctx->phase)
+        || b_sm_drive)
     {
         if (encoder_left_enabled())
         {
@@ -854,9 +875,9 @@ stall_check (motion_ctx_t *p_ctx)
                              p_ctx->e_ra, p_ctx->e_rb, b_dir);
         p_ctx->faults |= stall_fault_bit(result, (uint8_t)MOTION_FAULT_STALL_R,
                                          (uint8_t)MOTION_FAULT_ENC_R);
-        if (p_ctx->faults != 0u)
+        if ((p_ctx->faults != 0u) && (PHASE_IDLE != p_ctx->phase))
         {
-            bench_stop(p_ctx, EVT_FAULT);
+            bench_stop(p_ctx, EVT_FAULT); /* the statechart handles its own */
         }
     }
 }
@@ -1105,6 +1126,14 @@ stop_check (motion_ctx_t *p_ctx, UINT ptn)
     bool     b_first  = (0u == p_ctx->stop_bits) && (0u != stops);
     uint32_t t_brake;
 
+    /* A reverse drives while STOP_SCAN stays set, so a new STOP bit then
+       must brake too. */
+    if ((0u != new_bits)
+        && (MOTION_ST_REVERSING == motion_sm_state(&p_ctx->sm)))
+    {
+        b_first = true;
+    }
+
     if (b_first)
     {
         motor_brake_all();
@@ -1159,6 +1188,185 @@ stop_check (motion_ctx_t *p_ctx, UINT ptn)
 
     p_ctx->stop_bits = stops;
 }
+
+/* ------------------------------------------------------------------ *
+ *  Statechart 6.2 (motion_sm.c), normal image only
+ * ------------------------------------------------------------------ */
+
+#if !MOTION_BENCH
+/* Set the reply bits a step asked for on nav_flg and scan_flg.  scan_flg
+   exists only once scan_task has started, so its ID is fetched here. */
+static void
+sm_send_replies (uint32_t replies)
+{
+    ID   nav_id    = nav_flag();
+    ID   scan_id   = scan_if_flag();
+    UINT nav_bits  = 0u;
+    UINT scan_bits = 0u;
+
+    if (0u != (replies & MOTION_SM_REP_MOVE_DONE))
+    {
+        nav_bits |= NAV_FLG_MOVE_DONE;
+    }
+    if (0u != (replies & MOTION_SM_REP_CMD_REJECTED))
+    {
+        nav_bits |= NAV_FLG_CMD_REJECTED;
+    }
+    if (0u != (replies & MOTION_SM_REP_MOTION_FAULT))
+    {
+        nav_bits |= NAV_FLG_MOTION_FAULT;
+    }
+    if (0u != (replies & MOTION_SM_REP_LINE_FOUND))
+    {
+        nav_bits |= NAV_FLG_LINE_FOUND;
+        if (0u != (replies & MOTION_SM_REP_TO_SCAN))
+        {
+            scan_bits |= SCAN_FLG_LINE_FOUND;
+        }
+    }
+    if (0u != (replies & MOTION_SM_REP_LINE_LOST))
+    {
+        nav_bits |= NAV_FLG_LINE_LOST;
+        if (0u != (replies & MOTION_SM_REP_TO_SCAN))
+        {
+            scan_bits |= SCAN_FLG_LINE_LOST;
+        }
+    }
+    if (0u != (replies & MOTION_SM_REP_REVERSE_DONE))
+    {
+        scan_bits |= SCAN_FLG_REVERSE_DONE;
+    }
+
+    if ((0u != nav_bits) && (nav_id > 0))
+    {
+        (void)tk_set_flg(nav_id, nav_bits);
+    }
+    if ((0u != scan_bits) && (scan_id > 0))
+    {
+        (void)tk_set_flg(scan_id, scan_bits);
+    }
+}
+
+/* Has the manoeuvre of this state reached its target?  Only the reverse
+   is built so far. */
+static bool
+man_done (motion_ctx_t const *p_ctx, motion_state_t state)
+{
+    bool    b_done = false;
+    int32_t moved_mm;
+
+    if (MOTION_ST_REVERSING == state)
+    {
+        moved_mm = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->man_start_l,
+                                     p_ctx->pos_r - p_ctx->man_start_r);
+        b_done   = ((-moved_mm) >= p_ctx->man_mm);
+    }
+
+    return b_done;
+}
+
+/* A state was just entered: set up its manoeuvre. */
+static void
+man_start (motion_ctx_t *p_ctx, motion_state_t state)
+{
+    p_ctx->man_start_l = p_ctx->pos_l;
+    p_ctx->man_start_r = p_ctx->pos_r;
+    motion_pid_reset(&p_ctx->pid_l);
+    motion_pid_reset(&p_ctx->pid_r);
+    motion_stall_reset(&p_ctx->stall_l);
+    motion_stall_reset(&p_ctx->stall_r);
+
+    if (MOTION_ST_REVERSING == state)
+    {
+        p_ctx->man_mm = (int32_t)p_ctx->avoid_mm;
+    }
+}
+
+/* What the wheels do this tick in the current state.  Only the reverse is
+   built; every other state brakes until its manoeuvre exists. */
+static void
+man_drive (motion_ctx_t *p_ctx, motion_state_t state)
+{
+    if (MOTION_ST_REVERSING == state)
+    {
+        p_ctx->cmd_l =
+            motion_pid_step(&p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
+        p_ctx->cmd_r =
+            motion_pid_step(&p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
+    }
+    else
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+}
+
+/* Faults that send the statechart to Motion Fault (FR-30); a lost tick or
+   a failed set-up are handled elsewhere. */
+#define SM_FAULTS                                                              \
+    (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R | MOTION_FAULT_ENC_L          \
+     | MOTION_FAULT_ENC_R)
+
+/* One statechart step per tick, after the stall check.  The mission state
+   comes from nav_ctrl_task (one aligned load).  Commands (step 1.7) and
+   most manoeuvres (line following, turns, bypass and search) are not
+   built yet, so those inputs stay false and those states brake; the
+   reverse is built.  The avoidance command arrives in p_ctx->avoid_cmd
+   (the command buffer, step 1.7, will fill it).  distance_state is never
+   reset: imu_task works from differences, and a jump would read as a
+   fake movement. */
+static void
+tick_statechart (motion_ctx_t *p_ctx)
+{
+    motion_sm_in_t  in      = { 0 };
+    motion_sm_out_t out     = { 0u, false, false, false };
+    motion_state_t  before  = motion_sm_state(&p_ctx->sm);
+    mission_state_t mission = nav_mission_state();
+    motion_report_t rep;
+
+    in.b_running     = (MS_RUNNING == mission);
+    in.b_stop_scan   = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_SCAN));
+    in.b_stop_imu    = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_IMU));
+    in.b_fault       = (0u != ((uint32_t)p_ctx->faults & SM_FAULTS));
+    in.avoid         = (motion_sm_avoid_t)p_ctx->avoid_cmd;
+    in.b_done        = man_done(p_ctx, before);
+    p_ctx->avoid_cmd = (uint8_t)MOTION_SM_AVOID_NONE; /* taken */
+
+    motion_sm_step(&p_ctx->sm, &in, &out);
+
+    /* FAULT_CLEAR(MOTION) took it out of Motion Fault: forget the fault,
+       or the next driving tick would raise it again. */
+    if ((MOTION_ST_FAULT == before)
+        && (MOTION_ST_FAULT != motion_sm_state(&p_ctx->sm)))
+    {
+        p_ctx->faults = (uint8_t)((uint32_t)p_ctx->faults & ~SM_FAULTS);
+    }
+
+    if (out.b_clear_stop_imu)
+    {
+        (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);
+    }
+    if (out.b_changed && !motion_sm_driving(motion_sm_state(&p_ctx->sm)))
+    {
+        motor_brake_all(); /* before any reply, e.g. MOTION_FAULT */
+    }
+    if (out.b_changed)
+    {
+        man_start(p_ctx, motion_sm_state(&p_ctx->sm));
+    }
+    man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
+    sm_send_replies(out.replies);
+
+    if (out.b_changed || (0u != out.replies))
+    {
+        report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STATE);
+        rep.val_l  = (int32_t)motion_sm_state(&p_ctx->sm);
+        rep.val_r  = (int32_t)before;
+        rep.rate_l = (int32_t)out.replies;
+        report_send(p_ctx, &rep);
+    }
+}
+#endif
 
 static void
 motion_tick (motion_ctx_t *p_ctx)
@@ -1216,8 +1424,15 @@ motion_tick (motion_ctx_t *p_ctx)
             break;
     }
 
-    /* Braked for as long as any STOP bit is set. */
-    if (0u != p_ctx->stop_bits)
+#if !MOTION_BENCH
+    tick_statechart(p_ctx); /* the statechart sets cmd_l, cmd_r last */
+#endif
+
+    /* Braked for as long as any STOP bit is set, except a reverse, which
+       runs while STOP_SCAN stays set (design 6.2; never under STOP_IMU). */
+    if ((0u != p_ctx->stop_bits)
+        && !((MOTION_ST_REVERSING == motion_sm_state(&p_ctx->sm))
+             && (0u == (p_ctx->stop_bits & MOTION_EVT_STOP_IMU))))
     {
         p_ctx->cmd_l = 0;
         p_ctx->cmd_r = 0;
@@ -1337,6 +1552,7 @@ motion_init (motion_ctx_t *p_ctx)
     motion_stall_init(&p_ctx->stall_r, MOTION_STALL_TICKS,
                       MOTION_STALL_MIN_COUNTS, MOTION_STALL_ENC_EDGES);
     motion_ds_win_reset(&p_ctx->ds_win);
+    motion_sm_init(&p_ctx->sm);
 
     encoder_read_counts(&p_ctx->prev_l, &p_ctx->prev_r);
     p_ctx->prev_edges_l = encoder_read_edges_left();
@@ -1402,28 +1618,24 @@ static void
 motion_cycle (motion_ctx_t *p_ctx)
 {
     ER   ercd;
-    UINT ptn    = 0u;
-    UINT waiptn = MOTION_EVT_TICK;
-    UINT mode   = TWF_ORW | TWF_BITCLR;
+    UINT ptn = 0u;
+    UINT waiptn;
 
-    /* TWF_BITCLR clears every bit waited on, so a STOP bit is never part
-       of a clearing wait: motion must not clear STOP_SCAN or STOP_IMU.
-       While running, wait on the STOP bits too, without a clear, so a
-       stop wakes motion at once; then clear the tick by hand.  While
-       stopped, leave them out (a set bit in the wait would return at
-       once, forever) and look at them on every tick. */
-    if (0u == p_ctx->stop_bits)
-    {
-        waiptn = MOTION_EVT_TICK | MOTION_EVT_STOPS;
-        mode   = TWF_ORW;
-    }
+    /* Wait on the tick and on every STOP bit that is not set yet, with no
+       clear: TWF_BITCLR would clear every bit waited on, and motion must
+       never clear STOP_SCAN or STOP_IMU.  A new STOP wakes motion at once,
+       also while it reverses under STOP_SCAN (design 6.2).  A STOP bit
+       already set stays out of the wait (it would return at once,
+       forever) and is looked at on every tick.  The tick is cleared by
+       hand. */
+    waiptn = MOTION_EVT_TICK | (MOTION_EVT_STOPS & ~(UINT)p_ctx->stop_bits);
 
-    ercd = tk_wai_flg(g_flgid, waiptn, mode, &ptn, MOTION_TICK_TIMEOUT_MS);
+    ercd = tk_wai_flg(g_flgid, waiptn, TWF_ORW, &ptn, MOTION_TICK_TIMEOUT_MS);
     if (E_OK == ercd)
     {
         stop_check(p_ctx, ptn);
 
-        if ((TWF_ORW == mode) && (0u != (ptn & MOTION_EVT_TICK)))
+        if (0u != (ptn & MOTION_EVT_TICK))
         {
             (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_TICK);
         }
@@ -1661,6 +1873,28 @@ print_boot (UB *p_line, motion_report_t const *p_rep)
     }
 }
 
+/* "[motion] state LINE_FOLLOW -> BRAKED", plus the replies it sent. */
+static void
+print_state (UB *p_line, motion_report_t const *p_rep)
+{
+    uint32_t replies = (uint32_t)p_rep->rate_l;
+
+    (void)tm_sprintf(
+        p_line, (UB *)"[motion] state %s -> %s%s%s%s%s%s%s",
+        motion_sm_name((uint32_t)p_rep->val_r),
+        motion_sm_name((uint32_t)p_rep->val_l),
+        (0u != (replies & MOTION_SM_REP_MOVE_DONE)) ? ", sent MOVE_DONE" : "",
+        (0u != (replies & MOTION_SM_REP_CMD_REJECTED)) ? ", sent CMD_REJECTED"
+                                                       : "",
+        (0u != (replies & MOTION_SM_REP_MOTION_FAULT)) ? ", sent MOTION_FAULT"
+                                                       : "",
+        (0u != (replies & MOTION_SM_REP_LINE_FOUND)) ? ", sent LINE_FOUND" : "",
+        (0u != (replies & MOTION_SM_REP_LINE_LOST)) ? ", sent LINE_LOST" : "",
+        (0u != (replies & MOTION_SM_REP_REVERSE_DONE)) ? ", sent REVERSE_DONE"
+                                                       : "");
+    print_line(p_line);
+}
+
 static char const *
 stop_name (int32_t bit)
 {
@@ -1707,11 +1941,9 @@ print_stop (UB *p_line, motion_report_t const *p_rep)
     else if (EVT_GO == (report_event_t)p_rep->code)
     {
         (void)tm_sprintf(p_line,
-                         (UB *)"[motion] every STOP bit clear, after %d ms"
-                               " braked. %s",
-                         (INT)p_rep->val_l,
-                         b_test ? "Driving again."
-                                : "Motors stay braked until a command.");
+                         (UB *)"[motion] every STOP bit clear, %d ms after"
+                               " the first one was seen.%s",
+                         (INT)p_rep->val_l, b_test ? " Driving again." : "");
         print_line(p_line);
     }
     else
@@ -1784,6 +2016,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
         case EVT_GO:
         case EVT_STOPTEST:
             print_stop(p_line, p_rep);
+            break;
+
+        case EVT_STATE:
+            print_state(p_line, p_rep);
             break;
 
         case EVT_RAMP:

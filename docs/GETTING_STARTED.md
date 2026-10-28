@@ -629,4 +629,5 @@ switches profiles on its own, so a stale object tree is not the usual cause.
 ## 9. Next steps
 
 - [docs/PORT_RP2040.md](PORT_RP2040.md) - what is validated on hardware, what is ported but not yet validated, and what is not ported. It also carries the **RP2040 safety rules** (part of the qualification boundary, not optional advice), the **driver-ownership matrix** to consult before adding a driver, and the idle/exception model
+- [docs/BUDDY3_LINE_BARCODE.md](BUDDY3_LINE_BARCODE.md) - Buddy 3 line-following and Code 39 implementation, synthetic tests, build results, unresolved blockers, and the ordered hardware-validation checklist
 - The µT-Kernel 3.0 specification: https://tron-forum.github.io/mtkernel_3/

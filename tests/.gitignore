@@ -1,5 +1,6 @@
 # Host test binaries
 motion_lib/test_motion_lib
+motion_sm/test_motion_sm
 motor/test_motor
 encoder/test_encoder_usb
 encoder/test_encoder_uart
@@ -15,5 +16,7 @@ motion_task_sim/sim_pid
 motion_task_sim/sim_wdt
 motion_task_sim/sim_stop
 motion_wdt/test_motion_wdt
+imu_hump/test_imu_hump
+imu_safety/test_imu_safety
 # macOS clang debug folders, if the tests are run outside Docker
 *.dSYM/
