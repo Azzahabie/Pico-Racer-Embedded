@@ -1,173 +1,129 @@
-# Buddy 3 line-following and Code 39 audit
+# Buddy 3: line tracking, junctions, barcode capture and decoding
 
-## Status
+## Wiring
 
-The line task reads the left digital sensor on GP8 and right digital sensor
-on GP6. It captures GP26 ADC edges, measures widths with the RP2040 hardware
-timer, and attempts to decode Code 39 A-Z. These are software behaviors only;
-physical wiring, barcode artwork, timing margins, and sensor response have
-not been verified on hardware.
-
-All line/barcode/battery pins, ADC thresholds, and compile-time behavior flags
-are in `app_program/common/robot_config.h`. That configuration emits a
-compiler warning because GP8 is assigned to both the left line sensor and
-the motor-driver range GP8-GP11. GP28 is reserved for battery sense (ADC2).
-GP6 and GP8 are digital GPIOs, not ADC-capable pins. This task only prints
-suggested commands; it does not command a motor.
-
-## Implementation
-
-| Stage | Current behavior |
-|---|---|
-| Input | Left line sensor GP8, right line sensor GP6 (digital); barcode GP26/ADC0 (analog). |
-| Line interpretation | Bits are 0bRL, with 1=black. A new line state is accepted after six samples; 00 is accepted after eight samples. |
-| Barcode capture | GP26 uses 3000 rising and 1000 falling ADC thresholds. Edge widths use hardware-timer microseconds; a valid stop delimiter completes immediately. Invalid scans end after white idle of max(50,000 us, 4x the narrowest observed run). |
-| Decode | Assumes standard Code 39, `*` delimiters, 9 elements per symbol, inter-character spaces, and A-Z data. Forward and reversed scans are attempted. |
-| Output | One decoded/error line is printed per scan. The latest decoded alphabet is also available through `barcode_scanner_copy_decoded()`. |
-
-## Digital line truth table
-
-“Black” means the sensor's configured active level. The steering command
-follows the requested geometry; `LINE_STEER_INVERT=1` flips it at build time.
-
-| GP8 left | GP6 right | State | Command |
+| Sensor | Grove | Pin | Signal |
 |---|---|---|---|
-| White | White | 00 straight | DRIVE (`LINE_STOP_ON_LOST=1` changes this to STOP) |
-| Black | White | 01 left deviation | STEER_RIGHT |
-| White | Black | 10 right deviation | STEER_LEFT |
-| Black | Black | 11 junction | DRIVE |
+| Left deviation | 5 | GP26 / ADC0 | A0 analogue (GP6 not used) |
+| Right deviation | 6 | GP27 / ADC1 | A0 analogue |
+| Barcode | 7 | GP7 | DO digital (GP28 / ADC2 not used; reserved for battery sense) |
 
-Two digital sensors cannot measure an exact line width or distinguish an
-18 mm line from another pattern that covers both sensors. This task reports
-commands only and does not stop or drive the motors.
+Pins, thresholds, polarity and every tunable below are in
+`app_program/common/line_config.h`. Values marked PROVISIONAL there are
+unmeasured. Both tasks are built in with `TM_LINE_TASK` 1
+(`app_program/line_task/line_task.h`).
 
-## Viewing the line-reader serial output
+## Tasks and interfaces
 
-The line task prints its startup instructions, changed line states, and a
-two-second sensor heartbeat through `tm_printf`. The IPC producer, consumer,
-and monitor demo tasks are not started, keeping their status output off the
-serial console during sensor bring-up.
+| Task | Core / priority | Does |
+|---|---|---|
+| `ir_sense_task` (`line_task.c`) | core 1 / 10 | 1 ms cyclic: reads GP26, GP27, GP7; publishes `line_state`; junction events; barcode widths; calibration |
+| `barcode_task` (`barcode_task.c`) | core 0 / 14 [PROPOSED] | decodes reads, keeps the table, applies map updates, holds the barcode command, prints, telemetry |
 
-- **Use the Pico USB cable:** build and flash the `CONSOLE=usb_cdc` profile.
-  Set `PICO_SDK_PATH` and initialize the Pico SDK `lib/tinyusb` submodule as
-  described in [GETTING_STARTED.md](./GETTING_STARTED.md#1b-pico-sdk---only-if-you-want-usb-cdc-or-wi-fi).
-  Open the COM port exposed by the Pico in a serial monitor at **115200 baud**.
-  The task waits up to 20 seconds for the USB serial port to connect.
-- **Use a USB-to-UART adapter:** build the default `CONSOLE=uart` profile.
-  Connect adapter RX to Pico GP0 (UART TX), adapter TX to GP1 (UART RX), and
-  connect GND to GND. Open the adapter's COM port at **115200 baud, 8-N-1**.
+| From -> to | Object | Content |
+|---|---|---|
+| ir_sense -> motion | `line_state_word()` | one aligned 32-bit word every 1 ms (`line_state.h`) |
+| ir_sense -> nav | `NAV_FLG_JUNCTION` | exactly one per junction |
+| nav -> ir_sense | `ir_flg`, `IR_FLG_CAL_REQ` | calibration request; answer `NAV_FLG_CAL_OK_IR` / `NAV_FLG_CAL_FAIL` |
+| ir_sense -> barcode | `bar_mbf`, 4 bytes | `{WIDTH|END|ABORT, read_id, value16}`, sent with `TMO_POL` |
+| comms -> barcode | `barcode_map_submit()` -> `map_mbf` | the 7-byte map of MQTT_SCHEMA.md 8.3 |
+| barcode -> nav | `barcode_cmd_word()` | pending `{letter, action, seq}` (`barcode_action.h`) |
+| nav -> motion | `nav_cmd_mbf` | `{NAV_CMD_JUNCTION, action}` (`nav_ctrl.h`) |
+| ir_sense, barcode -> comms | `comms_tele_send()` | E line on state edges; E barcode on every read (letter 31 = rejected) |
 
-Opening a serial monitor alone does not select the console transport; it must
-match the firmware profile that was built and flashed.
+Neither task drives the motors.
 
-## Code 39 patterns in the decoder
+## Line tracking
 
-`W` means wide and `N` means narrow, in bar-space order. A one-letter scan
-contains 29 measured widths: start `*` (9 elements), an inter-character
-space, the letter (9 elements), another inter-character space, and stop `*`
-(9 elements). Each symbol's narrow/wide split is inferred from its measured
-widths, so the classification scales with scan speed. The standard
-Code 39 start/stop pattern is `NWNNWNWNN`.
+- **Calibration** (on CAL_REQ, car still, `IR_CAL_SAMPLES` ms, the 1 ms loop
+  keeps running). Per sensor:
+  - If it sees black and white (span at least `IR_CAL_MIN_CONTRAST`), the
+    thresholds are the midpoint ± `IR_CAL_HYST_PCT`.
+  - If it sees white only (the normal start pose), the tested thresholds are
+    kept, and white must sit `IR_CAL_WHITE_MARGIN` below the falling one.
+  - A reading at an ADC rail, or too little contrast, gives `CAL_FAIL`.
+- **Every sample:**
+  - normalised readings (0 white .. 1000 black);
+  - hysteresis classification and the 6/8-sample 0bRL debounce;
+  - the error `(right − left)/10`, −100..+100. **Positive = correct left**
+    (counter-clockwise, the same sign as `S.trn`);
+  - lost after `LINE_LOST_MS` without a confirmed black;
+  - a sensor fault after `IR_RAIL_FAULT_SAMPLES` at a rail.
+- **Junction:** both sensors black for `LINE_JUNCTION_SAMPLES` (J_n = 3)
+  samples running gives one event. It rearms only after
+  `LINE_JUNCTION_REARM_SAMPLES` running off it. No junction is reported
+  while a barcode is under the car, or for `BARCODE_JUNCTION_HOLDOFF_MS`
+  after.
+- **Mission change:** the junction is disarmed and a partial barcode
+  aborted.
 
-| Letter | Pattern | Letter | Pattern | Letter | Pattern |
-|---|---|---|---|---|---|
-| A | `WNNNNWNNW` | B | `NNWNNWNNW` | C | `WNWNNWNNN` |
-| D | `NNNNWWNNW` | E | `WNNNWWNNN` | F | `NNWNWWNNN` |
-| G | `NNNNNWWNW` | H | `WNNNNWWNN` | I | `NNWNNWWNN` |
-| J | `NNNNWWWNN` | K | `WNNNNNNWW` | L | `NNWNNNNWW` |
-| M | `WNWNNNNWN` | N | `NNNNWNNWW` | O | `WNNNWNNWN` |
-| P | `NNWNWNNWN` | Q | `NNNNNNWWW` | R | `WNNNNNWWN` |
-| S | `NNWNNNWWN` | T | `NNNNWNWWN` | U | `WWNNNNNNW` |
-| V | `NWWNNNNNW` | W | `WWWNNNNNN` | X | `NWNNWNNNW` |
-| Y | `WWNNWNNNN` | Z | `NWWNWNNNN` | | |
+## Barcode
 
-These are the static standard Code 39 letter patterns in source, not six
-measured patterns from the course. The repository does not contain the
-`BARCODE.pptx` artwork, and the patterns in the supplied attachment were
-flattened together; the six physical samples therefore cannot be
-independently reconstructed or checked.
+- **Capture** (`bar_capture.c`): widths are counted in 1 ms ticks, so there
+  are no timestamps and no wraparound.
+  - `END` after the quiet zone Q = max(`BARCODE_Q_TICKS`,
+    4 × the narrowest width).
+  - `ABORT` on more than `BARCODE_W_MAX` widths, a width over
+    `BARCODE_W_LONG_TICKS`, a read over `BARCODE_READ_MAX_TICKS`, a full
+    `bar_mbf`, or a mission change.
+  - After an abort, the capture waits for a quiet zone, so the rest of the
+    same barcode never starts a read. Each read has a new `read_id`, so
+    nothing from it can join the next.
+- **Decode** (`barcode_rx.c`, `barcode_decode.c`): Code 39 with `*`, read
+  forwards or backwards.
+  - Narrow and wide are split per symbol by the relative ratio R
+    (`BARCODE_WIDE_NARROW_MIN_RATIO_X100`).
+  - The element count, start/stop, the gaps and the pattern are all checked.
+- **Rejected reads** (malformed, more than one letter, an unknown letter,
+  aborted, widths lost) issue no command, keep any stored one, print the
+  reason (with the widths for malformed reads) and send letter 31.
+- **Action codes:** 0 FORWARD (straight), 1 LEFT, 2 RIGHT, 3 U_TURN.
+- **Table:**
+  - **No approved table exists yet** (MQTT_SCHEMA.md §12 item 9). Until a
+    7-byte map arrives, every letter is rejected as unknown. Set
+    `BARCODE_DEFAULT_TABLE_SET` / `BARCODE_DEFAULT_TABLE` once the mapping
+    is approved.
+  - Maps are applied only between reads.
+  - A map of the wrong length is rejected and the working table kept.
+- **The stored command:** it survives a pause and is cleared on a new
+  mission, Finished or Fault. nav takes it once, at the next junction while
+  Running. With none stored, nav sends nothing and motion follows straight
+  on.
 
-The decoder tries both element orientations and reports `dir=fwd` or
-`dir=rev`. A reverse scan's decoded text is restored to the original character
-order. Use the `dir` field when scan direction matters to the application.
+## Console
 
-## Timing and limits
-
-| Setting | Current value | Status |
-|---|---:|---|
-| Task delay | 1 kernel tick | ADC sampling cadence depends on scheduling and hardware; timer values are in microseconds. |
-| ADC thresholds | rising 3000, falling 1000 | Based on reported black (~4045) and white (~135) readings. |
-| Invalid-scan idle end | max(50,000 us, 4x narrowest run) | Configurable baseline in `robot_config.h`; total scan limit is 10 s. |
-| Width buffer | 512 runs | Static capture limit; decoded text is capped at 48 letters. |
-
-## Verification performed
-
-The unit-testable `barcode_decode_widths()` function is covered by a
-standalone host test for forward/reversed `A` and `ABC` scans, varying widths,
-and bad-length rejection. Run it with:
-
-```sh
-gcc -std=c11 -Wall -Wextra -Wpedantic \
-  tests/barcode_scanner_decode_test.c \
-  app_program/line_task/barcode_scanner.c \
-  -o barcode_scanner_decode_test
-./barcode_scanner_decode_test
+```
+[line] raw ADC GP26=312 GP27=298 norm 41/38 err=0 | barcode DO GP7=0 (white)
+[line] calibration OK: GP26 ok (white 300, rise 2500) GP27 ok (...)
+[barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
+[barcode] REJECTED: malformed (bad_length)
+[line] junction -> nav
 ```
 
-The firmware build command is:
+`LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
+2 s. Nothing prints while a barcode is under the car.
+
+## Tests
 
 ```sh
-docker compose run --rm build bash -lc "cd build_make && make -j8"
+docker compose run --rm build bash -lc "make -C tests/line"
 ```
 
-## Ordered hardware-validation checklist
+| Suite | What it covers |
+|---|---|
+| `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, noise, barcode hold, noisy loss, stuck sensors |
+| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
+| `test_barcode_action` | the table, map apply and reject, the command word |
+| `test_line_state` | the word, and the motion statechart contract |
 
-1. **Keep motor power disconnected.** Identify the exact robot, controller,
-   sensor boards, and revision. Obtain the actual wiring diagram or verify
-   every connection by inspection and continuity testing.
-2. **Resolve pin ownership.** Reconcile the verified wiring with the
-   firmware's GPIO assignments and RP2040/Pico W reservations. Check power,
-   ground, voltage levels, pull-ups/downs, and conflicts before connecting
-   sensor outputs to the Pico.
-3. **Characterize each sensor without motor power.** Measure its digital
-   output over the actual track surface, record dark/light levels and noise,
-   and confirm the configured polarity and thresholds against those measurements.
-   Confirm sensor spacing, height, alignment, and field of view.
-4. **Verify line observations while stationary.** Exercise light, dark, and
-   both-sensor conditions; compare the observed logs/state with the truth
-   table. Determine whether both-dark is a junction on the real course or
-   merely a wide/centered line. Tune debounce only from recorded data.
-5. **Obtain and measure the real barcode source.** Restore the artwork and
-   six intended samples, record their exact narrow/wide elements and
-   inter-character spacing, and test both scan orientations. Capture sensor
-   transitions at the intended height and speed; validate width classification
-   and the configured quiet-gap timeout from those waveforms.
-6. **Measure timing.** Measure sampler cadence, task execution time, and
-   scheduling jitter on hardware with reviewed instrumentation on a
-   confirmed spare pin or a suitable trace method. Do not assume the
-   commented profiling-pin setting performs this measurement.
-7. **Define the missing navigation contract.** Agree on sensor-to-motion
-   semantics, junction handling, letter-to-course mapping, motor interface,
-   and error behavior with the responsible team. Implement and test a
-   fail-safe stop path before connecting motor power.
-8. **Only after the electrical and safety gates above pass**, perform any
-   future motion test under the project's approved safety procedure, with a
-   verified motor driver, accessible stop mechanism, and controlled test
-   area. This code currently has no motor/navigation implementation, so a
-   powered motion test is not part of the present verification.
+These are software tests only. Thresholds, the barcode sensor at speed, the
+sensor spacing against the artwork, and calibration on the real start pose
+are not verified on hardware.
 
-## Unresolved blockers
+## Open items for the team
 
-- Physical pin wiring, sensor model/polarity, spacing, height, and output
-  levels are unverified; source GPIO values are provisional.
-- The actual barcode artwork and six measured course patterns are
-  unavailable, so neither artwork geometry nor physical decodability can be
-  verified.
-- Sampling cadence, scheduler jitter, barcode duration limits, sensor noise,
-  and speed margins have not been measured on the robot.
-- Two line sensors cannot distinguish both-dark junctions from all other
-  both-dark shapes.
-- No course map, letter-to-command mapping, navigation consumer, motor
-  control interface, or safety-stop path exists in this implementation.
-- Code 39 is an unconfirmed encoding assumption. Replace the decoder if the
-  actual barcode format differs.
+- **Buddy 2:** nav_cmd_mbf, reading `line_state`, the drive and the turns.
+- **Buddy 1:** call `barcode_map_submit()` from the `map` command (M8), and
+  report `barcode_map_version()` as `S.mpv`.
+- **Team:** approve the action codes and a default table.

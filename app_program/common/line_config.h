@@ -32,6 +32,56 @@
 #define BARCODE_SCAN_IDLE_US                      BARCODE_SCAN_END_GAP_US
 #define BARCODE_SCAN_MAX_US                       (10000000u)
 
+/* ---- Barcode capture in ir_sense_task, in 1 ms sampling ticks ----
+   Q: a read ends after this many white ticks, or BARCODE_Q_WIDTH_FACTOR x
+   the narrowest width seen, whichever is longer (the existing 50 ms /
+   4x-narrowest rule).  W_max: widths per read (32 letters).  W_long: any
+   single bar or space longer than this aborts the read.  PROVISIONAL until
+   measured on the car. */
+#define BARCODE_Q_TICKS                (BARCODE_SCAN_END_GAP_US / 1000u)
+#define BARCODE_Q_WIDTH_FACTOR                    (4u)
+#define BARCODE_W_MAX                             BARCODE_MAX_ELEMENTS
+#define BARCODE_W_LONG_TICKS                      (2000u)
+#define BARCODE_READ_MAX_TICKS         (BARCODE_SCAN_MAX_US / 1000u)
+
+/* Compiled-in letter -> movement table, used until a valid map arrives
+   (MQTT_SCHEMA.md 8.3).  No approved table exists yet (schema section 12
+   item 9), so it is off: until a map is loaded every letter is rejected
+   as unknown and no junction command is sent.  To use one, set _SET to 1
+   and give 26 characters, 'A' first: F forward, L left, R right, U U-turn. */
+#define BARCODE_DEFAULT_TABLE_SET                 (0)
+#define BARCODE_DEFAULT_TABLE                     ""
+
+/* Junctions seen while a barcode is being read, or this soon after, are
+   the barcode's own bars under the line sensors and are ignored. */
+#define BARCODE_JUNCTION_HOLDOFF_MS               (300u)
+
+/* ---- Junction detection (ticks of 1 ms) ----
+   J_n: both line sensors black this many samples running = one junction.
+   Rearm: both must leave black this many samples running first. */
+#define LINE_JUNCTION_SAMPLES                     (3u)
+#define LINE_JUNCTION_REARM_SAMPLES               (20u)
+
+/* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
+#define LINE_LOST_MS                              (1500u)
+
+/* ---- Calibration (CAL_REQ from nav_ctrl_task), ADC counts ----
+   IR_CAL_SAMPLES ticks are recorded per sensor with the car still.  If a
+   sensor saw both black and white (span >= IR_CAL_MIN_CONTRAST), its
+   thresholds are set at the measured midpoint +/- IR_CAL_HYST_PCT of the
+   span.  If it saw one colour only (the start pose straddles the line, so
+   white), the tested thresholds above are kept and white must sit at least
+   IR_CAL_WHITE_MARGIN below the falling threshold.  A sensor reading at an
+   ADC rail (<= IR_RAIL_LOW or >= IR_RAIL_HIGH) for most of the window, or
+   for IR_RAIL_FAULT_SAMPLES running in use, is stuck.  PROVISIONAL. */
+#define IR_CAL_SAMPLES                            (1000u)
+#define IR_CAL_MIN_CONTRAST                       (400u)
+#define IR_CAL_HYST_PCT                           (10u)
+#define IR_CAL_WHITE_MARGIN                       (200u)
+#define IR_RAIL_LOW                               (2u)
+#define IR_RAIL_HIGH                              (4093u)
+#define IR_RAIL_FAULT_SAMPLES                     (200u)
+
 /* Compatibility names retained for the other board-configuration users. */
 #define LINE_LEFT_GPIO                            LINE_SENSOR_LEFT_GPIO
 #define LINE_RIGHT_GPIO                           LINE_SENSOR_RIGHT_GPIO

@@ -18,5 +18,11 @@ motion_task_sim/sim_stop
 motion_wdt/test_motion_wdt
 imu_hump/test_imu_hump
 imu_safety/test_imu_safety
+line/test_barcode_decode
+line/test_barcode_action
+line/test_ir_cal
+line/test_line_track
+line/test_barcode_pipeline
+line/test_line_state
 # macOS clang debug folders, if the tests are run outside Docker
 *.dSYM/

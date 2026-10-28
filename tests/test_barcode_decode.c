@@ -162,13 +162,21 @@ int main(void)
 		"ABCDEFGHIJKLMNOPQRSTUVWX",
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	};
+	char letter[2] = { 'A', '\0' };
 	size_t i;
 
+	/* The demo case: one letter per barcode, every letter, both ways. */
+	for (letter[0] = 'A'; letter[0] <= 'Z'; ++letter[0]) {
+		if (!run_cases(letter)) {
+			return EXIT_FAILURE;
+		}
+	}
 	for (i = 0u; i < sizeof(test_strings) / sizeof(test_strings[0]); ++i) {
 		if (!run_cases(test_strings[i])) {
 			return EXIT_FAILURE;
 		}
 	}
-	(void)puts("barcode decoder: PASS (2400 trials)");
+	(void)puts("barcode decoder: PASS (A-Z singly and 3 strings, "
+		   "fwd + rev, 800 trials each)");
 	return EXIT_SUCCESS;
 }
