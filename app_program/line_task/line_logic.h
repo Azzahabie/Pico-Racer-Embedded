@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <tk/tkernel.h>
+
 #include "../common/robot_config.h"
 
 /* Two-bit output layout: right guard in bit 1 and left guard in bit 0. */
@@ -11,34 +13,36 @@
 #define LINE_READER_LEFT_GUARD_MASK  (1u << 0)
 #define LINE_READER_OUTPUT_MASK      (0x03u)
 
-/* Digital level of each sensor pin: 0 or 1 (NOT an ADC value). */
 typedef struct {
     uint16_t right_guard;
     uint16_t left_guard;
 } line_reader_raw_t;
 
 typedef struct {
-    /* Set a field true when a HIGH pin level means black. */
     bool right_guard_black_is_high;
     bool left_guard_black_is_high;
+    uint16_t right_guard_black_rising_threshold;
+    uint16_t right_guard_white_falling_threshold;
+    uint16_t left_guard_black_rising_threshold;
+    uint16_t left_guard_white_falling_threshold;
 } line_reader_config_t;
 
 /**
- * Creates a line-sensor configuration with HIGH = black on both sensors.
- * Flip a field to false if the module outputs LOW over black.
+ * Creates a line-sensor configuration from the board thresholds and polarity.
  */
 line_reader_config_t line_reader_default_config(void);
 
 /**
- * Sets up both sensor pins as inputs with pulls off.
+ * Initializes the ADC and both analogue sensor pins.
  *
  * @param config Polarity per sensor. Pass NULL to use
  *               line_reader_default_config(). The configuration is copied.
  */
-void line_reader_init(const line_reader_config_t *config);
+ER line_reader_init(const line_reader_config_t *config);
 
-/** Reads the current pin levels (0 or 1) of the right and left sensors. */
+/** Reads 12-bit ADC values for the right and left sensors. */
 line_reader_raw_t line_reader_read_raw(void);
+ER line_reader_last_error(void);
 
 /**
  * Classifies both line sensors.

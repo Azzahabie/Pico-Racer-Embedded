@@ -30,7 +30,7 @@ typedef enum {
 
 /* ---- nav_flg bits (PROPOSED) ---- */
 #define NAV_FLG_BTN		0x0001U	/* BTN_ISR: GP20 or GP21 pressed           */
-#define NAV_FLG_JUNCTION	0x0002U	/* ir_sense_task                            */
+#define NAV_FLG_JUNCTION	0x0002U	/* ir_sense_task: one per junction          */
 #define NAV_FLG_CAL_OK_IR	0x0004U	/* ir_sense_task calibration passed         */
 #define NAV_FLG_CAL_OK_IMU	0x0008U	/* imu_task calibration passed              */
 #define NAV_FLG_CAL_FAIL	0x0010U	/* either calibration (or IMU init) failed  */
@@ -53,6 +53,16 @@ typedef enum {
 	MCMD_RESET  = 4,	/* Finished -> Ready, Fault -> Calibrating */
 	MCMD_FINISH = 5		/* operator stop: Running/Paused -> Finished */
 } mission_cmd_t;
+
+/* ---- nav_cmd_mbf, nav -> motion_task, 2 bytes [PROPOSED, agree with Buddy 2]
+ *   { NAV_CMD_JUNCTION, barcode_action_t }   at a cross-junction (FR-08):
+ *       0 FORWARD, 1 LEFT, 2 RIGHT, 3 U_TURN (line_task/barcode_action.h).
+ *       motion_task takes it as MOTION_SM_NAV_JUNCTION in LINE_FOLLOW and
+ *       replies MOVE_DONE, or CMD_REJECTED in any other state.  nav sends
+ *       no second JUNCTION until one of those replies arrives.
+ *   { NAV_CMD_FAULT_CLEAR, which }           0x01 IMU, 0x02 MOTION         */
+#define NAV_CMD_FAULT_CLEAR	0x10U
+#define NAV_CMD_JUNCTION	0x20U
 
 /* ---- optional links, filled in by app_main.c as teammates' tasks appear */
 typedef struct {
