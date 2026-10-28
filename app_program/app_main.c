@@ -31,6 +31,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
+#include "line_task/line_task.h"
 #include "comms_task/comms_task.h"
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
@@ -440,6 +441,21 @@ LOCAL T_CTSK ctsk_nav = {
 #endif
 };
 
+#if TM_LINE_TASK
+// Buddy 3 line_task (line reader + barcode): ir_sense_task's slot, priority 10, core 1
+LOCAL T_CTSK ctsk_line = {
+	.itskpri	= 10,
+	.stksz		= STACK_SZ,
+	.task		= line_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
+#endif
+
 
 /* ------------------------------------------------------------------ *
  *  Entry point
@@ -518,7 +534,21 @@ EXPORT INT usermain(void)
 			.p_mission_running	= nav_mission_running,
 			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 		};
+		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the
+		 * mission waits for CAL_OK_IMU (FR-02). ir_flgid stays 0 until
+		 * Buddy 3's ir_sense_task is bound here too. */
+		ID imu_flgid = imu_task_init();
+		nav_bind_t nav_links = {
+			.imu_flgid		= (imu_flgid > 0) ? imu_flgid : 0,
+			.cal_req_bit		= IMU_FLG_CAL_REQ,
+		};
+
+		if(imu_flgid <= 0) {
+			tm_printf((UB *)"[init] imu_flg failed, er=%d: IMU not calibrated by nav\n",
+				  (INT)imu_flgid);
+		}
 		scan_if_bind(&scan_bind);
+		nav_bind(&nav_links);
 
 		tid = tk_cre_tsk(&ctsk_nav);      if(made("tsk(nav)",      tid)) tk_sta_tsk(tid, 0); // buddy 5 nav_ctrl_task
 		tid = tk_cre_tsk(&ctsk_obstacle); if(made("tsk(obstacle)", tid)) tk_sta_tsk(tid, 0); // buddy 5 scan_task
@@ -527,6 +557,10 @@ EXPORT INT usermain(void)
 	/* Buddy 4: imu_task (priority 12, core 1). */
 	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 
+#if TM_LINE_TASK
+	/* Buddy 3: line_task (priority 10, core 1). */
+	tid = tk_cre_tsk(&ctsk_line);     if(made("tsk(line)",     tid)) tk_sta_tsk(tid, 0);
+#endif
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
 #endif

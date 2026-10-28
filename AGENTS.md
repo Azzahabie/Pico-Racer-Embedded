@@ -38,9 +38,11 @@ at `/workspace`), so an edit here is exactly what the container compiles.
 ## 2. Build profiles
 
 The switches chain: each level requires the one below it, enforced by explicit
-`$(error ...)` checks in `build_make/pico_rp2040.mk`. Full chain:
+`$(error ...)` checks in `build_make/pico_rp2040.mk`. After `WIFI_DNS` it
+branches: MQTT (the car) or the echo tests (bring-up only):
 
 ```
+SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_MQTT=1
 SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_UDP=1 WIFI_TCP=1 WIFI_TCPBULK=1
 ```
 
@@ -54,6 +56,7 @@ SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_UDP=1 WIFI
 | `... WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1` | get an IP address, resolve names | yes |
 | `... WIFI_UDP=1` | UDP — needs `config/udp_test_config.h` | yes |
 | `... WIFI_TCP=1` | TCP — needs `config/tcp_test_config.h` | yes |
+| `... WIFI_DNS=1 WIFI_MQTT=1` | **the car build**: MQTT telemetry, no echo tests — needs `config/broker_config.h` | yes |
 
 `WIFI_STATIC=1` is an alternative to `WIFI_DHCP=1` (mutually exclusive; both
 require `WIFI_NETIF=1`).

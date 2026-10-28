@@ -58,6 +58,20 @@ ER gpio_set_pin(UINT no, UINT mode)
 	return E_OK;
 }
 
+ER gpio_set_pull(UINT no, UINT pull)
+{
+	if((no >= GPIO_NUM) || (pull > GPIO_PULL_UP)) return E_PAR;
+
+	if(pull == GPIO_PULL_UP) {
+		clr_w(GPIO(no), GPIO_PDE);
+		set_w(GPIO(no), GPIO_PUE);
+	} else {
+		clr_w(GPIO(no), GPIO_PUE);
+		set_w(GPIO(no), GPIO_PDE);
+	}
+	return E_OK;
+}
+
 ER gpio_set_val(UINT no, UINT val)
 {
 	if(no >= GPIO_NUM) return E_PAR;

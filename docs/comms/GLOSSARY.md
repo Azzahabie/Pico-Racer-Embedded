@@ -85,7 +85,7 @@ document no longer repeats it. Look a term up here.
 | **`H` / `D` record** | Heartbeat record (on `…/heartbeat`, every 1 s and in reply to `ping`) and Diagnostic snapshot (on `…/state`, in reply to `snap`). |
 | **`mv`** | The map version the laptop sends with a new barcode table. The car compares it with `mpv`. |
 | **`mpv`** | The letter→action table version the car is currently running (reported so the laptop can confirm the remap took). |
-| **`drp`** | Count of telemetry records dropped because the queue was full. 4 bits, saturates at 15 (Tribunal 1). |
+| **`drp`** | Count of telemetry records dropped because the **intake** queue (`tele_mbf`) was full. 4 bits, saturates at 15 (Tribunal 1). Drops at the outbound queue while disconnected are not counted; they show only on the console (`MQTT_SCHEMA.md` §3). |
 | **Schema v1 / v2** | The value of `v` on the wire: v1 = JSON (2026-09-28), **v2 = packed binary (2026-10-19, Tribunal 1)**. |
 | **Decoder** | The laptop script that turns a binary record back into named fields. Required since Tribunal 1, because a generic MQTT client shows binary as hex. |
 | **`snap`** | Laptop command: "send me the current state now" → reply on `…/state`. |

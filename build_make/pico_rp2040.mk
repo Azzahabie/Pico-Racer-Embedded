@@ -145,14 +145,16 @@ endif
 
 # Phase-9 gate: an MQTT client over the TCP transport.  The broker endpoint is
 # local configuration because the demo-day broker is supplied by the
-# instructor rather than chosen by us.
+# instructor rather than chosen by us.  It needs the TCP stack, not the
+# Phase-6/7 echo tests: lwipopts.h enables LWIP_TCP for either gate, so the car
+# build leaves WIFI_UDP and WIFI_TCP off and sends no echo traffic.
 WIFI_MQTT ?= 0
 ifneq ($(filter $(WIFI_MQTT),0 1),$(WIFI_MQTT))
 $(error Unknown WIFI_MQTT '$(WIFI_MQTT)'; use 0 or 1)
 endif
 ifeq ($(WIFI_MQTT),1)
-ifneq ($(WIFI_TCP),1)
-$(error WIFI_MQTT=1 requires WIFI_TCP=1)
+ifneq ($(WIFI_DNS),1)
+$(error WIFI_MQTT=1 requires WIFI_DNS=1)
 endif
 ifeq ($(wildcard ../config/broker_config.h),)
 $(error WIFI_MQTT=1 needs config/broker_config.h; copy it from config/broker_config.example.h and set the broker address)
