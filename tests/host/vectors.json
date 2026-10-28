@@ -1,0 +1,557 @@
+{
+ "events": [
+  {
+   "name": "motion min",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 0,
+    "speed_l": 0,
+    "speed_r": 0,
+    "dist_mm": 0,
+    "turn_rate": 0,
+    "fault": 0,
+    "ovf": 0
+   },
+   "s": 1000,
+   "up": 50000,
+   "body": "00000000000000",
+   "wire": "157d006a180000000000000000"
+  },
+  {
+   "name": "motion max",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 15,
+    "speed_l": 255,
+    "speed_r": 255,
+    "dist_mm": 32767,
+    "turn_rate": 1023,
+    "fault": 3,
+    "ovf": 1
+   },
+   "s": 1001,
+   "up": 50010,
+   "body": "f8ffffffffff07",
+   "wire": "357d406b180000ffffffffffff"
+  },
+  {
+   "name": "motion mid",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 7,
+    "speed_l": 128,
+    "speed_r": 128,
+    "dist_mm": 16384,
+    "turn_rate": 512,
+    "fault": 1,
+    "ovf": 0
+   },
+   "s": 1002,
+   "up": 50020,
+   "body": "38404000208001",
+   "wire": "557d806c180000070808000430"
+  },
+  {
+   "name": "motion clamp",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 15,
+    "speed_l": 255,
+    "speed_r": 0,
+    "dist_mm": 100,
+    "turn_rate": 1023,
+    "fault": 0,
+    "ovf": 1
+   },
+   "s": 1003,
+   "up": 50030,
+   "body": "f87f0032c0ff04",
+   "wire": "757dc06d180000ff0f4006f89f"
+  },
+  {
+   "name": "motion wrap 32768",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 1,
+    "speed_l": 138,
+    "speed_r": 138,
+    "dist_mm": 0,
+    "turn_rate": 512,
+    "fault": 0,
+    "ovf": 0
+   },
+   "s": 1004,
+   "up": 50040,
+   "body": "08454500008000",
+   "wire": "957d006f180000a1a808000010"
+  },
+  {
+   "name": "motion wrap 32772",
+   "kind": 0,
+   "stored": {
+    "k": 0,
+    "state": 1,
+    "speed_l": 138,
+    "speed_r": 138,
+    "dist_mm": 4,
+    "turn_rate": 512,
+    "fault": 0,
+    "ovf": 0
+   },
+   "s": 1005,
+   "up": 50050,
+   "body": "08454502008000",
+   "wire": "b57d4070180000a1a848000010"
+  },
+  {
+   "name": "line min",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 0,
+    "deviation": 0
+   },
+   "s": 1006,
+   "up": 50060,
+   "body": "0100",
+   "wire": "d57d80711800200000"
+  },
+  {
+   "name": "line max",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 3,
+    "deviation": 255
+   },
+   "s": 1007,
+   "up": 50070,
+   "body": "f91f",
+   "wire": "f57dc072180020ff03"
+  },
+  {
+   "name": "line mid",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 1,
+    "deviation": 128
+   },
+   "s": 1008,
+   "up": 50080,
+   "body": "0910",
+   "wire": "157e00741800200102"
+  },
+  {
+   "name": "line dev -200",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 0,
+    "deviation": 0
+   },
+   "s": 1009,
+   "up": 50090,
+   "body": "0100",
+   "wire": "357e40751800200000"
+  },
+  {
+   "name": "line dev +200",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 0,
+    "deviation": 255
+   },
+   "s": 1010,
+   "up": 50100,
+   "body": "e11f",
+   "wire": "557e8076180020fc03"
+  },
+  {
+   "name": "line dev -12",
+   "kind": 1,
+   "stored": {
+    "k": 1,
+    "state": 2,
+    "deviation": 116
+   },
+   "s": 1011,
+   "up": 50110,
+   "body": "910e",
+   "wire": "757ec077180020d201"
+  },
+  {
+   "name": "barcode min",
+   "kind": 2,
+   "stored": {
+    "k": 2,
+    "letter": 0,
+    "action": 0
+   },
+   "s": 1012,
+   "up": 50120,
+   "body": "0200",
+   "wire": "957e007918004000"
+  },
+  {
+   "name": "barcode max",
+   "kind": 2,
+   "stored": {
+    "k": 2,
+    "letter": 25,
+    "action": 3
+   },
+   "s": 1013,
+   "up": 50130,
+   "body": "ca03",
+   "wire": "b57e407a18004079"
+  },
+  {
+   "name": "barcode mid",
+   "kind": 2,
+   "stored": {
+    "k": 2,
+    "letter": 12,
+    "action": 1
+   },
+   "s": 1014,
+   "up": 50140,
+   "body": "6201",
+   "wire": "d57e807b1800402c"
+  },
+  {
+   "name": "barcode unreadable",
+   "kind": 2,
+   "stored": {
+    "k": 2,
+    "letter": 31,
+    "action": 0
+   },
+   "s": 1015,
+   "up": 50150,
+   "body": "fa00",
+   "wire": "f57ec07c1800401f"
+  },
+  {
+   "name": "barcode letter 40",
+   "kind": 2,
+   "stored": {
+    "k": 2,
+    "letter": 31,
+    "action": 2
+   },
+   "s": 1016,
+   "up": 50160,
+   "body": "fa02",
+   "wire": "157f007e1800405f"
+  },
+  {
+   "name": "imu min",
+   "kind": 3,
+   "stored": {
+    "k": 3,
+    "class": 0,
+    "hump_count": 0,
+    "hump_height_mm": 0
+   },
+   "s": 1017,
+   "up": 50170,
+   "body": "030000",
+   "wire": "357f407f1800600000"
+  },
+  {
+   "name": "imu max",
+   "kind": 3,
+   "stored": {
+    "k": 3,
+    "class": 7,
+    "hump_count": 15,
+    "hump_height_mm": 255
+   },
+   "s": 1018,
+   "up": 50180,
+   "body": "fbff03",
+   "wire": "557f8080180060ff7f"
+  },
+  {
+   "name": "imu mid",
+   "kind": 3,
+   "stored": {
+    "k": 3,
+    "class": 2,
+    "hump_count": 7,
+    "hump_height_mm": 128
+   },
+   "s": 1019,
+   "up": 50190,
+   "body": "d30102",
+   "wire": "757fc0811800603a40"
+  },
+  {
+   "name": "imu clamp",
+   "kind": 3,
+   "stored": {
+    "k": 3,
+    "class": 4,
+    "hump_count": 15,
+    "hump_height_mm": 255
+   },
+   "s": 1020,
+   "up": 50200,
+   "body": "e3ff03",
+   "wire": "957f0083180060fc7f"
+  },
+  {
+   "name": "obstacle min",
+   "kind": 4,
+   "stored": {
+    "k": 4,
+    "width_cm": 0,
+    "bypass": 0
+   },
+   "s": 1021,
+   "up": 50210,
+   "body": "0400",
+   "wire": "b57f40841800800000"
+  },
+  {
+   "name": "obstacle max",
+   "kind": 4,
+   "stored": {
+    "k": 4,
+    "width_cm": 255,
+    "bypass": 3
+   },
+   "s": 1022,
+   "up": 50220,
+   "body": "fc1f",
+   "wire": "d57f8085180080ff03"
+  },
+  {
+   "name": "obstacle mid",
+   "kind": 4,
+   "stored": {
+    "k": 4,
+    "width_cm": 128,
+    "bypass": 1
+   },
+   "s": 1023,
+   "up": 50230,
+   "body": "040c",
+   "wire": "f57fc0861800808001"
+  },
+  {
+   "name": "obstacle clamp",
+   "kind": 4,
+   "stored": {
+    "k": 4,
+    "width_cm": 255,
+    "bypass": 2
+   },
+   "s": 1024,
+   "up": 50240,
+   "body": "fc17",
+   "wire": "15800088180080ff02"
+  },
+  {
+   "name": "mission min",
+   "kind": 5,
+   "stored": {
+    "k": 5,
+    "state": 0
+   },
+   "s": 1025,
+   "up": 50250,
+   "body": "05",
+   "wire": "358040891800a000"
+  },
+  {
+   "name": "mission max",
+   "kind": 5,
+   "stored": {
+    "k": 5,
+    "state": 7
+   },
+   "s": 1026,
+   "up": 50260,
+   "body": "3d",
+   "wire": "5580808a1800a007"
+  },
+  {
+   "name": "mission mid",
+   "kind": 5,
+   "stored": {
+    "k": 5,
+    "state": 3
+   },
+   "s": 1027,
+   "up": 50270,
+   "body": "1d",
+   "wire": "7580c08b1800a003"
+  },
+  {
+   "name": "mission clamp",
+   "kind": 5,
+   "stored": {
+    "k": 5,
+    "state": 7
+   },
+   "s": 1028,
+   "up": 50280,
+   "body": "3d",
+   "wire": "9580008d1800a007"
+  }
+ ],
+ "records": [
+  {
+   "name": "S example",
+   "values": {
+    "t": 0,
+    "v": 5,
+    "s": 137,
+    "up": 41230,
+    "faults": 0,
+    "mot": 2,
+    "dst": 20,
+    "lin": 1,
+    "dev": 131,
+    "bar": 4,
+    "act": 2,
+    "hum": 3,
+    "hgt": 12,
+    "obs": 0,
+    "byp": 0,
+    "mis": 1,
+    "mpv": 3,
+    "drp": 0,
+    "tlt": 4,
+    "trn": 2018
+   },
+   "wire": "3411c021140000108a0689c300400608f103"
+  },
+  {
+   "name": "S all faults",
+   "values": {
+    "t": 0,
+    "v": 5,
+    "s": 137,
+    "up": 41230,
+    "faults": 63,
+    "mot": 2,
+    "dst": 20,
+    "lin": 1,
+    "dev": 131,
+    "bar": 4,
+    "act": 2,
+    "hum": 3,
+    "hgt": 12,
+    "obs": 0,
+    "byp": 0,
+    "mis": 1,
+    "mpv": 3,
+    "drp": 0,
+    "tlt": 4,
+    "trn": 2018
+   },
+   "wire": "3411c0211400e0178a0689c300400608f103"
+  },
+  {
+   "name": "S Wi-Fi loss",
+   "values": {
+    "t": 0,
+    "v": 5,
+    "s": 137,
+    "up": 41230,
+    "faults": 32,
+    "mot": 2,
+    "dst": 20,
+    "lin": 1,
+    "dev": 131,
+    "bar": 4,
+    "act": 2,
+    "hum": 3,
+    "hgt": 12,
+    "obs": 0,
+    "byp": 0,
+    "mis": 1,
+    "mpv": 3,
+    "drp": 0,
+    "tlt": 4,
+    "trn": 2018
+   },
+   "wire": "3411c021140000148a0689c300400608f103"
+  },
+  {
+   "name": "S tilt/turn n/a",
+   "values": {
+    "t": 0,
+    "v": 5,
+    "s": 137,
+    "up": 41230,
+    "faults": 0,
+    "mot": 2,
+    "dst": 20,
+    "lin": 1,
+    "dev": 131,
+    "bar": 4,
+    "act": 2,
+    "hum": 3,
+    "hgt": 12,
+    "obs": 0,
+    "byp": 0,
+    "mis": 1,
+    "mpv": 3,
+    "drp": 0,
+    "tlt": 63,
+    "trn": 0
+   },
+   "wire": "3411c021140000108a0689c30040067e0000"
+  },
+  {
+   "name": "H example",
+   "values": {
+    "t": 2,
+    "v": 5,
+    "s": 144,
+    "up": 42000
+   },
+   "wire": "16120082140000"
+  },
+  {
+   "name": "D example",
+   "values": {
+    "t": 3,
+    "v": 5,
+    "s": 137,
+    "up": 41230,
+    "faults": 0,
+    "mot": 2,
+    "dst": 20,
+    "lin": 1,
+    "dev": 131,
+    "bar": 4,
+    "act": 2,
+    "hum": 3,
+    "hgt": 12,
+    "obs": 0,
+    "byp": 0,
+    "mis": 1,
+    "mpv": 3,
+    "drp": 0,
+    "tlt": 4,
+    "trn": 2018,
+    "rssi": 58,
+    "ip": 120760512,
+    "qd": 2,
+    "mqv": 2
+   },
+   "wire": "3711c021140000108a0689c300400608f1d301a3ca1c48"
+  }
+ ]
+}

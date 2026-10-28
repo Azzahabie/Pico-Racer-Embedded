@@ -1,0 +1,34 @@
+# PF-001 D3 capture, 2026-10-16 (22:18-22:20). Image: build_make/pf001_d2_fix.uf2
+# (base profile, fix compiled in). Two boots, each started by pressing the
+# board's reset button (RUN pin). No debug probe available.
+# Raw console output follows, unedited.
+
+[22:18:31.624] === uT-Kernel 3.0 / RP2040 demo ===
+[22:18:31.626] SMP build: 2 processors
+[22:18:31.630] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:18:31.632] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[22:18:31.636] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00010000 (por=0 run=1 psm_restart=0)
+[22:18:32.637] [pf001] timer advanced 1004952 us over a 1000 ms kernel delay
+[22:18:42.651] [pf001] D2 1/6: window kernel=10010 ms timer=10007406 us (999.740 us/ms)  cumulative 10010 ms -> 999.740 us/ms
+[22:18:52.654] [pf001] D2 2/6: window kernel=10010 ms timer=10009992 us (999.999 us/ms)  cumulative 20020 ms -> 999.870 us/ms
+[22:19:02.677] [pf001] D2 3/6: window kernel=10010 ms timer=10010003 us (1000.000 us/ms)  cumulative 30030 ms -> 999.913 us/ms
+[22:19:12.670] [pf001] D2 4/6: window kernel=10010 ms timer=10009963 us (999.996 us/ms)  cumulative 40040 ms -> 999.934 us/ms
+[22:19:22.698] [pf001] D2 5/6: window kernel=10010 ms timer=10010079 us (1000.007 us/ms)  cumulative 50050 ms -> 999.948 us/ms
+[22:19:32.700] [pf001] D2 6/6: window kernel=10010 ms timer=10009922 us (999.992 us/ms)  cumulative 60060 ms -> 999.956 us/ms
+[22:19:32.701] [pf001] D2 done: fix compiled IN, tick cycles=12
+[22:19:32.708] [monitor] seq=122 produced=122 consumed=122 dropped=0  made_on=prc1 seen_on=prc2
+[22:19:34.708] [monitor] seq=126 produced=126 consumed=126 dropped=0  made_on=prc1 seen_on=prc2
+[22:19:36.733] [monitor] seq=130 produced=130 consumed=130 dropped=0  made_on=prc1 seen_on=prc2
+[22:19:40.407] === uT-Kernel 3.0 / RP2040 demo ===
+[22:19:40.408] SMP build: 2 processors
+[22:19:40.411] producer -> [mbf] -> consumer, 2 credits, 500 ms period
+[22:19:40.412] [pf001] tick_at_boot=0x600 (enable=1 cycles=0 running=1)  tick_now=0x60c (enable=1 cycles=12 running=1)
+[22:19:40.417] [pf001] wd_reason=0x0 (timer=0 force=0)  chip_reset=0x00010000 (por=0 run=1 psm_restart=0)
+[22:19:41.419] [pf001] timer advanced 1004881 us over a 1000 ms kernel delay
+[22:19:51.438] [pf001] D2 1/6: window kernel=10010 ms timer=10007405 us (999.740 us/ms)  cumulative 10010 ms -> 999.740 us/ms
+[22:20:01.440] [pf001] D2 2/6: window kernel=10010 ms timer=10009983 us (999.998 us/ms)  cumulative 20020 ms -> 999.869 us/ms
+[22:20:11.455] [pf001] D2 3/6: window kernel=10010 ms timer=10010006 us (1000.000 us/ms)  cumulative 30030 ms -> 999.913 us/ms
+[22:20:21.461] [pf001] D2 4/6: window kernel=10010 ms timer=10009965 us (999.996 us/ms)  cumulative 40040 ms -> 999.934 us/ms
+[22:20:31.481] [pf001] D2 5/6: window kernel=10010 ms timer=10010076 us (1000.007 us/ms)  cumulative 50050 ms -> 999.948 us/ms
+[22:20:41.474] [pf001] D2 6/6: window kernel=10010 ms timer=10009925 us (999.992 us/ms)  cumulative 60060 ms -> 999.956 us/ms
+[22:20:41.475] [pf001] D2 done: fix compiled IN, tick cycles=12

@@ -1,0 +1,134 @@
+/*
+ *	scan_logic.h
+ *	Buddy 5 obstacle geometry and planning. PURE C: no RTOS, servo or GPIO
+ *	calls, so it can be tested on a PC with recorded scans
+ *	(tests/scan_logic_test.c, NFR-16).
+ *
+ *	Design (Statechart 5, Tribunal 1 interface row "scan_logic.c"):
+ *	  in : arrays of (angle, distance), [D_obs], [C_pass], [D_rev],
+ *	       beam correction
+ *	  out: obstacle profile (edges, position, width W, closest point d_c,
+ *	       left/right clearance) and the chosen action
+ *	       (continue / bypass left / bypass right / reverse / blocked).
+ *	  Also: the "N readings in a row" counters used by Monitoring,
+ *	  Blocked and Sensor Lost, so those rules are testable on a PC.
+ *
+ *	Angle convention: negative = car's LEFT, positive = car's RIGHT, 0 = ahead.
+ *	Units: degrees and millimetres, integers only (no FPU on the RP2040).
+ *
+ *	Barr-C (safety subset): braces on every body, constant on the left of
+ *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
+ *	fixed-width integers (stdint.h). Tabs/brace placement follow the repo.
+ */
+
+#ifndef SCAN_LOGIC_H
+#define SCAN_LOGIC_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+/* ---- grid: -45..+45 deg in 5 deg steps = 19 slots ---- */
+#define SL_STEP_DEG		5
+#define SL_LIMIT_DEG		45
+#define SL_SLOTS		((2 * SL_LIMIT_DEG / SL_STEP_DEG) + 1)
+#define SL_IDX(deg)		(((deg) + SL_LIMIT_DEG) / SL_STEP_DEG)
+#define SL_DEG(idx)		(((idx) * SL_STEP_DEG) - SL_LIMIT_DEG)
+
+/* ---- grid values ---- */
+#define SL_NOT_MEASURED		0xFFFFU	/* this angle was not pinged     */
+#define SL_FAR			0U	/* out of range / no echo: clear */
+
+/* ---- thresholds: proposed values, set from A5 / NFR-08 test data ---- */
+#define SL_D_STOP_MM		250	/* [D_stop] Monitoring stops below this (NFR-08) */
+#define SL_D_OBS_MM		400	/* [D_obs]  a scan reading <= this is "obstacle" */
+#define SL_D_REV_MM		100	/* [D_rev]  closer than this: too close to turn  */
+#define SL_CAR_HALF_W_MM	70	/* half the car's width [TBD: measure]           */
+#define SL_MARGIN_MM		50	/* safety gap past the edge [TBD]                */
+
+/* [C_pass] as defined in Statechart 5: the clearance needed to pass =
+ * half the car's width + a safety margin. It is also the half-width of
+ * the car's path corridor: an obstacle wholly outside +/-C_pass is not
+ * in the way (FR-17 "continue"). */
+#define SL_C_PASS_MM		(SL_CAR_HALF_W_MM + SL_MARGIN_MM)
+
+/* Longest sideways move motion_task will drive for a bypass
+ * [TBD with Buddy 2: sized so the bypass + line search fits NFR-07]. */
+#define SL_MAX_OFFSET_MM	300
+
+#define SL_REV_DIST_MM		150	/* reverse distance; the rescan uses D_obs + this */
+#define SL_DEPTH_JUMP_MM	150	/* hits further apart than this in depth are two
+					   different objects, not one */
+#define SL_CLEAR_OPEN_MM	9999	/* clearance when no other object is seen */
+
+/* Beam spread: the HC-SR04 cone (~15 deg, +/-7.5) makes edges read too far
+ * out by about d * tan(7.5 deg) = d * 0.1317. Replace with a bench value. */
+#define SL_BEAM_CORR_PER_1000	132
+
+/* ---- "N in a row" rules (Statechart 5) ---- */
+#define SL_N_STOP		2	/* close readings to set STOP_SCAN           */
+#define SL_N_STOP_HUMP		4	/* ... while hump_state is not NONE (8.3)    */
+#define SL_N_CLEAR		3	/* clear readings to leave Blocked           */
+#define SL_N_NO_ECHO		3	/* no-echo pings to enter Sensor Lost        */
+#define SL_N_ECHO		3	/* valid echoes to leave Sensor Lost         */
+
+typedef enum {
+	SL_CONTINUE = 0,	/* false alarm, or obstacle not in the path */
+	SL_BYPASS_LEFT,
+	SL_BYPASS_RIGHT,
+	SL_REVERSE,		/* too close to turn: back off, then rescan */
+	SL_BLOCKED		/* no side is passable: stop                */
+} sl_action_t;
+
+typedef struct {
+	bool	found;			/* any reading <= D_obs                   */
+	int32_t	d_close_mm;		/* closest reading d_c                    */
+	int32_t	close_deg;		/* angle of d_c                           */
+	int32_t	left_deg;		/* outermost hit on the left              */
+	int32_t	right_deg;		/* outermost hit on the right             */
+	int32_t	x_left_mm;		/* lateral position of left edge          */
+	int32_t	x_right_mm;		/* lateral position of right edge         */
+	int32_t	width_mm;		/* W, beam-corrected                      */
+	bool	left_open;		/* free space found left of the edge      */
+	bool	right_open;		/* free space found right of the edge     */
+	bool	in_path;		/* overlaps the car's corridor +/-C_pass  */
+	int32_t	offset_left_mm;		/* sideways move to pass left             */
+	int32_t	offset_right_mm;	/* sideways move to pass right            */
+	int32_t	clear_left_mm;		/* free space beyond the left edge        */
+	int32_t	clear_right_mm;		/* free space beyond the right edge       */
+} sl_profile_t;
+
+/* ---- one forward ping, classified for the counters ---- */
+typedef enum {
+	SL_PING_CLEAR = 0,	/* valid echo at or beyond D_stop, or out of range */
+	SL_PING_CLOSE,		/* valid echo below D_stop                         */
+	SL_PING_NO_ECHO		/* no echo pulse at all: possible sensor fault     */
+} sl_ping_t;
+
+typedef struct {
+	uint8_t	close_run;	/* close readings in a row  */
+	uint8_t	clear_run;	/* clear readings in a row  */
+	uint8_t	no_echo_run;	/* no-echo pings in a row   */
+	uint8_t	echo_run;	/* valid echoes in a row    */
+} sl_runs_t;
+
+/* sin(deg) * 1000 for deg in -45..+45 (5 deg steps). */
+int32_t		sl_sin1000(int32_t deg);
+
+/* Build the profile from the grid. A reading counts as obstacle when it
+ * is <= d_obs_mm (SL_D_OBS_MM, or SL_D_OBS_MM + SL_REV_DIST_MM right after
+ * a reverse). Unmeasured slots between hits count as part of the same
+ * obstacle; a depth jump > SL_DEPTH_JUMP_MM starts a different object. */
+void		sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+			   sl_profile_t *p_prof);
+
+/* Choose the action from a profile (FR-17, NFR-07: larger clearance side). */
+sl_action_t	sl_decide(const sl_profile_t *p_prof, bool reverse_tried);
+
+const char	*sl_action_name(sl_action_t action);
+
+/* Counters for Monitoring / Blocked / Sensor Lost. */
+sl_ping_t	sl_classify(bool no_echo, uint32_t dist_mm);
+void		sl_runs_reset(sl_runs_t *p_runs);
+void		sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping);
+
+#endif /* SCAN_LOGIC_H */

@@ -235,130 +235,73 @@ own USB connector - no adapter needed - and enumerates as a CDC ACM device
 
 ---
 
-## 6b. What the demo does, and what you should see
+## 6b. What the application does, and what you should see
 
-The shipped demo is a small **producer/consumer pipeline** that puts one pass
-through every IPC primitive the kernel offers. It is meant to be read and
-modified, not just run.
+`app_program/app_main.c` is now the car's `usermain()`, not a demo. It
+creates and starts the application tasks, prints a boot banner, and sleeps.
 
-```
-producer  --[fixed memory pool]--> record
-          --[mutex]-------------> shared sequence counter
-          --[message buffer]----> consumer
-consumer  --[semaphore]---------> credit returned to producer
-          --[event flag]--------> monitor woken
-monitor   prints a status line
-blink     LED liveness, independent of all of the above
-```
+> **The kernel-port demo is gone (2026-10-21).** The producer/consumer/monitor
+> pipeline that exercised every IPC primitive, and the `led_test` GPIO
+> loopback, were removed: `led_test` drove GP10, which is the right motor input,
+> and the demo held a mutex and a message buffer the car needs (the kernel
+> allows 4 of each). Both are in the git history — `git show d1d9b6a:app_program/app_main.c`
+> is the last version with them — if you want the IPC walkthrough back.
 
 ### The tasks
 
-Four always, plus a fifth in radio builds.
+| Task | Priority | Processor (SMP) | Built when | What it does |
+|---|---:|---|---|---|
+| `cyw43_utk_task` | 4 | 1 | `WIFI=cyw43` | The radio service: owns the CYW43439 and lwIP. Started at device init, not from `usermain()` |
+| `comms_task` | 16 | 1 | `WIFI_MQTT=1` | MQTT telemetry (Buddy 1). Publishes the `H` heartbeat once a second (`docs/comms/`) |
+| `wifi_status_task` | 17 | 1 | `WIFI=cyw43` and `TM_WIFI_REPORT=1` (the default) | **Development console only.** Prints the `[wifi]`/`[mqtt]`/`[udp]` lines. Turned off for demo day |
+| `blink_task` | 10 | 1 | `TM_BLINK_LED=1` only (off by default) | Liveness LED on GP16 — off because GP16 is the IMU's I2C SDA |
+| `race_test` tasks | — | 1 and 2 | `TM_RACE_TEST=1` only | Tribunal 1 two-core packed-word race test |
 
-| Task | Priority | Processor (SMP) | What it does |
-|---|---:|---|---|
-| `producer_task` | 5 | 1 | Takes a credit, gets a block from the memory pool, stamps a mutex-guarded sequence number, sends it through the message buffer |
-| `consumer_task` | 6 | 2 | Receives, checks the payload, returns the credit, sets the event flag |
-| `monitor_task` | 7 | either | Waits on the event flag and prints one status line |
-| `wifi_status_task` | 8 | either | **Radio builds only** (`WIFI=cyw43`). Reports link, address and UDP echo traffic. Does not drive the radio - a service task owns that |
-| `blink_task` | 10 | either | Blinks GP16. Touches nothing the console touches |
+Every task is pinned with `TA_ASSPRC`. The kernel keeps **one ready queue
+shared by both processors**, so an unpinned task can land on either core and
+interfere with the time-critical tasks the other buddies put on processor 2
+(core 1). Processor 1 (core 0) holds the radio, the USB console and everything
+above.
 
-Under SMP the producer is pinned to processor 1 and the consumer to processor
-2 with `TA_ASSPRC`, so **every message crosses a core boundary**. Built with
-`SMP=0` the same source runs unchanged on one core.
-
-### Which API each object demonstrates
-
-| Primitive | Calls | Used for |
-|---|---|---|
-| Fixed memory pool | `tk_cre_mpf` / `tk_get_mpf` / `tk_rel_mpf` | Allocating a record without a heap |
-| Mutex | `tk_cre_mtx` / `tk_loc_mtx` / `tk_unl_mtx` | The one genuinely shared counter |
-| Message buffer | `tk_cre_mbf` / `tk_snd_mbf` / `tk_rcv_mbf` | Passing the record between cores |
-| Semaphore | `tk_cre_sem` / `tk_wai_sem` / `tk_sig_sem` | Credit-based flow control |
-| Event flag | `tk_cre_flg` / `tk_set_flg` / `tk_wai_flg` | Waking the monitor on two conditions (`TWF_ANDW \| TWF_CLR`) |
-| Tasks | `tk_cre_tsk` / `tk_sta_tsk` / `tk_dly_tsk` / `tk_slp_tsk` | Creating and pacing the tasks |
-| SMP | `TA_ASSPRC`, `TP_PRC1` / `TP_PRC2`, `tk_get_prc()` | Pinning, and reporting where work ran |
+`TM_BLINK_LED` and `TM_RACE_TEST` are set in `demo_tasks.h` and
+`race_test/race_test.h`; `TM_WIFI_REPORT` near the top of `app_main.c`.
 
 ### What you should see
 
-**Dual core** (`make SMP=1 CONSOLE=usb_cdc`):
+A build with no radio (`make SMP=1 CONSOLE=usb_cdc`) prints only the banner —
+there is nothing else in it yet:
 
 ```
-microT-Kernel Version 3.00
-
-=== uT-Kernel 3.0 / RP2040 demo ===
+=== uT-Kernel 3.0 / RP2040 car ===
 SMP build: 2 processors
-producer -> [mbf] -> consumer, 2 credits, 500 ms period
-
-[monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc2
-[monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc2
-[monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc2
-[monitor] seq=14 produced=14 consumed=14 dropped=0  made_on=prc1 seen_on=prc2
 ```
 
-**Single core** (`make SMP=0 CONSOLE=usb_cdc`) - same source, same pipeline,
-both ends on the one processor:
-
-```
-=== uT-Kernel 3.0 / RP2040 demo ===
-single-core build
-producer -> [mbf] -> consumer, 2 credits, 500 ms period
-
-[monitor] seq=2 produced=2 consumed=2 dropped=0  made_on=prc1 seen_on=prc1
-[monitor] seq=6 produced=6 consumed=6 dropped=0  made_on=prc1 seen_on=prc1
-[monitor] seq=10 produced=10 consumed=10 dropped=0  made_on=prc1 seen_on=prc1
-```
-
-Both captured from a Pico W over USB-CDC. The banner line and the
-`seen_on=` field are the two places the configuration shows up.
-
-Captured from a Pico W over USB-CDC.
-
-`made_on=prc1 seen_on=prc2` is the interesting part - it is the pipeline
-crossing cores. On a `SMP=0` build both read `prc1` and the banner says
-`single-core build`.
-
-### Why `seq` climbs by about 4, not exactly 4
-
-The producer runs every 500 ms and the monitor reports every 2000 ms, so you
-expect 4 records per line. Mostly you get 4, and occasionally 3.
-
-That is not a fault - it is `tk_dly_tsk` doing exactly what it says. The call
-sleeps for an interval **measured from when it is called**, so the producer's
-real period is 500 ms *plus* the time it spends taking a credit, getting a
-pool block, locking the mutex and sending the message: about 510 ms. Over a
-capture of 13 reports that works out to 3.92 records per report, and every so
-often the fourth record lands just after the monitor has printed.
-
-This is the classic difference between **relative** and **absolute** delay. If
-you need a period that does not drift, do not sleep for a fixed interval -
-compute the next absolute deadline and sleep until that, so the work time is
-absorbed instead of accumulated. Making that change is a good exercise: the
-`seq` deltas should settle to exactly 4.
+`SMP=0` prints `single-core build` instead. A radio build adds the `[wifi]`
+lines (section 7), and an MQTT build adds `[mqtt]` session lines and one
+`[comms] H s=… up=… bytes=… queued` line per second.
 
 ### On the USB-CDC console
 
 With `CONSOLE=usb_cdc` the console is a 4 KB ring drained by the host, so
 timing matters in a way it does not over UART:
 
-- The monitor **waits for the host to enumerate** (`tm_usb_state() >= 2`)
+- `usermain()` **waits for the host to enumerate** (`tm_usb_state() >= 2`)
 before printing the banner. Anything printed earlier would go into a ring
-nobody is reading and be lost. The wait is bounded at about 20 s, so a
-headless board still runs the demo - you just will not see the start of it.
+nobody is reading and be lost — which is why a task's first line or two can
+be missing. The wait is bounded at about 20 s, so a headless board still
+runs.
 - Expect the banner a second or two after you open the port, not at reset.
-- One status line every `REPORT_MS` cannot overrun a 4 KB ring, so drops
-should never appear. If they do, the monitor says so on its own line
-(`[monitor] console dropped N bytes`).
 - Over UART none of this applies: `tm_printf` writes straight to the UART
 from the calling context, with no ring, no service task and no interrupt -
 which is exactly why it stays the qualified console while the scheduler is
 under test.
 
-### What the LED tells you
+### The LED (only with `TM_BLINK_LED=1`)
 
-The LED on GP16 blinks at 2 Hz once USB is up (immediately on a UART build).
-Before that it blinks a *count* of how far USB bring-up got - long flash = 5,
-short flash = 1:
+Off on the car. Flip `TM_BLINK_LED` to 1 in `app_program/demo_tasks.h` on a
+bare Pico when you need it. The LED on GP16 then blinks at 2 Hz once USB is up
+(immediately on a UART build). Before that it blinks a *count* of how far USB
+bring-up got - long flash = 5, short flash = 1:
 
 | Level | Meaning |
 |---|---|
@@ -372,9 +315,8 @@ short flash = 1:
 | 7 | host talking, enumeration not completing |
 | 8 | fully enumerated |
 
-### Reading a failure
-
-The blink task never touches the console, and that is the point:
+The blink task never touches the console, so it separates a console fault
+from a kernel fault:
 
 | Symptom | Meaning |
 |---|---|
@@ -383,17 +325,24 @@ The blink task never touches the console, and that is the point:
 | **LED freezes** | A console call blocked the kernel, or the kernel is wedged |
 | LED blinking a repeating count | USB never finished coming up; read it against the table above |
 
+The kernel port still configures GP16 as an output at reset
+(`kernel/sysdepend/pico_rp2040/hw_setting.c`) until `BOARD_LED_PIN` moves.
+
 ### What is in `app_program/`
 
-| File | Lines | What it is |
-|---|---:|---|
-| `app_main.c` | 526 | The whole demo: the tasks, the kernel objects, the WiFi reporter, `usermain()` |
-| `demo_tasks.c/.h` | 90 | The console-independent blink task |
-| `usb_console_compat.h` | 31 | Console-state accessors, with constant stubs for UART builds |
+| Path | What it is |
+|---|---|
+| `app_main.c` | `usermain()`, the boot banner, and the Wi-Fi status reporter |
+| `comms_task/` | Buddy 1's MQTT telemetry task |
+| `common/messages.h` | The shared message contract (packed MQTT records so far) |
+| `motor_task/`, `line_task/`, `obstacle_task/`, `imu_task/` | The other buddies' tasks (stubs) |
+| `race_test/` | Tribunal 1 race test, off unless `TM_RACE_TEST` is 1 |
+| `demo_tasks.c/.h` | The optional blink task |
+| `usb_console_compat.h` | Console-state accessors, with constant stubs for UART builds |
 
-The build picks up whatever `.c` files are in this directory
-(`build_make/mtkernel_3/app_program/subdir.mk` globs them), so adding one
-needs no makefile edit.
+The build picks up every `.c` file under this directory, recursively, so adding
+one needs no makefile edit — and a stub that does not compile breaks every
+build.
 
 ### A note on stack sizes
 
@@ -402,26 +351,6 @@ The kernel path is deeper now: each critical section runs the global
 ready-queue assignment on the calling task's stack, so any task making a
 blocking kernel call needs more headroom. **Applications carried over from a
 single-core µT-Kernel may need their stacks revised upward.**
-
-### Making it yours
-
-Everything is in one file with the tunables at the top:
-
-```c
-#define N_RECORDS   4     /* blocks in the fixed memory pool */
-#define CREDITS     2     /* messages in flight at once      */
-#define PRODUCE_MS  500   /* one record every half second    */
-#define REPORT_MS   2000  /* monitor prints this often       */
-```
-
-Things worth trying: set `CREDITS` to 1 and watch the producer block; swap the
-message buffer for a mailbox; move both tasks onto the same processor and see
-whether throughput changes; remove the mutex and see whether the sequence
-numbers still come out unique under SMP; replace the producer's `tk_dly_tsk`
-with an absolute deadline and watch the `seq` deltas settle to exactly 4.
-
-Keep a console-independent blink task in whatever you build - it is the only
-thing that tells you a hang is the console rather than the kernel.
 
 ---
 
@@ -471,6 +400,7 @@ make $B -j8                                  # associate, get an address, resolv
 make $B WIFI_UDP=1 -j8                       # UDP echo against a host listener
 make $B WIFI_UDP=1 WIFI_TCP=1 -j8            # TCP echo
 make $B WIFI_UDP=1 WIFI_TCP=1 WIFI_TCPBULK=1 -j8
+make $B WIFI_MQTT=1 -j8                      # the car build: MQTT, no echo tests
 ```
 
 > [!WARNING]
@@ -514,7 +444,9 @@ who owns what.
 
 **The application does not drive the radio.** A service task owns the
 CYW43439, lwIP and the echo session, and publishes a status snapshot;
-`wifi_status_task` only reads that snapshot and prints. It reads through
+`wifi_status_task` only reads that snapshot and prints. It is a development
+console: built while `TM_WIFI_REPORT` is 1 (the default, `app_main.c`) and
+turned off for the demo-day build. It reads through
 `cyw43_utk_get_status()`, which takes a **seqlock** copy - `lwip_utk_udp_get_status()`
 is a plain struct copy that is only safe inside the service itself.
 
@@ -672,12 +604,15 @@ profile, output goes to the Pico's USB port instead, not GP0/GP1.
 ### Nothing on the USB-CDC console
 
 The banner is printed only after the host enumerates, so it will not appear at
-reset - open the port and wait a second or two. If nothing ever arrives, read
-the GP16 LED against the bring-up table above; it tells you how far USB got.
+reset - open the port and wait a second or two. If nothing ever arrives,
+rebuild with `TM_BLINK_LED` set to 1 and read the GP16 LED against the bring-up
+table in section 6b; it tells you how far USB got.
 
 ### No LED activity
 
-The Pico W's on-board LED is on the radio chip and will not light in the
+Expected by default: the blink task is built only with `TM_BLINK_LED` set to 1
+(`app_program/demo_tasks.h`), because GP16 is the IMU's I2C SDA on the car.
+With it on, note that the Pico W's on-board LED is on the radio chip and will not light in the
 radio-down profiles. Use an external LED on GP16, or change `BOARD_LED_PIN`
 in `include/sys/sysdepend/pico_rp2040/sysdef.h`. Avoid GP23, GP24, GP25 and
 GP29 - the radio reserves them.
