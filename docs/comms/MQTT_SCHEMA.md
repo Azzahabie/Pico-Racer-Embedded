@@ -483,11 +483,16 @@ printf '\x02' | mosquitto_pub -h <broker-ip> -t 'robocar/pico-racer-01/cmd' -s
 Reading the fields needs the **laptop decoder**,
 [`tools/telemetry_decode.py`](../../tools/telemetry_decode.py) — it applies §3
 and the tables above, dispatching on `t` and then on `k`, and rejects a wrong
-length or an unknown `v`:
+length or an unknown `v`. It runs inside the **telemetry viewer**, which shows
+the decoded records next to the serial console and can run the broker itself:
 
 ```sh
-python tools/telemetry_decode.py --broker <broker-ip>
+py tools\telemetry_viewer.py --broker <broker-ip>     # or TelemetryViewer.exe
 ```
+
+*Until 2026-10-28 the decoder was also a command-line program; the viewer
+replaces it. The `.exe` is a snapshot — rebuild it (`tools\build_viewer.bat`)
+after any schema change, or it rejects every record with `unknown schema v`.*
 
 It is checked byte for byte against the firmware packer by
 `tests/host/test_decoder.py` and `tests/host/test_messages.c`, which share
