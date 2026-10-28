@@ -84,22 +84,28 @@ typedef enum {
 	SL_BLOCKED		/* no side is passable: stop                */
 } sl_action_t;
 
+/* Minimum-bit sizes: every distance and offset is within -4000..+9999 mm
+ * (SL_CLEAR_OPEN_MM is the largest) and every angle within -45..+45, so
+ * int16_t; the arithmetic is done in int32_t and stored. Sizes before
+ * and after: docs/obstacle/week13_representation.md. */
+_Static_assert(SL_CLEAR_OPEN_MM <= INT16_MAX, "profile fields must fit int16_t");
+
 typedef struct {
+	int16_t	d_close_mm;		/* closest reading d_c                    */
+	int16_t	close_deg;		/* angle of d_c                           */
+	int16_t	left_deg;		/* outermost hit on the left              */
+	int16_t	right_deg;		/* outermost hit on the right             */
+	int16_t	x_left_mm;		/* lateral position of left edge          */
+	int16_t	x_right_mm;		/* lateral position of right edge         */
+	int16_t	width_mm;		/* W, beam-corrected                      */
+	int16_t	offset_left_mm;		/* sideways move to pass left             */
+	int16_t	offset_right_mm;	/* sideways move to pass right            */
+	int16_t	clear_left_mm;		/* free space beyond the left edge        */
+	int16_t	clear_right_mm;		/* free space beyond the right edge       */
 	bool	found;			/* any reading <= D_obs                   */
-	int32_t	d_close_mm;		/* closest reading d_c                    */
-	int32_t	close_deg;		/* angle of d_c                           */
-	int32_t	left_deg;		/* outermost hit on the left              */
-	int32_t	right_deg;		/* outermost hit on the right             */
-	int32_t	x_left_mm;		/* lateral position of left edge          */
-	int32_t	x_right_mm;		/* lateral position of right edge         */
-	int32_t	width_mm;		/* W, beam-corrected                      */
 	bool	left_open;		/* free space found left of the edge      */
 	bool	right_open;		/* free space found right of the edge     */
 	bool	in_path;		/* overlaps the car's corridor +/-C_pass  */
-	int32_t	offset_left_mm;		/* sideways move to pass left             */
-	int32_t	offset_right_mm;	/* sideways move to pass right            */
-	int32_t	clear_left_mm;		/* free space beyond the left edge        */
-	int32_t	clear_right_mm;		/* free space beyond the right edge       */
 } sl_profile_t;
 
 /* ---- one forward ping, classified for the counters ---- */

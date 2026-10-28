@@ -63,7 +63,8 @@
 
 #define SAMPLES_PER_ROUND	20U
 #define NUM_COARSE		5
-#define NO_HIT			999	/* "no coarse hit yet" marker angle */
+#define NO_HIT			127	/* "no coarse hit yet" marker angle:
+					   outside -45..+45, fits int8_t */
 
 #define SCAN_BUDGET_MS		5500	/* leaves ramp time inside NFR-07's 7 s budget */
 #define FINE_MAX_STEPS		5	/* new angles per edge: the coarse miss is
@@ -189,19 +190,27 @@ typedef enum {
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
 
+/* Minimum-bit sizes (Week 13 table, docs/obstacle/week13_representation.md):
+ * angles are -45..+45 deg (or NO_HIT) so int8_t; the action is 0-4 so
+ * uint8_t; timestamps stay 32-bit (wrap-safe microsecond differences);
+ * no_echo_slots needs 19 bits, the smallest unit holding them is 32. */
+_Static_assert((SL_LIMIT_DEG <= INT8_MAX) && (NO_HIT <= INT8_MAX) &&
+	       (NO_HIT > SL_LIMIT_DEG), "scan angles must fit int8_t");
+_Static_assert(SL_SLOTS <= 32, "no_echo_slots needs one bit per slot");
+
 typedef struct {
-	uint16_t	bits;		/* state + flags, see above       */
-	uint16_t	grid[SL_SLOTS];
-	sl_profile_t	prof;
-	sl_action_t	action;
-	sl_runs_t	runs;		/* forward-ping counters          */
-	INT		left_hit;	/* outermost coarse hits          */
-	INT		right_hit;
 	UW		state_us;	/* when the state was entered     */
 	UW		scan_us;	/* when the coarse scan started   */
 	uint32_t	no_echo_slots;	/* this scan: slots that got no echo
 					   pulse (bit = SL_IDX), for print */
-	INT		look_deg;	/* angle the servo was last sent to */
+	sl_profile_t	prof;
+	uint16_t	grid[SL_SLOTS];	/* 12 bits used, see Tribunal note */
+	uint16_t	bits;		/* state + flags, see above       */
+	sl_runs_t	runs;		/* forward-ping counters, 9 bits  */
+	uint8_t		action;		/* sl_action_t, 0-4               */
+	int8_t		left_hit;	/* fine-scan start edges          */
+	int8_t		right_hit;
+	int8_t		look_deg;	/* angle the servo was last sent to */
 } scan_ctx_t;
 
 LOCAL scan_state_t ctx_state(const scan_ctx_t *p_ctx)
@@ -463,8 +472,8 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 	 * between would never be measured (width 0, bypass offset too short). */
 	if(scan_ok(p_ctx) && (NO_HIT != p_ctx->left_hit)) {
 		if(sl_fine_starts(p_ctx->grid, d_obs_mm(p_ctx), &left_deg, &right_deg)) {
-			p_ctx->left_hit = (INT)left_deg;
-			p_ctx->right_hit = (INT)right_deg;
+			p_ctx->left_hit = (int8_t)left_deg;
+			p_ctx->right_hit = (int8_t)right_deg;
 		}
 	}
 }

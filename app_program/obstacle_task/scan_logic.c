@@ -190,16 +190,18 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	}
 
 	p_prof->found = true;
-	p_prof->d_close_mm = (int32_t)grid[close_idx];
-	p_prof->close_deg = SL_DEG(close_idx);
+	/* hits are <= d_obs_mm (a few hundred mm) and angles -45..+45, so
+	 * every int16_t field below holds its value */
+	p_prof->d_close_mm = (int16_t)grid[close_idx];
+	p_prof->close_deg = (int16_t)SL_DEG(close_idx);
 
 	grow(grid, d_obs_mm, close_idx, -1, &left_idx, &left_stop);
 	grow(grid, d_obs_mm, close_idx, +1, &right_idx, &right_stop);
 	p_prof->left_open  = (left_stop >= 0);		/* stopped before -45 */
 	p_prof->right_open = (right_stop < SL_SLOTS);	/* stopped before +45 */
 
-	p_prof->left_deg  = SL_DEG(left_idx);
-	p_prof->right_deg = SL_DEG(right_idx);
+	p_prof->left_deg  = (int16_t)SL_DEG(left_idx);
+	p_prof->right_deg = (int16_t)SL_DEG(right_idx);
 
 	/* closest point d_c of THIS object (FR-16): the search above started
 	 * from the closest in-corridor hit, so re-check the whole object */
@@ -208,20 +210,20 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 		   (((int32_t)grid[idx] < p_prof->d_close_mm) ||
 		    (((int32_t)grid[idx] == p_prof->d_close_mm) &&
 		     (abs_val(SL_DEG(idx)) < abs_val(p_prof->close_deg))))) {
-			p_prof->d_close_mm = (int32_t)grid[idx];
-			p_prof->close_deg = SL_DEG(idx);
+			p_prof->d_close_mm = (int16_t)grid[idx];
+			p_prof->close_deg = (int16_t)SL_DEG(idx);
 		}
 	}
 
 	/* lateral edge positions x = d * sin(theta), then beam correction:
 	 * the cone makes each edge look ~d*tan(7.5) too far out, so pull
 	 * both edges inward */
-	p_prof->x_left_mm  = lateral_mm((int32_t)grid[left_idx], left_idx) +
-			     beam_corr_mm((int32_t)grid[left_idx]);
-	p_prof->x_right_mm = lateral_mm((int32_t)grid[right_idx], right_idx) -
-			     beam_corr_mm((int32_t)grid[right_idx]);
+	p_prof->x_left_mm  = (int16_t)(lateral_mm((int32_t)grid[left_idx], left_idx) +
+				       beam_corr_mm((int32_t)grid[left_idx]));
+	p_prof->x_right_mm = (int16_t)(lateral_mm((int32_t)grid[right_idx], right_idx) -
+				       beam_corr_mm((int32_t)grid[right_idx]));
 
-	p_prof->width_mm = p_prof->x_right_mm - p_prof->x_left_mm;
+	p_prof->width_mm = (int16_t)(p_prof->x_right_mm - p_prof->x_left_mm);
 	if(p_prof->width_mm < 0) {
 		p_prof->width_mm = 0;		/* tiny object: cone wider */
 	}
@@ -233,8 +235,8 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	/* sideways move needed so the car's near side clears the edge:
 	 * pass left  -> car centre must reach x_left  - C_pass
 	 * pass right -> car centre must reach x_right + C_pass */
-	p_prof->offset_left_mm  = -(p_prof->x_left_mm - SL_C_PASS_MM);
-	p_prof->offset_right_mm =   p_prof->x_right_mm + SL_C_PASS_MM;
+	p_prof->offset_left_mm  = (int16_t)(-(p_prof->x_left_mm - SL_C_PASS_MM));
+	p_prof->offset_right_mm = (int16_t)(p_prof->x_right_mm + SL_C_PASS_MM);
 	if(p_prof->offset_left_mm < 0) {
 		p_prof->offset_left_mm = 0;
 	}
@@ -243,10 +245,10 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	}
 
 	/* free space beyond each edge; a side that runs off the scan has none */
-	p_prof->clear_left_mm = p_prof->left_open ?
-		clearance(grid, d_obs_mm, left_stop, -1, p_prof->x_left_mm) : 0;
-	p_prof->clear_right_mm = p_prof->right_open ?
-		clearance(grid, d_obs_mm, right_stop, +1, p_prof->x_right_mm) : 0;
+	p_prof->clear_left_mm = (int16_t)(p_prof->left_open ?
+		clearance(grid, d_obs_mm, left_stop, -1, p_prof->x_left_mm) : 0);
+	p_prof->clear_right_mm = (int16_t)(p_prof->right_open ?
+		clearance(grid, d_obs_mm, right_stop, +1, p_prof->x_right_mm) : 0);
 }
 
 bool sl_fine_starts(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
