@@ -26,7 +26,8 @@
  *   bits 17-24  highest hump    mm this mission, 0-255 (FR-12)
  *   bit  25     IMU fault       1 from the fault until a calibration passes
  *   bits 26-31  tilt            whole degrees, 0-63
- * Values past a field's range are clamped. */
+ * Values past a field's range are clamped.  Tilt and turn rate for
+ * telemetry (FR-29), with "not available" codes, are in imu_ts.h. */
 #define IMU_W_HUMP_SHIFT	0U
 #define IMU_W_HUMP_BITS		2U
 #define IMU_W_CLASS_SHIFT	2U

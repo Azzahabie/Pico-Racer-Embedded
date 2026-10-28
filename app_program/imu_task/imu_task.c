@@ -47,6 +47,7 @@
 #include "hump.h"
 #include "imu_safety.h"
 #include "imu_class.h"
+#include "imu_ts.h"
 
 #define I2C_DEV		"iica"		/* I2C0: GP16 SDA, GP17 SCL          */
 #define AUTO_INC	0x80		/* ST sub-address MSB: auto-increment */
@@ -70,6 +71,8 @@
 					   CAL_REQ times out after 10 s      */
 #define REINIT_EVERY	100		/* while no data: set up again, 1 s   */
 #define TIMING_REPORTS	10		/* timing line every 10 status lines  */
+#define TS_DS_QUIET	5		/* distance_state silent this many
+					   samples (50 ms): turn rate n/a     */
 
 #define CAL_SAMPLES	100		/* 1 s of samples per attempt         */
 #define CAL_TRIES	5
@@ -116,6 +119,9 @@ LOCAL volatile UW imu_word;		/* hump_state word (imu_task.h):
 					   written whole, by imu_task only  */
 
 EXPORT UW imu_word_read(void)	{ return imu_word; }
+LOCAL volatile uint32_t imu_ts_word = IMU_TS_WORD_NA;	/* imu_ts.h: written
+					   whole, by imu_task only          */
+EXPORT uint32_t imu_ts_read(void)	{ return imu_ts_word; }
 LOCAL BOOL	faulted;		/* Fault (6.4): left only by a
 					   calibration that passes          */
 
@@ -513,6 +519,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	UW	amag = 0, amax;
 	W	dmm;
 	UW	ds, ds_prev, ds_win, ds_pub;
+	UW	ds_upd, ds_quiet = TS_DS_QUIET;	/* samples since it changed */
 	UW	lost, rderr, k, bad;
 	INT	n, i, idle_n = 0;
 	ER	er;
@@ -621,7 +628,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		/* distance_state: count publishes so a stalled motion_task
 		   shows up as ds well under REPORT_SAMPLES. */
 		ds = motion_ds_read();
-		ds_pub += motion_ds_updates(ds, ds_prev);
+		ds_upd = motion_ds_updates(ds, ds_prev);
+		ds_pub += ds_upd;
+		ds_quiet = (ds_upd > 0) ? 0
+			   : (ds_quiet < TS_DS_QUIET) ? ds_quiet + 1 : TS_DS_QUIET;
 		dmm = motion_ds_delta_mm(ds, ds_prev);	/* this sample */
 		ds_prev = ds;
 
@@ -704,6 +714,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				      ? (UW)hump_height_mm() : 0U, hump_get_count(),
 				      hump_get_max_mm(), faulted ? 1U : 0U,
 				      tilt_deg10(safety_tilt_mg()) / 10);
+
+		/* The tilt-state word for the 1 s status line (FR-29,
+		   imu_ts.h): tilt while samples are good, turn rate while
+		   distance_state is updating.  One store, as above. */
+		imu_ts_word = imu_ts_pack(tilt_deg10(safety_tilt_mg()) / 10,
+					  motion_ds_turn_dps(ds),
+					  !safety_no_data(),
+					  ds_quiet < TS_DS_QUIET);
 
 #if IMU_CSV
 		/* One row per sample, for plots and for replaying a run through

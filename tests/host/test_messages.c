@@ -17,6 +17,7 @@
 
 #include "../../app_program/common/messages.h"
 #include "vectors.h"
+#include "../../app_program/imu_task/imu_ts.h"
 
 static int failures;
 static int passes;
@@ -139,6 +140,37 @@ static void test_pack_s(void)
 }
 
 /* 2c. The fault-bit contract with Buddy 5 (schema section 4.1). */
+/* 2d. imu_task's tilt-state word (imu_ts.h) carries S.tlt and S.trn as stored. */
+static void test_imu_ts(void)
+{
+    uint32_t w;
+
+    ok(imu_ts_tilt_raw(IMU_TS_WORD_NA) == COMM_W_S_TLT_NA
+       && imu_ts_turn_raw(IMU_TS_WORD_NA) == COMM_W_S_TRN_NA,
+       "NA word decodes to S's NA codes", "imu_ts NA");
+    ok(IMU_TS_TILT_BITS == COMM_W_S_TLT_BITS && IMU_TS_TURN_BITS == COMM_W_S_TRN_BITS,
+       "same widths as S", "imu_ts widths");
+
+    w = imu_ts_pack(4, -30, true, true);
+    ok(imu_ts_tilt_raw(w) == 4U && imu_ts_turn_raw(w) == 2018U,
+       "tilt 4, turn -30 -> stored 4, 2018 (the section 10 S example)", "imu_ts pack");
+    ok((w >> 18) == 0U, "bits 18-31 zero", "imu_ts spare");
+
+    w = imu_ts_pack(70, 5000, true, true);
+    ok(imu_ts_tilt_raw(w) == 62U && imu_ts_turn_raw(w) == 4095U,
+       "tilt 70 -> 62, turn 5000 -> 2047", "imu_ts clamp high");
+    w = imu_ts_pack(0, -5000, true, true);
+    ok(imu_ts_tilt_raw(w) == 0U && imu_ts_turn_raw(w) == 1U,
+       "turn -5000 -> -2047, never the NA code", "imu_ts clamp low");
+
+    w = imu_ts_pack(10, 100, false, true);
+    ok(imu_ts_tilt_raw(w) == IMU_TS_TILT_NA && imu_ts_turn_raw(w) == 2148U,
+       "tilt not ok -> 63, turn kept", "imu_ts tilt NA");
+    w = imu_ts_pack(10, 100, true, false);
+    ok(imu_ts_tilt_raw(w) == 10U && imu_ts_turn_raw(w) == IMU_TS_TURN_NA,
+       "turn not ok -> 0, tilt kept", "imu_ts turn NA");
+}
+
 static void test_fault_bits(void)
 {
     ok(FAULT_COUNT == 6U && FAULT_ALL == 0x3FU, "six bits, 0x3f", "fault count");
@@ -296,6 +328,7 @@ int main(void)
     test_s_v2_sanity();
     test_s_v5();
     test_pack_s();
+    test_imu_ts();
     test_fault_bits();
     test_h();
     test_vectors();
