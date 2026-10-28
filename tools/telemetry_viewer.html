@@ -173,7 +173,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <label>Port <input name="broker_port" type="number" min="1" max="65535" required></label>
       <label>Car client ID <input name="client_id" required placeholder="UTK_MQTT_CLIENT_ID in config/broker_config.h"></label>
       <label class="check"><input name="run_broker" type="checkbox"> Run the broker inside this viewer
-        <span class="muted">(listens on every network interface at the port above; leave off if run_broker.py is already running)</span></label>
+        <span class="muted">(listens on every network interface at the port above; leave off if another broker is already running)</span></label>
     </fieldset>
     <fieldset>
       <legend>Pico serial console</legend>

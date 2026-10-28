@@ -7,8 +7,7 @@
 
 Opens http://127.0.0.1:8765 and streams three sources into one page:
 
-  mqtt    the car's records, decoded by telemetry_decode (same lines as
-          tools/telemetry_decode.py prints)
+  mqtt    the car's records, decoded by tools/telemetry_decode.py
   serial  the Pico's USB console.  `auto` finds the Pico (USB VID 2E8A) and
           reopens it after every reset.  Needs pyserial.
   broker  optional: an amqtt broker run inside the viewer, with its log.
