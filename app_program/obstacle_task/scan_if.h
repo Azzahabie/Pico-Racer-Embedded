@@ -12,8 +12,11 @@
  *	                 non-blocking; a full queue drops it and comms counts it.
  *	  fault_flg      Buddy 5 (nav_ctrl). scan_task sets / clears only
  *	                 FAULT_SCAN_SENSOR_LOST; the S record carries it.
- *	  mission_state, hump_state: read through callbacks, so the owner's
- *	                 priority-inheritance mutex stays inside the owner's code.
+ *	  mission_state, hump_state: read through callbacks bound in app_main.c,
+ *	                 so scan_task never includes the owner's layout.
+ *	                 Both are one-writer aligned 32-bit words (nav_ctrl_task's
+ *	                 mission_state; Buddy 4's packed hump_state word,
+ *	                 imu_word_read()), so neither read takes a mutex.
  *
  *	FAIL-SAFE MODE: if either motion_flgid or avoid_mbfid is missing,
  *	STOP_SCAN can still be sent when possible, but avoid commands fail
@@ -73,7 +76,7 @@ typedef struct {
 	ID	avoid_mbfid;
 	ID	nav_flgid;
 	bool	(*p_mission_running)(void);	/* NULL = always Running */
-	bool	(*p_hump_active)(void);		/* NULL = never on a hump */
+	bool	(*p_hump_active)(void);		/* hump_state != NONE; NULL = never */
 } scan_if_bind_t;
 
 /* Call BEFORE tk_sta_tsk(obstacle task). Optional. */

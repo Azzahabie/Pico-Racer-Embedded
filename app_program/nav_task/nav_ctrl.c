@@ -262,6 +262,11 @@ LOCAL bool calibrate(void)
 	bool	ok = true;
 	bool	done = false;
 
+	/* A reply that arrived after an earlier attempt timed out must not
+	 * answer this one: drop stale CAL_OK / CAL_FAIL before asking. */
+	(void)tk_clr_flg(g_nav_flgid, ~(NAV_FLG_CAL_OK_IR | NAV_FLG_CAL_OK_IMU |
+					NAV_FLG_CAL_FAIL));
+
 	if(0 < g_nav_bind.ir_flgid) {
 		need |= NAV_FLG_CAL_OK_IR;
 		(void)tk_set_flg(g_nav_bind.ir_flgid, g_nav_bind.cal_req_bit);

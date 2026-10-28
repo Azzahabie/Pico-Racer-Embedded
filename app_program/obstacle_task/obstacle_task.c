@@ -22,7 +22,8 @@
  *	  Planning    continue / bypass / reverse / blocked (FR-17). Bypass:
  *	              clear replies, place command, set CMD, clear STOP_SCAN ->
  *	              Avoiding. Reverse (once): STOP_SCAN stays set -> Reversing.
- *	              Buffer full: keep STOP_SCAN, retry next tick.
+ *	              Buffer full: keep STOP_SCAN, retry each tick, Blocked
+ *	              after t_block. No buffer bound: Blocked at once.
  *	  Reversing   wait REVERSE_DONE -> Coarse Scan with D_obs + reverse.
  *	  Avoiding    keep pinging; 2 close -> STOP_SCAN -> Coarse Scan (re-plan).
  *	              LINE_FOUND -> Monitoring; LINE_LOST -> Idle.
@@ -169,6 +170,8 @@ typedef enum {
  *   bit  7    abort_scan     mission left Running mid-scan
  *   bit  8    lost_in_scan   3 no-echo pings mid-scan
  *   bits 9-10 scan_no_echo   no-echo pings in a row, saturates at 3
+ *   bit  11   cmd_warned     "command not sent" printed this Planning
+ *   bit  12   bench          mode 3: no mission, never abort a scan
  * The scan grid stays uint16_t per slot (Tribunal 1 decision): 12 bits
  * would cover the range but save only ~9 bytes for a shift on every ping. */
 #define CTX_STATE_MASK		0x000FU
@@ -180,6 +183,8 @@ typedef enum {
 #define CTX_NO_ECHO_SHIFT	9U
 #define CTX_NO_ECHO_MAX		3U
 #define CTX_NO_ECHO_MASK	(CTX_NO_ECHO_MAX << CTX_NO_ECHO_SHIFT)
+#define CTX_CMD_WARNED		(1U << 11)
+#define CTX_BENCH		(1U << 12)
 
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
@@ -194,6 +199,9 @@ typedef struct {
 	INT		right_hit;
 	UW		state_us;	/* when the state was entered     */
 	UW		scan_us;	/* when the coarse scan started   */
+	uint32_t	no_echo_slots;	/* this scan: slots that got no echo
+					   pulse (bit = SL_IDX), for print */
+	INT		look_deg;	/* angle the servo was last sent to */
 } scan_ctx_t;
 
 LOCAL scan_state_t ctx_state(const scan_ctx_t *p_ctx)
@@ -312,7 +320,7 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	}
 	ctx_set_state(p_ctx, next);
 	p_ctx->state_us = now_us();
-	ctx_set_flag(p_ctx, CTX_BLOCKED_SENT, false);
+	ctx_set_flag(p_ctx, CTX_BLOCKED_SENT | CTX_CMD_WARNED, false);
 	sl_runs_reset(&p_ctx->runs);
 
 	switch(next) {
@@ -364,6 +372,9 @@ LOCAL uint16_t scan_ping(scan_ctx_t *p_ctx)
 
 	if(US_NO_ECHO == status) {
 		result = SL_NOT_MEASURED;
+		if((p_ctx->look_deg >= -SL_LIMIT_DEG) && (p_ctx->look_deg <= SL_LIMIT_DEG)) {
+			p_ctx->no_echo_slots |= (1UL << SL_IDX(p_ctx->look_deg));
+		}
 		ctx_set_no_echo(p_ctx, (uint8_t)(ctx_no_echo(p_ctx) + 1U));	/* saturates */
 		if(ctx_no_echo(p_ctx) >= SL_N_NO_ECHO) {
 			ctx_set_flag(p_ctx, CTX_LOST_IN_SCAN, true);
@@ -372,7 +383,7 @@ LOCAL uint16_t scan_ping(scan_ctx_t *p_ctx)
 		ctx_set_no_echo(p_ctx, 0U);
 		result = (US_OK == status) ? to_grid(dist_mm) : SL_FAR;
 	}
-	if(!scan_if_mission_running()) {
+	if(!ctx_flag(p_ctx, CTX_BENCH) && !scan_if_mission_running()) {
 		ctx_set_flag(p_ctx, CTX_ABORT_SCAN, true);
 	}
 	return result;
@@ -385,6 +396,7 @@ LOCAL bool scan_ok(const scan_ctx_t *p_ctx)
 
 LOCAL uint16_t look(scan_ctx_t *p_ctx, INT deg)
 {
+	p_ctx->look_deg = deg;
 	servo_move_to(deg);
 	tk_dly_tsk(SERVO_SETTLE_MS);	/* >= 60 ms since the last ping too */
 	return scan_ping(p_ctx);
@@ -422,6 +434,8 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 	INT		idx;
 	INT		deg;
 	uint16_t	dist_mm;
+	int32_t		left_deg;
+	int32_t		right_deg;
 
 	for(idx = 0; idx < SL_SLOTS; idx++) {
 		p_ctx->grid[idx] = SL_NOT_MEASURED;
@@ -431,6 +445,7 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 	p_ctx->left_hit = NO_HIT;
 	p_ctx->right_hit = NO_HIT;
 	p_ctx->scan_us = now_us();
+	p_ctx->no_echo_slots = 0U;
 
 	for(idx = 0; (idx < NUM_COARSE) && scan_ok(p_ctx); idx++) {
 		deg = g_coarse_deg[idx];
@@ -441,6 +456,15 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 				p_ctx->left_hit = deg;
 			}
 			p_ctx->right_hit = deg;
+		}
+	}
+	/* Refine the object in the path, not the outermost hits: with walls
+	 * either side those are the walls, and the edges of the obstacle in
+	 * between would never be measured (width 0, bypass offset too short). */
+	if(scan_ok(p_ctx) && (NO_HIT != p_ctx->left_hit)) {
+		if(sl_fine_starts(p_ctx->grid, d_obs_mm(p_ctx), &left_deg, &right_deg)) {
+			p_ctx->left_hit = (INT)left_deg;
+			p_ctx->right_hit = (INT)right_deg;
 		}
 	}
 }
@@ -454,8 +478,14 @@ LOCAL bool fits_budget(const scan_ctx_t *p_ctx, INT medians_left)
 }
 
 /* Step from start_deg outward (dir = -1 left, +1 right) in 5 deg steps
- * until the first miss, the scan limit, FINE_MAX_STEPS or the budget.
- * Re-measure the last hit angle with a median of 3. */
+ * until the first miss or depth jump (another object), the scan limit,
+ * FINE_MAX_STEPS or the budget. Re-measure the last hit angle with a
+ * median of 3. If the median says the edge is not there after all (the
+ * edge sits at the rim of the beam, so 2 of 3 pings can miss), step back
+ * inward until a ping hits again: otherwise the slots between it and the
+ * centre stay unmeasured and the edge collapses inward, shrinking the
+ * width and the bypass offset (bench, 29 Oct: 200 mm box read as 15 mm,
+ * offset 98 mm where ~200 mm was needed). */
 LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir, INT medians_left)
 {
 	INT		deg = start_deg + (dir * SL_STEP_DEG);
@@ -463,6 +493,7 @@ LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir, INT medians_left
 	INT		steps = 0;
 	bool		edge_found = false;
 	uint16_t	dist_mm;
+	uint16_t	prev_mm = p_ctx->grid[SL_IDX(start_deg)];
 
 	while(!edge_found && scan_ok(p_ctx) && (steps < FINE_MAX_STEPS) &&
 	      (deg >= -SL_LIMIT_DEG) && (deg <= SL_LIMIT_DEG) &&
@@ -474,20 +505,41 @@ LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir, INT medians_left
 			steps++;
 		}
 
-		if(is_hit(p_ctx, dist_mm)) {
+		if(sl_same_object(prev_mm, dist_mm, d_obs_mm(p_ctx))) {
 			last_hit = deg;
+			prev_mm = dist_mm;
 			deg += dir * SL_STEP_DEG;
 		} else if(SL_NOT_MEASURED == dist_mm) {
 			deg += dir * SL_STEP_DEG;	/* no echo here: keep going */
 		} else {
-			edge_found = true;
+			edge_found = true;		/* miss, or a different object */
 		}
 	}
 
 	if(scan_ok(p_ctx)) {
+		p_ctx->look_deg = last_hit;
 		servo_move_to(last_hit);
 		tk_dly_tsk(SERVO_SETTLE_MS);
 		p_ctx->grid[SL_IDX(last_hit)] = median3(p_ctx);
+	}
+
+	steps = 0;
+	deg = last_hit - (dir * SL_STEP_DEG);
+	while(scan_ok(p_ctx) && !is_hit(p_ctx, p_ctx->grid[SL_IDX(last_hit)]) &&
+	      (steps < FINE_MAX_STEPS) &&
+	      (deg >= -SL_LIMIT_DEG) && (deg <= SL_LIMIT_DEG) &&
+	      fits_budget(p_ctx, medians_left - 1)) {
+		dist_mm = p_ctx->grid[SL_IDX(deg)];
+		if(SL_NOT_MEASURED == dist_mm) {
+			dist_mm = look(p_ctx, deg);
+			p_ctx->grid[SL_IDX(deg)] = dist_mm;
+			steps++;
+		}
+		if(is_hit(p_ctx, dist_mm)) {
+			last_hit = deg;			/* the edge, one step in */
+		} else {
+			deg -= dir * SL_STEP_DEG;
+		}
 	}
 }
 
@@ -506,8 +558,11 @@ LOCAL void print_scan(const scan_ctx_t *p_ctx, UW scan_ms)
 	tm_printf((UB *)"[scan] ---- sweep (negative = left), obstacle <= %d mm ----\n",
 		  (INT)d_obs_mm(p_ctx));
 	for(idx = 0; idx < SL_SLOTS; idx++) {
-		if(SL_NOT_MEASURED == p_ctx->grid[idx]) {
-			/* not pinged (or no echo): nothing to print */
+		if((SL_NOT_MEASURED == p_ctx->grid[idx]) &&
+		   (0U != (p_ctx->no_echo_slots & (1UL << idx)))) {
+			tm_printf((UB *)"[scan] angle %d: no echo\n", (INT)SL_DEG(idx));
+		} else if(SL_NOT_MEASURED == p_ctx->grid[idx]) {
+			/* not pinged: nothing to print */
 		} else if(SL_FAR == p_ctx->grid[idx]) {
 			tm_printf((UB *)"[scan] angle %d: far\n", (INT)SL_DEG(idx));
 		} else {
@@ -574,6 +629,30 @@ LOCAL bool scan_failed(scan_ctx_t *p_ctx)
 	return handled;
 }
 
+/* The avoid command could not be placed. STOP_SCAN stays set either way.
+ * Not bound (no avoid_cmd_mbf yet): no retry can succeed, so Blocked
+ * (FR-18: no route -> stop; t_block then pauses the mission). Full: say
+ * so once and retry each tick, up to t_block, then Blocked. */
+LOCAL void cmd_not_sent(scan_ctx_t *p_ctx)
+{
+	if(scan_if_standalone()) {
+		tm_printf((UB *)"[scan] avoid_cmd_mbf not bound: cannot drive the "
+			  "plan, STOP_SCAN kept -> Blocked\n");
+		enter(p_ctx, ST_BLOCKED);
+	} else if(ms_since(p_ctx->state_us) >= (UW)T_BLOCK_MS) {
+		tm_printf((UB *)"[scan] avoid_cmd_mbf full for %d ms -> Blocked\n",
+			  (INT)T_BLOCK_MS);
+		enter(p_ctx, ST_BLOCKED);
+	} else {
+		if(!ctx_flag(p_ctx, CTX_CMD_WARNED)) {
+			tm_printf((UB *)"[scan] avoid_cmd_mbf full: STOP_SCAN kept, "
+				  "retrying each tick\n");
+			ctx_set_flag(p_ctx, CTX_CMD_WARNED, true);
+		}
+		(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
+	}
+}
+
 LOCAL void do_planning(scan_ctx_t *p_ctx)
 {
 	avoid_cmd_t	cmd;
@@ -602,9 +681,7 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 			ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, false);
 			enter(p_ctx, ST_AVOIDING);
 		} else {
-			tm_printf((UB *)"[scan] avoid_cmd_mbf unavailable/full: "
-				  "STOP_SCAN kept, retry\n");
-			(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
+			cmd_not_sent(p_ctx);
 		}
 		break;
 
@@ -618,9 +695,7 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 			ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, true);
 			enter(p_ctx, ST_REVERSING);
 		} else {
-			tm_printf((UB *)"[scan] avoid_cmd_mbf unavailable/full: "
-				  "STOP_SCAN kept, retry\n");
-			(void)scan_if_wait(SCAN_FLG_TICK, TMO_FEVR);
+			cmd_not_sent(p_ctx);
 		}
 		break;
 
@@ -657,6 +732,8 @@ LOCAL void scan_task_run(void)
 	ctx.bits = 0U;				/* Idle, every flag clear */
 	ctx.action = SL_CONTINUE;
 	ctx.scan_us = now_us();
+	ctx.no_echo_slots = 0U;
+	ctx.look_deg = 0;
 	enter(&ctx, ST_IDLE);			/* entry actions: centre, clear */
 
 	while(1) {
@@ -791,8 +868,10 @@ LOCAL void scan_test(void)
 	tm_printf((UB *)"[scan] mode 3: scan every 3 s, servo GP%d, TRIG GP%d ECHO GP%d\n",
 		  (INT)SERVO_PIN, (INT)US_TRIG_PIN, (INT)US_ECHO_PIN);
 
-	ctx.bits = 0U;				/* Idle, every flag clear */
+	ctx.bits = CTX_BENCH;			/* no mission in mode 3 */
 	ctx.action = SL_CONTINUE;
+	ctx.no_echo_slots = 0U;
+	ctx.look_deg = 0;
 	while(1) {
 		coarse_scan(&ctx);
 		if(ctx_flag(&ctx, CTX_LOST_IN_SCAN)) {
@@ -820,6 +899,7 @@ LOCAL void range_test(void)
 {
 	UW round_num = 0;
 
+	servo_init();				/* centred: ping straight ahead */
 	us_init();
 	tm_printf((UB *)"[obstacle] HC-SR04 TRIG=GP%d ECHO=GP%d, echo by %s\n",
 		  (INT)US_TRIG_PIN, (INT)US_ECHO_PIN, US_USE_IRQ ? "interrupt" : "polling");

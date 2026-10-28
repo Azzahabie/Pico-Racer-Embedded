@@ -457,6 +457,15 @@ LOCAL T_CTSK ctsk_line = {
 #endif
 
 
+/* Buddy 5 <- Buddy 4: scan_task's "on a hump" test (Statechart 5,
+ * N_hump = 4).  imu_task publishes hump_state in its packed word, one
+ * writer and one aligned load, so no mutex.  Climbing or descending is a
+ * hump; NONE is not. */
+LOCAL bool scan_on_hump(void)
+{
+	return (0U != IMU_W_GET(imu_word_read(), HUMP));
+}
+
 /* ------------------------------------------------------------------ *
  *  Entry point
  * ------------------------------------------------------------------ */
@@ -532,6 +541,7 @@ EXPORT INT usermain(void)
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
+			.p_hump_active		= scan_on_hump,
 			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 		};
 		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the

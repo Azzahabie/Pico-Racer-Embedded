@@ -60,9 +60,14 @@
 					   different objects, not one */
 #define SL_CLEAR_OPEN_MM	9999	/* clearance when no other object is seen */
 
-/* Beam spread: the HC-SR04 cone (~15 deg, +/-7.5) makes edges read too far
- * out by about d * tan(7.5 deg) = d * 0.1317. Replace with a bench value. */
-#define SL_BEAM_CORR_PER_1000	132
+/* Beam spread: the HC-SR04 cone makes edges read too far out, by about
+ * d * k. Theory (+/-7.5 deg cone) gave k = 0.132; bench value 0.080
+ * (29 Oct, NFR-20, boxes centred at ~20 cm, mode 3): 0.132 read a 200 mm
+ * box 25-39 % narrow (1 of 3 within 30 %, and a narrow width shortens the
+ * bypass offset); 0.080 passed both the 100 mm box (4/5) and the 200 mm
+ * box (3/3). The 5-deg steps already land inside the true edge, which is
+ * why the full theoretical correction is too much. */
+#define SL_BEAM_CORR_PER_1000	80
 
 /* ---- "N in a row" rules (Statechart 5) ---- */
 #define SL_N_STOP		2	/* close readings to set STOP_SCAN           */
@@ -125,6 +130,19 @@ int32_t		sl_sin1000(int32_t deg);
  * obstacle; a depth jump > SL_DEPTH_JUMP_MM starts a different object. */
 void		sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 			   sl_profile_t *p_prof);
+
+/* Where the fine scan starts (FR-15), from the coarse grid: the coarse
+ * edges of the object in the car's path, not the outermost coarse hits.
+ * With other objects either side, the outermost hits are those objects,
+ * and fine-stepping outward from them never measures the edges of the
+ * one in the way (its width then reads 0 and the bypass offset is too
+ * short). Returns false if there is no hit. */
+bool		sl_fine_starts(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+			       int32_t *p_left_deg, int32_t *p_right_deg);
+
+/* Fine scan stepping outward: is this reading still the same object as
+ * the previous hit (a hit, with no depth jump > SL_DEPTH_JUMP_MM)? */
+bool		sl_same_object(uint16_t prev_mm, uint16_t dist_mm, int32_t d_obs_mm);
 
 /* Choose the action from a profile (FR-17, NFR-07: larger clearance side). */
 sl_action_t	sl_decide(const sl_profile_t *p_prof, bool reverse_tried);

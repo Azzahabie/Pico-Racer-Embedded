@@ -242,6 +242,37 @@ int main(void)
 		check("4 bytes of counters now fit in 2", 2U == sizeof(sl_runs_t));
 	}
 
+	/* 15. fine scan starts at the object in the path, not the outermost
+	 * coarse hits. Box ahead, walls either side: starting from the walls
+	 * (+/-45) never measured the box edges, so its width read 0 and the
+	 * bypass offset came out 94 mm for a box 50 mm either side of centre
+	 * (bench simulation, layout 8). */
+	printf("Test 15: fine scan starts between two walls (FR-15, FR-18)\n");
+	{
+		int32_t	left_deg = 99;
+		int32_t	right_deg = 99;
+
+		grid_clear(grid);
+		set(grid, -45, 300);		/* wall, left                  */
+		set(grid, -25, SL_FAR);
+		set(grid,   0, 200);		/* box straight ahead          */
+		set(grid,  25, SL_FAR);
+		set(grid,  45, 290);		/* wall, right                 */
+		check("fine scan starts at the box (0..0), not the walls",
+		      sl_fine_starts(grid, SL_D_OBS_MM, &left_deg, &right_deg) &&
+		      0 == left_deg && 0 == right_deg);
+		grid_clear(grid);
+		check("no hit: no fine start",
+		      !sl_fine_starts(grid, SL_D_OBS_MM, &left_deg, &right_deg));
+		check("same object: small depth change",
+		      sl_same_object(200U, 230U, SL_D_OBS_MM));
+		check("different object: depth jump over 150 mm",
+		      !sl_same_object(200U, 380U, SL_D_OBS_MM));
+		check("a miss ends the object",
+		      !sl_same_object(200U, SL_FAR, SL_D_OBS_MM) &&
+		      !sl_same_object(200U, 450U, SL_D_OBS_MM));
+	}
+
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
 	return g_fails ? 1 : 0;

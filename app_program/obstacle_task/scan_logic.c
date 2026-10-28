@@ -249,6 +249,26 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 		clearance(grid, d_obs_mm, right_stop, +1, p_prof->x_right_mm) : 0;
 }
 
+bool sl_fine_starts(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+		    int32_t *p_left_deg, int32_t *p_right_deg)
+{
+	sl_profile_t prof;
+
+	/* the same object rule sl_profile() uses, applied to the coarse grid */
+	sl_profile(grid, d_obs_mm, &prof);
+	if(prof.found) {
+		*p_left_deg = prof.left_deg;
+		*p_right_deg = prof.right_deg;
+	}
+	return prof.found;
+}
+
+bool sl_same_object(uint16_t prev_mm, uint16_t dist_mm, int32_t d_obs_mm)
+{
+	return is_hit(dist_mm, d_obs_mm) &&
+	       (abs_val((int32_t)dist_mm - (int32_t)prev_mm) <= SL_DEPTH_JUMP_MM);
+}
+
 sl_action_t sl_decide(const sl_profile_t *p_prof, bool reverse_tried)
 {
 	bool		ok_left;

@@ -25,8 +25,13 @@
  * Fix small errors here. */
 #define SERVO_TRIM_US		55	/* +/- tens of us to make 0 deg = straight ahead */
 #define SERVO_DIR		-1	/* 1 = normal, -1 = servo mounted mirrored       */
-#define SERVO_MOVE_STEP_DEG	5	/* ramp large movements instead of jumping       */
-#define SERVO_MOVE_STEP_MS	50	/* pause between ramp steps; slower sweep        */
+/* Ramp: 2 deg every 20 ms = ~100 deg/s, one step per 50 Hz servo frame.
+ * Same speed as the old 5 deg / 50 ms, in smaller steps that jerk the
+ * sensor mount less. 2 deg / 30 ms (67 deg/s) took a bench scan to
+ * 5941 ms, over the 5500 ms budget (NFR-07): keep "scan took ... ms"
+ * inside it, or fine_scan() stops early and the width is less accurate. */
+#define SERVO_MOVE_STEP_DEG	2	/* ramp large movements instead of jumping       */
+#define SERVO_MOVE_STEP_MS	20	/* pause between ramp steps (>= one 20 ms frame) */
 
 EXPORT void	servo_init(void);
 EXPORT UW	servo_set_angle(INT angle_deg);	/* returns pulse in us */

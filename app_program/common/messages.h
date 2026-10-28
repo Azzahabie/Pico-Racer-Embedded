@@ -22,7 +22,13 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <stddef.h>
+
+/* No <stddef.h>: its size_t clashes with tk/syslib.h on the target (see
+   gpio_irq.c).  NULL the same way tk/typedef.h does, so the PC test still
+   builds without the kernel headers. */
+#ifndef NULL
+#define NULL 0
+#endif
 
 /* ------------------------------------------------------------------ *
  *  motion_flg bits (Buddy 2 / Buddy 5 integration)
