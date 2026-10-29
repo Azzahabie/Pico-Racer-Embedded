@@ -161,10 +161,9 @@ of the latest value per source**, so a late subscriber waits at most one second
 for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 
 > **Built 2026-10-22** (`comm_w_pack_s()`, published by `comms_task` right after
-> each `H`, on the same `s` counter). Until the sources exist, two fields are
-> fixed: **`faults` is 0** — including the Wi-Fi-loss bit — until Buddy 5's
-> fault flag exists (§12 item 19), and **`mpv` is 0** until the `map` command
-> (M8) is built. A field no event has reported yet keeps its initial value:
+> each `H`, on the same `s` counter). **`faults`** is copied from Buddy 5's
+> fault flag before each `S`, with the Wi-Fi-loss latch added (§4.1; since
+> 2026-10-29). **`mpv` is 0** until the `map` command (M8) is built. A field no event has reported yet keeps its initial value:
 > `bar` 31 (none), `dev` 128 (0 tenths), `tlt` 63 and `trn` 0 (not
 > available), everything else 0.
 
@@ -256,14 +255,37 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 
 > **Which bits are wired.** A bit reads 0 until its owner's code sets it, so
 > `faults = 0` means "no fault reported", not "every subsystem checked". As of
-> 2026-10-23 **none are wired**: the flag itself does not exist yet (§12
-> item 19).
+> 2026-10-29 bits **2** (IMU), **3** (scan sensor lost) and **5** (Wi-Fi loss)
+> are wired; bits 0, 1 and 4 are not yet.
 
 > **The Wi-Fi-loss bit and the wire.** An `S` line cannot be published while
 > Wi-Fi is down, so a live "Wi-Fi lost" bit would never reach the laptop.
-> **Proposed:** `comms_task` keeps bit 5 set in its published copy until the
-> first `S` after reconnect has carried it, then clears it. The bit on the
-> kernel flag itself follows the link state in real time.
+> **Built 2026-10-29** (`comms_task.c`, `wifi_loss_step()`): `comms_task` keeps
+> bit 5 set in its published copy until an `S` queued while connected has
+> carried it, then clears it. The bit on the kernel flag follows the session,
+> checked once per `S` tick.
+>
+> - **What counts as a loss**, either of:
+>   - **the MQTT session is not `CONNECTED`.** The radio drops the session
+>     within one 2 ms poll when the link or the lease goes, so this covers
+>     Wi-Fi, DHCP lease **and a broker outage** with Wi-Fi still up. The name
+>     says Wi-Fi; on the laptop it is the same outage.
+>   - **a stall:** `S` refused by the full outbound queue on **2 ticks in a
+>     row** while the session still says `CONNECTED`. A short AP outage
+>     (about 20 s, tested 2026-10-29) neither took the link down nor ended the
+>     TCP session; records only stopped leaving, and the first rule never
+>     fired. Refusals before the first connect, or while not
+>     `CONNECTED`, do not count. The stall ends after `S` is queued on 2 ticks
+>     in a row, so a partial drain does not flicker it. Detection waits for
+>     lwIP's TCP send buffer to fill: about 10 s after the AP went in that
+>     test. On a stall `comms_task` also asks the radio to reopen the session
+>     (`cyw43_utk_mqtt_restart()`), so the car does not wait out the 90 s
+>     keep-alive timeout (`NETWORKING.md` §5.1); from then on the first rule
+>     (not `CONNECTED`) holds the bit.
+> - **Never before the first connect.** A loss means the link was had and lost,
+>   so the first `S` of a run does not carry bit 5.
+> - **Drops shorter than one tick** still latch the bit: `comms_task` also
+>   watches the radio's lost-session counter (`cyw43_utk_mqtt_sessions_lost()`).
 
 ---
 
@@ -580,14 +602,14 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 9 | A compiled-in default table | §8.3 | to specify with Buddy 3 |
 | 10 | **Every field range and width** | §4–§8 | *new (Tribunal 1).* Proposed in `packed_size.py`; agree with each producer (Tribunal roadmap step 2). *v3:* Buddy 2's motion record is now the motion body (§5.1); owners change their own kind through §5.2 |
 | 11 | ~~**Fault-bit positions**~~ | §4.1 | **closed by v4 (2026-10-23):** agreed with Buddy 5 — bits 0–4 as Buddy 5 proposed, Wi-Fi loss at bit 5 and report-only; names in `messages.h` |
-| 12 | **Wi-Fi-loss bit latched until reported** | §4.1 | *new (Tribunal 1).* Latch bit 5 in `comms_task`'s published copy |
+| 12 | ~~**Wi-Fi-loss bit latched until reported**~~ | §4.1 | **closed 2026-10-29:** built in `comms_task` (§4.1, "The Wi-Fi-loss bit and the wire") |
 | 13 | **`up` as ms since boot (32 bits) or since run start (19 bits)** | §3 | *new (Tribunal 1).* Keep 32; 19 saves a byte but changes meaning |
 | 14 | **`dst`, `hgt`, `obs` at 8 bits** | §4 | *new (Tribunal 1).* Clamped; widen if a measured range exceeds 255 |
 | 15 | **Motion `speed_l`, `speed_r`, `ovf`** | §5.1 | *new (v3).* **PLACEHOLDER** widths (8, 8, 1) proposed by Buddy 1; pending unit and range from Buddy 2 |
 | 16 | **Tilt and encoder counts** | §4, §5.1 | *new (v3).* **Tilt and turn rate closed by v5 (2026-10-28):** `S.tlt` and `S.trn` (FR-29), ranges from Buddy 4, read from Buddy 4's tilt-state word. **Encoder counts (FR-23) still open**, pending range from Buddy 2 |
 | 17 | **Motion `fault` vs. `S.faults`** | §4.1, §5.1 | *new (v3).* The motion event's `fault` bits record the faults **at the moment of that event**; the `S` fault bitmask is the **current state**. They can differ, and both are kept |
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |
-| 19 | **`S.faults` is published as 0** | §4, §4.1 | *new (2026-10-22).* Until Buddy 5's fault event flag exists, `comms_task` has no bitmask to copy; the Wi-Fi-loss bit (item 12) is added with it |
+| 19 | ~~**`S.faults` is published as 0**~~ | §4, §4.1 | **closed 2026-10-29:** Buddy 5's fault flag is on master; `comms_task` copies `fault_bits()` into each `S`, plus the Wi-Fi-loss latch (item 12) |
 | 20 | **Outbound drops on the wire** | §3, §4 | *new (2026-10-23).* `drp` counts intake drops only. Goal: a separate **wrapping** outbound-drop counter in `S` (e.g. 8 bits, the reader takes differences across a gap), so the laptop can account for every lost record. Not in v5: adding it makes `S` 18 → 19 B and `D` 23 → 24 B, exactly the new record limit. A saturating 4-bit field would not work: every boot drops ~30 before the first connect |
 
 ---

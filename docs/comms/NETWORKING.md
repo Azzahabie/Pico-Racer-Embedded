@@ -239,6 +239,22 @@ exactly 1000 ms apart in T5), with the radio retrying on the same core.
   detection (≈ 5–6 s off every lease), shorten the lease timeout, and the
   radio's link-loss timeout (not yet checked for the CYW43439).
 
+**Short AP outage (2026-10-29).** The AP's SSID was switched off for 20–30 s
+with the Wi-Fi toggle in the router's web interface (ASUS); after toggle-on
+the SSID takes ~18 s to answer joins. Twice the outage did **not** take the
+link down: no `link DOWN`, the MQTT session stayed `CONNECTED`, and records
+simply stopped leaving. Left alone, the stalled session moved again 28 s after
+toggle-on in one test, and in the other waited out the MQTT keep-alive timeout
+(1.5 × `UTK_MQTT_KEEPALIVE_S` 60 = 90 s), 64 s after toggle-on. **Fix:** `comms_task`'s stall rule (`S` refused on 2 ticks in a row
+while `CONNECTED`, `MQTT_SCHEMA.md` §4.1) calls `cyw43_utk_mqtt_restart()`. That
+only sets a flag; the radio task's next poll drops the session and reconnects
+through the normal back-off (2 s, 5 s connect timeout, doubling to 15 s).
+Tested once (2026-10-29): stall seen ~6 s after the AP went off, session
+dropped 0.9 s after the request, reconnected ~3 s after the AP answered joins
+again (21.6 s after toggle-on). In that run the radio also reported
+`link-lost` 4 s later, so the silent-stall case (link never down) is still to
+re-test; the same toggle produces it only some of the time.
+
 **Telemetry while offline:** every record produced before the first connect or
 during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
 `H` + `S`), and the ~6 records that fit are delivered late on reconnect. These

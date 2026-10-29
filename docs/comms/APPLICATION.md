@@ -120,8 +120,9 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       message sizes, then switch to the **packed binary** records — Week 13
       needs the before-and-after comparison.
 - [ ] *(Tribunal 1)* Write the **laptop decoder** (Python) for schema v2.
-- [ ] *(Tribunal 1)* Set the **Wi-Fi-loss fault bit** from the connection state
-      and publish the fault bitmask in every `S` record.
+- [x] *(Tribunal 1)* Set the **Wi-Fi-loss fault bit** from the connection state
+      and publish the fault bitmask in every `S` record. *Done 2026-10-29
+      (`MQTT_SCHEMA.md` §4.1).*
 
 ### M8 — Command channel
 - [ ] Subscribe to a command topic and dispatch by message type.

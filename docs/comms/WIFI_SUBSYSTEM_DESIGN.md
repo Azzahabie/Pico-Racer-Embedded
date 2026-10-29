@@ -443,7 +443,10 @@ Tribunal 1:
   separate event-flag bits, so the brake path is unchanged.
 - **Wire caveat:** an `S` line cannot be sent while Wi-Fi is down, so the
   published copy of the Wi-Fi-loss bit is latched until the first `S` after
-  reconnect has carried it (proposed, `MQTT_SCHEMA.md` §12 item 12).
+  reconnect has carried it (built 2026-10-29; the rules, including "a broker
+  outage counts", "a stalled session counts" and "nothing before the first
+  connect", are in
+  `MQTT_SCHEMA.md` §4.1).
 
 > **Proposal, not scripture.** The field meanings are yours and the team's to fix
 > — the value of the table is that it makes the *shape* concrete enough to argue
