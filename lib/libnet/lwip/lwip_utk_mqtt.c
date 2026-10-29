@@ -9,7 +9,10 @@
  * One client, one broker connection for the whole run: wait for an address,
  * connect, publish whatever the radio task offers, and when the session dies
  * back off and connect again (docs/comms/WIFI_SUBSYSTEM_DESIGN.md sections
- * 6.2 and 10.1).  The subscription/command side is a later deliverable.
+ * 6.2 and 10.1).  On every new session it subscribes to the command topics
+ * (lwIP always connects with a clean session, so subscriptions do not
+ * survive a reconnect) and hands each inbound message, copied, to the
+ * function the radio task registered (design section 9.3).
  *
  * Like every other lwIP client here it is driven from a single poll entry
  * point, called only by the radio-owner task: lwIP is NO_SYS, so its callbacks
@@ -54,6 +57,12 @@ static const char *const topic_name[LWIP_UTK_MQTT_TOPIC_COUNT] = {
     UTK_MQTT_TOPIC_PREFIX "/state",
 };
 
+/* Indexed by LWIP_UTK_MQTT_IN_*. */
+static const char *const in_topic_name[LWIP_UTK_MQTT_IN_COUNT] = {
+    UTK_MQTT_TOPIC_PREFIX "/cmd",
+    UTK_MQTT_TOPIC_PREFIX "/map",
+};
+
 static T_LWIP_UTK_MQTT_STATUS mqtt_status = {
     .init_result = ERR_VAL,
     .connect_request = ERR_VAL,
@@ -77,6 +86,15 @@ static uint8_t pending;
 static uint32_t pending_topic;
 static uint32_t pending_length;
 static uint8_t pending_payload[LWIP_UTK_MQTT_PAYLOAD_MAX];
+
+/* The inbound message being received.  lwIP's pointers die when its callback
+   returns, so the bytes are copied here as they arrive. */
+static lwip_utk_mqtt_inbound_fn inbound_fn;
+static uint32_t in_topic;
+static uint32_t in_length;
+static uint8_t in_bad;
+static uint8_t in_payload[LWIP_UTK_MQTT_IN_MAX];
+static uint8_t sub_pending;      /* bit per LWIP_UTK_MQTT_IN_*: SUBACK awaited */
 
 static void enter(uint32_t state, uint32_t now)
 {
@@ -137,6 +155,75 @@ static void mqtt_publish_cb(void *arg, err_t result)
     }
 }
 
+/* Inbound: topic first, then the data in one or more pieces, the last one
+   flagged.  Anything not on our two topics, empty, or longer than
+   LWIP_UTK_MQTT_IN_MAX is counted and dropped whole. */
+static void mqtt_inpub_cb(void *arg, const char *topic, u32_t tot_len)
+{
+    uint32_t i;
+
+    (void)arg;
+    in_length = 0;
+    in_bad = 1;
+    for(i = 0; i < LWIP_UTK_MQTT_IN_COUNT; i++) {
+        if(strcmp(topic, in_topic_name[i]) == 0) {
+            in_topic = i;
+            in_bad = 0;
+        }
+    }
+    if(tot_len == 0U || tot_len > LWIP_UTK_MQTT_IN_MAX) in_bad = 1;
+}
+
+static void mqtt_indata_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
+{
+    (void)arg;
+    if(!in_bad) {
+        if(in_length + len > LWIP_UTK_MQTT_IN_MAX) {
+            in_bad = 1;
+        } else {
+            memcpy(&in_payload[in_length], data, len);
+            in_length += len;
+        }
+    }
+    if((flags & MQTT_DATA_FLAG_LAST) == 0U) return;
+
+    if(in_bad || in_length == 0U) {
+        mqtt_status.inbound_rejected++;
+    } else if(inbound_fn == NULL
+              || inbound_fn(in_topic, in_payload, in_length) != 0) {
+        mqtt_status.inbound_dropped++;
+    } else {
+        mqtt_status.inbound_received++;
+    }
+    in_bad = 1;     /* a stray data call without a new topic is rejected */
+}
+
+/* SUBACK.  arg carries the topic index. */
+static void mqtt_sub_cb(void *arg, err_t result)
+{
+    uint32_t topic = (uint32_t)(uintptr_t)arg;
+
+    sub_pending &= (uint8_t)~(1U << topic);
+    mqtt_status.subscribe_result = (int32_t)result;
+    if(result == ERR_OK) mqtt_status.subscribed |= 1U << topic;
+}
+
+/* Ask for each subscription not yet held or awaited.  ERR_MEM (no free
+   request slot) is retried on the next poll. */
+static void subscribe_missing(void)
+{
+    uint32_t i;
+    err_t result;
+
+    for(i = 0; i < LWIP_UTK_MQTT_IN_COUNT; i++) {
+        if((mqtt_status.subscribed | sub_pending) & (1U << i)) continue;
+        result = mqtt_subscribe(mqtt_client, in_topic_name[i], 1,
+                                mqtt_sub_cb, (void *)(uintptr_t)i);
+        mqtt_status.subscribe_result = (int32_t)result;
+        if(result == ERR_OK) sub_pending |= (uint8_t)(1U << i);
+    }
+}
+
 static void initialize(void)
 {
     if(!ip4addr_aton(UTK_MQTT_BROKER_ADDRESS, &mqtt_broker)
@@ -148,6 +235,10 @@ static void initialize(void)
 
     mqtt_client = mqtt_client_new();
     mqtt_status.init_result = (mqtt_client == NULL) ? ERR_MEM : ERR_OK;
+    if(mqtt_client != NULL) {
+        mqtt_set_inpub_callback(mqtt_client, mqtt_inpub_cb, mqtt_indata_cb,
+                                NULL);
+    }
 }
 
 static void start_connect(uint32_t now)
@@ -185,7 +276,8 @@ static void publish_pending(void)
     mqtt_status.publish_attempts++;
     result = mqtt_publish(mqtt_client, topic_name[pending_topic],
                           pending_payload, (u16_t)pending_length,
-                          0, 0, mqtt_publish_cb, NULL);
+                          0, (pending_topic == LWIP_UTK_MQTT_TOPIC_STATE) ? 1 : 0,
+                          mqtt_publish_cb, NULL);   /* D on state is retained */
     mqtt_status.publish_result = result;
     if(result == ERR_MEM) return;   /* ring buffer full: retry next poll */
 
@@ -249,6 +341,8 @@ void lwip_utk_mqtt_poll(struct netif *netif)
             back_off(now);
         } else if(mqtt_client_is_connected(mqtt_client)) {
             mqtt_status.backoff_ms = UTK_MQTT_BACKOFF_FIRST_MS;
+            mqtt_status.subscribed = 0;     /* clean session: none held */
+            sub_pending = 0;
             enter(LWIP_UTK_MQTT_CONNECTED, now);
         }
         break;
@@ -262,8 +356,9 @@ void lwip_utk_mqtt_poll(struct netif *netif)
            || !mqtt_client_is_connected(mqtt_client)) {
             restart_requested = 0;
             back_off(now);
-        } else if(pending) {
-            publish_pending();
+        } else {
+            subscribe_missing();
+            if(pending) publish_pending();
         }
         break;
 
@@ -287,6 +382,11 @@ void lwip_utk_mqtt_poll(struct netif *netif)
 void lwip_utk_mqtt_request_restart(void)
 {
     restart_requested = 1;
+}
+
+void lwip_utk_mqtt_set_inbound(lwip_utk_mqtt_inbound_fn fn)
+{
+    inbound_fn = fn;
 }
 
 /* True when a record handed over now would be published immediately. */

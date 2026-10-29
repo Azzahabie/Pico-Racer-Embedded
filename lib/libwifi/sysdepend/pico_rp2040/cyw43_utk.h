@@ -237,6 +237,10 @@ typedef struct {
     volatile uint32_t mqtt_connect_ms;
     volatile uint32_t mqtt_backoff_ms;
     volatile uint32_t mqtt_queue_dropped;  /* sends refused: queue full / not ready */
+    volatile uint32_t mqtt_subscribed;     /* bit 0 cmd, bit 1 map, this session */
+    volatile uint32_t mqtt_in_received;    /* inbound messages put in the mailbox */
+    volatile uint32_t mqtt_in_rejected;    /* unknown topic, empty or too long  */
+    volatile uint32_t mqtt_in_dropped;     /* inbound mailbox full              */
     uint8_t mqtt_broker[4];
     uint16_t mqtt_port;
     uint8_t mqtt_payload_len;
@@ -266,11 +270,25 @@ void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status);
 /* 1 while the MQTT session is CONNECTED.  Wi-Fi or lease loss drops the
    session within one poll, so 0 covers link, lease and broker. */
 int cyw43_utk_mqtt_connected(void);
+/* The session state, CYW43_MQTT_* (one word, no snapshot). */
+uint32_t cyw43_utk_mqtt_state(void);
 /* Sessions lost since boot (wraps); a change shows a drop between reads. */
 uint32_t cyw43_utk_mqtt_sessions_lost(void);
 /* Ask the radio task to drop a CONNECTED session and reconnect (a stalled
    session that still looks connected).  Never blocks; no-op without MQTT. */
 void cyw43_utk_mqtt_restart(void);
+
+/* Inbound commands (MQTT_SCHEMA.md section 8), for comms_task.  take_cmd
+   never waits: it returns the payload length and sets *topic to
+   CYW43_MQTT_IN_*, or a negative kernel error (E_TMOUT: none waiting).
+   payload must hold CYW43_MQTT_IN_MAX bytes. */
+int32_t cyw43_utk_mqtt_take_cmd(uint32_t *topic, uint8_t *payload);
+uint32_t cyw43_utk_mqtt_in_refused(void);   /* refused by the radio, since boot */
+
+/* For the D snapshot (MQTT_SCHEMA.md section 7). */
+int32_t cyw43_utk_rssi(void);               /* dBm at the last join */
+uint32_t cyw43_utk_ip4(void);               /* first octet in the low byte */
+uint32_t cyw43_utk_mqtt_queue_depth(void);  /* records in the outbound queue */
 void cyw43_utk_task(int32_t stacd, void *exinf);
 void cyw43_utk_link_state_changed(int up);
 

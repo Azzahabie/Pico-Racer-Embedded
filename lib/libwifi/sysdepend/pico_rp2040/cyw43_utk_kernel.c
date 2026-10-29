@@ -89,12 +89,91 @@ EXPORT uint32_t cyw43_utk_mqtt_dropped(void)
 {
     return mqtt_dropped;
 }
+
+/* Records waiting in the outbound queue, for D's qd field. */
+EXPORT uint32_t cyw43_utk_mqtt_queue_depth(void)
+{
+    T_RMBF rmbf;
+
+    if(mqtt_mbfid <= 0 || tk_ref_mbf(mqtt_mbfid, &rmbf) < E_OK) return 0;
+    return (UW)(sizeof mqtt_mbf_buf - (UW)rmbf.frbufsz) / MQTT_MBF_SLOT;
+}
+
+/* Inbound mailbox (tele_rx_mbfid): radio task -> comms_task, created with the
+ * outbound queue for the same reason (design decision 25).  A message is
+ * byte 0 = CYW43_MQTT_IN_*, then the payload; the copy is made here because
+ * lwIP's pointer dies when its callback returns (design section 9.3). */
+#define MQTT_IN_MSG_MAX  (1 + CYW43_MQTT_IN_MAX)
+#define MQTT_IN_SLOT     (4 + ((MQTT_IN_MSG_MAX + 3) & ~3))
+
+LOCAL UW mqtt_in_buf[(CYW43_MQTT_IN_DEPTH * MQTT_IN_SLOT) / sizeof(UW)];
+LOCAL ID mqtt_in_mbfid;
+
+LOCAL ER create_mqtt_inbox(void)
+{
+    T_CMBF cmbf = {0};
+
+    cmbf.mbfatr = TA_TFIFO;
+    cmbf.bufsz = sizeof mqtt_in_buf;
+    cmbf.maxmsz = MQTT_IN_MSG_MAX;
+    cmbf.bufptr = mqtt_in_buf;
+#if USE_OBJECT_NAME
+    cmbf.dsname = (UB*)"mqttin";
+#endif
+    mqtt_in_mbfid = tk_cre_mbf(&cmbf);
+    return (mqtt_in_mbfid < E_OK) ? mqtt_in_mbfid : E_OK;
+}
+
+/* Radio task only, inside lwIP's data callback: never waits.  Returns 0 when
+   queued, or a negative error (E_TMOUT: mailbox full). */
+EXPORT int32_t cyw43_utk_mqtt_post_cmd(uint32_t topic, const uint8_t *payload,
+                                       uint32_t length)
+{
+    UB msg[MQTT_IN_MSG_MAX];
+
+    if(topic > CYW43_MQTT_IN_MAP || payload == NULL || length == 0
+       || length > CYW43_MQTT_IN_MAX) {
+        return E_PAR;
+    }
+    if(mqtt_in_mbfid <= 0) return E_NOEXS;
+    msg[0] = (UB)topic;
+    for(UW i = 0; i < length; i++) msg[1 + i] = payload[i];
+    return tk_snd_mbf(mqtt_in_mbfid, msg, (INT)(1 + length), TMO_POL);
+}
+
+/* comms_task: take the next command without waiting.  Returns the payload
+   length, or a negative error (E_TMOUT: none waiting). */
+EXPORT int32_t cyw43_utk_mqtt_take_cmd(uint32_t *topic, uint8_t *payload)
+{
+    UB msg[MQTT_IN_MSG_MAX];
+    INT size;
+
+    if(mqtt_in_mbfid <= 0) return E_NOEXS;
+    size = tk_rcv_mbf(mqtt_in_mbfid, msg, TMO_POL);
+    if(size < E_OK) return size;
+    if(size < 2) return E_OBJ;   /* cannot happen: post checks the length */
+
+    *topic = msg[0];
+    for(INT i = 1; i < size; i++) payload[i - 1] = msg[i];
+    return size - 1;
+}
 #else
 EXPORT int32_t cyw43_utk_mqtt_send(uint32_t topic, const uint8_t *payload,
                                    uint32_t length)
 {
     (void)topic; (void)payload; (void)length;
     return E_NOEXS;
+}
+
+EXPORT int32_t cyw43_utk_mqtt_take_cmd(uint32_t *topic, uint8_t *payload)
+{
+    (void)topic; (void)payload;
+    return E_NOEXS;
+}
+
+EXPORT uint32_t cyw43_utk_mqtt_queue_depth(void)
+{
+    return 0;
 }
 #endif
 
@@ -129,6 +208,8 @@ EXPORT ER cyw43_utk_start(void)
 #if TM_WIFI_MQTT
     {
         ER er = create_mqtt_queue();
+        if(er < E_OK) return er;
+        er = create_mqtt_inbox();
         if(er < E_OK) return er;
     }
 #endif

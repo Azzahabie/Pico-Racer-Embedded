@@ -267,11 +267,16 @@ typedef char cyw43_mqtt_ids_match[
 	 && LWIP_UTK_MQTT_CONNECTING == CYW43_MQTT_CONNECTING
 	 && LWIP_UTK_MQTT_CONNECTED == CYW43_MQTT_CONNECTED
 	 && LWIP_UTK_MQTT_BACKOFF == CYW43_MQTT_BACKOFF
-	 && LWIP_UTK_MQTT_FAILED == CYW43_MQTT_FAILED) ? 1 : -1];
+	 && LWIP_UTK_MQTT_FAILED == CYW43_MQTT_FAILED
+	 && LWIP_UTK_MQTT_IN_CMD == CYW43_MQTT_IN_CMD
+	 && LWIP_UTK_MQTT_IN_MAP == CYW43_MQTT_IN_MAP
+	 && LWIP_UTK_MQTT_IN_MAX == CYW43_MQTT_IN_MAX) ? 1 : -1];
 
 /* The queue lives in cyw43_utk_kernel.c, which can see the kernel API. */
 extern int32_t cyw43_utk_mqtt_take(uint32_t *topic, uint8_t *payload);
 extern uint32_t cyw43_utk_mqtt_dropped(void);
+extern int32_t cyw43_utk_mqtt_post_cmd(uint32_t topic, const uint8_t *payload,
+                                       uint32_t length);
 
 /* Hand at most one queued record to the client per poll.  While the session
    is down the records stay queued; producers see a full queue and drop. */
@@ -312,6 +317,10 @@ static void update_mqtt_status(void)
     radio_status.mqtt_connect_ms = status.connect_ms;
     radio_status.mqtt_backoff_ms = status.backoff_ms;
     radio_status.mqtt_queue_dropped = cyw43_utk_mqtt_dropped();
+    radio_status.mqtt_subscribed = status.subscribed;
+    radio_status.mqtt_in_received = status.inbound_received;
+    radio_status.mqtt_in_rejected = status.inbound_rejected;
+    radio_status.mqtt_in_dropped = status.inbound_dropped;
     radio_status.mqtt_port = status.port;
     radio_status.mqtt_payload_len = status.payload_len;
     for(unsigned int i = 0; i < sizeof(status.broker); i++) {
@@ -750,6 +759,10 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
     lwip_init();
     radio_status.lwip_initialized = 1;
 #endif
+#if TM_WIFI_MQTT
+    /* Inbound commands go straight to comms_task's mailbox (design 9.3). */
+    lwip_utk_mqtt_set_inbound(cyw43_utk_mqtt_post_cmd);
+#endif
     cyw43_init(&cyw43_state);
     cyw43_thread_enter();
     cyw43_wifi_set_up(&cyw43_state, CYW43_ITF_STA, true,
@@ -898,6 +911,11 @@ int cyw43_utk_mqtt_connected(void)
     return radio_status.mqtt_state == CYW43_MQTT_CONNECTED;
 }
 
+uint32_t cyw43_utk_mqtt_state(void)
+{
+    return radio_status.mqtt_state;
+}
+
 uint32_t cyw43_utk_mqtt_sessions_lost(void)
 {
     return radio_status.mqtt_sessions_lost;
@@ -911,4 +929,29 @@ void cyw43_utk_mqtt_restart(void)
 #if TM_WIFI_MQTT
     lwip_utk_mqtt_request_restart();
 #endif
+}
+
+/* Inbound messages rejected by the radio (unknown topic, empty, too long)
+   or dropped at a full mailbox, since boot. */
+uint32_t cyw43_utk_mqtt_in_refused(void)
+{
+    return radio_status.mqtt_in_rejected + radio_status.mqtt_in_dropped;
+}
+
+/* For D: RSSI at the last join (dBm), and the current IPv4 address, first
+   octet in the low byte (0 while there is none). */
+int32_t cyw43_utk_rssi(void)
+{
+    return radio_status.link_rssi;
+}
+
+uint32_t cyw43_utk_ip4(void)
+{
+#if TM_WIFI_DHCP
+    const uint8_t *a = radio_status.dhcp_address;
+#else
+    const uint8_t *a = radio_status.ipv4_address;
+#endif
+    return (uint32_t)a[0] | ((uint32_t)a[1] << 8)
+           | ((uint32_t)a[2] << 16) | ((uint32_t)a[3] << 24);
 }
