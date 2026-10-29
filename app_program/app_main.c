@@ -22,6 +22,7 @@
  *	                      plus its motion_report printer on core 0)
  *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
  *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
+ *	    word_stress tasks lock-free word stress test (TM_WORD_STRESS=1 only)
  */
 
 #include <tk/tkernel.h>
@@ -31,6 +32,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
+#include "race_test/word_stress.h"
 #include "line_task/line_task.h"
 /* #include "line_task/barcode_task.h" */	/* PR #17 missing files; TM_LINE_TASK 0 */
 #include "comms_task/comms_task.h"
@@ -628,6 +630,14 @@ EXPORT INT usermain(void)
 	   flip TM_RACE_TEST in race_test.h to build it in. */
 	if(race_test_start() < E_OK) {
 		tm_printf((UB *)"[init] race_test_start failed\n");
+	}
+#endif
+
+#if TM_WORD_STRESS
+	/* Lock-free shared-word stress test (Tribunal 1 C row 2).  Off by
+	   default: flip TM_WORD_STRESS in word_stress.h to build it in. */
+	if(word_stress_start() < E_OK) {
+		tm_printf((UB *)"[init] word_stress_start failed\n");
 	}
 #endif
 
