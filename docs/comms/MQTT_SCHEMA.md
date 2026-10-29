@@ -438,7 +438,10 @@ wider `mot` and v4's sixth fault bit came out of the padding, and v5's tilt and
 turn rate are why the record limit rose to 24).
 `ip` and `mqv` were the only strings in schema v1; both are now integers.
 
-> **Proposed:** the diagnostics set and widths.
+> **Built 2026-10-29** (`comm_w_pack_d()`, sent by `comms_task` on `snap`;
+> retained on `…/state`). `rssi` is the value measured at the last Wi-Fi join,
+> not a live reading; 127 also stands for "unknown". `qd` counts records waiting
+> in the radio's outbound queue.
 
 ---
 
@@ -450,15 +453,41 @@ payloads. That makes the device-side check simpler than `strtok`: **a length
 check and a reserved-bits check**, then a table lookup. Anything else is counted,
 printed on the car's console, and changes nothing.
 
-### 8.1 `cmd` — `snap` and `ping` (1 byte, on `robocar/<id>/cmd`)
+> **Built 2026-10-29 (M8a).** The car subscribes to `…/cmd` and `…/map` at
+> QoS 1 on every new session. The radio task copies each message into the
+> inbound mailbox; `comms_task` handles it on its next 1 s tick, after `H`
+> and `S` (design decision 21), so a reply comes within one tick. `snap`,
+> `ping` and the mission commands are built; `map` is **received and checked,
+> not yet applied** (design decision 23, M8b), so `mpv` does not change.
+>
+> **Tested on hardware 2026-10-29:** replies 0.3–0.7 s after the command;
+> every rejection case of §8.4 gives its one line; 26 snaps in ~13 s left the
+> `S` cadence at exactly 1000 ms; the car re-subscribes after a broker restart
+> and after an AP outage; a retained `map` published while the car was
+> offline reached it on its first subscribe. Optimisations found, not yet made:
+> §12 items 23–25.
+
+### 8.1 `cmd` — `snap`, `ping` and mission commands (1 byte, on `robocar/<id>/cmd`)
 
 | Bits | Field | Meaning |
 |---|---|---|
-| 3 | `op` | 1 = `snap` (reply: one `D` on `…/state` within one tick), 2 = `ping` (reply: one `H` on `…/heartbeat`) |
+| 3 | `op` | 1 = `snap` (reply: one `D` on `…/state` within one tick), 2 = `ping` (reply: one `H` on `…/heartbeat`), 3–7 = mission commands (below) |
 | 5 | reserved | must be 0 |
 
-`op` values 0 and 3–7, a non-zero reserved field, or a length other than 1 byte
-are rejected. So `snap` is the single byte `0x01` and `ping` is `0x02`.
+`op` 0, a non-zero reserved field, or a length other than 1 byte is rejected.
+So `snap` is the single byte `0x01` and `ping` is `0x02`.
+
+**Mission commands** (*added 2026-10-29*, design decision 24): `comms_task`
+passes them to `nav_ctrl_task`, which acts on each only in the right mission
+state and otherwise ignores it.
+
+| `op` | Byte | Command | `nav_ctrl_task` (`mission_cmd_t`) |
+|---|---|---|---|
+| 3 | `0x03` | start | `MCMD_START`: Ready → Running |
+| 4 | `0x04` | pause | `MCMD_PAUSE`: Running → Paused |
+| 5 | `0x05` | resume | `MCMD_RESUME`: Paused → Running |
+| 6 | `0x06` | reset | `MCMD_RESET`: Finished → Ready, Fault → Calibrating |
+| 7 | `0x07` | finish | `MCMD_FINISH`: Running/Paused → Finished (operator stop) |
 
 ### 8.2 Why commands are still checked on the car
 
@@ -492,6 +521,13 @@ car echoes** — observe delivery, do not assume it.
 
 Produces exactly one visible line on the car's console and no state change — a
 graded requirement (design §14, M8).
+
+*Built 2026-10-29:* a `cmd` or `map` that fails the check prints
+`[comms] cmd rejected #n: len=… bytes=…` (or `map rejected`). A message the
+radio refuses before it reaches `comms_task` — unknown topic, empty, longer than
+7 bytes, or the inbound mailbox full — is counted and reported once per tick:
+`[comms] radio refused n inbound message(s)…`. A mission command that finds
+`mission_cmd_mbf` full is rejected the same way, never a Fault.
 
 ---
 
@@ -593,7 +629,7 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 |---|---|---|---|
 | 1 | ~~The kind names `M`, `L`, `O`, `N`~~ | §5.1 | **closed by v3:** kinds are numbered 0–5 with names motion … mission; the letters are gone |
 | 2 | The heartbeat body | §6 | header only |
-| 3 | The snapshot diagnostics set and widths | §7 | `rssi`, `ip`, `qd`, `mqv` |
+| 3 | ~~The snapshot diagnostics set and widths~~ | §7 | **closed 2026-10-29:** built as proposed, `rssi`, `ip`, `qd`, `mqv` |
 | 4 | The publish cadence | §4 | 1 s |
 | 5 | Topic prefix / endpoint names as config | §2 | add to `config/broker_config.h` |
 | 6 | ~~Inbound `key=value` vs. flat JSON~~ | §8 | **closed by Tribunal 1 (2026-10-19): binary** |
@@ -611,6 +647,11 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |
 | 19 | ~~**`S.faults` is published as 0**~~ | §4, §4.1 | **closed 2026-10-29:** Buddy 5's fault flag is on master; `comms_task` copies `fault_bits()` into each `S`, plus the Wi-Fi-loss latch (item 12) |
 | 20 | **Outbound drops on the wire** | §3, §4 | *new (2026-10-23).* `drp` counts intake drops only. Goal: a separate **wrapping** outbound-drop counter in `S` (e.g. 8 bits, the reader takes differences across a gap), so the laptop can account for every lost record. Not in v5: adding it makes `S` 18 → 19 B and `D` 23 → 24 B, exactly the new record limit. A saturating 4-bit field would not work: every boot drops ~30 before the first connect |
+| 21 | ~~**Mission commands over MQTT**~~ | §8.1 | **closed 2026-10-29:** `op` 3–7, design decision 24. *Was:* The Week 6 report sends "supported mission command → `nav_ctrl_task`" (FR-24), and Buddy 5's side is built: `mission_cmd_mbf`, 1 byte, `MCMD_START` 1 … `MCMD_FINISH` 5 (`nav_ctrl.h`). `cmd` has only `snap` and `ping`, with `op` 3–7 reserved. To agree with Buddy 5 which commands the laptop may send |
+| 22 | ~~**`…/cmd` subscription QoS**~~ | §2 | **closed 2026-10-29:** QoS 1, design decision 22. *Was:* §2 here and design §9.2 say QoS 1; design §16 decision 11 says QoS 0. Proposed: QoS 1 (the library sends the PUBACK; a duplicate `snap` is harmless) |
+| 23 | **One `D` per tick** | §7, §8.1 | *optimisation (2026-10-29), not made.* Four `snap`s in one tick produced four `D`; the fourth was dropped at the full outbound queue (`S` unaffected). Answer all snaps of one tick with a single `D` |
+| 24 | **Why the radio refused an inbound message** | §8.4 | *optimisation (2026-10-29), not made.* One unexplained `radio refused 1` right after an AP reconnect. Count rejected (topic, length) and mailbox-full separately and print the topic |
+| 25 | **Retained `map` delivered twice on subscribe** | §8.3 | *observed (2026-10-29), harmless.* Two identical `map` deliveries on one subscription, with the viewer's built-in broker (amqtt); the remap is idempotent. Find which side repeats it |
 
 ---
 

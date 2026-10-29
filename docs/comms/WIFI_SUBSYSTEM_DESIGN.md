@@ -201,7 +201,7 @@ protects the M2–M6 evidence, which is the only hardware proof the subsystem ha
 
 ### 3.2 Kernel objects
 
-All four are created in `usermain()` (`app_main.c:535-556`), which creates every
+*(Corrected 2026-10-29: the outbound queue and the inbound mailbox are the library's, §6.3 and decision 25; `map_mbf` is Buddy 3's; the rest are app-side.)* The app-side ones are created in `usermain()` (`app_main.c:535-556`), which creates every
 object **before** starting any task — so no task can ever run before its queue
 exists. Only the radio task predates `usermain()`, and §6.3 handles that.
 
@@ -209,8 +209,9 @@ exists. Only the radio task predates `usermain()`, and §6.3 handles that.
 |---|---|---|---|---|
 | `tele_mbfid` | message buffer | buddies → `comms_task` | §16 decision 4 | 16 records |
 | `tele_pub_mbfid` | message buffer | `comms_task` → radio task | §6.3 | 4 records × ~64 B (topic + ≤24-byte packed payload, §8.3; 21 before schema v5). *Updated from Tribunal 1: was ~320 B for a 256-byte JSON payload* |
-| `tele_cmd_mbfid` | message buffer | `comms_task` → `line_task` | §16 decision 4 | 4 records |
-| `tele_rx_mbfid` | message buffer | radio task → `comms_task` | §9.3 | 4 records × ~192 B |
+| `map_mbf` | message buffer | `comms_task` → Buddy 3's `barcode_task` | §9.3 | **Buddy 3's**, created by `barcode_task_init()`. *Was `tele_cmd_mbfid` to `line_task` (corrected 2026-10-29: the submitted Tribunal report and Buddy 3's `app_main.c` code use `map_mbf`; `barcode_task.c` is not on master yet)* |
+| `mission_cmd_mbf` | message buffer | `comms_task` → `nav_ctrl_task` | §9.3 | 1-byte `mission_cmd_t` (`MCMD_START`…`MCMD_FINISH`), then `NAV_FLG_MISSION_CMD`. *Added 2026-10-29:* Buddy 5's consumer (`nav_ctrl.h`); **built 2026-10-29**: created by `comms_tele_init()` in MQTT builds, bound through `nav_bind_t.mission_cmd_mbfid`, fed by `cmd` `op` 3–7 (decision 24) |
+| `tele_rx_mbfid` | message buffer | radio task → `comms_task` | §9.3 | the **inbound mailbox** of the Week 6 report. *Was "4 records × ~192 B" for text commands; binary commands are ≤ 7 B (`MQTT_SCHEMA.md` §8), so 4 × 12 B is enough (corrected 2026-10-29).* **Built 2026-10-29 in the library** (`cyw43_utk_kernel.c`, decision 25), 4 × 12 B |
 
 IDs and the record types live in **`app_program/common/messages.h`** — the file
 whose own comment says every buddy depends on it and that changes should go
@@ -562,8 +563,9 @@ block. The radio task has a 2 ms budget and shares its core with the USB console
 - The radio task is started at **kernel device init** (`devinit.c:107`), before
   `usermain()` runs (`app_main.c:535`). So a queue created in `usermain()` does
   not exist during the radio task's first polls.
-- The app-side queues (`tele_mbfid`, `tele_pub_mbfid`, `tele_cmd_mbfid`,
-  `tele_rx_mbfid`) are created in `usermain()` and are guaranteed to exist before
+- *(Corrected 2026-10-29: as built, the outbound queue `tele_pub_mbfid` lives
+  in the library — the next bullet — and `map_mbf` is Buddy 3's.)* The app-side
+  queues (`tele_mbfid`, `mission_cmd_mbf`) are created in `usermain()` and are guaranteed to exist before
   any app task is started — `usermain()` creates all objects, *then* starts
   tasks. That ordering is the reason Seam 1 can assume the queue exists.
 - Therefore the **lib owns its own outbound queue** (created on the radio task's
@@ -888,7 +890,7 @@ static void indata_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
 | Command | Action | Evidence it must produce |
 |---|---|---|
 | `snap` | publish a state line plus **diagnostics** (uptime, RSSI, IP, queue depth, drop counters, MQTT verdict) on `…/state` | the laptop asks, and gets an answer within one tick |
-| `map` (arrives on `…/map`, retained) | validate the letter→action table, then `tk_snd_mbf(tele_cmd_mbfid, …)` to `line_task`, and update `comms_task`'s own copy and its `mpv` | the remap arrives **without a recompile** — the requirement that cannot be hardcoded |
+| `map` (arrives on `…/map`, retained) | validate the letter→action table, then `tk_snd_mbf(map_mbf, …)` to Buddy 3's `barcode_task` (*was `tele_cmd_mbfid` to `line_task`*), and update `comms_task`'s own copy and its `mpv` | the remap arrives **without a recompile** — the requirement that cannot be hardcoded |
 | anything else | count it and print one line | an unknown command is visible, not silence |
 
 A fourth, optional: `ping` → a single line on `…/heartbeat`, for a manual
@@ -911,6 +913,18 @@ Buddy 3's `barcode_task` it can be the same 7 bytes, or Buddy 3's own packed
 table (29 narrow/wide bits + 2-bit action per 32-bit word, ~104 B for 26
 entries, from the tribunal change log). Which of the two crosses `map_mbf` is to
 agree with Buddy 3.
+
+> **Found 2026-10-29, settled the same day by decisions 21, 22 and 24 (§16):**
+>
+> - **Two queues, one task.** `comms_task` blocks on `tele_mbfid` for events,
+>   but µT-Kernel cannot wait on two message buffers at once, so nothing here
+>   says how a command on `tele_rx_mbfid` wakes it.
+> - **Mission commands.** The Week 6 report routes "supported mission command
+>   → `nav_ctrl_task`", and Buddy 5's side is built (`mission_cmd_mbf`, 1 byte,
+>   `MCMD_START`/`PAUSE`/`RESUME`/`RESET`/`FINISH`, `nav_ctrl.h`), but `cmd`
+>   in `MQTT_SCHEMA.md` §8.1 has only `snap` and `ping` (§12 item 21).
+> - **`cmd` QoS.** §9.2 and `MQTT_SCHEMA.md` §2 subscribe to `…/cmd` at QoS 1;
+>   §16 decision 11 says QoS 0 (§12 item 22).
 
 ---
 
@@ -1107,13 +1121,16 @@ that **Docker's daemon was not running on this machine at the time of writing**
 
 ### M8 — command channel
 - [ ] Subscriber→publisher: publish `snap` on `…/cmd`; a `…/state` line appears
-      within one tick carrying the diagnostics.
+      within one tick carrying the diagnostics. *(Built and passed on hardware
+      2026-10-29: 0.37 s, `ip`, `rssi`, `qd`, `mqv` correct.)*
 - [ ] **Gate (the hard requirement):** publish a new 7-byte letter→action
-      table on `…/map` (binary, `MQTT_SCHEMA.md` §8.3); `line_task` (or a stand-in test task) receives it on
-      `tele_cmd_mbfid`, and a barcode read afterwards decodes to the **new**
+      table on `…/map` (binary, `MQTT_SCHEMA.md` §8.3); Buddy 3's `barcode_task` (or a stand-in test task) receives it on
+      `map_mbf`, and a barcode read afterwards decodes to the **new**
       action. Recompile: none. This is the requirement that cannot be satisfied
       by a compiled-in table.
 - [ ] Gate: a malformed command produces one visible line and changes nothing.
+      *(Passed on hardware 2026-10-29 for all seven cases in `MQTT_SCHEMA.md`
+      §8.4.)*
       *Updated from Tribunal 1:* "malformed" now means a wrong length, an
       unknown opcode, or non-zero reserved bits.
 
@@ -1223,7 +1240,7 @@ recommendation for each so a decision is a yes/no rather than new analysis.
 | 8 | `comms_task` affinity: unpinned, or pinned to processor 2? | **Updated 2026-10-21:** pin to processor 1 (core 0, with the radio), priority 16 per the Week 6 report; the team is pinning every task (Buddy 2's request). Being agreed with Buddy 2. *Superseded:* unpinned at priority 8 | `TP_PRC2` would put it on the control core |
 | 9 | **Outbound** wire format: JSON, key=value, or compact positional? | **Taken 2026-10-19 (Tribunal 1): packed binary, schema v2 (§8).** Change Requirement 1 requires compact binary MQTT payloads; recorded as Major redesign in the tribunal change log. *Superseded:* changed 2026-09-28: JSON (§8). The reader may be the instructor's client, and every generic MQTT tool renders JSON with no help; producing it costs one `tm_sprintf`. The earlier `key=value` recommendation assumed you own the reader, which you do not | key=value saves ~35% of the bytes; positional saves more, but neither is readable by the instructor's client |
 | 10 | Payload maximum: 256 bytes, or larger? | **Updated 2026-10-19 (Tribunal 1): keep 48** — the largest packed record is 21 B (§6.4); 23 B since schema v5 (2026-10-28), under a 24-byte record limit. *Superseded:* changed 2026-09-28: 256 (was 192), **plus** raising the client's ring buffer to 512 and its receive buffer to 256 (§6.4) — the JSON state line is 141 B and the diagnostic snapshot is longer (§8.3) | smaller forces shorter lines and breaks the snapshot; larger costs RAM in the lib's queues |
-| 11 | QoS on the wire: QoS 0 everywhere, or QoS 1 for the remap? | **changed 2026-09-27: QoS 0 for telemetry *and* for `…/cmd`; QoS 1 on the `…/map` *subscription* only.** lwIP never retransmits a QoS 1 publish — the request just expires with `ERR_TIMEOUT` (`mqtt.c:390-413`) — so QoS 1 outbound buys detection, not delivery. QoS 1 *inbound* is acknowledged by the library (`mqtt.c:776-783`), so subscribing at QoS 1 costs no application code | QoS 1 outbound on `cmd`; costs a request slot and a callback for a signal the design does not act on |
+| 11 | QoS on the wire: QoS 0 everywhere, or QoS 1 for the remap? | *Superseded for `…/cmd` by decision 22 (2026-10-29): QoS 1 on both subscriptions.* **changed 2026-09-27: QoS 0 for telemetry *and* for `…/cmd`; QoS 1 on the `…/map` *subscription* only.** lwIP never retransmits a QoS 1 publish — the request just expires with `ERR_TIMEOUT` (`mqtt.c:390-413`) — so QoS 1 outbound buys detection, not delivery. QoS 1 *inbound* is acknowledged by the library (`mqtt.c:776-783`), so subscribing at QoS 1 costs no application code | QoS 1 outbound on `cmd`; costs a request slot and a callback for a signal the design does not act on |
 | 12 | Decouple the TCP stack from the TCP echo test (§11)? | yes — it removes the noise and the `-3` lines | leave as-is; telemetry builds stay noisy |
 | 13 | Remap transport: a **retained `…/map` topic** (converges on subscribe), or plain commands on `…/cmd` re-sent by the laptop? | retained `…/map` — a rebooting car is handed the current table for free (§9.2) | one command topic is marginally simpler to explain; costs a re-publish loop on the laptop and has no answer for a car that missed the message |
 | 14 | Reconnect rate: the 2/4/8/15 s ladder, a fixed interval, or "attempt on every poll"? | **fixed interval of 2–5 s** (a counter and a timestamp, ~6 lines). The ladder's *curve* is optional; a **rate limit is not** — the radio poll runs every 2 ms, each attempt takes one of only **6** TCP PCBs (`mqtt.c:1395`, `lwipopts.h:71`), and connections that were established then closed hold a pool entry for 2MSL (`lwipopts.h:67-70`), so an unbounded retry rate is what can leave the client unable to reconnect at all | the full 2/4/8/15 s ladder, if the extra states are worth it to you |
@@ -1239,6 +1256,11 @@ in [`Tribunal/completed_in_trib.md`](Tribunal/completed_in_trib.md):
 | 18 | Where the shared fault bitmask lives | A µT-Kernel **event flag owned by Buddy 5**; each task sets its own bit with `tk_set_flg`; Buddy 1 sets/clears **Wi-Fi loss** and publishes the mask in `S` (§4.5). Hardware spinlock (not 0–2) only as a fallback | 2026-10-19 |
 | 19 | How packed fields are built | **Masks and shifts** in `messages.h`, LSB-first little-endian; **no C bit-fields** for queue records or MQTT; clamp plus `ovf` for out-of-range values; signed values offset-encoded | 2026-10-19 |
 | 20 | The radio task stays the only lwIP caller | **No change** — packing does not alter the single-threaded rule (tribunal change log, No change) | 2026-10-19 |
+| 21 | When `comms_task` takes inbound commands (two queues, one task) | **On its existing 1 s tick, after `H` and `S`**: it drains the inbound mailbox without waiting, so there are no extra wake-ups and a command waits at most one tick. Basis (Buddy 1, 2026-10-29): the map is loaded before the race starts, inbound traffic happens once or a few times per race, and outbound telemetry has priority | 2026-10-29 |
+| 22 | Subscription QoS for `…/cmd` and `…/map` | **QoS 1 for both** (`MQTT_SCHEMA.md` §2, §9.2). The library sends the PUBACK; a duplicate `snap` or `map` is harmless. Supersedes the QoS 0 for `…/cmd` in decision 11 | 2026-10-29 |
+| 23 | `map` before Buddy 3's `barcode_task` is on master | **Check, log and keep a copy; `mpv` unchanged** until `barcode_task` applies it through `map_mbf` (M8b), so the laptop is never told a remap took effect when it did not | 2026-10-29 |
+| 24 | Mission commands over MQTT | **`cmd` `op` 3–7 = `MCMD_START`, `PAUSE`, `RESUME`, `RESET`, `FINISH`**, sent to `nav_ctrl_task` on `mission_cmd_mbf` (created by `comms_task`, 1 byte) with `NAV_FLG_MISSION_CMD`. Buddy 5: "just do first". `nav_ctrl_task` accepts each only in its state (e.g. START only from Ready), so no command drives the motors directly (FR-24). A full queue rejects the command, never a Fault (F3) | 2026-10-29 |
+| 25 | Where the inbound mailbox lives | **In the library**, next to the outbound queue (`cyw43_utk_kernel.c`): the radio task starts before `usermain()` (§6.3), and it is the producer | 2026-10-29 |
 
 **Reviewed 2026-10-19 (Tribunal 1)** — rows 9, 10 and 17 changed and rows 18–20
 were added, all because of Change Requirement 1. Rows 1–8 and 11–16 stand.

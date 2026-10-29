@@ -261,6 +261,12 @@ now sets recovery is the 15 s back-off cap: an attempt just before the SSID
 returns fails, and the next waits the full step (optimisation-pass item, the
 reconnect worst case at the cap).
 
+*Observed 2026-10-29 (M8a test), not changed:* after an AP outage MQTT
+reconnected about 10 s before `[wifi] state=ONLINE`, while the radio still
+showed "waiting for lease". lwIP keeps the previous address on the netif and
+the MQTT client's address guard accepts it. Harmless while DHCP hands back the
+same address; logged for the optimisation pass.
+
 **Telemetry while offline:** every record produced before the first connect or
 during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
 `H` + `S`), and the ~6 records that fit are delivered late on reconnect. These

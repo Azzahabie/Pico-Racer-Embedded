@@ -125,14 +125,21 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       (`MQTT_SCHEMA.md` §4.1).*
 
 ### M8 — Command channel
-- [ ] Subscribe to a command topic and dispatch by message type.
-- [ ] **Snapshot:** on request, reply with current state at that instant
-      (separate from the regular stream).
+- [x] Subscribe to a command topic and dispatch by message type. *Built
+      2026-10-29 (M8a): `…/cmd` and `…/map` at QoS 1, re-subscribed on every
+      session; `snap`, `ping`, start/pause/resume/reset/finish. Hardware-tested
+      2026-10-29.*
+- [x] **Snapshot:** on request, reply with current state at that instant
+      (separate from the regular stream). *Built 2026-10-29: one `D` on
+      `…/state`, within one tick.*
 - [ ] **Live barcode remap:** the command carries the letter→action mapping and
       updates a runtime table (Buddy 3 reads it). **Must not require
-      recompiling** — this is the hard demo-day requirement.
-- [ ] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
+      recompiling** — this is the hard demo-day requirement. *M8a (2026-10-29):
+      received, checked and logged on the car; applying it waits for Buddy 3's
+      `barcode_task` and `map_mbf` (M8b).*
+- [x] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
       (4-bit version + 26 × 2-bit actions). The laptop publisher packs them.
+      *Built 2026-10-29: the viewer's "Send to car" panel.*
 
 ### M9 — Robustness
 - [ ] Reconnect / recover on Wi-Fi drop.
