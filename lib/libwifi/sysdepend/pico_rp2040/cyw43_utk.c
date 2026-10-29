@@ -888,3 +888,27 @@ void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status)
     }
     status->status_retries = status_read_retries;
 }
+
+/* One-word readers for comms_task's Wi-Fi-loss bit, so it need not copy the
+ * whole status snapshot every second.  An aligned 32-bit load cannot tear, so
+ * no seqlock: the two calls may come from different publications, and the
+ * caller treats either one alone as a loss. */
+int cyw43_utk_mqtt_connected(void)
+{
+    return radio_status.mqtt_state == CYW43_MQTT_CONNECTED;
+}
+
+uint32_t cyw43_utk_mqtt_sessions_lost(void)
+{
+    return radio_status.mqtt_sessions_lost;
+}
+
+/* Any task: drop a CONNECTED session that has stopped moving and reconnect
+ * through the normal back-off.  Only a flag is set here; the radio task acts
+ * on it in its next poll, so lwIP stays single-threaded. */
+void cyw43_utk_mqtt_restart(void)
+{
+#if TM_WIFI_MQTT
+    lwip_utk_mqtt_request_restart();
+#endif
+}

@@ -69,6 +69,8 @@ static mqtt_client_t *mqtt_client;
 static ip4_addr_t mqtt_broker;
 static uint32_t state_since_ms;
 static uint8_t session_lost;     /* set by the connection callback */
+/* Set by lwip_utk_mqtt_request_restart() from any task, taken by the poll. */
+static volatile uint8_t restart_requested;
 
 /* One record that mqtt_publish() refused with ERR_MEM, retried every poll. */
 static uint8_t pending;
@@ -233,6 +235,9 @@ void lwip_utk_mqtt_poll(struct netif *netif)
         return;
     }
 
+    /* A restart only means something to a CONNECTED session. */
+    if(mqtt_status.state != LWIP_UTK_MQTT_CONNECTED) restart_requested = 0;
+
     switch(mqtt_status.state) {
     case LWIP_UTK_MQTT_WAIT_ADDR:
         start_connect(now);
@@ -249,8 +254,13 @@ void lwip_utk_mqtt_poll(struct netif *netif)
         break;
 
     case LWIP_UTK_MQTT_CONNECTED:
-        /* Do not trust a flag for liveness: ask the client every poll. */
-        if(session_lost || !mqtt_client_is_connected(mqtt_client)) {
+        /* Do not trust a flag for liveness: ask the client every poll.  A
+           restart request ends a session that still looks connected but
+           has stopped moving (comms_task's stall rule): without it, a short
+           AP outage waits out the 1.5 x keep-alive timeout. */
+        if(session_lost || restart_requested
+           || !mqtt_client_is_connected(mqtt_client)) {
+            restart_requested = 0;
             back_off(now);
         } else if(pending) {
             publish_pending();
@@ -270,6 +280,13 @@ void lwip_utk_mqtt_poll(struct netif *netif)
     default:
         break;
     }
+}
+
+/* Any task: ask the next poll to drop a CONNECTED session and reconnect
+   through the normal back-off.  Sets a flag only; never touches lwIP. */
+void lwip_utk_mqtt_request_restart(void)
+{
+    restart_requested = 1;
 }
 
 /* True when a record handed over now would be published immediately. */

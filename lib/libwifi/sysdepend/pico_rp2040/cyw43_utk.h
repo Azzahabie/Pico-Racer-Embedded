@@ -263,6 +263,14 @@ typedef struct {
 
 int32_t cyw43_utk_start(void);
 void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status);
+/* 1 while the MQTT session is CONNECTED.  Wi-Fi or lease loss drops the
+   session within one poll, so 0 covers link, lease and broker. */
+int cyw43_utk_mqtt_connected(void);
+/* Sessions lost since boot (wraps); a change shows a drop between reads. */
+uint32_t cyw43_utk_mqtt_sessions_lost(void);
+/* Ask the radio task to drop a CONNECTED session and reconnect (a stalled
+   session that still looks connected).  Never blocks; no-op without MQTT. */
+void cyw43_utk_mqtt_restart(void);
 void cyw43_utk_task(int32_t stacd, void *exinf);
 void cyw43_utk_link_state_changed(int up);
 

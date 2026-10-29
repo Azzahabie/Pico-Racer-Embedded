@@ -63,4 +63,7 @@ int32_t lwip_utk_mqtt_offer(uint32_t topic, const uint8_t *payload,
                             uint32_t length);
 void lwip_utk_mqtt_get_status(T_LWIP_UTK_MQTT_STATUS *status);
 
+/* Any task: sets a flag that the next poll acts on (no lwIP call). */
+void lwip_utk_mqtt_request_restart(void);
+
 #endif
