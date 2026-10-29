@@ -249,11 +249,17 @@ toggle-on in one test, and in the other waited out the MQTT keep-alive timeout
 while `CONNECTED`, `MQTT_SCHEMA.md` §4.1) calls `cyw43_utk_mqtt_restart()`. That
 only sets a flag; the radio task's next poll drops the session and reconnects
 through the normal back-off (2 s, 5 s connect timeout, doubling to 15 s).
-Tested once (2026-10-29): stall seen ~6 s after the AP went off, session
-dropped 0.9 s after the request, reconnected ~3 s after the AP answered joins
-again (21.6 s after toggle-on). In that run the radio also reported
-`link-lost` 4 s later, so the silent-stall case (link never down) is still to
-re-test; the same toggle produces it only some of the time.
+Tested twice (2026-10-29):
+
+| Run | Link reported lost? | Stall seen | Reconnected |
+|---|---|---|---|
+| SSID off ~30 s | yes, 4 s after the stall | ~6 s after off; session dropped 0.9 s after the request | 21.6 s after toggle-on, ~3 s after the SSID answered joins |
+| SSID off 40 s | **no** (silent stall) | 7.1 s after off | **31.8 s after toggle-on** (64 s without the restart), ~14 s after the SSID was back (inferred from the ~18 s SSID start-up) |
+
+The same toggle gives either case, so neither can be chosen in a test. What
+now sets recovery is the 15 s back-off cap: an attempt just before the SSID
+returns fails, and the next waits the full step (optimisation-pass item, the
+reconnect worst case at the cap).
 
 **Telemetry while offline:** every record produced before the first connect or
 during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
