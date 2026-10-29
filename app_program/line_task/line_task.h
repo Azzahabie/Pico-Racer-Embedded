@@ -12,8 +12,11 @@
 /* 1 = usermain() starts ir_sense_task and barcode_task.  The line sensors
  * are on GP26/GP27 (ADC0/ADC1) and the barcode sensor on GP7, clear of the
  * motor pins GP8-GP11 (common/line_config.h). */
+/* PR #17 missing files: line_state.h, line_track.h, ir_cal.h, bar_capture.h,
+ * barcode_task.h/.c and barcode_action.h were never pushed, so this is 0
+ * until they are on master.  Set it back to 1 when they are. */
 #ifndef TM_LINE_TASK
-#define TM_LINE_TASK	1
+#define TM_LINE_TASK	0
 #endif
 
 /* ir_flg: nav_ctrl_task sets IR_FLG_CAL_REQ (its cal_req_bit) to ask for a

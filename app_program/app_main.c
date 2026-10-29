@@ -32,7 +32,7 @@
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
 #include "line_task/line_task.h"
-#include "line_task/barcode_task.h"
+/* #include "line_task/barcode_task.h" */	/* PR #17 missing files; TM_LINE_TASK 0 */
 #include "comms_task/comms_task.h"
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links

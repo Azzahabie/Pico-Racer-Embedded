@@ -19,6 +19,11 @@
 #include "../comms_task/comms_task.h"
 #include "../nav_task/nav_ctrl.h"
 #include "line_task.h"
+
+/* PR #17 missing files: line_state.h, line_track.h, ir_cal.h, bar_capture.h and
+   barcode_task.h are not on master, so the whole task is left out until
+   TM_LINE_TASK is 1 again (line_task.h). */
+#if TM_LINE_TASK
 #include "line_logic.h"
 #include "line_state.h"
 #include "line_track.h"
@@ -325,3 +330,5 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		}
 	}
 }
+
+#endif /* TM_LINE_TASK */
