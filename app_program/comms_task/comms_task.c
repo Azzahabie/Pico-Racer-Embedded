@@ -12,7 +12,7 @@
  *	and changes nothing.  A valid one updates the S cache and is published as
  *	record E: the header is stamped with s and up, and the body is copied
  *	unchanged (MQTT_SCHEMA.md section 5).  Once a second it publishes H and
- *	then S, the S cache as a record (section 4; faults is 0 for now).  It
+ *	then S, the S cache as a record (section 4).  It
  *	never touches lwIP: records go to the radio task through
  *	cyw43_utk_mqtt_send(), and a full queue drops the record and says so.
  *
@@ -27,6 +27,7 @@
 #include "comms_task.h"
 #include "../common/messages.h"
 #include "../imu_task/imu_ts.h"
+#include "../nav_task/nav_ctrl.h"	/* fault_bits: S.faults */
 
 /* ------------------------------------------------------------------ *
  *  Intake queue -- every build
@@ -86,10 +87,10 @@ typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
 
 /* The latest value per source, published as record S once a second.  Fields
    are stored as on the wire (MQTT_SCHEMA.md section 4).  Only comms_task
-   touches it.  faults (the FAULT_* bits) stays 0 until Buddy 5's fault flag
-   exists (schema section 12), and mpv stays 0 until the map command (M8) is
-   built.  tlt and trn are not folded from events: they are copied from
-   imu_task's tilt-state word before each S (FR-29). */
+   touches it.  mpv stays 0 until the map command (M8) is built.  faults,
+   tlt and trn are not folded from events: before each S, faults is copied
+   from Buddy 5's shared fault flag (fault_bits(), schema section 4.1) and
+   tlt and trn from imu_task's tilt-state word (FR-29). */
 LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
 			     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
 LOCAL BOOL	have_dist;
@@ -251,6 +252,8 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		ts = imu_ts_read();
 		s_cache.tlt = (UB)imu_ts_tilt_raw(ts);
 		s_cache.trn = (UH)imu_ts_turn_raw(ts);
+		/* Each owner sets and clears its own bit; one snapshot here. */
+		s_cache.faults = (UB)fault_bits();
 
 		up = now_ms();
 		len = comm_w_pack_h(rec, seq, up);

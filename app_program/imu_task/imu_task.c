@@ -158,7 +158,8 @@ LOCAL void tell_nav(UINT bits)
    mission brake through STOP_IMU (motion_task brakes within 20 ms,
    NFR-18).  imu_task never clears STOP_IMU: motion_task does, when nav
    sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
-   goes on the shared fault flag once Buddy 5's fault_set() exists. */
+   goes on Buddy 5's shared fault flag, and only a passed calibration
+   clears it (answer_cal). */
 LOCAL void raise_fault(const char *why, UW t_first)
 {
 	mission_state_t	ms = nav_mission_state();
@@ -171,6 +172,7 @@ LOCAL void raise_fault(const char *why, UW t_first)
 		motion_stop_stamp(MOTION_EVT_STOP_IMU);
 		tk_set_flg(motor_task_flag(), MOTION_EVT_STOP_IMU);
 	}
+	fault_set(FAULT_IMU);
 	tell_nav(NAV_FLG_IMU_FAULT);
 	/* NFR-19 (tilt, limit 40 ms) and NFR-13 (no data, Y = 50 ms): from
 	   the first offending sample to here, on the 1 MHz timer. */
@@ -498,11 +500,13 @@ LOCAL void answer_cal(BOOL ok)
 {
 	if(ok) {
 		faulted = FALSE;
+		fault_clear(FAULT_IMU);
 		safety_reset();
 		tell_nav(NAV_FLG_CAL_OK_IMU);
 		tm_printf((UB *)"[imu] -> nav: CAL_OK_IMU\n");
 	} else {
 		faulted = TRUE;
+		fault_set(FAULT_IMU);
 		tell_nav(NAV_FLG_CAL_FAIL);
 		tm_printf((UB *)"[imu] -> nav: CAL_FAIL\n");
 	}

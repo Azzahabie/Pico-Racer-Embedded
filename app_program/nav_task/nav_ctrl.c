@@ -22,7 +22,11 @@
  *	calibration is SKIPPED and says so on the console. After a fault,
  *	FAULT_CLEAR is sent only after both calibrations pass.
  *
- *	NOT YET (needs Buddies 2 and 3): junction + barcode commands (FR-08),
+ *	JUNCTION (ir_sense_task, FR-08): barcode_task's stored command goes to
+ *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf, once that is bound;
+ *	no stored command means no command (straight on).
+ *
+ *	NOT YET (needs Buddy 2): motion_task executing the junction command,
  *	MOVE_DONE / CMD_REJECTED handling, end-of-course trigger (owner
  *	unassigned), RGB LED on GP18 (WS2812, needs PIO).
  *
@@ -43,6 +47,8 @@
 #include "nav_ctrl.h"
 #include "../common/gpio_irq.h"
 #include "../obstacle_task/scan_if.h"	/* NAV_FLG_BLOCKED */
+#include "../line_task/barcode_task.h"		/* barcode_cmd_word() */
+#include "../line_task/barcode_action.h"
 
 #define BTN_START_PIN		20U	/* Button 1 */
 #define BTN_PAUSE_PIN		21U	/* Button 2 */
@@ -65,14 +71,16 @@
 				 NAV_FLG_CMD_REJECTED | NAV_FLG_CONN | \
 				 NAV_FLG_MOTION_STOPPED)
 
-/* FAULT_CLEAR opcode for nav_cmd_mbf [PROPOSED, agree with Buddy 2] */
-#define NAV_CMD_FAULT_CLEAR	0x10U
+/* FAULT_CLEAR arguments for nav_cmd_mbf (opcodes in nav_ctrl.h) */
 #define FAULT_CLEAR_IMU		0x01U
 #define FAULT_CLEAR_MOTION	0x02U
 
 LOCAL volatile uint32_t	g_mission = (uint32_t)MS_INITIALISING;	/* one store */
 LOCAL ID		g_nav_flgid = 0;
+LOCAL ID		g_fault_flgid = 0;
 LOCAL nav_bind_t	g_nav_bind;
+LOCAL bool		g_move_open = false;	/* JUNCTION sent, no reply yet */
+LOCAL uint32_t		g_cmd_taken;		/* seq of the last barcode command used */
 
 /* ------------------------------------------------------------------ */
 /* Readers                                                            */
@@ -117,15 +125,50 @@ EXPORT ER nav_ctrl_init(void)
 	T_CFLG	cflg = { .exinf = NULL, .flgatr = TA_TFIFO | TA_WMUL, .iflgptn = 0U };
 	ID	objid;
 
-	if(0 < g_nav_flgid) {
+	if((0 < g_nav_flgid) && (0 < g_fault_flgid)) {
 		return E_OK;
 	}
-	objid = tk_cre_flg(&cflg);
+	if(0 >= g_nav_flgid) {
+		objid = tk_cre_flg(&cflg);
+		if(0 >= objid) {
+			return (ER)objid;
+		}
+		g_nav_flgid = objid;
+	}
+	objid = tk_cre_flg(&cflg);			/* fault_flg, all bits clear */
 	if(0 >= objid) {
 		return (ER)objid;
 	}
-	g_nav_flgid = objid;
+	g_fault_flgid = objid;
 	return E_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared fault bitmask                                               */
+/* ------------------------------------------------------------------ */
+EXPORT void fault_set(UINT bits)
+{
+	if(0 < g_fault_flgid) {
+		(void)tk_set_flg(g_fault_flgid, bits & FAULT_ALL);
+	}
+}
+
+EXPORT void fault_clear(UINT bits)
+{
+	if(0 < g_fault_flgid) {
+		(void)tk_clr_flg(g_fault_flgid, ~(bits & FAULT_ALL));	/* keeps the rest */
+	}
+}
+
+EXPORT UINT fault_bits(void)
+{
+	T_RFLG	rflg;
+	UINT	bits = 0U;
+
+	if((0 < g_fault_flgid) && (E_OK == tk_ref_flg(g_fault_flgid, &rflg))) {
+		bits = rflg.flgptn & FAULT_ALL;
+	}
+	return bits;
 }
 
 EXPORT void nav_bind(const nav_bind_t *p_bind)
@@ -194,6 +237,9 @@ LOCAL void set_state(mission_state_t next)
 	mission_state_t prev = nav_mission_state();
 
 	g_mission = (uint32_t)next;			/* the only writer */
+	if((MS_RUNNING != next) && (MS_PAUSED != next)) {
+		g_move_open = false;	/* no turn survives Finished, Fault or a new mission */
+	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
 }
@@ -225,6 +271,11 @@ LOCAL bool calibrate(void)
 	ER	ercd;
 	bool	ok = true;
 	bool	done = false;
+
+	/* A reply that arrived after an earlier attempt timed out must not
+	 * answer this one: drop stale CAL_OK / CAL_FAIL before asking. */
+	(void)tk_clr_flg(g_nav_flgid, ~(NAV_FLG_CAL_OK_IR | NAV_FLG_CAL_OK_IMU |
+					NAV_FLG_CAL_FAIL));
 
 	if(0 < g_nav_bind.ir_flgid) {
 		need |= NAV_FLG_CAL_OK_IR;
@@ -343,6 +394,49 @@ LOCAL void on_mission_cmd(void)
 	}
 }
 
+/* NAV_FLG_JUNCTION from ir_sense_task (FR-08): the barcode command stored
+   since the last junction goes to motion_task as NAV_CMD_JUNCTION, once.
+   With none stored, no command: motion_task follows the line straight on. */
+LOCAL void on_junction(void)
+{
+	uint32_t	cmd = barcode_cmd_word();	/* one aligned load */
+	uint32_t	action = barcode_cmd_action(cmd);
+	UB		msg[2];
+	ER		ercd;
+
+	if(MS_RUNNING != nav_mission_state()) {
+		tm_printf((UB *)"[nav] junction while %s: ignored\n",
+			  nav_state_name(nav_mission_state()));
+		return;
+	}
+	if(g_move_open) {
+		/* the sensors cross the junction's lines again during a turn */
+		tm_printf((UB *)"[nav] junction during a move: ignored\n");
+		return;
+	}
+	if(!barcode_cmd_pending(cmd, g_cmd_taken)) {
+		tm_printf((UB *)"[nav] junction, no barcode command: straight on\n");
+		return;
+	}
+	g_cmd_taken = barcode_cmd_seq(cmd);		/* this junction used it */
+	msg[0] = (UB)NAV_CMD_JUNCTION;
+	msg[1] = (UB)action;
+	if(0 < g_nav_bind.nav_cmd_mbfid) {
+		ercd = tk_snd_mbf(g_nav_bind.nav_cmd_mbfid, msg, (INT)sizeof(msg), TMO_POL);
+		if(E_OK == ercd) {
+			g_move_open = true;
+			tm_printf((UB *)"[nav] -> motion: JUNCTION(%s)\n",
+				  barcode_action_name(action));
+		} else {
+			tm_printf((UB *)"[nav] nav_cmd_mbf full: JUNCTION(%s) not sent\n",
+				  barcode_action_name(action));
+		}
+	} else {
+		tm_printf((UB *)"[nav] -> nav_cmd_mbf: JUNCTION(%s) (motion_task not bound)\n",
+			  barcode_action_name(action));
+	}
+}
+
 EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 {
 	UINT	bits;
@@ -399,12 +493,14 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 		if(0U != (bits & NAV_FLG_BTN)) {
 			on_button();
 		}
-		if(0U != (bits & (NAV_FLG_JUNCTION | NAV_FLG_MOVE_DONE |
-				  NAV_FLG_CMD_REJECTED))) {
-			/* junction navigation (FR-08) comes with Buddies 2 and 3 */
-			tm_printf((UB *)"[nav] junction event 0x%x: not handled yet\n",
-				  (INT)(bits & (NAV_FLG_JUNCTION | NAV_FLG_MOVE_DONE |
-						NAV_FLG_CMD_REJECTED)));
+		if(0U != (bits & NAV_FLG_JUNCTION)) {
+			on_junction();
+		}
+		if(0U != (bits & (NAV_FLG_MOVE_DONE | NAV_FLG_CMD_REJECTED))) {
+			g_move_open = false;		/* ready for the next junction */
+			tm_printf((UB *)"[nav] motion: %s\n",
+				  (0U != (bits & NAV_FLG_MOVE_DONE)) ? "MOVE_DONE"
+								     : "CMD_REJECTED");
 		}
 	}
 }

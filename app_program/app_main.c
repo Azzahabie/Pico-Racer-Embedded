@@ -32,6 +32,7 @@
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
 #include "line_task/line_task.h"
+#include "line_task/barcode_task.h"
 #include "comms_task/comms_task.h"
 #include "obstacle_task/obstacle_task.h" // buddy 5 obstacle scan task
 #include "obstacle_task/scan_if.h"      // buddy 5: scan_task links
@@ -53,6 +54,7 @@
    assignment on the calling task's stack -- so 1-2 KiB is no longer enough
    for a task that makes blocking kernel calls. */
 #define STACK_SZ	4096
+#define LINE_STACK_SZ 8192
 
 /* Wi-Fi status reporter (below): a development console, not part of the car
    design.  It came with the kernel port and prints every [wifi]/[mqtt] line
@@ -442,11 +444,11 @@ LOCAL T_CTSK ctsk_nav = {
 };
 
 #if TM_LINE_TASK
-// Buddy 3 line_task (line reader + barcode): ir_sense_task's slot, priority 10, core 1
+// Buddy 3 ir_sense_task (1 ms line + barcode sampling): priority 10, core 1
 LOCAL T_CTSK ctsk_line = {
 	.itskpri	= 10,
-	.stksz		= STACK_SZ,
-	.task		= line_task,
+	.stksz		= LINE_STACK_SZ,
+	.task		= ir_sense_task,
 #if TK_SUPPORT_SMP
 	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
 	.assprc		= TP_PRC2,	/* processor 2 = RP2040 core 1 */
@@ -454,8 +456,34 @@ LOCAL T_CTSK ctsk_line = {
 	.tskatr		= TA_HLNG | TA_RNG3,
 #endif
 };
+
+/* nav_bind_t has one cal_req_bit for both calibration flags. */
+_Static_assert(IR_FLG_CAL_REQ == IMU_FLG_CAL_REQ,
+	       "ir_flg and imu_flg must use the same CAL_REQ bit");
+
+// Buddy 3 barcode_task (decode, table, map): priority 14, core 0 [PROPOSED]
+LOCAL T_CTSK ctsk_barcode = {
+	.itskpri	= 14,
+	.stksz		= STACK_SZ,
+	.task		= barcode_task,
+#if TK_SUPPORT_SMP
+	.tskatr		= TA_HLNG | TA_RNG3 | TA_ASSPRC,
+	.assprc		= TP_PRC1,	/* processor 1 = RP2040 core 0 */
+#else
+	.tskatr		= TA_HLNG | TA_RNG3,
+#endif
+};
 #endif
 
+
+/* Buddy 5 <- Buddy 4: scan_task's "on a hump" test (Statechart 5,
+ * N_hump = 4).  imu_task publishes hump_state in its packed word, one
+ * writer and one aligned load, so no mutex.  Climbing or descending is a
+ * hump; NONE is not. */
+LOCAL bool scan_on_hump(void)
+{
+	return (0U != IMU_W_GET(imu_word_read(), HUMP));
+}
 
 /* ------------------------------------------------------------------ *
  *  Entry point
@@ -525,21 +553,27 @@ EXPORT INT usermain(void)
 			  (INT)motion_ercd);
 	}
 
-	/* Buddy 5: tell scan_task where the mission state, nav_flg and
-	 * motion_flg are, so its STOP_SCAN brakes the car. avoid_cmd_mbf stays
-	 * 0 until Buddy 2 adds it (step 1.7), so scan_task still simulates
-	 * motion_task's replies to its commands. */
+	/* Buddy 5: tell scan_task where the mission and motion interfaces are,
+	 * so its STOP_SCAN brakes the car. avoid_cmd_mbf stays 0 until Buddy 2
+	 * adds it (step 1.7), so bypass and reverse commands fail closed. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
-			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
+			.p_hump_active		= scan_on_hump,
+			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
 		};
 		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the
-		 * mission waits for CAL_OK_IMU (FR-02). ir_flgid stays 0 until
-		 * Buddy 3's ir_sense_task is bound here too. */
+		 * mission waits for CAL_OK_IMU (FR-02).  Buddy 3: ir_flg, the same
+		 * for ir_sense_task and CAL_OK_IR; both take the same CAL_REQ bit. */
 		ID imu_flgid = imu_task_init();
+#if TM_LINE_TASK
+		ID ir_flgid = ir_sense_init();
+#else
+		ID ir_flgid = 0;
+#endif
 		nav_bind_t nav_links = {
+			.ir_flgid		= (ir_flgid > 0) ? ir_flgid : 0,
 			.imu_flgid		= (imu_flgid > 0) ? imu_flgid : 0,
 			.cal_req_bit		= IMU_FLG_CAL_REQ,
 		};
@@ -548,6 +582,12 @@ EXPORT INT usermain(void)
 			tm_printf((UB *)"[init] imu_flg failed, er=%d: IMU not calibrated by nav\n",
 				  (INT)imu_flgid);
 		}
+#if TM_LINE_TASK
+		if(ir_flgid <= 0) {
+			tm_printf((UB *)"[init] ir_flg failed, er=%d: line sensors not calibrated by nav\n",
+				  (INT)ir_flgid);
+		}
+#endif
 		scan_if_bind(&scan_bind);
 		nav_bind(&nav_links);
 
@@ -559,8 +599,14 @@ EXPORT INT usermain(void)
 	tid = tk_cre_tsk(&ctsk_imu);      if(made("tsk(imu)",      tid)) tk_sta_tsk(tid, 0);
 
 #if TM_LINE_TASK
-	/* Buddy 3: line_task (priority 10, core 1). */
-	tid = tk_cre_tsk(&ctsk_line);     if(made("tsk(line)",     tid)) tk_sta_tsk(tid, 0);
+	/* Buddy 3: bar_mbf/map_mbf first, then barcode_task (14, core 0) and
+	   ir_sense_task (10, core 1). */
+	{
+		ER er = barcode_task_init();
+		if(er < E_OK) tm_printf((UB *)"[init] barcode_task_init failed, er=%d\n", er);
+	}
+	tid = tk_cre_tsk(&ctsk_barcode);  if(made("tsk(barcode)",  tid)) tk_sta_tsk(tid, 0);
+	tid = tk_cre_tsk(&ctsk_line);     if(made("tsk(ir_sense)", tid)) tk_sta_tsk(tid, 0);
 #endif
 #if TM_BLINK_LED
 	tid = tk_cre_tsk(&ctsk_blink);    if(made("tsk(blink)",    tid)) tk_sta_tsk(tid, 0);
