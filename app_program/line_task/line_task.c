@@ -150,12 +150,14 @@ LOCAL ir_cal_sensor_t default_cal(BOOL black_is_high, uint16_t rise, uint16_t fa
 	return ir_cal_default(black_is_high ? true : false, rise, fall);
 }
 
-LOCAL UINT tele_line_state(const line_state_fields_t *f)
+/* rl 11 is the centred car (both sensors inside the line): ON, not
+   CROSSING.  CROSSING is GP7 on a junction's crossbar. */
+LOCAL UINT tele_line_state(const line_track_out_t *o)
 {
-	if(f->lost) {
+	if(o->fields.lost) {
 		return TELE_LINE_LOST;
 	}
-	return (LINE_RL_JUNCTION == f->rl) ? TELE_LINE_CROSSING : TELE_LINE_ON;
+	return o->crossing ? TELE_LINE_CROSSING : TELE_LINE_ON;
 }
 
 EXPORT void ir_sense_task(INT stacd, void *exinf)
@@ -184,6 +186,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	BOOL		black;
 	BOOL		adc_ok;
 	BOOL		fault_reported = FALSE;
+	BOOL		lost_reported = TRUE;	/* LINE_STATE_INITIAL is lost */
 	UB		body[COMM_W_INTAKE_SIZE_LINE];
 	char		bits[3];
 	ER		ercd;
@@ -238,7 +241,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			line_track_disarm_junction(&g_trk);
 		}
 
-		if(bar_capture_busy(&g_cap)) {
+		/* reading, not busy: after a width_too_long abort GP7 may stay
+		   black for as long as the car is parked on it */
+		if(bar_capture_reading(&g_cap)) {
 			holdoff = BARCODE_JUNCTION_HOLDOFF_MS;
 		} else if(0U < holdoff) {
 			holdoff--;
@@ -246,7 +251,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			/* not held */
 		}
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
-				adc_ok ? true : false, 0U < holdoff, &out);
+				adc_ok ? true : false, 0U < holdoff,
+				black ? true : false, &out);
 		g_line_state = out.word;			/* one store */
 
 		if(out.junction) {
@@ -286,14 +292,22 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		}
 
 		/* telemetry on edges only; comms_tele_send never blocks */
-		if(tele_line_state(&out.fields) != tele_state) {
-			tele_state = tele_line_state(&out.fields);
+		if(tele_line_state(&out) != tele_state) {
+			tele_state = tele_line_state(&out);
 			(void)comms_tele_send(body, (INT)comm_w_pack_line(body,
 				tele_state, out.fields.error));
 		}
 
-		/* console: never while a barcode is under the car */
-		if(bar_capture_busy(&g_cap)) {
+		/* the crossbar under GP7 is itself a capture, so this line must
+		   come before the barcode check below */
+		if(out.junction) {
+			tm_printf((UB *)"[line] junction (GP7 black %u ms) -> nav\n",
+				  (UINT)LINE_JUNCTION_SAMPLES);
+		}
+
+		/* console: never while a barcode is being read (an aborted one
+		   being discarded does not count) */
+		if(bar_capture_reading(&g_cap)) {
 			continue;
 		}
 		if(out.fields.fault && !fault_reported) {
@@ -301,13 +315,17 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  (UINT)raw.left_guard, (UINT)raw.right_guard);
 		}
 		fault_reported = out.fields.fault ? TRUE : FALSE;
-		if(out.junction) {
-			tm_printf((UB *)"[line] junction -> nav\n");
-		}
 		if(out.fields.rl != last_rl) {
 			last_rl = out.fields.rl;
 			line_reader_format_2bit((UB)last_rl, bits);
 			tm_printf((UB *)"[line] RL=%s err=%d\n", bits, (INT)out.fields.error);
+		}
+		if((out.fields.lost ? TRUE : FALSE) != lost_reported) {
+			lost_reported = out.fields.lost ? TRUE : FALSE;
+			tm_printf(lost_reported
+				  ? (UB *)"[line] LOST: RL=00 for %u ms\n"
+				  : (UB *)"[line] line found (LOST_MS %u)\n",
+				  (UINT)LINE_LOST_MS);
 		}
 		print_ms++;
 		if(print_ms >= ((LINE_COMMISSIONING_MODE != 0) ? IR_COMMISSION_MS
@@ -322,6 +340,17 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  (INT)BARCODE_SENSOR_GPIO,
 				  (UINT)barcode_scanner_get_last_raw(),
 				  black ? "black" : "white");
+			tm_printf((UB *)"[line] dbg GP26 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d"
+				  " | GP27 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d | dark_ms=%u lost=%d\n",
+				  (UINT)raw.left_guard, (UINT)g_trk.left_cal.white,
+				  (UINT)g_trk.left_cal.black, (UINT)out.left_norm,
+				  (UINT)g_trk.left_cal.rise, (UINT)g_trk.left_cal.fall,
+				  g_trk.left_black ? 1 : 0,
+				  (UINT)raw.right_guard, (UINT)g_trk.right_cal.white,
+				  (UINT)g_trk.right_cal.black, (UINT)out.right_norm,
+				  (UINT)g_trk.right_cal.rise, (UINT)g_trk.right_cal.fall,
+				  g_trk.right_black ? 1 : 0,
+				  (UINT)out.fields.dark_ms, out.fields.lost ? 1 : 0);
 		}
 	}
 }

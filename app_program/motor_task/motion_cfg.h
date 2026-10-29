@@ -112,6 +112,28 @@
    scan_task's 150 mm reverse takes about 2 s, inside its 5 s timeout. */
 #define MOTION_REV_TARGET (10)
 
+/* Line following (statechart LINE_FOLLOW, Buddy 3's line_state word).
+   Both wheels run under the PID at MOTION_LF_BASE; the line error
+   (-100..+100, + = turn left) moves the two targets apart by up to
+   MOTION_LF_GAIN counts per tick each way.  PROPOSED: 15 counts per tick
+   is about 12 cm/s (calculated); tune both on the floor. */
+#define MOTION_LF_BASE        (15)
+#define MOTION_LF_GAIN        (8)
+#define MOTION_LF_SEEN_MS     (30u) /* dark below this: line still seen */
+#define MOTION_LF_FOUND_TICKS (3u)  /* seen this many ticks: found      */
+
+/* Line search (statechart LINE_SEARCH, [L_search]).  Both sensors sit
+   inside the 18 mm line, so a centred car reads 11 and only a car off the
+   line reads 00: after LINE_LOST_MS of 00 the car pivots on the spot
+   toward the side the line was last seen (|error| >= MOTION_LS_DIR_MIN;
+   the sign already includes LINE_STEER_INVERT), up to MOTION_LS_SWEEP_DEG,
+   then back past the start to the same angle the other side.  The line
+   under a sensor ends it (LINE_FOUND); a full sweep without it is
+   LINE_LOST.  PROPOSED: 6 counts per tick per wheel, about 5 cm/s. */
+#define MOTION_LS_SPEED     (6)
+#define MOTION_LS_SWEEP_DEG (45)
+#define MOTION_LS_DIR_MIN   (10)
+
 /* ------------------------------------------------------------------ *
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
