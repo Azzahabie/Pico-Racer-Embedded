@@ -184,6 +184,7 @@ class MqttSource:
     def __init__(self, hub):
         self.hub = hub
         self.client = None
+        self.client_id = None
         self.decoder = telemetry_decode.Decoder()
         # Reuse the decoder's own line format: capture what record() logs.
         telemetry_decode.log = lambda text: hub.line("mqtt", text)
@@ -193,6 +194,7 @@ class MqttSource:
 
         self.stop()
         self.decoder = telemetry_decode.Decoder()
+        self.client_id = client_id
         topic = f"robocar/{client_id}/#"
         where = f"{host}:{port}"
 
@@ -214,6 +216,46 @@ class MqttSource:
         client.connect_async(host, port, 60)
         client.loop_start()
         self.client = client
+
+    def send(self, request):
+        """Publish a command to the car (MQTT_SCHEMA.md section 8).
+        request: {"cmd": "snap"} or {"map": {"mv": 0-15, "table": 26 of FLRU}}.
+        cmd is QoS 1, not retained; map is QoS 1 and retained, so the car gets
+        it again on every subscribe.  Returns a short description."""
+        if not self.client or not self.client.is_connected():
+            raise ValueError("not connected to the broker")
+        base = f"robocar/{self.client_id}"
+        if "raw" in request:
+            # Test input sent exactly as typed, to check the car's rejections
+            # (MQTT_SCHEMA.md section 8.4).  Never retained.
+            r = request["raw"]
+            tail = str(r.get("topic", "cmd"))
+            if tail not in ("cmd", "map", "junk"):
+                raise ValueError("raw topic must be cmd, map or junk")
+            text = str(r.get("hex", "")).replace(" ", "")
+            try:
+                payload = bytes.fromhex(text)
+            except ValueError:
+                raise ValueError(f"not hex: {r.get('hex')!r}")
+            topic = f"{base}/{tail}"
+            self.client.publish(topic, payload, qos=1, retain=False)
+            return f"raw {tail} {len(payload)}B [{payload.hex(' ')}]"
+        if "cmd" in request:
+            name = str(request["cmd"])
+            if name not in telemetry_decode.CMD_OPS:
+                raise ValueError(f"unknown command {name!r}")
+            topic, payload, retain = f"{base}/cmd", telemetry_decode.pack_cmd(name), False
+        elif "map" in request:
+            m = request["map"]
+            mv = int(m.get("mv", 0))
+            if not 0 <= mv <= 15:
+                raise ValueError("mv must be 0-15")
+            table = str(m.get("table", "")).strip().upper()
+            topic, payload, retain = f"{base}/map", telemetry_decode.pack_map(mv, table), True
+        else:
+            raise ValueError("nothing to send")
+        self.client.publish(topic, payload, qos=1, retain=retain)
+        return telemetry_decode.describe_command(topic, payload)
 
     def stop(self):
         if self.client:
@@ -461,13 +503,34 @@ def make_handler(viewer):
                 self.send_error(404)
 
         def do_POST(self):
-            if self.path != "/config":
+            if self.path not in ("/config", "/send", "/broker"):
                 self.send_error(404)
                 return
             # The page is served from 127.0.0.1 only; refuse other origins.
             origin = self.headers.get("Origin", "")
             if origin and not origin.startswith(("http://127.0.0.1", "http://localhost")):
                 self.send_error(403)
+                return
+            if self.path == "/send":
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    what = viewer.mqtt.send(json.loads(self.rfile.read(length) or b"{}"))
+                    hub.line("viewer", f"sent {what}")
+                    self.send_json(200, {"ok": True, "sent": what})
+                except (ValueError, TypeError) as why:
+                    self.send_json(400, {"ok": False, "error": str(why)})
+                return
+            if self.path == "/broker":
+                # Stop or start the built-in broker for outage tests; the
+                # saved settings are not changed.
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    run = bool(json.loads(self.rfile.read(length) or b"{}").get("run"))
+                    viewer.broker.apply(run, viewer.settings["broker_port"])
+                    hub.line("viewer", "broker " + ("started" if run else "stopped") + " from the page")
+                    self.send_json(200, {"ok": True, "running": viewer.broker.loop is not None})
+                except (ValueError, TypeError) as why:
+                    self.send_json(400, {"ok": False, "error": str(why)})
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0))

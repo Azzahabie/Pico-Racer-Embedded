@@ -42,8 +42,52 @@ OFFSETS = {"dev": 128, "deviation": 128, "speed_l": 128, "speed_r": 128, "turn_r
 NOT_AVAILABLE = {"tlt": 63, "trn": 0}
 
 
+# Inbound commands (section 8): the laptop packs them, the car checks them.
+# cmd is one byte, op in bits 0-2; ops 3-7 go to nav_ctrl_task (design decision 24).
+CMD_OPS = {"snap": 1, "ping": 2, "start": 3, "pause": 4, "resume": 5, "reset": 6, "finish": 7}
+# map: 4-bit mv, then a 2-bit action per letter, A first (section 8.3).
+MAP_LETTERS = 26
+ACTIONS = "FLRU"  # 0 forward, 1 left, 2 right, 3 U-turn
+
+
 def nbytes(bits):
     return (bits + 7) // 8
+
+
+def pack_cmd(name):
+    """The 1-byte cmd payload for a command name in CMD_OPS."""
+    return bytes([CMD_OPS[name]])
+
+
+def pack_map(mv, actions):
+    """The 7-byte map payload.  actions: 26 letters from ACTIONS, or 26 ints 0-3."""
+    if len(actions) != MAP_LETTERS:
+        raise ValueError(f"a map needs {MAP_LETTERS} actions, got {len(actions)}")
+    word = mv & 0xF
+    for i, a in enumerate(actions):
+        code = ACTIONS.index(a.upper()) if isinstance(a, str) else a
+        if not 0 <= code <= 3:
+            raise ValueError(f"action for {chr(65 + i)} must be 0-3, got {code}")
+        word |= code << (4 + 2 * i)
+    return word.to_bytes(nbytes(4 + 2 * MAP_LETTERS), "little")
+
+
+def describe_command(topic, payload):
+    """A sent cmd or map, for the log; None when the topic is neither."""
+    if topic.endswith("/cmd"):
+        names = {v: k for k, v in CMD_OPS.items()}
+        op = payload[0] if len(payload) == 1 else None
+        return "cmd " + names.get(op, "invalid [" + payload.hex(" ") + "]")
+    if topic.endswith("/map"):
+        if len(payload) != nbytes(4 + 2 * MAP_LETTERS):
+            return f"map invalid ({len(payload)} B)"
+        word = int.from_bytes(payload, "little")
+        table = "".join(ACTIONS[(word >> (4 + 2 * i)) & 3] for i in range(MAP_LETTERS))
+        return f"map mv={word & 0xF} {table}"
+    tail = topic.rsplit("/", 1)[-1]
+    if tail not in ("telemetry", "heartbeat", "state"):
+        return f"{tail} (not a car topic) [{payload.hex(' ')}]"
+    return None
 
 
 def e_length(kind):
@@ -132,6 +176,12 @@ class Decoder:
         gap = "" if self.last_arrival is None else f" +{now - self.last_arrival:.3f}s"
         self.last_arrival = now
         raw = payload.hex(" ")
+
+        # The laptop's own commands come back on the same wildcard subscription.
+        sent = describe_command(topic, payload)
+        if sent is not None:
+            log(f"SENT {sent}  {len(payload)}B [{raw}]")
+            return
 
         try:
             name, values = decode(payload)

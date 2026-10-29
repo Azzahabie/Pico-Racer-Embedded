@@ -115,6 +115,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
   <span class="pill" id="st-mqtt">mqtt</span>
   <span class="pill" id="st-serial">serial</span>
   <span class="pill" id="st-broker">broker</span>
+  <button id="broker-toggle" title="Stop or start the built-in broker (outage tests); settings are not changed">Stop broker</button>
   <span class="spacer"></span>
   <button id="open-settings" title="Broker, serial port, save folder">Settings</button>
   <label class="btn" title="Open a saved log (Attempt N.md, *.log)">Open log file
@@ -147,6 +148,39 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     <div id="log"></div>
   </section>
   <aside id="side-right">
+    <h2>Send to car</h2>
+    <div class="presets" id="send-cmds">
+      <button data-cmd="snap" title="Reply: one D snapshot on …/state">Snap</button>
+      <button data-cmd="ping" title="Reply: one H on …/heartbeat">Ping</button>
+      <button data-cmd="start" title="nav: Ready → Running">Start</button>
+      <button data-cmd="pause" title="nav: Running → Paused">Pause</button>
+      <button data-cmd="resume" title="nav: Paused → Running">Resume</button>
+      <button data-cmd="reset" title="nav: Finished → Ready, Fault → Calibrating">Reset</button>
+      <button data-cmd="finish" title="nav: Running/Paused → Finished">Finish</button>
+    </div>
+    <div class="presets">
+      <input id="map-table" maxlength="26" size="26" placeholder="26 of F L R U, A first"
+             title="Action per letter A..Z: F forward, L left, R right, U U-turn">
+      <input id="map-mv" type="number" min="0" max="15" value="1" style="width:4em" title="Table version mv, 0-15">
+      <button id="send-map" title="Retained on …/map">Send map</button>
+    </div>
+    <h2>Bad input test</h2>
+    <div class="presets">
+      <select id="bad-preset" title="Fill the box with a case the car must reject">
+        <option value="">preset…</option>
+        <option value="cmd|00">cmd op 0</option>
+        <option value="cmd|09">cmd reserved bit</option>
+        <option value="cmd|01 02">cmd 2 bytes</option>
+        <option value="map|43 4e 4e 4e 4e 4e">map 6 bytes</option>
+        <option value="map|43 4e 4e 4e 4e 4e 4e 4e">map 8 bytes (radio refuses)</option>
+        <option value="cmd|">cmd empty (radio refuses)</option>
+        <option value="junk|01">unknown topic (car not subscribed)</option>
+      </select>
+      <select id="bad-topic"><option>cmd</option><option>map</option><option>junk</option></select>
+      <input id="bad-hex" size="16" placeholder="hex, e.g. 09" title="Payload bytes in hex, sent exactly as typed">
+      <button id="send-bad" title="Not retained">Send raw</button>
+    </div>
+    <p class="muted" id="send-out"></p>
     <h2>Car state <span class="muted" id="s-age"></span></h2>
     <div class="big" id="mission">—</div>
     <h2>Faults</h2>
@@ -412,6 +446,7 @@ function setPill(id, text) {
   el.textContent = id.slice(3) + ": " + text;
   el.className = "pill " + (/^(connected|open|running)/.test(text) ? "ok"
     : /^off$/.test(text) ? "" : /missing|busy|exited|failed/.test(text) ? "bad" : "warn");
+  if (id === "st-broker") $("broker-toggle").textContent = /^running/.test(text) ? "Stop broker" : "Start broker";
 }
 function connect() {
   const es = new EventSource("/events");
@@ -497,6 +532,32 @@ $("search").oninput = () => {
     catch { searchRe = null; $("search").style.borderColor = "var(--bad)"; }
     render();
   }, 150);
+};
+async function sendToCar(body) {
+  const res = await fetch("/send", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  $("send-out").textContent = out.ok ? `sent ${out.sent}` : `not sent: ${out.error}`;
+}
+for (const b of document.querySelectorAll("#send-cmds button")) b.onclick = () => sendToCar({ cmd: b.dataset.cmd });
+$("send-map").onclick = () => {
+  const table = $("map-table").value.trim().toUpperCase();
+  if (!/^[FLRU]{26}$/.test(table)) { $("send-out").textContent = "a map needs 26 of F, L, R, U"; return; }
+  sendToCar({ map: { mv: Number($("map-mv").value), table } });
+};
+$("bad-preset").onchange = (e) => {
+  if (!e.target.value) return;
+  const [topic, hex] = e.target.value.split("|");
+  $("bad-topic").value = topic;
+  $("bad-hex").value = hex;
+};
+$("send-bad").onclick = () => sendToCar({ raw: { topic: $("bad-topic").value, hex: $("bad-hex").value } });
+$("broker-toggle").onclick = async (e) => {
+  const run = e.target.textContent.startsWith("Start");
+  const res = await fetch("/broker", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run }) });
+  const out = await res.json().catch(() => ({ ok: false }));
+  if (out.ok) e.target.textContent = out.running ? "Stop broker" : "Start broker";
 };
 $("only-hl").onclick = (e) => { onlyHl = !onlyHl; e.target.classList.toggle("on", onlyHl); render(); };
 $("pause").onclick = (e) => {
