@@ -416,17 +416,13 @@ typedef struct {
     uint16_t trn;
 } T_COMM_W_S;
 
-/* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
-   Returns the length. */
-static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
-                                     uint32_t up, const T_COMM_W_S *st)
+/* S's fields after the header; record D starts with the same ones. */
+static inline void comm_w_put_s_fields(uint8_t *out, uint32_t *p_pos,
+                                       const T_COMM_W_S *st)
 {
-    const T_COMM_W_HEADER h = { COMM_W_REC_S, COMM_W_SCHEMA_VERSION, s, up };
     uint8_t clamped = 0;
-    uint32_t pos = 0;
+    uint32_t pos = *p_pos;
 
-    comm_w_zero(out, COMM_W_S_SIZE);
-    comm_w_put_header(out, &pos, &h);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->faults, COMM_W_S_FAULTS_BITS, &clamped), COMM_W_S_FAULTS_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mot, COMM_W_S_MOT_BITS, &clamped), COMM_W_S_MOT_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->dst, COMM_W_S_DST_BITS, &clamped), COMM_W_S_DST_BITS);
@@ -443,7 +439,114 @@ static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
     comm_w_put_bits(out, &pos, comm_w_clamp(st->drp, COMM_W_S_DRP_BITS, &clamped), COMM_W_S_DRP_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->tlt, COMM_W_S_TLT_BITS, &clamped), COMM_W_S_TLT_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->trn, COMM_W_S_TRN_BITS, &clamped), COMM_W_S_TRN_BITS);
+    *p_pos = pos;
+}
+
+/* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
+   Returns the length. */
+static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
+                                     uint32_t up, const T_COMM_W_S *st)
+{
+    const T_COMM_W_HEADER h = { COMM_W_REC_S, COMM_W_SCHEMA_VERSION, s, up };
+    uint32_t pos = 0;
+
+    comm_w_zero(out, COMM_W_S_SIZE);
+    comm_w_put_header(out, &pos, &h);
+    comm_w_put_s_fields(out, &pos, st);
     return COMM_W_S_SIZE;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Record D -- the snapshot, reply to cmd snap (schema section 7), 23 bytes
+ * ------------------------------------------------------------------ */
+
+#define COMM_W_D_RSSI_BITS      7U   /* -dBm, 58 means -58 dBm               */
+#define COMM_W_D_IP_BITS       32U   /* IPv4, first octet in the low byte    */
+#define COMM_W_D_QD_BITS        3U   /* outbound queue depth                 */
+#define COMM_W_D_MQV_BITS       2U   /* 0 disconnected, 1 connecting, 2 up   */
+#define COMM_W_D_MQV_DOWN       0U
+#define COMM_W_D_MQV_CONNECTING 1U
+#define COMM_W_D_MQV_UP         2U
+#define COMM_W_D_BITS          (COMM_W_S_BITS + COMM_W_D_RSSI_BITS            \
+                                + COMM_W_D_IP_BITS + COMM_W_D_QD_BITS         \
+                                + COMM_W_D_MQV_BITS)                  /* 183 */
+#define COMM_W_D_SIZE          COMM_W_BYTES(COMM_W_D_BITS)            /* 23 */
+
+/* The diagnostics after S's fields, as on the wire. */
+typedef struct {
+    uint8_t rssi;    /* -dBm */
+    uint32_t ip;
+    uint8_t qd, mqv;
+} T_COMM_W_D_DIAG;
+
+/* Pack record D into out[COMM_W_D_SIZE]: S's fields, then the diagnostics,
+   each clamped to its width.  Returns the length. */
+static inline uint32_t comm_w_pack_d(uint8_t out[COMM_W_D_SIZE], uint16_t s,
+                                     uint32_t up, const T_COMM_W_S *st,
+                                     const T_COMM_W_D_DIAG *dg)
+{
+    const T_COMM_W_HEADER h = { COMM_W_REC_D, COMM_W_SCHEMA_VERSION, s, up };
+    uint8_t clamped = 0;
+    uint32_t pos = 0;
+
+    comm_w_zero(out, COMM_W_D_SIZE);
+    comm_w_put_header(out, &pos, &h);
+    comm_w_put_s_fields(out, &pos, st);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->rssi, COMM_W_D_RSSI_BITS, &clamped), COMM_W_D_RSSI_BITS);
+    comm_w_put_bits(out, &pos, dg->ip, COMM_W_D_IP_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->qd, COMM_W_D_QD_BITS, &clamped), COMM_W_D_QD_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->mqv, COMM_W_D_MQV_BITS, &clamped), COMM_W_D_MQV_BITS);
+    return COMM_W_D_SIZE;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Inbound commands (schema section 8)
+ * ------------------------------------------------------------------ */
+
+/* cmd, 1 byte on .../cmd: op in bits 0-2, bits 3-7 reserved (zero). */
+#define COMM_W_CMD_SIZE         1U
+#define COMM_W_CMD_OP_BITS      3U
+#define COMM_W_CMD_SNAP         1U   /* reply: one D on .../state            */
+#define COMM_W_CMD_PING         2U   /* reply: one H on .../heartbeat        */
+#define COMM_W_CMD_START        3U   /* mission commands, op - 2 is the      */
+#define COMM_W_CMD_PAUSE        4U   /* nav_ctrl_task mission_cmd_t          */
+#define COMM_W_CMD_RESUME       5U   /* (MCMD_START 1 .. MCMD_FINISH 5;      */
+#define COMM_W_CMD_RESET        6U   /* design decision 24)                  */
+#define COMM_W_CMD_FINISH       7U
+
+/* map, 7 bytes on .../map: mv in bits 0-3, then 26 x 2-bit actions, A first. */
+#define COMM_W_MAP_SIZE         7U
+#define COMM_W_MAP_MV_BITS      4U
+#define COMM_W_MAP_ACT_BITS     2U
+#define COMM_W_MAP_LETTERS     26U
+
+/* Return the op of a valid cmd, or 0 when it is rejected: wrong length, op 0,
+   or a reserved bit set. */
+static inline uint32_t comm_w_check_cmd(const uint8_t *buf, uint32_t len)
+{
+    if((NULL == buf) || (COMM_W_CMD_SIZE != len) || (0U != (buf[0] >> COMM_W_CMD_OP_BITS))) {
+        return 0U;
+    }
+    return buf[0] & 0x07U;
+}
+
+/* Check a map and unpack it.  Every 2-bit action is valid, so only the
+   length can be wrong (schema 8.3).  Returns true and fills *p_mv and
+   act[] (0 forward, 1 left, 2 right, 3 U-turn) when the length is right. */
+static inline bool comm_w_check_map(const uint8_t *buf, uint32_t len,
+                                    uint8_t *p_mv,
+                                    uint8_t act[COMM_W_MAP_LETTERS])
+{
+    uint32_t pos = 0;
+
+    if((NULL == buf) || (COMM_W_MAP_SIZE != len) || (NULL == p_mv) || (NULL == act)) {
+        return false;
+    }
+    *p_mv = (uint8_t)comm_w_get_bits(buf, &pos, COMM_W_MAP_MV_BITS);
+    for(uint32_t i = 0; i < COMM_W_MAP_LETTERS; i++) {
+        act[i] = (uint8_t)comm_w_get_bits(buf, &pos, COMM_W_MAP_ACT_BITS);
+    }
+    return true;
 }
 
 /* ------------------------------------------------------------------ *

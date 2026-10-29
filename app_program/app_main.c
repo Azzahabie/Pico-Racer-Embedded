@@ -576,6 +576,8 @@ EXPORT INT usermain(void)
 			.ir_flgid		= (ir_flgid > 0) ? ir_flgid : 0,
 			.imu_flgid		= (imu_flgid > 0) ? imu_flgid : 0,
 			.cal_req_bit		= IMU_FLG_CAL_REQ,
+			/* Buddy 1: MQTT start/pause/resume/reset/finish (0 without MQTT) */
+			.mission_cmd_mbfid	= comms_mission_mbf(),
 		};
 
 		if(imu_flgid <= 0) {

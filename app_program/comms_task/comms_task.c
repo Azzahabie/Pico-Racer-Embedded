@@ -43,6 +43,17 @@ LOCAL volatile UW	tele_dropped;	/* sends refused: queue full */
 
 EXPORT ID	tele_mbfid;
 
+/* mission_cmd_mbf: comms_task -> nav_ctrl_task, one mission_cmd_t byte per
+   message (nav_ctrl.h; design decision 24).  MQTT builds only: nothing else
+   sends mission commands. */
+#define MISSION_DEPTH	4
+#define MISSION_SLOT	(4 + 4)		/* 4-byte header + 1 byte rounded up */
+
+#if TM_WIFI_MQTT
+LOCAL UW	mission_buf[(MISSION_DEPTH * MISSION_SLOT) / sizeof(UW)];
+#endif
+LOCAL ID	mission_mbfid;
+
 EXPORT ER comms_tele_init(void)
 {
 	T_CMBF	cmbf = {0};
@@ -52,7 +63,20 @@ EXPORT ER comms_tele_init(void)
 	cmbf.maxmsz = COMM_W_INTAKE_SIZE_MAX;
 	cmbf.bufptr = tele_buf;
 	tele_mbfid = tk_cre_mbf(&cmbf);
-	return (tele_mbfid < E_OK) ? tele_mbfid : E_OK;
+	if(tele_mbfid < E_OK) return tele_mbfid;
+#if TM_WIFI_MQTT
+	cmbf.bufsz = sizeof mission_buf;
+	cmbf.maxmsz = 1;
+	cmbf.bufptr = mission_buf;
+	mission_mbfid = tk_cre_mbf(&cmbf);
+	if(mission_mbfid < E_OK) return mission_mbfid;
+#endif
+	return E_OK;
+}
+
+EXPORT ID comms_mission_mbf(void)
+{
+	return (mission_mbfid > 0) ? mission_mbfid : 0;
 }
 
 EXPORT ER comms_tele_send(const UB *body, INT length)
@@ -290,6 +314,151 @@ LOCAL void handle_intake(const UB *body, INT size, UH *seq)
 	(*seq)++;
 }
 
+/* ------------------------------------------------------------------ *
+ *  Inbound commands (MQTT_SCHEMA.md section 8)
+ *
+ *  Drained once per tick, after H and S (design decision 21): commands are
+ *  rare, outbound has priority, and nothing extra wakes the task.  Each one
+ *  produces exactly one console line.  No command reaches the motors:
+ *  mission commands go to nav_ctrl_task, which acts on each only in its
+ *  mission state (FR-24).
+ * ------------------------------------------------------------------ */
+
+LOCAL UW	cmd_rejected;		/* cmd/map that failed the check */
+LOCAL UW	in_refused_seen;	/* radio refusals already reported */
+/* The last map received.  Kept, not applied: barcode_task's map_mbf is not on
+   master yet, so mpv stays as it is (design decision 23, M8b). */
+LOCAL BOOL	map_have;
+LOCAL UB	map_mv;
+LOCAL UB	map_act[COMM_W_MAP_LETTERS];
+
+LOCAL void reject_line(const char *what, const UB *payload, INT len)
+{
+	UB	line[96];
+	UB	*p = line;
+	INT	i;
+
+	cmd_rejected++;
+	p += tm_sprintf(p, (UB *)"[comms] %s rejected #%u: len=%d bytes=", what,
+			cmd_rejected, len);
+	for(i = 0; i < len; i++) {
+		p += tm_sprintf(p, (UB *)"%02x", payload[i]);
+	}
+	tm_sprintf(p, (UB *)"\n");
+	tm_printf(line);
+}
+
+/* snap: one D on .../state, the S fields of this tick plus diagnostics. */
+LOCAL void send_snapshot(UH *seq)
+{
+	UB		rec[COMM_W_D_SIZE];
+	T_COMM_W_D_DIAG	dg;
+	INT		rssi = -(INT)cyw43_utk_rssi();	/* -dBm */
+	UW		state = cyw43_utk_mqtt_state();
+	UW		up, len;
+	ER		er;
+
+	dg.rssi = (UB)((rssi < 0) ? 0 : (rssi > 127) ? 127 : rssi);
+	dg.ip = cyw43_utk_ip4();
+	dg.qd = (UB)cyw43_utk_mqtt_queue_depth();
+	dg.mqv = (state == CYW43_MQTT_CONNECTED) ? COMM_W_D_MQV_UP
+		: (state == CYW43_MQTT_CONNECTING) ? COMM_W_D_MQV_CONNECTING
+		: COMM_W_D_MQV_DOWN;
+	up = now_ms();
+	len = comm_w_pack_d(rec, *seq, up, &s_cache, &dg);
+	er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_STATE, rec, len);
+	print_record("D (snap)", *seq, up, rec, len, er);
+	(*seq)++;
+}
+
+/* start/pause/resume/reset/finish: to nav_ctrl_task.  A full queue rejects
+   the command; it is never a Fault (Week 6 feedback F3). */
+LOCAL void send_mission(UW op)
+{
+	static const char *const name[] = { "start", "pause", "resume", "reset", "finish" };
+	UB	mcmd = (UB)(op - COMM_W_CMD_START + MCMD_START);
+	UB	line[80];
+	ER	er = E_NOEXS;
+
+	if(mission_mbfid > 0) {
+		er = tk_snd_mbf(mission_mbfid, &mcmd, 1, TMO_POL);
+	}
+	if(er == E_OK) {
+		(void)tk_set_flg(nav_flag(), NAV_FLG_MISSION_CMD);
+		tm_sprintf(line, (UB *)"[comms] cmd %s -> nav\n", name[op - COMM_W_CMD_START]);
+	} else {
+		cmd_rejected++;
+		tm_sprintf(line, (UB *)"[comms] cmd %s rejected #%u: mission queue %s (%d)\n",
+			   name[op - COMM_W_CMD_START], cmd_rejected,
+			   (er == E_TMOUT) ? "full" : "missing", er);
+	}
+	tm_printf(line);
+}
+
+LOCAL void handle_cmd(const UB *payload, INT len, UH *seq)
+{
+	UW	op = comm_w_check_cmd(payload, (uint32_t)len);
+	UW	up;
+	UB	rec[COMM_W_H_SIZE];
+	ER	er;
+
+	if(op == 0U) {
+		reject_line("cmd", payload, len);
+	} else if(op == COMM_W_CMD_SNAP) {
+		send_snapshot(seq);
+	} else if(op == COMM_W_CMD_PING) {
+		up = now_ms();
+		er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_HEARTBEAT, rec,
+					 comm_w_pack_h(rec, *seq, up));
+		print_record("H (ping)", *seq, up, rec, COMM_W_H_SIZE, er);
+		(*seq)++;
+	} else {
+		send_mission(op);
+	}
+}
+
+LOCAL void handle_map(const UB *payload, INT len)
+{
+	UB	line[96];
+	UB	*p = line;
+	UW	i;
+
+	if(!comm_w_check_map(payload, (uint32_t)len, &map_mv, map_act)) {
+		reject_line("map", payload, len);
+		return;
+	}
+	map_have = TRUE;
+	p += tm_sprintf(p, (UB *)"[comms] map mv=%u received: ", map_mv);
+	for(i = 0; i < COMM_W_MAP_LETTERS; i++) {
+		p += tm_sprintf(p, (UB *)"%c", "FLRU"[map_act[i]]);
+	}
+	tm_sprintf(p, (UB *)" (kept, not applied: mpv stays %u)\n", s_cache.mpv);
+	tm_printf(line);
+}
+
+LOCAL void handle_commands(UH *seq)
+{
+	UB		payload[CYW43_MQTT_IN_MAX];
+	uint32_t	topic;
+	int32_t		len;
+	UW		refused = cyw43_utk_mqtt_in_refused();
+	UB		line[96];
+
+	while((len = cyw43_utk_mqtt_take_cmd(&topic, payload)) > 0) {
+		if(topic == CYW43_MQTT_IN_CMD) {
+			handle_cmd(payload, (INT)len, seq);
+		} else {
+			handle_map(payload, (INT)len);
+		}
+	}
+	if(refused != in_refused_seen) {
+		tm_sprintf(line, (UB *)"[comms] radio refused %u inbound message(s): unknown topic, empty, too long or mailbox full\n",
+			   refused - in_refused_seen);
+		tm_printf(line);
+		in_refused_seen = refused;
+	}
+}
+
 #if TM_COMMS_E_SELFTEST
 LOCAL void selftest_inject(UW n)
 {
@@ -372,6 +541,9 @@ LOCAL void comms_task(INT stacd, void *exinf)
 			tm_printf((UB *)"[comms] Wi-Fi loss reported in S s=%u: latch cleared\n", seq);
 		}
 		seq++;
+
+		/* Inbound commands last: outbound has priority (decision 21). */
+		handle_commands(&seq);
 
 #if TM_COMMS_E_SELFTEST
 		if(beats % 5U == 4U) selftest_inject(beats / 5U);

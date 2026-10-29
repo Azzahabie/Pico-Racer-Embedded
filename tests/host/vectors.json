@@ -553,5 +553,73 @@
    },
    "wire": "3711c021140000108a0689c300400608f1d301a3ca1c48"
   }
+ ],
+ "commands": [
+  {
+   "name": "cmd snap",
+   "topic": "cmd",
+   "values": {
+    "op": 1
+   },
+   "payload": "01"
+  },
+  {
+   "name": "cmd ping",
+   "topic": "cmd",
+   "values": {
+    "op": 2
+   },
+   "payload": "02"
+  },
+  {
+   "name": "cmd start",
+   "topic": "cmd",
+   "values": {
+    "op": 3
+   },
+   "payload": "03"
+  },
+  {
+   "name": "cmd finish",
+   "topic": "cmd",
+   "values": {
+    "op": 7
+   },
+   "payload": "07"
+  },
+  {
+   "name": "map example",
+   "topic": "map",
+   "values": {
+    "mv": 11,
+    "act_A": 1,
+    "act_B": 0,
+    "act_C": 3,
+    "act_D": 2,
+    "act_E": 1,
+    "act_F": 0,
+    "act_G": 3,
+    "act_H": 2,
+    "act_I": 1,
+    "act_J": 0,
+    "act_K": 3,
+    "act_L": 2,
+    "act_M": 1,
+    "act_N": 0,
+    "act_O": 3,
+    "act_P": 2,
+    "act_Q": 1,
+    "act_R": 0,
+    "act_S": 3,
+    "act_T": 2,
+    "act_U": 1,
+    "act_V": 0,
+    "act_W": 3,
+    "act_X": 2,
+    "act_Y": 1,
+    "act_Z": 0
+   },
+   "payload": "1b1b1b1b1b1b1b"
+  }
  ]
 }

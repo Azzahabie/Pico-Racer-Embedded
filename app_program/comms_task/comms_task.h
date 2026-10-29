@@ -17,8 +17,12 @@
 /* The intake queue (tele_mbf).  Created by comms_tele_init(). */
 IMPORT ID tele_mbfid;
 
-/* Create tele_mbf.  Called first in usermain(), before any task starts. */
+/* Create tele_mbf, and in MQTT builds mission_cmd_mbf.  Called first in
+   usermain(), before any task starts. */
 IMPORT ER comms_tele_init(void);
+
+/* mission_cmd_mbf for nav_bind_t.mission_cmd_mbfid (0 without MQTT). */
+IMPORT ID comms_mission_mbf(void);
 
 /* Queue one packed event body (from a comm_w_pack_* helper). */
 IMPORT ER comms_tele_send(const UB *body, INT length);
