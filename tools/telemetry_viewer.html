@@ -53,6 +53,7 @@ h2:first-child { margin-top: 0; }
 .tag input { margin: 0; }
 .tag .n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tag.off { opacity: .45; }
+#tags.by-filter .tag { opacity: .45; }
 .src-head { display: flex; align-items: center; justify-content: space-between; }
 .src-head a { font-size: 11px; color: var(--accent); cursor: pointer; text-transform: none; letter-spacing: 0; }
 #tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px;
@@ -131,6 +132,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button data-preset="tele">Telemetry only</button>
       <button data-preset="net">Network only</button>
     </div>
+    <p class="muted" id="tags-note" hidden>Filter set: it alone decides what is shown, and these tags are ignored. Clear the filter to use them again.</p>
     <div id="tags"></div>
     <p class="muted">Click a tag to hide it. Alt+click shows only that tag. Choices are remembered.</p>
   </aside>
@@ -339,7 +341,9 @@ function bumpTag(l) {
 let searchRe = null;
 function current() { return fileLines || live; }
 function visible(l) {
-  if (hidden.has(l.key)) return false;
+  // A filter overrides the tags: a pasted filter shows exactly what it
+  // matches, whatever was hidden before.
+  if (!searchRe && hidden.has(l.key)) return false;
   if (onlyHl && !(l.flags.size)) return false;
   if (searchRe && !searchRe.test(l.text)) return false;
   return true;
@@ -530,6 +534,8 @@ function applySearch() {
   try { searchRe = v ? new RegExp(v, "i") : null; $("search").style.borderColor = ""; }
   catch { searchRe = null; $("search").style.borderColor = "var(--bad)"; }
   store.set("search", v);
+  $("tags").classList.toggle("by-filter", !!searchRe);
+  $("tags-note").hidden = !searchRe;
   render();
 }
 $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); };
@@ -573,7 +579,7 @@ $("clear").onclick = () => {
 $("save").onclick = () => {
   // the header says what was left out, so the reader knows what is missing
   const head = `# filter: ${$("search").value.trim() || "(none)"}${onlyHl ? "  [highlights only]" : ""}\n`
-    + `# hidden: ${[...hidden].join(", ") || "(none)"}\n`;
+    + `# hidden: ${searchRe ? "(ignored: the filter decides)" : ([...hidden].join(", ") || "(none)")}\n`;
   const text = head + current().filter(visible).map((l) => `[${l.time}] ${l.src}: ${l.text}`).join("\n") + "\n";
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
