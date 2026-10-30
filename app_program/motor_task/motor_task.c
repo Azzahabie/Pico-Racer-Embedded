@@ -40,6 +40,8 @@
 #include "../common/messages.h"
 #include "../nav_task/nav_ctrl.h"
 #include "../obstacle_task/scan_if.h"
+#include "../line_task/line_task.h"
+#include "../line_task/line_state.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -267,6 +269,18 @@ typedef struct
     int32_t     man_mm;    /* distance it was asked to drive, mm */
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
+
+    /* line_state (line_state.h), read once per tick */
+    uint32_t line_word;     /* the word this tick                  */
+    uint32_t line_ctr;      /* its counter at the last change      */
+    uint32_t line_same;     /* ticks the counter has not moved     */
+    uint32_t line_seen_run; /* ticks in a row the line was seen    */
+    int32_t  line_dir;      /* +1 line last left, -1 right, 0 none */
+
+    /* line search: +1 pivots left (counter-clockwise), -1 right */
+    int32_t search_dir;
+    uint8_t search_phase;   /* 0 toward the line, 1 the other way  */
+    bool    b_search_over;  /* both sweeps done, no line            */
 
     /* reporting */
     int32_t  rep_l;
@@ -1280,19 +1294,148 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state)
     {
         p_ctx->man_mm = (int32_t)p_ctx->avoid_mm;
     }
+    else if (MOTION_ST_LINE_SEARCH == state)
+    {
+        p_ctx->search_dir    = (p_ctx->line_dir < 0) ? -1 : 1;
+        p_ctx->search_phase  = 0u;
+        p_ctx->b_search_over = false;
+    }
+    else
+    {
+        /* Nothing else to set up. */
+    }
 }
 
-/* What the wheels do this tick in the current state.  Only the reverse is
-   built; every other state brakes until its manoeuvre exists. */
+/* Read line_state (one load) and work out the statechart's line inputs.
+   The word is stale when its counter has not moved for
+   LINE_ST_STALE_TICKS ticks: ir_sense_task has stopped publishing. */
+static void
+line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
+{
+    uint32_t word = line_state_word();
+
+    if (line_state_counter(word) == p_ctx->line_ctr)
+    {
+        if (p_ctx->line_same < LINE_ST_STALE_TICKS)
+        {
+            p_ctx->line_same++;
+        }
+    }
+    else
+    {
+        p_ctx->line_ctr  = line_state_counter(word);
+        p_ctx->line_same = 0u;
+    }
+    p_ctx->line_word = word;
+    if (line_state_error(word) >= MOTION_LS_DIR_MIN)
+    {
+        p_ctx->line_dir = 1;
+    }
+    else if (line_state_error(word) <= -MOTION_LS_DIR_MIN)
+    {
+        p_ctx->line_dir = -1;
+    }
+    else
+    {
+        /* Too small to say which side: keep the last. */
+    }
+
+    /* Both sensors inside the line: centred reads rl 11, off the line 00.
+       The dark time bridges the short 00 of a wobble. */
+    p_in->b_line_seen = (LINE_RL_CENTRED != line_state_rl(word))
+                        || (line_state_dark_ms(word) < MOTION_LF_SEEN_MS);
+    p_ctx->line_seen_run = p_in->b_line_seen ? (p_ctx->line_seen_run + 1u) : 0u;
+    p_in->b_line_found   = (p_ctx->line_seen_run >= MOTION_LF_FOUND_TICKS);
+    p_in->b_line_missing = line_state_lost(word) || line_state_fault(word)
+                           || (p_ctx->line_same >= LINE_ST_STALE_TICKS);
+    p_in->b_search_over  = p_ctx->b_search_over;
+}
+
+/* Encoder counts each wheel turns for a pivot of deg degrees on the spot:
+   arc = deg/360 x pi x wheelbase, counts = arc / (pi x wheel diameter) x
+   counts per turn, so pi cancels. */
+#define PIVOT_COUNTS(deg)                                                      \
+    (((deg) * MOTION_WHEELBASE_MM * MOTION_COUNTS_PER_REV)                     \
+     / (360 * MOTION_WHEEL_DIA_MM))
+
+/* LINE_SEARCH: pivot toward the line's last side up to the sweep angle,
+   then back to the same angle the other side; then the search is over. */
+static void
+search_drive (motion_ctx_t *p_ctx)
+{
+    int32_t turned;
+    int32_t dir;
+
+    /* counter-clockwise counts per wheel since the search began, signed
+       so + is toward search_dir */
+    turned = (((p_ctx->pos_r - p_ctx->man_start_r)
+               - (p_ctx->pos_l - p_ctx->man_start_l))
+              / 2)
+             * p_ctx->search_dir;
+
+    if ((0u == p_ctx->search_phase)
+        && (turned >= PIVOT_COUNTS(MOTION_LS_SWEEP_DEG)))
+    {
+        p_ctx->search_phase = 1u;
+        motion_pid_reset(&p_ctx->pid_l);
+        motion_pid_reset(&p_ctx->pid_r);
+    }
+    else if ((1u == p_ctx->search_phase)
+             && (turned <= -PIVOT_COUNTS(MOTION_LS_SWEEP_DEG)))
+    {
+        p_ctx->b_search_over = true;
+    }
+    else
+    {
+        /* Still sweeping. */
+    }
+
+    if (p_ctx->b_search_over)
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    else
+    {
+        dir = (0u == p_ctx->search_phase) ? p_ctx->search_dir
+                                          : -p_ctx->search_dir;
+        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, -dir * MOTION_LS_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, dir * MOTION_LS_SPEED,
+                                       p_ctx->d_r);
+    }
+}
+
+/* What the wheels do this tick in the current state.  The reverse, line
+   following and the line search are built; every other state brakes
+   until its manoeuvre exists. */
 static void
 man_drive (motion_ctx_t *p_ctx, motion_state_t state)
 {
+    int32_t corr;
+
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->cmd_l =
             motion_pid_step(&p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
         p_ctx->cmd_r =
             motion_pid_step(&p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
+    }
+    else if (MOTION_ST_LINE_FOLLOW == state)
+    {
+        /* error > 0: turn left (slow the left wheel, speed up the right).
+           With LINE_STEER_INVERT that is the left sensor darker.  0 while
+           a barcode is read. */
+        corr = (line_state_error(p_ctx->line_word) * MOTION_LF_GAIN)
+               / LINE_ST_ERR_MAX;
+        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_LF_BASE - corr,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_LF_BASE + corr,
+                                       p_ctx->d_r);
+    }
+    else if (MOTION_ST_LINE_SEARCH == state)
+    {
+        search_drive(p_ctx);
     }
     else
     {
@@ -1331,6 +1474,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     in.avoid         = (motion_sm_avoid_t)p_ctx->avoid_cmd;
     in.b_done        = man_done(p_ctx, before);
     p_ctx->avoid_cmd = (uint8_t)MOTION_SM_AVOID_NONE; /* taken */
+    line_inputs(p_ctx, &in);
 
     motion_sm_step(&p_ctx->sm, &in, &out);
 

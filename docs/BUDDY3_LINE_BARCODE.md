@@ -49,11 +49,15 @@ Neither task drives the motors.
     (counter-clockwise, the same sign as `S.trn`);
   - lost after `LINE_LOST_MS` without a confirmed black;
   - a sensor fault after `IR_RAIL_FAULT_SAMPLES` at a rail.
-- **Junction:** both sensors black for `LINE_JUNCTION_SAMPLES` (J_n = 3)
-  samples running gives one event. It rearms only after
-  `LINE_JUNCTION_REARM_SAMPLES` running off it. No junction is reported
-  while a barcode is under the car, or for `BARCODE_JUNCTION_HOLDOFF_MS`
-  after.
+- **Junction:** GP26 and GP27 are closer together than the 18 mm line, so
+  both read black (rl 11) whenever the car is centred. That is normal
+  following, never a junction, and those two sensors cannot see a
+  crossing. The junction comes from the barcode sensor: GP7 black for
+  `LINE_JUNCTION_SAMPLES` (J_n = 80, provisional) samples running gives one
+  event. That is longer than any barcode bar and shorter than the crossbar.
+  It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
+  samples running. A barcode read doesn't block it, because the crossbar
+  starts a capture of its own.
 - **Mission change:** the junction is disarmed and a partial barcode
   aborted.
 
@@ -97,7 +101,7 @@ Neither task drives the motors.
 [line] calibration OK: GP26 ok (white 300, rise 2500) GP27 ok (...)
 [barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
 [barcode] REJECTED: malformed (bad_length)
-[line] junction -> nav
+[line] junction (GP7 black 80 ms) -> nav
 ```
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of

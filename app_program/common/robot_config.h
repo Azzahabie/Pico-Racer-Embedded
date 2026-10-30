@@ -12,8 +12,12 @@
 #define LINE_COMMISSION_SAMPLE_COUNT    \
     (LINE_COMMISSION_DURATION_MS / LINE_COMMISSION_SAMPLE_PERIOD_MS)
 /* Compile-time behavior switches. */
+/* 1: both sensors sit inside the 18 mm line, so rl 10 (only GP27 black)
+   means the line is on the GP27 (right) side and the car must turn right.
+   Uninverted, (right - left)/10 is positive there, which motion_task
+   reads as "turn left", and LINE_SEARCH would pivot away from the line. */
 #ifndef LINE_STEER_INVERT
-#define LINE_STEER_INVERT                (0)
+#define LINE_STEER_INVERT                (1)
 #endif
 #ifndef LINE_STOP_ON_LOST
 #define LINE_STOP_ON_LOST                (0)
