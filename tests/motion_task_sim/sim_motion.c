@@ -300,6 +300,12 @@ mission_state_t nav_mission_state(void) { return g_mission; }
 bool nav_mission_running(void) { return MS_RUNNING == g_mission; }
 ID nav_flag(void) { return SIM_NAV_FLGID; }
 ID scan_if_flag(void) { return g_scan_flgid; }
+
+/* line_task.h (Buddy 3): the line_state word, as ir_sense_task publishes it.
+   sim_reset() puts the car centred on the line (rl 11, calibrated); the
+   counter moves every tick (sim_tick), so motion never sees it stale. */
+static line_state_fields_t	g_line;
+uint32_t line_state_word(void) { return line_state_pack(&g_line); }
 /* As the kernel does it (eventflag.c): wake if any waited bit is set,
    return the whole pattern from before the clear, and with TWF_BITCLR
    clear every waited bit. */
@@ -455,6 +461,7 @@ sim_tick (void)
 {
 	g_time_us += 10000u;
 	g_tick++;
+	g_line.counter++;			/* ir_sense_task publishing */
 	plant_step();
 	if (g_fail_ticks == 0) { motion_cyclic_isr(NULL); }	/* the 10 ms handler */
 	motion_cycle(&g_ctx);
@@ -508,6 +515,9 @@ sim_reset (const char *p_name)
 	g_scan_flag = 0u;
 	g_scan_flgid = SIM_SCAN_FLGID;
 	g_mission = MS_READY;
+	memset(&g_line, 0, sizeof g_line);
+	g_line.rl = LINE_RL_JUNCTION;		/* 3 = both black: centred */
+	g_line.cal = true;
 	g_brake_calls = 0;
 	g_probe = 0;
 	g_brake_t_us = 0u;
@@ -914,7 +924,7 @@ scenario_stop_order (void)
 /* Statechart 6.2 in the normal image: nav's mission state moves motion
    between Idle and Line Following, a STOP brakes it into Braked and back
    (history), and a new mission restarts the distance while a resume keeps
-   it.  No manoeuvre is built yet, so the wheels are never driven. */
+   it.  Line Following drives the wheels; Idle and Braked never do. */
 static void
 scenario_statechart (void)
 {
@@ -958,12 +968,13 @@ scenario_statechart (void)
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_IDLE);
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> IDLE") != NULL);
+	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));		/* Idle brakes */
 	g_mission = MS_RUNNING;					/* resume */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 	CHECK(g_ctx.ds_mm == d_paused);			/* a resume keeps it */
 
-	CHECK(g_duty_max_abs == 0);
+	CHECK(g_duty_max_abs > 0);			/* Line Following drove */
 	CHECK((g_nav_flag == 0u) && (g_scan_flag == 0u));	/* nothing owed */
 }
 
