@@ -10,18 +10,21 @@
   --muted: #69727d; --accent: #2f6fde; --row-hover: #f0f3f7;
   --ok: #1f8a4c; --warn: #b26a00; --bad: #c53030; --info: #6b4fd8;
   --chip: #eef1f5; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --s26: #2f6fde; --s27: #d9730d;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
     --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
     --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
+    --s26: #6c9cff; --s27: #f0a050;
   }
 }
 :root[data-theme="dark"] {
   --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
   --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
   --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
+  --s26: #6c9cff; --s27: #f0a050;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -61,7 +64,8 @@ h2:first-child { margin-top: 0; }
 #search { flex: 1; min-width: 160px; font: inherit; padding: 5px 10px; border-radius: 6px;
           border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 #count { color: var(--muted); font-size: 12px; }
-#log { font-family: var(--mono); font-size: 12px; }
+main > section { display: flex; flex-direction: column; overflow: hidden; }
+#log { font-family: var(--mono); font-size: 12px; flex: 1; min-height: 0; overflow: auto; }
 .row { display: grid; grid-template-columns: 92px 64px 1fr; gap: 8px; padding: 1px 12px;
        border-left: 3px solid transparent; white-space: pre-wrap; word-break: break-word; }
 .row:hover { background: var(--row-hover); }
@@ -103,6 +107,17 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
 #refresh-ports { justify-self: start; }
 .dlg-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .err { color: var(--bad); font-size: 13px; margin: 4px 0; min-height: 1em; }
+#linechart { display: none; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+#linechart.show { display: block; }
+.lc-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12px; margin-bottom: 6px; }
+.lc-head b { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.lc-val { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lc-val .k { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.lc-val .blk { font-weight: 600; }
+.lc-head select { font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px;
+                  border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+#lc-canvas { display: block; width: 100%; height: 260px; }
+#lc-hint { color: var(--warn); }
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
   aside { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -145,7 +160,24 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button id="pause">Pause</button>
       <button id="clear">Clear</button>
       <button id="save">Save shown</button>
+      <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
       <span id="count"></span>
+    </div>
+    <div id="linechart">
+      <div class="lc-head">
+        <b>Line sensors</b>
+        <span class="lc-val" id="lc-26"></span>
+        <span class="lc-val" id="lc-27"></span>
+        <span class="lc-val" id="lc-lost"></span>
+        <span class="muted" id="lc-rate"></span>
+        <span class="spacer"></span>
+        <span class="muted lc-val" id="lc-hover"></span>
+        <label class="muted">Window <select id="lc-win">
+          <option value="10">10 s</option><option value="30">30 s</option><option value="60">1 min</option>
+          <option value="300">5 min</option><option value="0">all</option></select></label>
+      </div>
+      <canvas id="lc-canvas"></canvas>
+      <p class="muted" id="lc-hint"></p>
     </div>
     <div id="log"></div>
   </section>
@@ -358,10 +390,10 @@ function rowFor(l) {
   return d;
 }
 function atBottom() {
-  const sec = $("log").parentElement;
+  const sec = $("log");
   return sec.scrollHeight - sec.scrollTop - sec.clientHeight < 40;
 }
-function scrollEnd() { const sec = $("log").parentElement; sec.scrollTop = sec.scrollHeight; }
+function scrollEnd() { const sec = $("log"); sec.scrollTop = sec.scrollHeight; }
 function render() {
   const lines = current().filter(visible);
   const shown = lines.slice(-MAX_SHOWN);
@@ -444,6 +476,154 @@ setInterval(() => {
   el.className = "muted age" + (age > 3 ? " stale" : "");
 }, 250);
 
+/* ---- line sensor chart ---------------------------------------------- */
+// From ir_sense_task's "[line] dbg" line: every 2 s normally, every 100 ms
+// with LINE_COMMISSIONING_MODE 1.  raw is the ADC (black high), thr is
+// rise/fall in the same units, on_line the debounced black/white call.
+const LC_RE = /^\[line\] dbg GP26 raw=(\d+) min=(\d+) max=(\d+) norm=(\d+) thr=(\d+)\/(\d+) on_line=(\d)\s*\| GP27 raw=(\d+) min=(\d+) max=(\d+) norm=(\d+) thr=(\d+)\/(\d+) on_line=(\d)\s*\| dark_ms=(\d+) lost=(\d)/;
+const LC_MAX = 20000, LC_ADC = 4096;
+let lcLive = [], lcFile = null, lcShow = store.get("lcShow", false), lcHover = null, lcQueued = false;
+function secs(time) {
+  const m = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)$/.exec(time || "");
+  return m ? (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) : NaN;
+}
+function lcSample(l) {
+  if (l.src !== "serial") return null;
+  const m = LC_RE.exec(l.text);
+  if (!m) return null;
+  const t = secs(l.time);
+  if (Number.isNaN(t)) return null;
+  const n = m.slice(1).map(Number);
+  return { t, time: l.time,
+    a: { raw: n[0], norm: n[3], rise: n[4], fall: n[5], blk: n[6] === 1 },
+    b: { raw: n[7], norm: n[10], rise: n[11], fall: n[12], blk: n[13] === 1 },
+    dark: n[14], lost: n[15] === 1 };
+}
+function lcData() { return lcFile || lcLive; }
+function lcCss(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function lcSide(id, name, color, s) {
+  $(id).innerHTML = s
+    ? `<span class="k" style="background:${color}"></span>${name} ${String(s.raw).padStart(4)} ` +
+      (s.blk ? `<span class="blk">BLACK</span>` : "white") + ` <span class="muted">norm ${s.norm}</span>`
+    : "";
+}
+function lcReadout() {
+  const d = lcData(), s = d[d.length - 1];
+  lcSide("lc-26", "GP26", lcCss("--s26"), s && s.a);
+  lcSide("lc-27", "GP27", lcCss("--s27"), s && s.b);
+  $("lc-lost").innerHTML = s ? (s.lost ? `<span style="color:var(--bad)">LOST</span>` : `dark_ms ${s.dark}`) : "";
+  let hint = "";
+  if (d.length >= 2) {
+    const dt = (d[d.length - 1].t - d[Math.max(0, d.length - 11)].t) / Math.min(10, d.length - 1);
+    $("lc-rate").textContent = dt > 0 ? `${(1 / dt).toFixed(1)} Hz` : "";
+    if (dt > 1) hint = "One sample every 2 s: build with LINE_COMMISSIONING_MODE 1 (robot_config.h) for 10 per second.";
+  } else {
+    $("lc-rate").textContent = "";
+    hint = d.length ? "" : "No [line] dbg lines yet. The car prints them every 2 s, or every 100 ms with LINE_COMMISSIONING_MODE 1.";
+  }
+  $("lc-hint").textContent = hint;
+  $("lc-hint").style.color = hint ? "" : "var(--muted)";
+  if (!hint && d.length) $("lc-hint").textContent =
+    "Dashed: goes black above (rise). Dotted: goes white below (fall). Strips: the car's own black/white call and LOST.";
+}
+function lcDraw() {
+  lcQueued = false;
+  if (!lcShow) return;
+  lcReadout();
+  const cv = $("lc-canvas"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const c26 = lcCss("--s26"), c27 = lcCss("--s27"), muted = lcCss("--muted"), grid = lcCss("--line"), bad = lcCss("--bad");
+  // plot area, then three strips under it: GP26 black, GP27 black, LOST
+  const L = 44, R = 8, T = 6, STRIP = 10, GAP = 3, B = 18 + 3 * (STRIP + GAP);
+  const PW = W - L - R, PH = H - T - B;
+  const d = lcData();
+  const win = +$("lc-win").value;
+  const tEnd = d.length ? d[d.length - 1].t : 0;
+  const tStart = win && d.length ? tEnd - win : (d.length ? d[0].t : 0);
+  const span = Math.max(tEnd - tStart, 1e-3);
+  const x = (t) => L + ((t - tStart) / span) * PW;
+  const y = (v) => T + PH - (Math.min(v, LC_ADC) / LC_ADC) * PH;
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "middle";
+  // y grid: ADC counts
+  g.strokeStyle = grid; g.fillStyle = muted; g.lineWidth = 1; g.textAlign = "right";
+  for (const v of [0, 1024, 2048, 3072, 4095]) {
+    g.beginPath(); g.moveTo(L, Math.round(y(v)) + .5); g.lineTo(L + PW, Math.round(y(v)) + .5); g.stroke();
+    g.fillText(String(v), L - 6, y(v));
+  }
+  const shown = d.filter((s) => s.t >= tStart);
+  if (shown.length) {
+    // thresholds of the newest sample: rise solid-dashed, fall dotted
+    const last = shown[shown.length - 1];
+    for (const [side, col] of [["a", c26], ["b", c27]]) {
+      g.strokeStyle = col; g.globalAlpha = .55;
+      g.setLineDash([6, 4]); g.beginPath(); g.moveTo(L, y(last[side].rise)); g.lineTo(L + PW, y(last[side].rise)); g.stroke();
+      g.setLineDash([2, 3]); g.beginPath(); g.moveTo(L, y(last[side].fall)); g.lineTo(L + PW, y(last[side].fall)); g.stroke();
+    }
+    g.setLineDash([]); g.globalAlpha = 1;
+    // raw traces
+    g.lineWidth = 2; g.lineJoin = "round";
+    for (const [side, col] of [["a", c26], ["b", c27]]) {
+      g.strokeStyle = col; g.beginPath();
+      shown.forEach((s, i) => (i ? g.lineTo(x(s.t), y(s[side].raw)) : g.moveTo(x(s.t), y(s[side].raw))));
+      g.stroke();
+      if (shown.length < 60) {        // few points: mark each sample
+        g.fillStyle = col;
+        for (const s of shown) { g.beginPath(); g.arc(x(s.t), y(s[side].raw), 2.5, 0, 7); g.fill(); }
+      }
+    }
+    // strips: a sample's state holds until the next sample
+    const strips = [["GP26", c26, (s) => s.a.blk], ["GP27", c27, (s) => s.b.blk], ["LOST", bad, (s) => s.lost]];
+    strips.forEach(([name, col, on], k) => {
+      const sy = T + PH + 18 + k * (STRIP + GAP);
+      g.fillStyle = grid; g.fillRect(L, sy, PW, STRIP);
+      g.fillStyle = col;
+      shown.forEach((s, i) => {
+        if (!on(s)) return;
+        const x0 = x(s.t), x1 = i + 1 < shown.length ? x(shown[i + 1].t) : L + PW;
+        g.fillRect(x0, sy, Math.max(x1 - x0, 1), STRIP);
+      });
+      g.fillStyle = muted; g.textAlign = "right"; g.fillText(name, L - 6, sy + STRIP / 2);
+    });
+  }
+  // x axis: seconds before the newest sample
+  g.fillStyle = muted; g.textAlign = "center";
+  const step = [1, 2, 5, 10, 30, 60, 120, 300, 600, 1800].find((s) => span / s <= 8) || 3600;
+  for (let k = 0; k * step <= span; k++) {
+    const t = tEnd - k * step;
+    g.fillText(k ? `-${k * step} s` : "now", x(t), T + PH + 9);
+  }
+  // hover: nearest sample
+  $("lc-hover").textContent = "";
+  if (lcHover !== null && shown.length) {
+    const t = tStart + ((lcHover - L) / PW) * span;
+    let best = shown[0];
+    for (const s of shown) if (Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+    g.strokeStyle = muted; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(x(best.t)) + .5, T); g.lineTo(Math.round(x(best.t)) + .5, T + PH + 18 + 3 * (STRIP + GAP)); g.stroke();
+    $("lc-hover").textContent = `${best.time}  GP26 ${best.a.raw} ${best.a.blk ? "B" : "w"}  GP27 ${best.b.raw} ${best.b.blk ? "B" : "w"}` +
+      (best.lost ? "  LOST" : "");
+  }
+}
+function lcRedraw() { if (lcShow && !lcQueued) { lcQueued = true; requestAnimationFrame(lcDraw); } }
+function lcSetShow(on) {
+  lcShow = on; store.set("lcShow", on);
+  $("linechart").classList.toggle("show", on); $("lc-toggle").classList.toggle("on", on);
+  lcRedraw();
+}
+$("lc-toggle").onclick = () => lcSetShow(!lcShow);
+$("lc-win").value = String(store.get("lcWin", 30));
+$("lc-win").onchange = () => { store.set("lcWin", +$("lc-win").value); lcRedraw(); };
+$("lc-canvas").addEventListener("mousemove", (e) => { lcHover = e.offsetX; lcRedraw(); });
+$("lc-canvas").addEventListener("mouseleave", () => { lcHover = null; lcRedraw(); });
+addEventListener("resize", lcRedraw);
+lcSetShow(lcShow);
+
 /* ---- live stream ---------------------------------------------------- */
 function setPill(id, text) {
   const el = $(id);
@@ -463,6 +643,12 @@ function connect() {
     const l = makeLine(ev.src, ev.time, ev.text);
     live.push(l);
     if (live.length > MAX_LINES) live.splice(0, live.length - MAX_LINES);
+    const smp = lcSample(l);
+    if (smp) {
+      lcLive.push(smp);
+      if (lcLive.length > LC_MAX) lcLive.splice(0, lcLive.length - LC_MAX);
+      if (!fileLines && !paused) lcRedraw();
+    }
     if (fileLines) return;
     track(l, true);
     bumpTag(l);
@@ -509,14 +695,16 @@ function openFile(file) {
     $("file-banner").classList.add("show");
     resetState();
     for (const l of fileLines) track(l, false);
-    rebuildCounts(); render();
+    lcFile = fileLines.map(lcSample).filter(Boolean);
+    if (lcFile.length && !lcShow) lcSetShow(true);
+    rebuildCounts(); render(); lcRedraw();
   });
 }
 $("file").onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
 $("back-live").onclick = () => {
-  fileLines = null; $("file-banner").classList.remove("show");
+  fileLines = null; lcFile = null; $("file-banner").classList.remove("show");
   resetState(); for (const l of live) track(l, false);
-  rebuildCounts(); render();
+  rebuildCounts(); render(); lcRedraw();
 };
 let dragDepth = 0;
 addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("drop").classList.add("show"); });
@@ -570,11 +758,11 @@ $("broker-toggle").onclick = async (e) => {
 $("only-hl").onclick = (e) => { onlyHl = !onlyHl; e.target.classList.toggle("on", onlyHl); render(); };
 $("pause").onclick = (e) => {
   paused = !paused; e.target.classList.toggle("on", paused);
-  e.target.textContent = paused ? "Resume" : "Pause"; if (!paused) render();
+  e.target.textContent = paused ? "Resume" : "Pause"; if (!paused) { render(); lcRedraw(); }
 };
 $("clear").onclick = () => {
-  if (fileLines) fileLines = []; else live = [];
-  resetState(); rebuildCounts(); render();
+  if (fileLines) { fileLines = []; lcFile = []; } else { live = []; lcLive = []; }
+  resetState(); rebuildCounts(); render(); lcRedraw();
 };
 $("save").onclick = () => {
   // the header says what was left out, so the reader knows what is missing
@@ -648,6 +836,7 @@ $("theme").onclick = () => {
   const root = document.documentElement;
   const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
   root.dataset.theme = dark ? "light" : "dark"; store.set("theme", root.dataset.theme);
+  lcRedraw();
 };
 { const t = store.get("theme", null); if (t) document.documentElement.dataset.theme = t; }
 resetState(); render();
