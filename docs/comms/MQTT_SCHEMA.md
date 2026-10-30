@@ -368,7 +368,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
-| 3 | `state` | 0–6 | mission state; also `S.mis` |
+| 3 | `state` | 0–6 | mission state: 0 Initialising, 1 Calibrating, 2 Ready, 3 Running, 4 Paused, 5 Finished, 6 Fault (`mission_state_t`, `nav_ctrl.h`). Sent by `nav_ctrl_task` on every change. `S.mis` is read from nav directly each second, so it does not depend on this record |
 
 > **Two different alphabets, still.** `k` says *what kind* of event it is. The
 > barcode's decoded letter is a separate field. `k = 2, letter = 4` means "a

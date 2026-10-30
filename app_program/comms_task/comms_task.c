@@ -509,6 +509,10 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		}
 
 		s_cache.drp = (UB)((tele_dropped > 15U) ? 15U : tele_dropped);
+		/* Pulled, like the faults: the state nav holds now (design
+		   Section 4), so S.mis is right even if an E mission was
+		   dropped.  The E record still logs each change. */
+		s_cache.mis = (UB)nav_mission_state();
 		/* Pulled, not queued: the latest tilt and turn rate (FR-29),
 		   stored as S carries them; "not available" codes included. */
 		ts = imu_ts_read();
