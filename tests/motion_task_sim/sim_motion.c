@@ -1047,7 +1047,11 @@ scenario_statechart (void)
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 
-	for (i = 0; i < 10; i++) { ds_move_tick(13.0, 13.0); }
+	/* at the Line Following speed, so the PID does not brake the sim car
+	   backwards against the hand turn while the pause is taken */
+	for (i = 0; i < 10; i++) {
+		ds_move_tick((double)MOTION_LF_BASE, (double)MOTION_LF_BASE);
+	}
 	d_paused = g_ctx.ds_mm;
 	CHECK(d_paused > 0);
 	g_mission = MS_PAUSED;					/* GP21 */
@@ -1066,6 +1070,98 @@ scenario_statechart (void)
 	CHECK(g_tele_bad == 0);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
 	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_paused & 0x7FFFu));
+}
+
+/* Line Following steering (S4, 30 Oct).  A small error, below one count
+   per tick of correction, still turns the car on average. */
+static void
+scenario_line_follow_steer (void)
+{
+	int32_t turn0;
+
+	sim_reset("line follow: an error below one count per tick still steers");
+	g_mission = MS_RUNNING;
+	sim_ticks(50);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+
+	/* error +10 (line a little left): 0.5 counts per tick each way */
+	turn0 = g_ctx.pos_r - g_ctx.pos_l;
+	g_line.error = 10;
+	sim_ticks(200);
+	CHECK((g_ctx.pos_r - g_ctx.pos_l) - turn0 > 100);	/* turned left */
+
+	/* and -10 the other way */
+	turn0 = g_ctx.pos_r - g_ctx.pos_l;
+	g_line.error = -10;
+	sim_ticks(200);
+	CHECK((g_ctx.pos_r - g_ctx.pos_l) - turn0 < -100);	/* turned right */
+}
+
+/* The Line Following correction on its own (S4, 31 Oct): it eases in,
+   stays soft, damps a return to centre, turns hard only when held far
+   off, and eases out over a barcode. */
+static void
+scenario_line_follow_soft (void)
+{
+	int32_t c;
+	int32_t c_rising;
+	int32_t c_falling;
+	int	i;
+
+	sim_reset("line follow: soft cap, damper, slew and the last-resort hard turn");
+
+	/* a jump to full error: one slew step, then up to the soft cap */
+	lf_reset(&g_ctx);
+	CHECK(lf_correction(&g_ctx, 100, false) == MOTION_LF_SLEW);
+	for (i = 1; i < (int)MOTION_LF_HARD_TICKS - 1; i++) {
+		c = lf_correction(&g_ctx, 100, false);
+		CHECK(c <= MOTION_LF_SOFT_MAX);
+	}
+	CHECK(c == MOTION_LF_SOFT_MAX);
+
+	/* held MOTION_LF_HARD_TICKS: the hard turn, eased in, the inner
+	   wheel turning back at 1 count per tick, never stopped */
+	for (i = 0; i < 20; i++) {
+		c = lf_correction(&g_ctx, 100, false);
+	}
+	CHECK(c == MOTION_LF_HARD_MAX);
+	CHECK((MOTION_LF_BASE * MOTION_LF_SCALE) - c == -MOTION_LF_SCALE);
+
+	/* back inside the line: hard ends at once, eases down, no overshoot */
+	for (i = 0; i < 30; i++) {
+		c = lf_correction(&g_ctx, 0, false);
+		CHECK(c >= 0);
+	}
+	CHECK(c == 0);
+
+	/* the damper: the same error 20 gets less correction on the way back
+	   to centre than on the way out */
+	lf_reset(&g_ctx);
+	for (i = 0; i <= 10; i++) {
+		c_rising = lf_correction(&g_ctx, i * 2, false);	/* 0 -> 20 */
+	}
+	for (i = 0; i < 30; i++) {
+		(void)lf_correction(&g_ctx, 40, false);		/* settle at 40 */
+	}
+	for (i = 20; i >= 10; i--) {
+		c_falling = lf_correction(&g_ctx, i * 2, false);	/* 40 -> 20 */
+	}
+	CHECK(c_rising > 20 * MOTION_LF_GAIN);		/* damper adds  */
+	CHECK(c_falling < 20 * MOTION_LF_GAIN);		/* damper takes */
+	CHECK(c_rising > c_falling);
+
+	/* a barcode hold eases the correction out, never past 0 */
+	lf_reset(&g_ctx);
+	for (i = 0; i < (int)MOTION_LF_HARD_TICKS - 5; i++) {	/* soft only */
+		(void)lf_correction(&g_ctx, 100, false);
+	}
+	CHECK(lf_correction(&g_ctx, 0, true) == MOTION_LF_SOFT_MAX - MOTION_LF_SLEW);
+	for (i = 0; i < 30; i++) {
+		c = lf_correction(&g_ctx, 0, true);
+		CHECK(c >= 0);
+	}
+	CHECK(c == 0);
+	CHECK(g_ctx.lf_hard_run == 0u);
 }
 
 /* A stall while driving: the statechart goes to Motion Fault, the brake
@@ -1954,6 +2050,8 @@ main (int argc, char **argv)
 	scenario_stop_order();
 	scenario_statechart();
 	scenario_statechart_fault();
+	scenario_line_follow_steer();
+	scenario_line_follow_soft();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
 	scenario_cmd_avoid_reverse();

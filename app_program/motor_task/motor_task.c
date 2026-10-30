@@ -287,6 +287,12 @@ typedef struct
     uint32_t line_same;     /* ticks the counter has not moved     */
     uint32_t line_seen_run; /* ticks in a row the line was seen    */
     int32_t  line_dir;      /* +1 line last left, -1 right, 0 none */
+    int32_t  lf_rem;        /* steering remainder, x 1/MOTION_LF_SCALE
+                               counts per tick, carried to the next */
+    int32_t  lf_corr;       /* applied correction, same units      */
+    int32_t  lf_hist[MOTION_LF_DAMP_TICKS]; /* recent errors, ring */
+    uint32_t lf_hist_i;     /* the oldest entry                    */
+    uint32_t lf_hard_run;   /* ticks |error| >= MOTION_LF_HARD_ERR */
 
     /* line search: +1 pivots left (counter-clockwise), -1 right */
     int32_t search_dir;
@@ -1343,6 +1349,87 @@ man_done (motion_ctx_t const *p_ctx, motion_state_t state)
     return b_done;
 }
 
+/* Line Following steering state back to rest.  The error history starts
+   at the error now, so entering with the car already off centre gives no
+   damper kick. */
+static void
+lf_reset (motion_ctx_t *p_ctx)
+{
+    int32_t  err = line_state_error(p_ctx->line_word);
+    uint32_t i;
+
+    p_ctx->lf_rem      = 0;
+    p_ctx->lf_corr     = 0;
+    p_ctx->lf_hist_i   = 0u;
+    p_ctx->lf_hard_run = 0u;
+    for (i = 0u; i < MOTION_LF_DAMP_TICKS; i++)
+    {
+        p_ctx->lf_hist[i] = err;
+    }
+}
+
+static int32_t
+lf_clamp (int32_t v, int32_t lim)
+{
+    return (v > lim) ? lim : ((v < -lim) ? -lim : v);
+}
+
+/* One tick of the Line Following correction (motion_cfg.h), x
+   MOTION_LF_SCALE counts per tick, + = turn left.  During a barcode hold
+   the error is 0 by design (line_state.h), so the history is reset rather
+   than read as a fast return to centre. */
+static int32_t
+lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
+{
+    int32_t target;
+    int32_t cap;
+    int32_t de;
+
+    if (b_hold)
+    {
+        int32_t corr = p_ctx->lf_corr;
+
+        lf_reset(p_ctx);
+        p_ctx->lf_corr = corr; /* still eases out below */
+        target         = 0;
+        cap            = MOTION_LF_SOFT_MAX;
+    }
+    else
+    {
+        de = err - p_ctx->lf_hist[p_ctx->lf_hist_i];
+        p_ctx->lf_hist[p_ctx->lf_hist_i] = err;
+        p_ctx->lf_hist_i = (p_ctx->lf_hist_i + 1u) % MOTION_LF_DAMP_TICKS;
+
+        if ((err >= MOTION_LF_HARD_ERR) || (err <= -MOTION_LF_HARD_ERR))
+        {
+            if (p_ctx->lf_hard_run < MOTION_LF_HARD_TICKS)
+            {
+                p_ctx->lf_hard_run++;
+            }
+        }
+        else
+        {
+            p_ctx->lf_hard_run = 0u;
+        }
+
+        if (p_ctx->lf_hard_run >= MOTION_LF_HARD_TICKS)
+        {
+            /* last resort: held far off for too long */
+            target = (err > 0) ? MOTION_LF_HARD_MAX : -MOTION_LF_HARD_MAX;
+            cap    = MOTION_LF_HARD_MAX;
+        }
+        else
+        {
+            target = (err * MOTION_LF_GAIN) + (de * MOTION_LF_DAMP);
+            cap    = MOTION_LF_SOFT_MAX;
+        }
+    }
+
+    target = lf_clamp(target, cap);
+    p_ctx->lf_corr += lf_clamp(target - p_ctx->lf_corr, MOTION_LF_SLEW);
+    return p_ctx->lf_corr;
+}
+
 /* A state was just entered: set up its manoeuvre. */
 static void
 man_start (motion_ctx_t *p_ctx, motion_state_t state)
@@ -1357,6 +1444,10 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state)
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->man_mm = (int32_t)p_ctx->avoid_mm;
+    }
+    else if (MOTION_ST_LINE_FOLLOW == state)
+    {
+        lf_reset(p_ctx);
     }
     else if (MOTION_ST_LINE_SEARCH == state)
     {
@@ -1487,11 +1578,16 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     }
     else if (MOTION_ST_LINE_FOLLOW == state)
     {
-        /* error > 0: turn left (slow the left wheel, speed up the right).
-           With LINE_STEER_INVERT that is the left sensor darker.  0 while
-           a barcode is read. */
-        corr = (line_state_error(p_ctx->line_word) * MOTION_LF_GAIN)
-               / LINE_ST_ERR_MAX;
+        /* correction > 0: turn left (slow the left wheel, speed up the
+           right).  With LINE_STEER_INVERT that is the left sensor darker.
+           The remainder carries to the next tick, so a correction below
+           one count still steers on average (S4: an error below 13 gave
+           no correction at all). */
+        p_ctx->lf_rem += lf_correction(p_ctx,
+                                       line_state_error(p_ctx->line_word),
+                                       line_state_barcode(p_ctx->line_word));
+        corr = p_ctx->lf_rem / MOTION_LF_SCALE;
+        p_ctx->lf_rem -= corr * MOTION_LF_SCALE;
         p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_LF_BASE - corr,
                                        p_ctx->d_l);
         p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_LF_BASE + corr,

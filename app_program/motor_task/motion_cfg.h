@@ -113,12 +113,35 @@
 #define MOTION_REV_TARGET (10)
 
 /* Line following (statechart LINE_FOLLOW, Buddy 3's line_state word).
-   Both wheels run under the PID at MOTION_LF_BASE; the line error
-   (-100..+100, + = turn left) moves the two targets apart by up to
-   MOTION_LF_GAIN counts per tick each way.  PROPOSED: 15 counts per tick
-   is about 12 cm/s (calculated); tune both on the floor. */
-#define MOTION_LF_BASE        (15)
-#define MOTION_LF_GAIN        (8)
+   Both wheels run under the PID at MOTION_LF_BASE; a correction moves the
+   two targets apart, + = turn left.  The correction is in 1/100 counts per
+   tick (MOTION_LF_SCALE), built each tick from the line error e
+   (-100..+100):
+     target = e x MOTION_LF_GAIN + (e - e MOTION_LF_DAMP_TICKS ago) x
+              MOTION_LF_DAMP
+   The second term is the damper: while the car swings back toward the
+   line the error falls, so it takes correction off before the car
+   overshoots.  The target is capped at MOTION_LF_SOFT_MAX, and the
+   applied correction moves toward it by at most MOTION_LF_SLEW a tick, so
+   it eases in and out.  Only an error of at least MOTION_LF_HARD_ERR held
+   for MOTION_LF_HARD_TICKS gets the hard turn, MOTION_LF_HARD_MAX: the
+   inner wheel turns back at 1 count per tick, a near pivot (never 0, so
+   the stall check still sees it move).
+   PROPOSED, tune on the floor.  S4 (30 Oct): base 15 (about 12 cm/s) ran
+   off the line, 8 (about 6 cm/s) next.  31 Oct: 5 (about 4 cm/s) with
+   gain 3 strayed within a few cm, so slower again and stronger: 4 is
+   about 3.2 cm/s (calculated, 0.079 mm a count), half error already gives
+   2.5 counts, and the soft cap leaves the inner wheel at 1 count. */
+#define MOTION_LF_BASE        (4)
+#define MOTION_LF_SCALE       (100)
+#define MOTION_LF_GAIN        (5)   /* e 60 and up -> the soft cap       */
+#define MOTION_LF_DAMP        (15)  /* per unit of e change              */
+#define MOTION_LF_DAMP_TICKS  (5u)  /* change measured over 50 ms        */
+#define MOTION_LF_SOFT_MAX    ((MOTION_LF_BASE - 1) * MOTION_LF_SCALE)
+#define MOTION_LF_SLEW        (50)  /* 0 to SOFT_MAX in 60 ms            */
+#define MOTION_LF_HARD_ERR    (80)
+#define MOTION_LF_HARD_TICKS  (25u) /* 250 ms                            */
+#define MOTION_LF_HARD_MAX    ((MOTION_LF_BASE + 1) * MOTION_LF_SCALE)
 #define MOTION_LF_SEEN_MS     (30u) /* dark below this: line still seen */
 #define MOTION_LF_FOUND_TICKS (3u)  /* seen this many ticks: found      */
 
