@@ -457,8 +457,11 @@ printed on the car's console, and changes nothing.
 > QoS 1 on every new session. The radio task copies each message into the
 > inbound mailbox; `comms_task` handles it on its next 1 s tick, after `H`
 > and `S` (design decision 21), so a reply comes within one tick. `snap`,
-> `ping` and the mission commands are built; `map` is **received and checked,
-> not yet applied** (design decision 23, M8b), so `mpv` does not change.
+> `ping` and the mission commands are built. A checked `map` goes to
+> `barcode_task` (M8b, 2026-10-30, `integration` branch), which applies it
+> between barcodes; `S.mpv` is then the version actually running, read from
+> `barcode_map_version()`. A refused or rejected map leaves the table and
+> `mpv` as they were.
 >
 > **Tested on hardware 2026-10-29:** replies 0.3–0.7 s after the command;
 > every rejection case of §8.4 gives its one line; 26 snaps in ~13 s left the

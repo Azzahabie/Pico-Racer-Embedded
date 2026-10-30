@@ -135,8 +135,10 @@ And **outbound to Buddy 3:** the live letter→action remap command.
 - [ ] **Live barcode remap:** the command carries the letter→action mapping and
       updates a runtime table (Buddy 3 reads it). **Must not require
       recompiling** — this is the hard demo-day requirement. *M8a (2026-10-29):
-      received, checked and logged on the car; applying it waits for Buddy 3's
-      `barcode_task` and `map_mbf` (M8b).*
+      received, checked and logged on the car. M8b (2026-10-30, `integration`
+      branch): passed to `barcode_task` through `barcode_map_submit()` /
+      `map_mbf` and applied between barcodes; `S.mpv` reads
+      `barcode_map_version()`. Hardware test in integration stage 3.*
 - [x] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
       (4-bit version + 26 × 2-bit actions). The laptop publisher packs them.
       *Built 2026-10-29: the viewer's "Send to car" panel.*

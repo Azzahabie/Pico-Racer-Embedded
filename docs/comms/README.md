@@ -55,7 +55,7 @@ you'd build for any shared, non-reentrant resource with many producers.
 | Radio / transport | **M0–M6** | ✅ **proven on hardware** | [`NETWORKING.md`](NETWORKING.md) §5 |
 | Wi-Fi reliability (Week 6 feedback F1) | — | 🟡 in progress — auto-rejoin, re-lease and state-change logging done; recovery tests T1, T2 passed 20 Oct; DHCP conflict-detection (ACD) tuning deferred to the end, ACD stays on | — |
 | Application: telemetry framework | **M7** | ✅ **built and hardware-tested**: `H`, `S` (schema v5), per-kind `E`, the shared fault bits including Wi-Fi loss (2026-10-29) | [`APPLICATION.md`](APPLICATION.md) §4 |
-| Application: command channel | **M8** | 🟡 **M8a built and hardware-tested 2026-10-29** (subscribe, `snap` → `D`, `ping`, mission commands, `map` checked); `map` apply waits for Buddy 3 (M8b) | [`APPLICATION.md`](APPLICATION.md) §4 |
+| Application: command channel | **M8** | 🟡 **M8a built and hardware-tested 2026-10-29** (subscribe, `snap` → `D`, `ping`, mission commands, `map` checked); M8b `map` apply built 2026-10-30 on `integration`, hardware test in stage 3 | [`APPLICATION.md`](APPLICATION.md) §4 |
 | Application: robustness | M9 | ⏳ not started | [`APPLICATION.md`](APPLICATION.md) §4 |
 | Application: documentation | M10 | 🟡 schema is binary v2; field widths still proposed (§12) | [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) |
 
