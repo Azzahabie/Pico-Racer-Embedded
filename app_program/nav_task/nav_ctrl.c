@@ -49,6 +49,8 @@
 #include "../obstacle_task/scan_if.h"	/* NAV_FLG_BLOCKED */
 #include "../line_task/barcode_task.h"		/* barcode_cmd_word() */
 #include "../line_task/barcode_action.h"
+#include "../common/messages.h"		/* comm_w_pack_mission() */
+#include "../comms_task/comms_task.h"	/* comms_tele_send() */
 
 #define BTN_START_PIN		20U	/* Button 1 */
 #define BTN_PAUSE_PIN		21U	/* Button 2 */
@@ -252,6 +254,15 @@ LOCAL void set_state(mission_state_t next)
 	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
+
+	/* E mission: one record per change, so a run can be rebuilt from the
+	   broker (FR-23).  Never blocks; a full queue counts a drop.  S.mis
+	   does not depend on it: comms_task reads the state itself. */
+	{
+		UB	body[COMM_W_INTAKE_SIZE_MISSION];
+
+		(void)comms_tele_send(body, (INT)comm_w_pack_mission(body, (uint32_t)next));
+	}
 }
 
 LOCAL void send_fault_clear(UB which)
