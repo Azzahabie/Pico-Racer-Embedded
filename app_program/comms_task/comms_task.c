@@ -28,6 +28,8 @@
 #include "../common/messages.h"
 #include "../imu_task/imu_ts.h"
 #include "../nav_task/nav_ctrl.h"	/* fault_bits: S.faults */
+#include "../line_task/barcode_task.h"	/* barcode_map_submit, S.mpv */
+#include "../line_task/barcode_action.h"	/* BARCODE_MAP_SIZE */
 
 /* ------------------------------------------------------------------ *
  *  Intake queue -- every build
@@ -111,10 +113,11 @@ typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
 
 /* The latest value per source, published as record S once a second.  Fields
    are stored as on the wire (MQTT_SCHEMA.md section 4).  Only comms_task
-   touches it.  mpv stays 0 until the map command (M8) is built.  faults,
-   tlt and trn are not folded from events: before each S, faults is copied
+   touches it.  faults, mis, mpv, tlt and trn are not folded from events:
+   before each S, faults is copied
    from Buddy 5's shared fault flag (fault_bits(), schema section 4.1), with
-   comms_task's own Wi-Fi-loss latch added, and tlt and trn from imu_task's
+   comms_task's own Wi-Fi-loss latch added, mis from nav, mpv from
+   barcode_task (the map actually running), and tlt and trn from imu_task's
    tilt-state word (FR-29). */
 LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
 			     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
@@ -326,11 +329,9 @@ LOCAL void handle_intake(const UB *body, INT size, UH *seq)
 
 LOCAL UW	cmd_rejected;		/* cmd/map that failed the check */
 LOCAL UW	in_refused_seen;	/* radio refusals already reported */
-/* The last map received.  Kept, not applied: barcode_task's map_mbf is not on
-   master yet, so mpv stays as it is (design decision 23, M8b). */
-LOCAL BOOL	map_have;
-LOCAL UB	map_mv;
-LOCAL UB	map_act[COMM_W_MAP_LETTERS];
+/* A map passes through unchanged: comms checks it, barcode_task decodes it
+   with the same bit layout (MQTT_SCHEMA.md 8.3). */
+typedef char comms_map_size_agrees[(COMM_W_MAP_SIZE == BARCODE_MAP_SIZE) ? 1 : -1];
 
 LOCAL void reject_line(const char *what, const UB *payload, INT len)
 {
@@ -417,22 +418,34 @@ LOCAL void handle_cmd(const UB *payload, INT len, UH *seq)
 	}
 }
 
+/* M8b: a checked map goes to barcode_task, which applies it between
+   barcodes and reports "[barcode] map vN applied"; S.mpv follows from
+   barcode_map_version().  Never blocks: with two maps already waiting
+   this one is refused and the table stays as it is. */
 LOCAL void handle_map(const UB *payload, INT len)
 {
-	UB	line[96];
+	UB	line[112];
 	UB	*p = line;
+	UB	mv;
+	UB	act[COMM_W_MAP_LETTERS];
 	UW	i;
+	ER	er;
 
-	if(!comm_w_check_map(payload, (uint32_t)len, &map_mv, map_act)) {
+	if(!comm_w_check_map(payload, (uint32_t)len, &mv, act)) {
 		reject_line("map", payload, len);
 		return;
 	}
-	map_have = TRUE;
-	p += tm_sprintf(p, (UB *)"[comms] map mv=%u received: ", map_mv);
+	er = barcode_map_submit(payload, len);
+	p += tm_sprintf(p, (UB *)"[comms] map mv=%u ", mv);
 	for(i = 0; i < COMM_W_MAP_LETTERS; i++) {
-		p += tm_sprintf(p, (UB *)"%c", "FLRU"[map_act[i]]);
+		p += tm_sprintf(p, (UB *)"%c", "FLRU"[act[i]]);
 	}
-	tm_sprintf(p, (UB *)" (kept, not applied: mpv stays %u)\n", s_cache.mpv);
+	if(E_OK == er) {
+		tm_sprintf(p, (UB *)" -> barcode_task\n");
+	} else {
+		tm_sprintf(p, (UB *)" not passed on (er=%d): table kept, mpv stays %u\n",
+			   (INT)er, s_cache.mpv);
+	}
 	tm_printf(line);
 }
 
@@ -513,6 +526,7 @@ LOCAL void comms_task(INT stacd, void *exinf)
 		   Section 4), so S.mis is right even if an E mission was
 		   dropped.  The E record still logs each change. */
 		s_cache.mis = (UB)nav_mission_state();
+		s_cache.mpv = barcode_map_version();	/* the map running now */
 		/* Pulled, not queued: the latest tilt and turn rate (FR-29),
 		   stored as S carries them; "not available" codes included. */
 		ts = imu_ts_read();
