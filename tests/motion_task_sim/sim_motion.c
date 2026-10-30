@@ -306,6 +306,25 @@ static UINT		g_fault_bits;
 void fault_set(UINT bits) { g_fault_bits |= bits; }
 void fault_clear(UINT bits) { g_fault_bits &= ~bits; }
 
+/* comms_task.h (Buddy 1): every E body motion sends, unpacked as the laptop
+   would.  g_tele_count counts motion bodies; g_tele_last is the newest. */
+static int		g_tele_count;
+static int		g_tele_bad;
+static T_COMM_W_BODY	g_tele_last;
+ER comms_tele_send(const UB *body, INT length)
+{
+	T_COMM_W_BODY	b;
+
+	if ((COMM_W_OK != comm_w_unpack_body(body, (uint32_t)length, &b))
+	    || (COMM_W_KIND_MOTION != b.kind)) {
+		g_tele_bad++;
+		return E_PAR;
+	}
+	g_tele_last = b;
+	g_tele_count++;
+	return E_OK;
+}
+
 /* line_task.h (Buddy 3): the line_state word, as ir_sense_task publishes it.
    sim_reset() puts the car centred on the line (rl 11, calibrated); the
    counter moves every tick (sim_tick), so motion never sees it stale. */
@@ -573,6 +592,9 @@ sim_reset (const char *p_name)
 	g_scan_flgid = SIM_SCAN_FLGID;
 	g_mission = MS_READY;
 	g_fault_bits = 0u;
+	g_tele_count = 0;
+	g_tele_bad = 0;
+	(void)memset(&g_tele_last, 0, sizeof(g_tele_last));
 	g_cmd_n[0] = g_cmd_n[1] = 0;
 	memset(&g_line, 0, sizeof g_line);
 	g_line.rl = LINE_RL_JUNCTION;		/* 3 = both black: centred */
@@ -997,11 +1019,16 @@ scenario_statechart (void)
 	d_ready = g_ctx.ds_mm;
 	CHECK(d_ready > 0);
 
+	CHECK(g_tele_count == 0);		/* no change, no E motion */
 	g_mission = MS_RUNNING;					/* GP20 */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 	CHECK(strstr(g_log, "[motion] state IDLE -> LINE_FOLLOW") != NULL);
 	CHECK(g_ctx.ds_mm == d_ready);	/* distance_state never jumps */
+	CHECK(g_tele_count == 1);		/* E motion for the change */
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_ready & 0x7FFFu));
+	CHECK(g_tele_last.fault == 0u);
 
 	stop_request(MOTION_EVT_STOP_SCAN, 1);
 	sim_tick();
@@ -1035,6 +1062,10 @@ scenario_statechart (void)
 
 	CHECK(g_duty_max_abs > 0);			/* Line Following drove */
 	CHECK((g_nav_flag == 0u) && (g_scan_flag == 0u));	/* nothing owed */
+	CHECK(g_tele_count == 7);	/* one E motion per state change */
+	CHECK(g_tele_bad == 0);
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_paused & 0x7FFFu));
 }
 
 /* A stall while driving: the statechart goes to Motion Fault, the brake
@@ -1057,6 +1088,8 @@ scenario_statechart_fault (void)
 	CHECK(g_brakes_at_nav > brakes);		/* braked before the reply */
 	CHECK((g_nav_flag & NAV_FLG_MOTION_FAULT) != 0u);
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT") != NULL);
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_FAULT);
+	CHECK(g_tele_last.fault == 0x1u);		/* E motion fault: stall */
 	sim_ticks(5);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);	/* stays */
 	CHECK(g_fault_bits == FAULT_MOTOR_STALL);		/* S.faults bit 0 */
@@ -1066,6 +1099,8 @@ scenario_statechart_fault (void)
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_IDLE);
 	CHECK(g_fault_bits == 0u);
 	CHECK(g_ctx.faults == 0u);
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
+	CHECK(g_tele_last.fault == 0u);			/* cleared with it */
 }
 
 /* nav_cmd_mbf: after an IMU fault and recalibration, FAULT_CLEAR(IMU)

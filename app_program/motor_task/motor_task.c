@@ -38,6 +38,7 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
+#include "../comms_task/comms_task.h"
 #include "../nav_task/nav_ctrl.h"
 #include "../obstacle_task/scan_if.h"
 #include "../line_task/line_task.h"
@@ -1607,6 +1608,29 @@ fault_flg_bits (uint8_t faults)
     return bits;
 }
 
+/* Counts per tick -> cm/s: d x pi x diameter mm per tick, x 100 ticks a
+   second, / 10 mm a cm; pi as 31416 / 10000. */
+#define CMS_FROM_COUNTS(d)                                                     \
+    (((d) * 31416 * MOTION_WHEEL_DIA_MM)                                       \
+     / (MOTION_COUNTS_PER_REV * 1000))
+
+/* E motion (MQTT_SCHEMA.md 5, k = 0) on every statechart change: the new
+   state, this tick's wheel speeds, the running distance and turn rate, and
+   the motion faults now.  comms_tele_send() polls, so the tick never
+   waits. */
+static void
+tele_motion (motion_ctx_t const *p_ctx)
+{
+    UB body[COMM_W_INTAKE_SIZE_MOTION];
+
+    (void)comms_tele_send(
+        body, (INT)comm_w_pack_motion(
+                  body, (uint32_t)motion_sm_state(&p_ctx->sm),
+                  CMS_FROM_COUNTS(p_ctx->d_l), CMS_FROM_COUNTS(p_ctx->d_r),
+                  (uint32_t)p_ctx->ds_mm, p_ctx->ds_turn,
+                  (uint32_t)fault_flg_bits(p_ctx->faults), 0u));
+}
+
 /* One statechart step per tick, after the stall check.  The mission state
    comes from nav_ctrl_task (one aligned load), commands from
    take_commands().  Turns and bypass are not built yet, so those states
@@ -1661,6 +1685,10 @@ tick_statechart (motion_ctx_t *p_ctx)
         fault_set(fault_flg_bits(p_ctx->faults)); /* S.faults, before nav */
     }
     sm_send_replies(out.replies);
+    if (out.b_changed)
+    {
+        tele_motion(p_ctx);
+    }
 
     if (out.b_changed || (0u != out.replies))
     {
