@@ -47,10 +47,8 @@
 #include "nav_ctrl.h"
 #include "../common/gpio_irq.h"
 #include "../obstacle_task/scan_if.h"	/* NAV_FLG_BLOCKED */
-/* PR #17 missing files: barcode_task.h and barcode_action.h are not on master.
-#include "../line_task/barcode_task.h"		// barcode_cmd_word()
+#include "../line_task/barcode_task.h"		/* barcode_cmd_word() */
 #include "../line_task/barcode_action.h"
-*/
 
 #define BTN_START_PIN		20U	/* Button 1 */
 #define BTN_PAUSE_PIN		21U	/* Button 2 */
@@ -82,7 +80,7 @@ LOCAL ID		g_nav_flgid = 0;
 LOCAL ID		g_fault_flgid = 0;
 LOCAL nav_bind_t	g_nav_bind;
 LOCAL bool		g_move_open = false;	/* JUNCTION sent, no reply yet */
-/* LOCAL uint32_t	g_cmd_taken; */	/* seq of the last barcode command used (PR #17 missing files) */
+LOCAL uint32_t		g_cmd_taken;		/* seq of the last barcode command used */
 
 /* ------------------------------------------------------------------ */
 /* Readers                                                            */
@@ -425,12 +423,10 @@ LOCAL void on_mission_cmd(void)
    With none stored, no command: motion_task follows the line straight on. */
 LOCAL void on_junction(void)
 {
-#if 0	/* PR #17 missing files: no barcode_task, so no stored command */
 	uint32_t	cmd = barcode_cmd_word();	/* one aligned load */
 	uint32_t	action = barcode_cmd_action(cmd);
 	UB		msg[2];
 	ER		ercd;
-#endif
 
 	if(MS_RUNNING != nav_mission_state()) {
 		tm_printf((UB *)"[nav] junction while %s: ignored\n",
@@ -442,9 +438,6 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] junction during a move: ignored\n");
 		return;
 	}
-	/* PR #17 missing files: always straight on until barcode_task is back */
-	tm_printf((UB *)"[nav] junction, no barcode command: straight on\n");
-#if 0
 	if(!barcode_cmd_pending(cmd, g_cmd_taken)) {
 		tm_printf((UB *)"[nav] junction, no barcode command: straight on\n");
 		return;
@@ -466,7 +459,6 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] -> nav_cmd_mbf: JUNCTION(%s) (motion_task not bound)\n",
 			  barcode_action_name(action));
 	}
-#endif
 }
 
 EXPORT void nav_ctrl_task(INT stacd, void *exinf)
