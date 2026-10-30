@@ -479,6 +479,7 @@ function parseFile(text) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trimEnd();
     if (!line.trim()) continue;
+    if (/^# (filter|hidden):/.test(line)) continue;   // "Save shown" header
     const sec = line.match(/^#+\s*(.*)$/);
     if (sec) {
       const s = sec[1].toLowerCase();
@@ -524,15 +525,16 @@ addEventListener("drop", (e) => {
 
 /* ---- toolbar -------------------------------------------------------- */
 let searchTimer;
-$("search").oninput = () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    const v = $("search").value.trim();
-    try { searchRe = v ? new RegExp(v, "i") : null; $("search").style.borderColor = ""; }
-    catch { searchRe = null; $("search").style.borderColor = "var(--bad)"; }
-    render();
-  }, 150);
-};
+function applySearch() {
+  const v = $("search").value.trim();
+  try { searchRe = v ? new RegExp(v, "i") : null; $("search").style.borderColor = ""; }
+  catch { searchRe = null; $("search").style.borderColor = "var(--bad)"; }
+  store.set("search", v);
+  render();
+}
+$("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); };
+$("search").value = store.get("search", "");     // the last filter, as pasted
+applySearch();
 async function sendToCar(body) {
   const res = await fetch("/send", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body) });
@@ -569,7 +571,10 @@ $("clear").onclick = () => {
   resetState(); rebuildCounts(); render();
 };
 $("save").onclick = () => {
-  const text = current().filter(visible).map((l) => `[${l.time}] ${l.src}: ${l.text}`).join("\n") + "\n";
+  // the header says what was left out, so the reader knows what is missing
+  const head = `# filter: ${$("search").value.trim() || "(none)"}${onlyHl ? "  [highlights only]" : ""}\n`
+    + `# hidden: ${[...hidden].join(", ") || "(none)"}\n`;
+  const text = head + current().filter(visible).map((l) => `[${l.time}] ${l.src}: ${l.text}`).join("\n") + "\n";
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
   a.download = `car-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.log`;
