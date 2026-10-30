@@ -556,8 +556,10 @@ EXPORT INT usermain(void)
 	}
 
 	/* Buddy 5: tell scan_task where the mission and motion interfaces are,
-	 * so its STOP_SCAN brakes the car. avoid_cmd_mbf stays 0 until Buddy 2
-	 * adds it (step 1.7), so bypass and reverse commands fail closed. */
+	 * so its STOP_SCAN brakes the car. avoid_mbfid stays 0 although motion
+	 * now creates avoid_cmd_mbf (motor_task_avoid_mbf()): Bypass is not
+	 * built, so a BYPASS would leave the car braked. Until it is (stage 7)
+	 * bypass and reverse commands fail closed, as before. */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
@@ -580,6 +582,9 @@ EXPORT INT usermain(void)
 			.cal_req_bit		= IMU_FLG_CAL_REQ,
 			/* Buddy 1: MQTT start/pause/resume/reset/finish (0 without MQTT) */
 			.mission_cmd_mbfid	= comms_mission_mbf(),
+			/* Buddy 2: FAULT_CLEAR reaches motion (STOP_IMU, Motion
+			 * Fault); JUNCTION gets CMD_REJECTED until turns are built */
+			.nav_cmd_mbfid		= (E_OK == motion_ercd) ? motor_task_nav_cmd_mbf() : 0,
 		};
 
 		if(imu_flgid <= 0) {
