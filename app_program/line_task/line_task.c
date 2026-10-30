@@ -34,6 +34,7 @@
 #define TELE_LINE_ON		0U
 #define TELE_LINE_LOST		1U
 #define TELE_LINE_CROSSING	2U
+#define TELE_LINE_UNSENT	3U	/* never sent: forces the first record */
 
 LOCAL ID		g_ir_flgid;
 LOCAL ID		g_ir_tid;
@@ -181,7 +182,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	UINT		missed;
 	UINT		holdoff = 0U;
 	UINT		print_ms = 0U;
-	UINT		tele_state = TELE_LINE_LOST;
+	UINT		tele_state = TELE_LINE_UNSENT;	/* S.lin defaults to ON */
 	UINT		last_rl = LINE_RL_CENTRED;
 	BOOL		black;
 	BOOL		adc_ok;
