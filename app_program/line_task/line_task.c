@@ -188,6 +188,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	BOOL		adc_ok;
 	BOOL		fault_reported = FALSE;
 	BOOL		lost_reported = TRUE;	/* LINE_STATE_INITIAL is lost */
+#if LINE_GP7_DIAG
+	UINT		gp7_ms = 0U;
+#endif
 	UB		body[COMM_W_INTAKE_SIZE_LINE];
 	char		bits[3];
 	ER		ercd;
@@ -305,6 +308,22 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			tm_printf((UB *)"[line] junction (GP7 black %u ms) -> nav\n",
 				  (UINT)LINE_JUNCTION_SAMPLES);
 		}
+
+#if LINE_GP7_DIAG
+		/* before the barcode check below: it must print even while GP7
+		   looks like a bar */
+		if(++gp7_ms >= 500U) {
+			uint16_t	pd, pu, none;
+
+			gp7_ms = 0U;
+			barcode_scanner_probe(&pd, &pu, &none);
+			tm_printf((UB *)"[gp7] pull-down=%u pull-up=%u no-pull=%u -> %s\n",
+				  (UINT)pd, (UINT)pu, (UINT)none,
+				  (pd != pu) ? "NOT CONNECTED (follows the pull)"
+				  : (0U != none) ? "driven HIGH (sensor says black)"
+						 : "driven LOW (sensor says white)");
+		}
+#endif
 
 		/* console: never while a barcode is being read (an aborted one
 		   being discarded does not count) */

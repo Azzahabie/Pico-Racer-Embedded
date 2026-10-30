@@ -76,3 +76,28 @@ uint16_t barcode_scanner_get_last_raw(void)
 {
 	return state.last_raw;
 }
+
+#if LINE_GP7_DIAG
+/* Set the pad's pulls, let the pin settle (~50 kOhm pull into a few tens of
+   pF is well under the ~20 us this spins), then read it. */
+static uint16_t read_with_pull(uint32_t pulls)
+{
+	volatile uint32_t spin;
+	uint32_t pad;
+
+	pad = BARCODE_PAD_CTRL(BARCODE_SENSOR_GPIO);
+	pad &= ~(PAD_PUE | PAD_PDE);
+	BARCODE_PAD_CTRL(BARCODE_SENSOR_GPIO) = pad | pulls;
+	for(spin = 0u; spin < 2000u; spin++) {
+		;
+	}
+	return barcode_scanner_read_raw();
+}
+
+void barcode_scanner_probe(uint16_t *p_pd, uint16_t *p_pu, uint16_t *p_none)
+{
+	*p_pd = read_with_pull(PAD_PDE);
+	*p_pu = read_with_pull(PAD_PUE);
+	*p_none = read_with_pull(0u);		/* back to the normal setting */
+}
+#endif
