@@ -71,10 +71,6 @@
 				 NAV_FLG_CMD_REJECTED | NAV_FLG_CONN | \
 				 NAV_FLG_MOTION_STOPPED)
 
-/* FAULT_CLEAR arguments for nav_cmd_mbf (opcodes in nav_ctrl.h) */
-#define FAULT_CLEAR_IMU		0x01U
-#define FAULT_CLEAR_MOTION	0x02U
-
 LOCAL volatile uint32_t	g_mission = (uint32_t)MS_INITIALISING;	/* one store */
 LOCAL ID		g_nav_flgid = 0;
 LOCAL ID		g_fault_flgid = 0;
