@@ -161,9 +161,19 @@ typedef enum
     EVT_STOPTEST, /* stop test result for one source: val_l
                      = STOP bit, val_r = stops, rate_l = max
                      us, rate_r = mean us, duty_l = min us  */
-    EVT_STATE     /* statechart: val_l = new state, val_r =
+    EVT_STATE,    /* statechart: val_l = new state, val_r =
                      old state, rate_l = replies sent       */
+    EVT_CMD       /* a command taken from a buffer: val_l =
+                     CMD_SRC_*, val_r = the raw 2 bytes,
+                     rate_l = CMD_RES_*                     */
 } report_event_t;
+
+/* EVT_CMD fields */
+#define CMD_SRC_NAV       (0)
+#define CMD_SRC_AVOID     (1)
+#define CMD_RES_TAKEN     (0) /* passed to the statechart          */
+#define CMD_RES_NO_TURNS  (1) /* JUNCTION: CMD_REJECTED, see below  */
+#define CMD_RES_INVALID   (2) /* unknown or malformed: dropped      */
 
 typedef struct
 {
@@ -324,6 +334,8 @@ static T_CMTX const g_cmtx_ds = {
 
 static ID g_flgid;
 static ID g_mbfid;
+static ID g_nav_mbfid;   /* nav_cmd_mbf:   nav_ctrl_task -> motion */
+static ID g_avoid_mbfid; /* avoid_cmd_mbf: scan_task -> motion     */
 
 /* NFR-18 request times, one word per STOP source.  Each is written only
    by its own sender (motion_stop_stamp) and read only by motion_task. */
@@ -361,6 +373,31 @@ static T_CMBF const g_cmbf = {
     .bufsz  = sizeof(g_report_buf),
     .maxmsz = sizeof(motion_report_t),
     .bufptr = g_report_buf,
+};
+
+/* The two command buffers (design Section 4), one writer each.  Both
+   messages are 2 bytes, which the kernel stores in one word after its
+   header. */
+#define CMD_MSG_BYTES  (2u)
+#define CMD_SLOT_BYTES (MBF_HEADER_BYTES + 4u)
+#define NAV_CMD_ROOM   (4u) /* nav_cmd_mbf:   JUNCTION, FAULT_CLEAR */
+#define AVOID_CMD_ROOM (2u) /* avoid_cmd_mbf: REVERSE, BYPASS       */
+
+static UW g_nav_buf[(NAV_CMD_ROOM * CMD_SLOT_BYTES) / sizeof(UW)];
+static UW g_avoid_buf[(AVOID_CMD_ROOM * CMD_SLOT_BYTES) / sizeof(UW)];
+
+static T_CMBF const g_cmbf_nav = {
+    .mbfatr = TA_TFIFO | TA_USERBUF,
+    .bufsz  = sizeof(g_nav_buf),
+    .maxmsz = CMD_MSG_BYTES,
+    .bufptr = g_nav_buf,
+};
+
+static T_CMBF const g_cmbf_avoid = {
+    .mbfatr = TA_TFIFO | TA_USERBUF,
+    .bufsz  = sizeof(g_avoid_buf),
+    .maxmsz = CMD_MSG_BYTES,
+    .bufptr = g_avoid_buf,
 };
 
 static T_CCYC const g_ccyc = {
@@ -440,6 +477,32 @@ motor_task_flag (void)
 #endif
 
     return flgid;
+}
+
+/* The command buffers, for nav_bind() and scan_if_bind().  0 in bench
+   images, for the same reason as motor_task_flag(). */
+ID
+motor_task_nav_cmd_mbf (void)
+{
+    ID mbfid = g_nav_mbfid;
+
+#if MOTION_BENCH
+    mbfid = 0;
+#endif
+
+    return mbfid;
+}
+
+ID
+motor_task_avoid_mbf (void)
+{
+    ID mbfid = g_avoid_mbfid;
+
+#if MOTION_BENCH
+    mbfid = 0;
+#endif
+
+    return mbfid;
 }
 
 void
@@ -1450,14 +1513,106 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R | MOTION_FAULT_ENC_L          \
      | MOTION_FAULT_ENC_R)
 
+/* Command intake, once per tick before the statechart step: avoidance
+   first, then navigation (design Section 4).  Both receives poll, so a
+   tick takes at most one command from each buffer and a second one waits
+   a tick.  Nothing waits on CMD (every tick looks), so it is only cleared,
+   before the receives, so a command placed after it is still read.
+
+   Turning is not built yet: a JUNCTION gets CMD_REJECTED here and the car
+   follows the line straight on, which nav treats as a refused turn (design
+   Assumption 2).  Passing it to the statechart would enter Turning, which
+   brakes and never finishes.  A BYPASS would do the same in Bypass, so
+   app_main.c binds avoid_cmd_mbf to scan_task only once Bypass drives;
+   until then it stays empty. */
+static void
+report_cmd (motion_ctx_t *p_ctx, int32_t src, uint32_t raw, int32_t res)
+{
+    motion_report_t rep;
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_CMD);
+    rep.val_l  = src;
+    rep.val_r  = (int32_t)raw;
+    rep.rate_l = res;
+    report_send(p_ctx, &rep);
+}
+
+static void
+take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
+{
+    uint16_t word = 0u;
+    UB       msg[CMD_MSG_BYTES];
+    uint8_t  op;
+    uint8_t  side;
+    uint16_t mm;
+    int32_t  res;
+
+    (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_CMD);
+
+    if ((MOTION_SM_AVOID_NONE == (motion_sm_avoid_t)p_ctx->avoid_cmd)
+        && ((INT)CMD_MSG_BYTES == tk_rcv_mbf(g_avoid_mbfid, &word, TMO_POL)))
+    {
+        res = CMD_RES_INVALID;
+        if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
+        {
+            res              = CMD_RES_TAKEN;
+            p_ctx->avoid_mm  = mm;
+            p_ctx->avoid_cmd = (uint8_t)((MOTION_AVOID_OP_REVERSE == op)
+                                             ? MOTION_SM_AVOID_REVERSE
+                                             : MOTION_SM_AVOID_BYPASS);
+        }
+        report_cmd(p_ctx, CMD_SRC_AVOID, word, res);
+    }
+
+    if ((INT)CMD_MSG_BYTES == tk_rcv_mbf(g_nav_mbfid, msg, TMO_POL))
+    {
+        res = CMD_RES_TAKEN;
+        if ((NAV_CMD_FAULT_CLEAR == msg[0]) && (FAULT_CLEAR_IMU == msg[1]))
+        {
+            p_in->nav = MOTION_SM_NAV_CLEAR_IMU;
+        }
+        else if ((NAV_CMD_FAULT_CLEAR == msg[0])
+                 && (FAULT_CLEAR_MOTION == msg[1]))
+        {
+            p_in->nav = MOTION_SM_NAV_CLEAR_MOTION;
+        }
+        else if (NAV_CMD_JUNCTION == msg[0])
+        {
+            res = CMD_RES_NO_TURNS;
+            sm_send_replies(MOTION_SM_REP_CMD_REJECTED);
+        }
+        else
+        {
+            res = CMD_RES_INVALID;
+        }
+        report_cmd(p_ctx, CMD_SRC_NAV, ((uint32_t)msg[0] << 8) | msg[1], res);
+    }
+}
+
+/* fault_flg bits (S.faults) for motion's FR-30 faults. */
+static UINT
+fault_flg_bits (uint8_t faults)
+{
+    UINT bits = 0u;
+
+    if (0u != ((uint32_t)faults & (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R)))
+    {
+        bits |= FAULT_MOTOR_STALL;
+    }
+    if (0u != ((uint32_t)faults & (MOTION_FAULT_ENC_L | MOTION_FAULT_ENC_R)))
+    {
+        bits |= FAULT_ENCODER;
+    }
+
+    return bits;
+}
+
 /* One statechart step per tick, after the stall check.  The mission state
-   comes from nav_ctrl_task (one aligned load).  Commands (step 1.7) and
-   most manoeuvres (line following, turns, bypass and search) are not
-   built yet, so those inputs stay false and those states brake; the
-   reverse is built.  The avoidance command arrives in p_ctx->avoid_cmd
-   (the command buffer, step 1.7, will fill it).  distance_state is never
-   reset: imu_task works from differences, and a jump would read as a
-   fake movement. */
+   comes from nav_ctrl_task (one aligned load), commands from
+   take_commands().  Turns and bypass are not built yet, so those states
+   brake; line following, the line search and the reverse are built.
+   distance_state is never reset: imu_task works from differences, and a
+   jump would read as a fake movement. */
 static void
 tick_statechart (motion_ctx_t *p_ctx)
 {
@@ -1467,6 +1622,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     mission_state_t mission = nav_mission_state();
     motion_report_t rep;
 
+    take_commands(p_ctx, &in);
     in.b_running     = (MS_RUNNING == mission);
     in.b_stop_scan   = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_SCAN));
     in.b_stop_imu    = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_IMU));
@@ -1484,6 +1640,7 @@ tick_statechart (motion_ctx_t *p_ctx)
         && (MOTION_ST_FAULT != motion_sm_state(&p_ctx->sm)))
     {
         p_ctx->faults = (uint8_t)((uint32_t)p_ctx->faults & ~SM_FAULTS);
+        fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
     }
 
     if (out.b_clear_stop_imu)
@@ -1499,6 +1656,10 @@ tick_statechart (motion_ctx_t *p_ctx)
         man_start(p_ctx, motion_sm_state(&p_ctx->sm));
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
+    if (0u != (out.replies & MOTION_SM_REP_MOTION_FAULT))
+    {
+        fault_set(fault_flg_bits(p_ctx->faults)); /* S.faults, before nav */
+    }
     sm_send_replies(out.replies);
 
     if (out.b_changed || (0u != out.replies))
@@ -2039,6 +2200,55 @@ print_state (UB *p_line, motion_report_t const *p_rep)
     print_line(p_line);
 }
 
+/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken". */
+static void
+print_cmd (UB *p_line, motion_report_t const *p_rep)
+{
+    uint32_t    raw = (uint32_t)p_rep->val_r;
+    char const *what;
+    char const *res;
+    uint8_t     op;
+    uint8_t     side;
+    uint16_t    mm = 0u;
+
+    if (CMD_SRC_NAV == p_rep->val_l)
+    {
+        what = ((raw >> 8) == NAV_CMD_JUNCTION)       ? "JUNCTION"
+               : (raw == ((NAV_CMD_FAULT_CLEAR << 8) | FAULT_CLEAR_IMU))
+                   ? "FAULT_CLEAR(IMU)"
+               : (raw == ((NAV_CMD_FAULT_CLEAR << 8) | FAULT_CLEAR_MOTION))
+                   ? "FAULT_CLEAR(MOTION)"
+                   : "unknown";
+    }
+    else
+    {
+        what = "unknown";
+        if (motion_avoid_cmd_unpack((uint16_t)raw, &op, &side, &mm))
+        {
+            what = (MOTION_AVOID_OP_REVERSE == op) ? "REVERSE"
+                   : (MOTION_AVOID_SIDE_LEFT == side) ? "BYPASS left"
+                                                      : "BYPASS right";
+        }
+    }
+    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken"
+          : (CMD_RES_NO_TURNS == p_rep->rate_l)
+              ? "sent CMD_REJECTED (turns not built yet, straight on)"
+              : "dropped (invalid)";
+
+    if (CMD_SRC_NAV == p_rep->val_l)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] nav_cmd %s (raw 0x%04x): %s",
+                         what, (UINT)raw, res);
+    }
+    else
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] avoid_cmd %s %u mm (raw 0x%04x): %s",
+                         what, (UINT)mm, (UINT)raw, res);
+    }
+    print_line(p_line);
+}
+
 static char const *
 stop_name (int32_t bit)
 {
@@ -2164,6 +2374,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
 
         case EVT_STATE:
             print_state(p_line, p_rep);
+            break;
+
+        case EVT_CMD:
+            print_cmd(p_line, p_rep);
             break;
 
         case EVT_RAMP:
@@ -2333,6 +2547,32 @@ motor_task_start (void)
         else
         {
             g_mbfid = obj_id;
+        }
+    }
+
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mbf(&g_cmbf_nav);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_nav_mbfid = obj_id;
+        }
+    }
+
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mbf(&g_cmbf_avoid);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_avoid_mbfid = obj_id;
         }
     }
 

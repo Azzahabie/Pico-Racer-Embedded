@@ -301,6 +301,11 @@ bool nav_mission_running(void) { return MS_RUNNING == g_mission; }
 ID nav_flag(void) { return SIM_NAV_FLGID; }
 ID scan_if_flag(void) { return g_scan_flgid; }
 
+/* fault_flg (nav_ctrl.h): the bits S.faults reports. */
+static UINT		g_fault_bits;
+void fault_set(UINT bits) { g_fault_bits |= bits; }
+void fault_clear(UINT bits) { g_fault_bits &= ~bits; }
+
 /* line_task.h (Buddy 3): the line_state word, as ir_sense_task publishes it.
    sim_reset() puts the car centred on the line (rl 11, calibrated); the
    counter moves every tick (sim_tick), so motion never sees it stale. */
@@ -331,18 +336,57 @@ ER tk_wai_flg(ID id, UINT waiptn, UINT mode, UINT *p_ptn, TMO tmo)
 	if ((mode & TWF_BITCLR) != 0u) { g_flag &= ~waiptn; }
 	return E_OK;
 }
+/* Message buffers: 2 the report buffer, 3 nav_cmd_mbf, 4 avoid_cmd_mbf. */
+#define SIM_REP_MBFID	(2)
+#define SIM_NAV_MBFID	(3)
+#define SIM_AVOID_MBFID	(4)
+#define SIM_CMD_ROOM	(4)
+static uint8_t	g_cmd_q[2][SIM_CMD_ROOM][2];	/* [0] nav, [1] avoid */
+static int	g_cmd_n[2];
+static int	g_cmd_room[2];
+
 ID tk_cre_mbf(CONST T_CMBF *p)
 {
-	/* The real buffer must hold REPORT_QUEUE_LEN records exactly, and be
-	   ours (TA_USERBUF), not the kernel heap's: Week 13 RAM evidence. */
-	CHECK(p->bufsz == (SZ)(REPORT_QUEUE_LEN * (sizeof(motion_report_t) + 4u)));
+	/* Every buffer must be ours (TA_USERBUF), not the kernel heap's
+	   (Week 13 RAM evidence), and sized for its messages exactly: 4-byte
+	   header plus the message rounded up to a word. */
 	CHECK(((p->mbfatr & TA_USERBUF) != 0u) && (p->bufptr != NULL));
-	CHECK(p->maxmsz == (INT)sizeof(motion_report_t));
-	return 2;
+	if (p->maxmsz == (INT)sizeof(motion_report_t)) {
+		CHECK(p->bufsz == (SZ)(REPORT_QUEUE_LEN * (sizeof(motion_report_t) + 4u)));
+		return SIM_REP_MBFID;
+	}
+	CHECK(p->maxmsz == 2);
+	if (p->bufsz == (SZ)(4 * 8)) { g_cmd_room[0] = 4; return SIM_NAV_MBFID; }
+	CHECK(p->bufsz == (SZ)(2 * 8));
+	g_cmd_room[1] = 2;
+	return SIM_AVOID_MBFID;
+}
+
+/* A sender placing a command, as nav_ctrl_task or scan_task would (TMO_POL:
+   a full buffer is refused). */
+static int
+sim_send_cmd (ID id, uint8_t b0, uint8_t b1)
+{
+	int q = (id == SIM_NAV_MBFID) ? 0 : 1;
+
+	if (g_cmd_n[q] >= g_cmd_room[q]) { return 0; }
+	g_cmd_q[q][g_cmd_n[q]][0] = b0;
+	g_cmd_q[q][g_cmd_n[q]][1] = b1;
+	g_cmd_n[q]++;
+	return 1;
+}
+
+static int
+sim_send_avoid (uint16_t word)
+{
+	uint8_t b[2];
+
+	memcpy(b, &word, sizeof b);		/* scan_task sends the uint16_t */
+	return sim_send_cmd(SIM_AVOID_MBFID, b[0], b[1]);
 }
 ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 {
-	(void)id;
+	CHECK(id == SIM_REP_MBFID);		/* motion only sends reports */
 	CHECK(tmo == TMO_POL);			/* motion_task never blocks */
 	CHECK(size == (INT)sizeof(motion_report_t));
 	if (g_probe && (g_rep_t_us == 0u)) { g_rep_t_us = g_time_us; g_time_us += 5u; }
@@ -350,7 +394,20 @@ ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 	memcpy(&g_queue[g_q_count++], msg, sizeof(motion_report_t));
 	return E_OK;
 }
-INT tk_rcv_mbf(ID id, void *msg, TMO tmo) { (void)id; (void)msg; (void)tmo; return E_TMOUT; }
+INT tk_rcv_mbf(ID id, void *msg, TMO tmo)
+{
+	int q;
+
+	CHECK(tmo == TMO_POL);			/* motion_task never waits on one */
+	if (id == SIM_REP_MBFID) { return E_TMOUT; }	/* the report task's */
+	CHECK((id == SIM_NAV_MBFID) || (id == SIM_AVOID_MBFID));
+	q = (id == SIM_NAV_MBFID) ? 0 : 1;
+	if (g_cmd_n[q] == 0) { return E_TMOUT; }
+	memcpy(msg, g_cmd_q[q][0], 2);
+	memmove(g_cmd_q[q][0], g_cmd_q[q][1], (size_t)(SIM_CMD_ROOM - 1) * 2u);
+	g_cmd_n[q]--;
+	return 2;
+}
 ID tk_cre_tsk(CONST T_CTSK *p)
 {
 	CHECK((p->tskatr & TA_USERBUF) != 0u);	/* stack is ours, not the heap */
@@ -515,6 +572,8 @@ sim_reset (const char *p_name)
 	g_scan_flag = 0u;
 	g_scan_flgid = SIM_SCAN_FLGID;
 	g_mission = MS_READY;
+	g_fault_bits = 0u;
+	g_cmd_n[0] = g_cmd_n[1] = 0;
 	memset(&g_line, 0, sizeof g_line);
 	g_line.rl = LINE_RL_JUNCTION;		/* 3 = both black: centred */
 	g_line.cal = true;
@@ -1000,6 +1059,92 @@ scenario_statechart_fault (void)
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT") != NULL);
 	sim_ticks(5);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);	/* stays */
+	CHECK(g_fault_bits == FAULT_MOTOR_STALL);		/* S.faults bit 0 */
+
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_FAULT_CLEAR, FAULT_CLEAR_MOTION));
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_IDLE);
+	CHECK(g_fault_bits == 0u);
+	CHECK(g_ctx.faults == 0u);
+}
+
+/* nav_cmd_mbf: after an IMU fault and recalibration, FAULT_CLEAR(IMU)
+   clears STOP_IMU and the car drives again.  S2 (30 Oct) found it braked
+   after GP20, because nothing could clear STOP_IMU. */
+static void
+scenario_cmd_fault_clear_imu (void)
+{
+	sim_reset("nav_cmd: FAULT_CLEAR(IMU) clears STOP_IMU, the car drives again");
+	g_mission = MS_RUNNING;
+	sim_ticks(2);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	stop_request(MOTION_EVT_STOP_IMU, 1);			/* abnormal tilt */
+	g_mission = MS_FAULT;					/* nav: IMU_FAULT */
+	sim_ticks(2);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_IDLE);
+	CHECK((g_flag & MOTION_EVT_STOP_IMU) != 0u);		/* still set */
+
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_FAULT_CLEAR, FAULT_CLEAR_IMU));
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_FAULT_CLEAR, FAULT_CLEAR_MOTION));
+	g_mission = MS_READY;					/* recalibrated */
+	sim_ticks(3);
+	CHECK((g_flag & MOTION_EVT_STOP_IMU) == 0u);
+	CHECK(strstr(g_log, "nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken") != NULL);
+	CHECK(strstr(g_log, "nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken") != NULL);
+
+	g_mission = MS_RUNNING;					/* GP20 */
+	sim_ticks(3);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK((g_duty[0] != 0) || (g_duty[1] != 0));
+}
+
+/* nav_cmd_mbf: a JUNCTION gets exactly one CMD_REJECTED while turns are
+   not built, and the car keeps following the line.  An unknown command
+   is dropped and changes nothing. */
+static void
+scenario_cmd_junction_rejected (void)
+{
+	sim_reset("nav_cmd: JUNCTION gets CMD_REJECTED, the car follows the line on");
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, 1u));	/* LEFT */
+	sim_tick();
+	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2001): sent CMD_REJECTED") != NULL);
+	sim_ticks(5);
+	CHECK((g_duty[0] != 0) || (g_duty[1] != 0));		/* still driving */
+
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, 0x77u, 0u));
+	sim_tick();
+	CHECK(strstr(g_log, "nav_cmd unknown (raw 0x7700): dropped (invalid)") != NULL);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+}
+
+/* avoid_cmd_mbf: scan_task's packed REVERSE starts the reverse, as the
+   direct injection in reverse_start() does; a malformed word is dropped. */
+static void
+scenario_cmd_avoid_reverse (void)
+{
+	uint16_t word = 0u;
+
+	sim_reset("avoid_cmd: a REVERSE from the buffer runs the reverse");
+	g_mission = MS_RUNNING;
+	sim_ticks(2);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE, MOTION_AVOID_SIDE_NONE,
+				    150u, &word));
+	CHECK(sim_send_avoid(word));
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
+	CHECK(strstr(g_log, "avoid_cmd REVERSE 150 mm") != NULL);
+
+	CHECK(sim_send_avoid(0xFFFFu));
+	sim_tick();
+	CHECK(strstr(g_log, "avoid_cmd unknown 0 mm (raw 0xffff): dropped (invalid)") != NULL);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
 }
 
 /* Running, stopped by STOP_SCAN, then scan_task's REVERSE of mm. */
@@ -1774,6 +1919,9 @@ main (int argc, char **argv)
 	scenario_stop_order();
 	scenario_statechart();
 	scenario_statechart_fault();
+	scenario_cmd_fault_clear_imu();
+	scenario_cmd_junction_rejected();
+	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();
 	scenario_reverse();
 	scenario_reverse_imu();
