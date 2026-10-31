@@ -25,13 +25,17 @@ typedef enum {
 	IR_CAL_LOW_CONTRAST	/* white too close to the black level  */
 } ir_cal_result_t;
 
-/* One sensor's calibration.  Levels and thresholds are in darkness units. */
+/* One sensor's calibration.  Levels and thresholds are in darkness units.
+   After a passed calibration, white and black follow the readings
+   (ir_cal_adapt) and rise/fall are always worked out from them. */
 typedef struct {
 	bool black_is_high;
 	uint16_t white;		/* reference white                    */
 	uint16_t black;		/* reference black (> white)          */
 	uint16_t rise;		/* white -> black at or above this    */
 	uint16_t fall;		/* black -> white at or below this    */
+	uint32_t white_q;	/* white, black x 256: the running     */
+	uint32_t black_q;	/* averages keep their fraction        */
 } ir_cal_sensor_t;
 
 /* Samples recorded during a calibration window. */
@@ -60,6 +64,16 @@ const char *ir_cal_result_name(ir_cal_result_t result);
 
 /* true when raw sits at an ADC rail (disconnected or shorted sensor). */
 bool ir_at_rail(uint16_t raw);
+
+/*
+ * One sample, already classified: moves the matching level a little towards
+ * it and recomputes rise/fall, so the thresholds follow the sensor height,
+ * tape and floor.  A sample classed white yet clearly darker than white
+ * pulls black down much more slowly, so black can never be stranded above
+ * every reading (car lifted, then put back).  Never brings white and black
+ * closer than IR_CAL_MIN_CONTRAST; rail readings are ignored.
+ */
+void ir_cal_adapt(ir_cal_sensor_t *cal, uint16_t raw, bool black);
 
 /* Black or white, with hysteresis around rise/fall. */
 bool ir_classify(const ir_cal_sensor_t *cal, uint16_t raw, bool was_black);

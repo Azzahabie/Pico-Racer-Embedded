@@ -204,9 +204,41 @@ static void test_word(void)
 	CHECK(line_state_cal(out.word));
 }
 
+/* S4 attempt 5 end to end: calibrated on a weak 1,300 line, both sensors
+   dip to 1,050 for 2 s.  The car must not be reported lost. */
+static void test_weak_black_not_lost(void)
+{
+	ir_cal_sensor_t def = ir_cal_default(true,
+		LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD,
+		LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD);
+	ir_cal_sensor_t cal = def;
+	ir_cal_acc_t acc;
+	bool ever_lost = false;
+	unsigned i;
+
+	setup();
+	ir_cal_begin(&acc, true);
+	for (i = 0u; i < IR_CAL_SAMPLES; ++i) {
+		ir_cal_add(&acc, (uint16_t)(1280u + (i % 40u)));
+	}
+	CHECK(ir_cal_finish(&acc, &def, &cal) == IR_CAL_OK);
+	line_track_set_cal(&trk, &cal, &cal);
+	feed(1000u, 1300u, 1300u, false);
+	CHECK(!line_state_lost(out.word));
+	for (i = 0u; i < 2000u; ++i) {
+		feed(1u, 1050u, 1050u, false);
+		ever_lost = ever_lost || line_state_lost(out.word);
+	}
+	CHECK(!ever_lost);
+	CHECK(out.fields.rl == LINE_RL_JUNCTION);	/* rl 11: both black */
+	feed(LINE_LOST_SAMPLES + LINE_LOST_MS, 250u, 250u, false);
+	CHECK(line_state_lost(out.word));		/* real loss still seen */
+}
+
 int main(void)
 {
 	test_direction();
+	test_weak_black_not_lost();
 	test_junction();
 	test_line_loss();
 	test_faults();

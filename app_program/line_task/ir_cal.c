@@ -12,6 +12,31 @@ static uint16_t darkness(bool black_is_high, uint16_t raw)
 	return black_is_high ? raw : (uint16_t)(IR_ADC_MAX - raw);
 }
 
+/* Levels in x256 fixed point, so a 1-count change survives the averaging */
+#define IR_LEVEL_Q	(8u)
+
+/* rise/fall from the levels: the midpoint +/- IR_CAL_HYST_PCT of the span */
+static void set_thresholds(ir_cal_sensor_t *cal)
+{
+	uint32_t white = cal->white_q >> IR_LEVEL_Q;
+	uint32_t black = cal->black_q >> IR_LEVEL_Q;
+	uint32_t span = black - white;
+	uint32_t mid = white + span / 2u;
+	uint32_t hyst = (span * IR_CAL_HYST_PCT) / 100u;
+
+	cal->white = (uint16_t)white;
+	cal->black = (uint16_t)black;
+	cal->rise = (uint16_t)(mid + hyst);
+	cal->fall = (uint16_t)(mid - hyst);
+}
+
+static void set_levels(ir_cal_sensor_t *cal, uint32_t white, uint32_t black)
+{
+	cal->white_q = white << IR_LEVEL_Q;
+	cal->black_q = black << IR_LEVEL_Q;
+	set_thresholds(cal);
+}
+
 ir_cal_sensor_t ir_cal_default(bool black_is_high, uint16_t rise_raw,
 			       uint16_t fall_raw)
 {
@@ -33,6 +58,8 @@ ir_cal_sensor_t ir_cal_default(bool black_is_high, uint16_t rise_raw,
 	/* the midpoint convention: threshold halfway between white and black */
 	cal.white = 0u;
 	cal.black = (uint16_t)(2u * mid);
+	cal.white_q = (uint32_t)cal.white << IR_LEVEL_Q;
+	cal.black_q = (uint32_t)cal.black << IR_LEVEL_Q;
 	return cal;
 }
 
@@ -74,8 +101,6 @@ ir_cal_result_t ir_cal_finish(const ir_cal_acc_t *acc,
 {
 	ir_cal_sensor_t cal = *defaults;
 	uint32_t span;
-	uint32_t mid;
-	uint32_t hyst;
 
 	if (acc->samples == 0u) {
 		return IR_CAL_NO_SAMPLES;
@@ -86,36 +111,64 @@ ir_cal_result_t ir_cal_finish(const ir_cal_acc_t *acc,
 	span = (uint32_t)acc->max_dark - acc->min_dark;
 	if (span >= IR_CAL_MIN_CONTRAST) {
 		/* both colours seen: thresholds from the measured midpoint */
-		mid = acc->min_dark + span / 2u;
-		hyst = (span * IR_CAL_HYST_PCT) / 100u;
-		cal.white = acc->min_dark;
-		cal.black = acc->max_dark;
-		cal.rise = (uint16_t)(mid + hyst);
-		cal.fall = (uint16_t)(mid - hyst);
+		set_levels(&cal, acc->min_dark, acc->max_dark);
 	} else if (((uint32_t)acc->max_dark + IR_CAL_WHITE_MARGIN) <=
 		   defaults->fall) {
-		/* one colour, white (sensors off the line): keep the tested
-		   thresholds; black mirrors white about the threshold midpoint.
-		   It may lie above 4095 (darkness units), so the midpoint stays
-		   at 500 */
-		mid = ((uint32_t)defaults->rise + defaults->fall) / 2u;
-		cal.white = acc->min_dark;
-		cal.black = (uint16_t)((2u * mid) - acc->min_dark);
+		/* one colour, white (sensors off the line): black is guessed a
+		   safe step above it, and found properly once driving */
+		set_levels(&cal, acc->min_dark,
+			   (uint32_t)acc->min_dark + (2u * IR_CAL_MIN_CONTRAST));
 	} else if ((uint32_t)acc->min_dark >=
 		   ((uint32_t)defaults->rise + IR_CAL_WHITE_MARGIN)) {
 		/* one colour, black: the normal start pose, centred with both
-		   sensors inside the 18 mm line.  Same rule mirrored: white
-		   mirrors black about the midpoint, floored at 0 */
-		mid = ((uint32_t)defaults->rise + defaults->fall) / 2u;
-		cal.black = acc->max_dark;
-		cal.white = ((2u * mid) > acc->max_dark)
-			    ? (uint16_t)((2u * mid) - acc->max_dark) : 0u;
+		   sensors inside the 18 mm line.  White is guessed as a fraction
+		   of black (both scale with the sensor height), and found
+		   properly the first time a sensor leaves the line */
+		set_levels(&cal,
+			   ((uint32_t)acc->max_dark * IR_CAL_WHITE_GUESS_PCT) / 100u,
+			   acc->max_dark);
 	} else {
 		/* one colour, between the thresholds: neither clearly */
 		return IR_CAL_LOW_CONTRAST;
 	}
 	*out = cal;
 	return IR_CAL_OK;
+}
+
+/* One step of a running average, 1 / 2^shift of the way to dark */
+static void follow(uint32_t *level_q, uint16_t dark, uint32_t shift)
+{
+	int32_t diff = (int32_t)((uint32_t)dark << IR_LEVEL_Q) - (int32_t)*level_q;
+
+	*level_q = (uint32_t)((int32_t)*level_q + (diff / (int32_t)(1u << shift)));
+}
+
+void ir_cal_adapt(ir_cal_sensor_t *cal, uint16_t raw, bool black)
+{
+	uint32_t white_q = cal->white_q;
+	uint32_t black_q = cal->black_q;
+	uint16_t dark;
+
+	if (ir_at_rail(raw)) {
+		return;
+	}
+	dark = darkness(cal->black_is_high, raw);
+	if (black) {
+		follow(&black_q, dark, IR_ADAPT_SHIFT);
+	} else if ((uint32_t)dark >= ((uint32_t)cal->white + IR_CAL_MIN_CONTRAST)) {
+		/* "white", but far darker than white: black reads lower than
+		   the thresholds expect */
+		follow(&black_q, dark, IR_ADAPT_SHIFT + IR_ADAPT_STRANDED_SHIFT);
+	} else {
+		follow(&white_q, dark, IR_ADAPT_SHIFT);
+	}
+	if ((black_q >> IR_LEVEL_Q) <
+	    ((white_q >> IR_LEVEL_Q) + IR_CAL_MIN_CONTRAST)) {
+		return;		/* too close to tell apart: keep the last levels */
+	}
+	cal->white_q = white_q;
+	cal->black_q = black_q;
+	set_thresholds(cal);
 }
 
 const char *ir_cal_result_name(ir_cal_result_t result)

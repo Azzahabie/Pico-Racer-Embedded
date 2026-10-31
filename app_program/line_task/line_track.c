@@ -126,6 +126,13 @@ void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 					      trk->left_black);
 		trk->right_black = ir_classify(&trk->right_cal, right_raw,
 					       trk->right_black);
+		/* the levels follow the readings, but only once calibrated, and
+		   not while a fault or a barcode makes the reading suspect */
+		if (trk->calibrated && !fault && !barcode_hold) {
+			ir_cal_adapt(&trk->left_cal, left_raw, trk->left_black);
+			ir_cal_adapt(&trk->right_cal, right_raw,
+				     trk->right_black);
+		}
 		out->left_norm = ir_normalise(&trk->left_cal, left_raw);
 		out->right_norm = ir_normalise(&trk->right_cal, right_raw);
 	} else {

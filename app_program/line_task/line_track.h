@@ -51,7 +51,8 @@ typedef struct {
 void line_track_init(line_track_t *trk, const ir_cal_sensor_t *left,
 		     const ir_cal_sensor_t *right, bool steer_invert);
 
-/* A passed calibration replaces both sensors' thresholds. */
+/* A passed calibration replaces both sensors' levels and thresholds; from
+   then on each sample adapts them (ir_cal_adapt). */
 void line_track_set_cal(line_track_t *trk, const ir_cal_sensor_t *left,
 			const ir_cal_sensor_t *right);
 

@@ -285,13 +285,13 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				} else {
 					tell_nav(NAV_FLG_CAL_FAIL);
 				}
-				tm_printf((UB *)"[line] calibration %s: GP26 %s (white %u, rise %u) GP27 %s (white %u, rise %u)\n",
+				tm_printf((UB *)"[line] calibration %s: GP26 %s (white %u, black %u, rise %u) GP27 %s (white %u, black %u, rise %u)\n",
 					  ((IR_CAL_OK == left_res) && (IR_CAL_OK == right_res))
 						  ? "OK" : "FAILED",
 					  ir_cal_result_name(left_res), (UINT)left_new.white,
-					  (UINT)left_new.rise,
+					  (UINT)left_new.black, (UINT)left_new.rise,
 					  ir_cal_result_name(right_res), (UINT)right_new.white,
-					  (UINT)right_new.rise);
+					  (UINT)right_new.black, (UINT)right_new.rise);
 			}
 		}
 

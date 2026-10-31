@@ -6,15 +6,19 @@
 #define LINE_SENSOR_LEFT_GPIO                    (26u)
 #define LINE_SENSOR_LEFT_ADC_CHANNEL             (0u)
 #define LINE_SENSOR_LEFT_BLACK_IS_HIGH           (1u)
-/* measured 2026-10-29: white 175-300, centred black 2410-2493 */
-#define LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD  (1400u)
-#define LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD (1100u)
+/* measured 2026-10-29: white 175-300, centred black 2410-2493;
+   2026-10-31 (sensors raised): white 150-530, centred black 1250-1330.
+   These are only the boot guess and the white/black split for a
+   one-colour calibration: once calibrated, the thresholds follow the
+   measured levels (see Calibration below). */
+#define LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD  (900u)
+#define LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD (700u)
 
 #define LINE_SENSOR_RIGHT_GPIO                    (27u)
 #define LINE_SENSOR_RIGHT_ADC_CHANNEL             (1u)
 #define LINE_SENSOR_RIGHT_BLACK_IS_HIGH           (1u)
-#define LINE_SENSOR_RIGHT_BLACK_RISING_THRESHOLD  (1400u)
-#define LINE_SENSOR_RIGHT_BLACK_FALLING_THRESHOLD (1100u)
+#define LINE_SENSOR_RIGHT_BLACK_RISING_THRESHOLD  (900u)
+#define LINE_SENSOR_RIGHT_BLACK_FALLING_THRESHOLD (700u)
 
 #define BARCODE_SENSOR_GPIO                       (7u)
 /* Verify the digital DO polarity on hardware. */
@@ -75,18 +79,28 @@
 
 /* ---- Calibration (CAL_REQ from nav_ctrl_task), ADC counts ----
    IR_CAL_SAMPLES ticks are recorded per sensor with the car still.  If a
-   sensor saw both black and white (span >= IR_CAL_MIN_CONTRAST), its
-   thresholds are set at the measured midpoint +/- IR_CAL_HYST_PCT of the
-   span.  If it saw one colour only, the tested thresholds above are kept:
-   white must sit at least IR_CAL_WHITE_MARGIN below the falling threshold,
-   or black (the start pose: centred, both sensors inside the line) at
-   least IR_CAL_WHITE_MARGIN above the rising one.  A sensor reading at an
-   ADC rail (<= IR_RAIL_LOW or >= IR_RAIL_HIGH) for most of the window, or
-   for IR_RAIL_FAULT_SAMPLES running in use, is stuck.  PROVISIONAL. */
+   sensor saw both black and white (span >= IR_CAL_MIN_CONTRAST), those are
+   its levels.  If it saw one colour only, the thresholds above decide which:
+   black (the start pose: centred, both sensors inside the line) must sit at
+   least IR_CAL_WHITE_MARGIN above the rising one, white as far below the
+   falling one; the missing level is guessed (white = IR_CAL_WHITE_GUESS_PCT
+   of black, or black = white + 2 x IR_CAL_MIN_CONTRAST).
+   Thresholds are always the level midpoint +/- IR_CAL_HYST_PCT of the
+   span.  From then on, every sample moves its colour's level 1/2^
+   IR_ADAPT_SHIFT of the way towards it (2048 samples, about 2 s), so the
+   thresholds follow sensor height, tape and floor; a "white" sample far
+   darker than white pulls black down 2^IR_ADAPT_STRANDED_SHIFT times
+   slower.  The levels never come closer than IR_CAL_MIN_CONTRAST.
+   A sensor reading at an ADC rail (<= IR_RAIL_LOW or >= IR_RAIL_HIGH) for
+   most of the window, or for IR_RAIL_FAULT_SAMPLES running in use, is
+   stuck.  PROVISIONAL. */
 #define IR_CAL_SAMPLES                            (1000u)
 #define IR_CAL_MIN_CONTRAST                       (400u)
 #define IR_CAL_HYST_PCT                           (10u)
-#define IR_CAL_WHITE_MARGIN                       (200u)
+#define IR_CAL_WHITE_MARGIN                       (100u)
+#define IR_CAL_WHITE_GUESS_PCT                    (25u)
+#define IR_ADAPT_SHIFT                            (11u)
+#define IR_ADAPT_STRANDED_SHIFT                   (2u)
 #define IR_RAIL_LOW                               (2u)
 #define IR_RAIL_HIGH                              (4093u)
 #define IR_RAIL_FAULT_SAMPLES                     (200u)
