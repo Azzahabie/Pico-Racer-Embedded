@@ -15,6 +15,7 @@
 
 #include "imu_safety.h"
 #include "imu_class.h"
+#include "imu_events.h"
 #include "imu_task.h"		/* hump_state word layout */
 
 /* hump.c prints; nothing here needs its lines. */
@@ -267,6 +268,105 @@ int main(void)
 		/* The fields fill exactly 32 bits. */
 		expect(IMU_W_TILT_SHIFT + IMU_W_TILT_BITS == 32, "word: 32 bits");
 	}
+
+	/* ---- readable events: turns ---- */
+	ev_reset();
+	/* A left turn: 45 deg/s for 2 s, the classifier confirming it
+	   100 ms in.  The angle counts from the start. */
+	ev = 0;
+	for (i = 0; i < 200; i++) ev |= ev_turn_step(i >= 10, 45, 10);
+	expect((ev & EV_TURN_START) != 0 && ev_turn_dir() == 1,
+	       "events: left turn starts LEFT");
+	ev = ev_turn_step(FALSE, 0, 10);
+	expect((ev & EV_TURN_DONE) != 0 && ev_turn_deg() == 90,
+	       "events: left turn is 90 deg");
+	expect(ev_turns_left() == 1 && ev_turns_right() == 0,
+	       "events: one left turn counted");
+	expect(ev_turn_ms() == 2000, "events: turn took 2 s");
+
+	/* A right turn of 30 deg. */
+	for (i = 0; i < 100; i++) ev_turn_step(i >= 10, -30, 10);
+	ev = ev_turn_step(FALSE, 0, 10);
+	expect((ev & EV_TURN_DONE) != 0 && ev_turn_deg() == -30
+	       && ev_turns_right() == 1, "events: right turn counted");
+	expect(ev_heading_deg() == 60, "events: facing 60 deg left");
+
+	/* A short wiggle is reported but not counted. */
+	for (i = 0; i < 30; i++) ev_turn_step(i >= 10, 25, 10);
+	ev = ev_turn_step(FALSE, 0, 10);
+	expect((ev & EV_TURN_SMALL) != 0 && (ev & EV_TURN_DONE) == 0
+	       && ev_turns_left() == 1, "events: wiggle not counted");
+
+	/* Encoder jitter on a straight adds nothing to the next turn. */
+	for (i = 0; i < 1000; i++) ev_turn_step(FALSE, (i & 1) ? 7 : -3, 10);
+	for (i = 0; i < 200; i++) ev_turn_step(i >= 10, -45, 10);
+	ev_turn_step(FALSE, 0, 10);
+	expect(ev_turn_deg() == -90, "events: jitter before a turn ignored");
+
+	ev_mission_reset();
+	expect(ev_turns_left() == 0 && ev_turns_right() == 0
+	       && ev_heading_deg() == 0, "events: mission reset");
+
+	/* ---- readable events: hands on / off ---- */
+	ev_reset();
+	for (i = 0; i < 5; i++) ev_window_step(0, 0, 1000, 0);
+	expect(!ev_held(), "events: on the floor");
+	ev = ev_window_step(0, 0, 1060, 0);		/* one knock */
+	ev |= ev_window_step(0, 0, 1000, 0);
+	ev |= ev_window_step(0, 0, 1000, 0);
+	expect((ev & EV_PICKED_UP) == 0, "events: a knock is not a pick-up");
+	ev = ev_window_step(40, 0, 1080, 0);		/* lifted */
+	ev |= ev_window_step(-20, 50, 960, 0);
+	expect((ev & EV_PICKED_UP) != 0 && ev_held(), "events: picked up");
+	ev = 0;
+	for (i = 0; i < 9; i++) ev |= ev_window_step(-20, 50, 960 + (i & 1), 0);
+	expect((ev & EV_PUT_DOWN) == 0 && ev_held(),
+	       "events: still held after 0.9 s steady");
+	ev = ev_window_step(-20, 50, 960, 0);
+	expect((ev & EV_PUT_DOWN) != 0 && !ev_held(), "events: put down");
+	ev_window_step(0, 0, 1000, 0);
+	ev_window_step(80, 0, 1000, 0);
+	ev_window_step(0, 60, 1000, 0);
+	expect(ev_held(), "events: picked up again");
+	ev = ev_window_step(0, 0, 1000, 5);		/* wheels rolling */
+	expect((ev & EV_PUT_DOWN) != 0 && !ev_held(),
+	       "events: driving means it is on the floor");
+
+	/* ---- readable events: lean and nose ---- */
+	{
+		W	w[3];
+
+#define WIN(left, up, dmm) (w[0] = w[1] = 0, w[2] = 1000, \
+		w[IMU_LEFT_AXIS] = IMU_LEFT_SIGN * (left), \
+		w[IMU_NOSE_AXIS] = IMU_NOSE_SIGN * (up), \
+		ev_window_step(w[0], w[1], w[2], (dmm)))
+
+		ev_reset();
+		ev = WIN(100, 0, 1);
+		expect((ev & EV_LEAN) == 0, "events: lean waits 200 ms");
+		ev = WIN(100, 0, 1);
+		expect((ev & EV_LEAN) != 0 && ev_lean() == 1,
+		       "events: leaning LEFT");
+		WIN(70, 0, 1);
+		WIN(70, 0, 1);
+		expect(ev_lean() == 1, "events: 4 deg still leaning (hysteresis)");
+		WIN(30, 0, 1);
+		ev = WIN(30, 0, 1);
+		expect((ev & EV_LEAN) != 0 && ev_lean() == 0, "events: level again");
+		WIN(-100, 0, 1);
+		WIN(-100, 0, 1);
+		expect(ev_lean() == -1, "events: leaning RIGHT");
+		WIN(0, 120, 1);
+		ev = WIN(0, 120, 1);
+		expect((ev & (EV_LEAN | EV_NOSE)) == (EV_LEAN | EV_NOSE)
+		       && ev_lean() == 0 && ev_nose() == 1, "events: nose UP");
+		WIN(0, -120, 1);
+		WIN(0, -120, 1);
+		expect(ev_nose() == -1, "events: nose DOWN");
+#undef WIN
+	}
+	expect(ev_side_name(1)[0] == 'L' && ev_side_name(-1)[0] == 'R'
+	       && ev_nose_name(1)[0] == 'U', "events: names");
 
 	printf("imu_safety: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;

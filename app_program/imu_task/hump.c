@@ -78,6 +78,17 @@ EXPORT UW imu_isqrt(UW v)
 	return r;
 }
 
+/* Tilt in 0.1 deg from its sine in mg, without libm: asin(s) is about
+   s + s^3 / 6, within 0.3 deg up to 30 deg (well past any hump). */
+EXPORT UW imu_deg10(UW mg)
+{
+	UW	s3;
+
+	if(mg > 1000) mg = 1000;
+	s3 = mg * mg / 1000 * mg / 1000;
+	return (mg + s3 / 6) * 573 / 1000;
+}
+
 EXPORT HUMP_STATE hump_get_state(void)	{ return hump_state; }
 EXPORT UW hump_get_count(void)		{ return hump_count; }
 EXPORT UW hump_get_last_mm(void)	{ return hump_last_mm; }
@@ -143,12 +154,13 @@ LOCAL void hump_finish(void)
 		hump_last_mm = (UW)mm;
 		if(hump_last_mm > hump_max_mm) hump_max_mm = hump_last_mm;
 		tm_printf((UB *)"[imu] ===== HUMP %u: %d.%d mm high =====  (up"
-			       " %d.%d, down %d.%d, peak tilt %u mg, %d mm"
+			       " %d.%d, down %d.%d, steepest %u deg, %d mm"
 			       " long)\n",
 			  hump_count, tenths / 10, tenths % 10,
 			  (peak_um + 50) / 100 / 10, (peak_um + 50) / 100 % 10,
 			  (-trough_um + 50) / 100 / 10,
-			  (-trough_um + 50) / 100 % 10, tilt_peak, hump_len);
+			  (-trough_um + 50) / 100 % 10,
+			  (imu_deg10(tilt_peak) + 5) / 10, hump_len);
 	} else {
 		tm_printf((UB *)"[imu] hump ignored: only %d.%d mm high\n",
 			  tenths / 10, tenths % 10);
@@ -295,8 +307,8 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 		level_mm = 0;
 		still_win = flip_win = pend_win = 0;
 		hump_state = HUMP_CLIMBING;
-		tm_printf((UB *)"[imu] hump: climbing (tilt %u mg, up %d mm)\n",
-			  tilt, h_um / 1000);
+		tm_printf((UB *)"[imu] hump: climbing (%u deg up, %d mm)\n",
+			  (imu_deg10(tilt) + 5) / 10, h_um / 1000);
 		return;
 	}
 
@@ -355,9 +367,11 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 			} else if(++flip_win >= HUMP_FLIP_WIN) {
 				flip_win = 0;
 				hump_state = s;
-				tm_printf((UB *)"[imu] hump: %s (tilt %u mg,"
-					       " up %d mm)\n", hump_name[s],
-					  tilt, h_um / 1000);
+				tm_printf((UB *)"[imu] hump: %s (%d mm %s,"
+					       " %u deg)\n", hump_name[s],
+					  h_um / 1000, (s == HUMP_DESCENDING)
+					  ? "at the top" : "up",
+					  (imu_deg10(tilt) + 5) / 10);
 			}
 		}
 		return;

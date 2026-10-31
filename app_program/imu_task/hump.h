@@ -38,5 +38,6 @@ IMPORT UW hump_get_last_mm(void);	/* height of the last one     */
 IMPORT UW hump_get_max_mm(void);	/* highest since boot (FR-12) */
 
 IMPORT UW imu_isqrt(UW v);
+IMPORT UW imu_deg10(UW mg);		/* tilt in 0.1 deg from sin in mg */
 
 #endif /* IMU_HUMP_H */
