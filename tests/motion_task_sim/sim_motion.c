@@ -1097,6 +1097,45 @@ scenario_line_follow_steer (void)
 	CHECK((g_ctx.pos_r - g_ctx.pos_l) - turn0 < -100);	/* turned right */
 }
 
+/* S4 attempt 7 (31 Oct): on a curve the line sat under one sensor, then
+   left both.  The word's error then was only about -30 (two white
+   readings), so the car drove nearly straight off the outside.  Off the
+   line it must keep turning, hard, toward the side it was last seen. */
+static void
+scenario_line_follow_off_curve (void)
+{
+	int32_t turn0;
+
+	sim_reset("line follow: off the line, keep turning to where it was last seen");
+	g_mission = MS_RUNNING;
+	sim_ticks(50);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+
+	/* the line under the right sensor only: turning right */
+	g_line.rl = LINE_RL_RIGHT_DEV;
+	g_line.error = -70;
+	sim_ticks(50);
+	CHECK(g_ctx.line_dir == -1);
+
+	/* both white, a small error of the wrong size (and sign) */
+	g_line.rl = LINE_RL_CENTRED;
+	g_line.error = 20;
+	g_line.dark_ms = 100u;
+	turn0 = g_ctx.pos_r - g_ctx.pos_l;
+	sim_ticks(50);
+	CHECK(g_ctx.line_dir == -1);			/* side kept */
+	CHECK(lf_error(&g_ctx) == -LINE_ST_ERR_MAX);
+	CHECK((g_ctx.pos_r - g_ctx.pos_l) - turn0 < -100);	/* still right */
+	CHECK(g_ctx.lf_hard_run >= MOTION_LF_HARD_TICKS);	/* hard turn */
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+
+	/* a barcode hold also reads rl 00: no hard turn there */
+	g_line.barcode = true;
+	g_line.error = 0;
+	sim_ticks(1);
+	CHECK(lf_error(&g_ctx) == 0);
+}
+
 /* The Line Following correction on its own (S4, 31 Oct): it eases in,
    stays soft, damps a return to centre, turns hard only when held far
    off, and eases out over a barcode. */
@@ -2052,6 +2091,7 @@ main (int argc, char **argv)
 	scenario_statechart_fault();
 	scenario_line_follow_steer();
 	scenario_line_follow_soft();
+	scenario_line_follow_off_curve();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
 	scenario_cmd_avoid_reverse();

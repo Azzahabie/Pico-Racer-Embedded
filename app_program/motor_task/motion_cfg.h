@@ -148,8 +148,10 @@
 /* Line search (statechart LINE_SEARCH, [L_search]).  Both sensors sit
    inside the 18 mm line, so a centred car reads 11 and only a car off the
    line reads 00: after LINE_LOST_MS of 00 the car pivots on the spot
-   toward the side the line was last seen (|error| >= MOTION_LS_DIR_MIN;
-   the sign already includes LINE_STEER_INVERT), up to MOTION_LS_SWEEP_DEG,
+   toward the side the line was last seen (|error| >= MOTION_LS_DIR_MIN
+   while a sensor saw it; the sign already includes LINE_STEER_INVERT; Line
+   Following steers to the same side at full error during that 00), up to
+   MOTION_LS_SWEEP_DEG,
    then back past the start to the same angle the other side.  The line
    under a sensor ends it (LINE_FOUND); a full sweep without it is
    LINE_LOST.  PROPOSED: 6 counts per tick per wheel, about 5 cm/s. */

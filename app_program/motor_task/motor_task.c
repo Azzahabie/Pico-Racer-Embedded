@@ -1368,6 +1368,25 @@ lf_reset (motion_ctx_t *p_ctx)
     }
 }
 
+/* The error Line Following steers by.  Off the line (rl 00, both sensors
+   white) the word's error is only the difference between two white
+   readings, so the car ran straight off the outside of a curve (S4
+   attempt 7: about -30 for the 1.5 s until LOST).  Instead it keeps
+   turning, at full error, to the side the line was last seen on.  Not
+   during a barcode hold, which also reads rl 00 by design. */
+static int32_t
+lf_error (const motion_ctx_t *p_ctx)
+{
+    uint32_t word = p_ctx->line_word;
+
+    if ((LINE_RL_CENTRED == line_state_rl(word))
+        && !line_state_barcode(word) && (0 != p_ctx->line_dir))
+    {
+        return p_ctx->line_dir * LINE_ST_ERR_MAX;
+    }
+    return line_state_error(word);
+}
+
 static int32_t
 lf_clamp (int32_t v, int32_t lim)
 {
@@ -1482,7 +1501,11 @@ line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         p_ctx->line_same = 0u;
     }
     p_ctx->line_word = word;
-    if (line_state_error(word) >= MOTION_LS_DIR_MIN)
+    if (LINE_RL_CENTRED == line_state_rl(word))
+    {
+        /* Off the line: two white readings say nothing about the side. */
+    }
+    else if (line_state_error(word) >= MOTION_LS_DIR_MIN)
     {
         p_ctx->line_dir = 1;
     }
@@ -1583,8 +1606,7 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
            The remainder carries to the next tick, so a correction below
            one count still steers on average (S4: an error below 13 gave
            no correction at all). */
-        p_ctx->lf_rem += lf_correction(p_ctx,
-                                       line_state_error(p_ctx->line_word),
+        p_ctx->lf_rem += lf_correction(p_ctx, lf_error(p_ctx),
                                        line_state_barcode(p_ctx->line_word));
         corr = p_ctx->lf_rem / MOTION_LF_SCALE;
         p_ctx->lf_rem -= corr * MOTION_LF_SCALE;
