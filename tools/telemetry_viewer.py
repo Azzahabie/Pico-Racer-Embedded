@@ -4,6 +4,7 @@
     py tools\\telemetry_viewer.py [--broker HOST] [--port N] [--id CLIENT_ID]
                                   [--serial auto|COM5|none] [--run-broker]
                                   [--save DIR] [--http-port 8765] [--no-browser]
+                                  [--netlog 31884|0]
 
 Opens http://127.0.0.1:8765 and streams three sources into one page:
 
@@ -11,6 +12,14 @@ Opens http://127.0.0.1:8765 and streams three sources into one page:
   serial  the Pico's USB console.  `auto` finds the Pico (USB VID 2E8A) and
           reopens it after every reset.  Needs pyserial.
   broker  optional: an amqtt broker run inside the viewer, with its log.
+
+A car image built with WIFI_NETLOG=1 (debug only, never demo day) also sends
+its whole console over UDP to the broker's host; the viewer listens on UDP
+31884 (--netlog, 0 = off) and shows those lines as `serial`, so filters, the
+line chart and serial.log work with no cable.  Lost datagrams and bytes the car
+dropped are reported as `viewer` lines.  Allow UDP 31884 in the PC firewall,
+and set the serial port to none on wireless runs (the cable would double every
+line).
 
 Nothing about the network is built in.  Broker address and port, the car's
 client ID, the serial port, the built-in broker and the save folder are set
@@ -36,6 +45,8 @@ import json
 import logging
 import os
 import queue
+import socket
+import struct
 import sys
 import threading
 import time
@@ -64,6 +75,9 @@ DEFAULTS = {
     "run_broker": False,
     "save_dir": "",
     "http_port": 8765,
+    # Wireless console (car image built with WIFI_NETLOG=1, debug only):
+    # the car sends its console over UDP to this port; 0 = don't listen.
+    "netlog_port": 31884,
 }
 
 
@@ -97,6 +111,10 @@ def clean_settings(raw, base):
             val = int(val)
             if not 1 <= val <= 65535:
                 raise ValueError(f"{key} must be 1-65535")
+        elif key == "netlog_port":
+            val = int(val)
+            if not 0 <= val <= 65535:
+                raise ValueError("netlog_port must be 0-65535 (0 = off)")
         elif key == "run_broker":
             val = bool(val)
         else:
@@ -345,6 +363,76 @@ class SerialSource:
         threading.Thread(target=loop, daemon=True).start()
 
 
+class NetlogSource:
+    """The car's console over Wi-Fi (WIFI_NETLOG=1 images, debug only).
+
+    Each UDP datagram is an 8-byte header (sequence, bytes the car dropped,
+    both little-endian uint32) and then console text, whole lines.  The lines
+    go out as "serial", so filters, the line chart and serial.log work as with
+    the cable.  With the cable in as well, every line shows twice: set the
+    serial port to none for wireless runs."""
+
+    def __init__(self, hub):
+        self.hub = hub
+        self.gen = 0
+
+    def restart(self, port):
+        self.gen += 1
+        gen = self.gen
+        if not port:
+            return
+
+        def loop():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("0.0.0.0", port))
+                sock.settimeout(0.5)
+            except OSError as why:
+                self.hub.line("viewer", f"netlog: cannot listen on UDP {port}: {why}")
+                return
+            self.hub.line("viewer", f"netlog: listening on UDP {port} (wireless console)")
+            peer = None
+            next_seq = None
+            dropped = 0
+            buf = b""
+            try:
+                while gen == self.gen:
+                    try:
+                        data, addr = sock.recvfrom(2048)
+                    except socket.timeout:
+                        continue
+                    except OSError:
+                        break
+                    if len(data) < 8:
+                        continue
+                    seq, car_dropped = struct.unpack_from("<II", data, 0)
+                    if peer != addr[0]:
+                        peer = addr[0]
+                        self.hub.line("viewer", f"netlog: console from {peer}")
+                        next_seq = None
+                    if next_seq is not None and seq != next_seq:
+                        if seq > next_seq:
+                            self.hub.line("viewer", f"netlog: {seq - next_seq} datagram(s) lost on the air")
+                        else:
+                            self.hub.line("viewer", "netlog: sequence restarted (car rebooted?)")
+                            dropped = 0
+                    next_seq = seq + 1
+                    if car_dropped > dropped:
+                        self.hub.line("viewer", f"netlog: car dropped {car_dropped - dropped} console bytes (ring full)")
+                        dropped = car_dropped
+                    buf += data[8:]
+                    while b"\n" in buf:
+                        raw, buf = buf.split(b"\n", 1)
+                        text = raw.decode("utf-8", "replace").rstrip("\r")
+                        if text.strip():
+                            self.hub.line("serial", text)
+            finally:
+                sock.close()
+
+        threading.Thread(target=loop, daemon=True).start()
+
+
 class BrokerLogHandler(logging.Handler):
     def __init__(self, hub):
         super().__init__(logging.INFO)
@@ -434,6 +522,7 @@ class Viewer:
         self.broker = BrokerSource(self.hub)
         self.mqtt = MqttSource(self.hub)
         self.serial = SerialSource(self.hub)
+        self.netlog = NetlogSource(self.hub)
         self.lock = threading.Lock()
 
     def apply(self, new, old=None):
@@ -448,6 +537,8 @@ class Viewer:
                 self.mqtt.restart(s["broker_host"], s["broker_port"], s["client_id"])
             if changed("serial"):
                 self.serial.restart(s["serial"])
+            if changed("netlog_port"):
+                self.netlog.restart(s["netlog_port"])
 
 
 # ---------------------------------------------------------------- web page
@@ -559,6 +650,8 @@ def main():
     ap.add_argument("--save", dest="save_dir", metavar="DIR",
                     help="append serial.log, decoder.log and broker.log here")
     ap.add_argument("--http-port", dest="http_port", type=int)
+    ap.add_argument("--netlog", dest="netlog_port", type=int, metavar="UDP_PORT",
+                    help="wireless console port (WIFI_NETLOG=1 car images), 0 = off; default 31884")
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
 
