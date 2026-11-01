@@ -44,9 +44,13 @@
 /* scan_task -> motion_task avoid command, stored in a 16-bit MBF payload.
  * Bits 0-2 are the operation, bit 3 is the bypass side (0=left, 1=right),
  * bits 4-12 are the distance in mm, and bits 13-15 are reserved as zero.
- * Side is zero for reverse commands. */
+ * Side is zero for reverse and look commands.
+ * LOOK (Integration Rules D14) answers motion_task's SCAN_FLG_LOOK during a
+ * bypass: the median side reading in mm, 1 = no echo (unknown),
+ * MOTION_AVOID_DIST_MAX = nothing in range. */
 #define MOTION_AVOID_OP_REVERSE    1U
 #define MOTION_AVOID_OP_BYPASS     2U
+#define MOTION_AVOID_OP_LOOK       3U
 #define MOTION_AVOID_SIDE_NONE     0U
 #define MOTION_AVOID_SIDE_LEFT     1U
 #define MOTION_AVOID_SIDE_RIGHT    2U
@@ -60,7 +64,8 @@ static inline bool motion_avoid_cmd_pack(uint8_t op, uint8_t side,
 
     valid = (NULL != p_word) && (0U < dist_mm) &&
             (dist_mm <= MOTION_AVOID_DIST_MAX) &&
-            (((MOTION_AVOID_OP_REVERSE == op) &&
+            ((((MOTION_AVOID_OP_REVERSE == op) ||
+               (MOTION_AVOID_OP_LOOK == op)) &&
               (MOTION_AVOID_SIDE_NONE == side)) ||
              ((MOTION_AVOID_OP_BYPASS == op) &&
               ((MOTION_AVOID_SIDE_LEFT == side) ||

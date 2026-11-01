@@ -273,6 +273,86 @@ int main(void)
 		      !sl_same_object(200U, 450U, SL_D_OBS_MM));
 	}
 
+	/* 16. Avoiding: stop distance from the car's move (D13, S7 attempt 1:
+	 * pivots beside the box re-planned the bypass 12 + 3 times). */
+	printf("Test 16: Avoiding stop distance, pivot vs straight leg (D13)\n");
+	check("still (0 mm): D_rev", SL_D_REV_MM == sl_avoid_stop_mm(0));
+	check("pivot jitter (+/-2 mm): D_rev",
+	      SL_D_REV_MM == sl_avoid_stop_mm(2) && SL_D_REV_MM == sl_avoid_stop_mm(-2));
+	check("straight leg (5 mm per ping): D_stop", SL_D_STOP_MM == sl_avoid_stop_mm(5));
+	check("reversing (-5 mm per ping): D_stop", SL_D_STOP_MM == sl_avoid_stop_mm(-5));
+	sl_runs_reset(&runs);
+	sl_runs_add(&runs, sl_classify_at(false, 200U, sl_avoid_stop_mm(0)));
+	sl_runs_add(&runs, sl_classify_at(false, 180U, sl_avoid_stop_mm(1)));
+	check("pivoting past the box at 180-200 mm: no re-plan",
+	      0U == sl_runs_close(&runs));
+	sl_runs_reset(&runs);
+	sl_runs_add(&runs, sl_classify_at(false, 90U, sl_avoid_stop_mm(0)));
+	sl_runs_add(&runs, sl_classify_at(false, 85U, sl_avoid_stop_mm(0)));
+	check("pivoting with something below D_rev: re-plan",
+	      sl_runs_close(&runs) >= SL_N_STOP);
+	sl_runs_reset(&runs);
+	sl_runs_add(&runs, sl_classify_at(false, 240U, sl_avoid_stop_mm(5)));
+	sl_runs_add(&runs, sl_classify_at(false, 230U, sl_avoid_stop_mm(5)));
+	check("straight leg toward something below D_stop: re-plan",
+	      sl_runs_close(&runs) >= SL_N_STOP);
+	check("sl_classify is sl_classify_at(D_stop)",
+	      sl_classify(false, 249U) == sl_classify_at(false, 249U, SL_D_STOP_MM) &&
+	      sl_classify(false, 250U) == sl_classify_at(false, 250U, SL_D_STOP_MM));
+
+	/* 17. geometry (1 Nov measurements, D12) */
+	printf("Test 17: C_pass covers the pivot sweep; a 200 mm box fits the offset\n");
+	check("C_pass >= pivot sweep + margin",
+	      SL_C_PASS_MM >= SL_PIVOT_R_MM + SL_MARGIN_MM);
+	check("pivot radius covers the measured front corners",
+	      SL_PIVOT_R_MM * SL_PIVOT_R_MM >=
+	      SL_AXLE_FRONT_MM * SL_AXLE_FRONT_MM + SL_CAR_HALF_W_MM * SL_CAR_HALF_W_MM);
+	check("centred 200 mm box: offset 100 + C_pass fits SL_MAX_OFFSET_MM",
+	      100 + SL_C_PASS_MM <= SL_MAX_OFFSET_MM);
+	{
+		/* a flat 200 mm face 220 mm ahead (edges at about +/-25 deg) */
+		int	deg;
+
+		grid_clear(grid);
+		for(deg = -45; deg <= 45; deg += 5) {
+			set(grid, deg, SL_FAR);
+		}
+		set(grid, -25, 243); set(grid, -20, 234); set(grid, -15, 227);
+		set(grid, -10, 223); set(grid,  -5, 221); set(grid,   0, 220);
+		set(grid,   5, 221); set(grid,  10, 223); set(grid,  15, 227);
+		set(grid,  20, 234); set(grid,  25, 243);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("200 mm box ahead: bypass, offsets within the limit",
+		      ((SL_BYPASS_LEFT == act) || (SL_BYPASS_RIGHT == act)) &&
+		      (prof.offset_left_mm <= SL_MAX_OFFSET_MM) &&
+		      (prof.offset_right_mm <= SL_MAX_OFFSET_MM));
+	}
+
+	/* 18. bypass probe reply (D14) */
+	printf("Test 18: side look reply for motion_task (D14)\n");
+	check("no echo -> 1 (unknown: still there)",
+	      SL_LOOK_UNKNOWN_MM == sl_look_reply_mm(SL_NOT_MEASURED));
+	check("out of range -> 511 (clear)", SL_LOOK_FAR_MM == sl_look_reply_mm(SL_FAR));
+	check("far reading clamps to 511", SL_LOOK_FAR_MM == sl_look_reply_mm(3690U));
+	check("box side at 108 mm -> 108", 108U == sl_look_reply_mm(108U));
+	{
+		sl_profile_t	both = { 0 };
+
+		both.left_open = true;  both.clear_left_mm = SL_CLEAR_OPEN_MM;
+		both.right_open = true; both.clear_right_mm = SL_CLEAR_OPEN_MM;
+		both.offset_left_mm = 307; both.offset_right_mm = 309;
+		check("right lane blocked, left passable -> left",
+		      SL_BYPASS_LEFT == sl_other_side(&both, SL_BYPASS_RIGHT));
+		check("left lane blocked, right passable -> right",
+		      SL_BYPASS_RIGHT == sl_other_side(&both, SL_BYPASS_LEFT));
+		both.right_open = false;
+		check("left lane blocked, right closed -> blocked",
+		      SL_BLOCKED == sl_other_side(&both, SL_BYPASS_LEFT));
+		both.right_open = true; both.offset_right_mm = SL_MAX_OFFSET_MM + 1;
+		check("other side over the offset limit -> blocked",
+		      SL_BLOCKED == sl_other_side(&both, SL_BYPASS_LEFT));
+	}
+
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
 	return g_fails ? 1 : 0;

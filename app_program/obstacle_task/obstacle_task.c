@@ -58,6 +58,7 @@
 #include "scan_logic.h"
 #include "scan_if.h"
 #include "../common/messages.h"
+#include "../motor_task/motion_ds.h"	/* distance_state: Avoiding stop distance */
 
 #define OBSTACLE_TEST_MODE	4
 
@@ -76,6 +77,8 @@
 
 _Static_assert(SL_MAX_OFFSET_MM <= MOTION_AVOID_DIST_MAX,
 	       "bypass offset exceeds the packed avoid-command distance");
+_Static_assert(SL_LOOK_FAR_MM == MOTION_AVOID_DIST_MAX,
+	       "a side look's \"nothing in range\" is the largest LOOK distance");
 _Static_assert(SL_REV_DIST_MM <= MOTION_AVOID_DIST_MAX,
 	       "reverse distance exceeds the packed avoid-command distance");
 
@@ -186,6 +189,7 @@ typedef enum {
 #define CTX_NO_ECHO_MASK	(CTX_NO_ECHO_MAX << CTX_NO_ECHO_SHIFT)
 #define CTX_CMD_WARNED		(1U << 11)
 #define CTX_BENCH		(1U << 12)
+#define CTX_SIDE_SWITCHED	(1U << 13)	/* this avoidance tried the other side */
 
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
@@ -211,6 +215,7 @@ typedef struct {
 	int8_t		left_hit;	/* fine-scan start edges          */
 	int8_t		right_hit;
 	int8_t		look_deg;	/* angle the servo was last sent to */
+	uint32_t	ds_prev;	/* Avoiding: distance_state at the last ping */
 } scan_ctx_t;
 
 LOCAL scan_state_t ctx_state(const scan_ctx_t *p_ctx)
@@ -335,7 +340,8 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	switch(next) {
 	case ST_IDLE:
 		scan_if_stop_clear();		/* no stale stop survives */
-		ctx_set_flag(p_ctx, CTX_REVERSE_TRIED | CTX_AFTER_REVERSE, false);
+		ctx_set_flag(p_ctx, CTX_REVERSE_TRIED | CTX_AFTER_REVERSE |
+			     CTX_SIDE_SWITCHED, false);
 		servo_centre();
 		break;
 	case ST_SENSOR_LOST:
@@ -343,8 +349,11 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 		scan_if_sensor_lost(true);	/* FAULT_SCAN_SENSOR_LOST -> S record */
 		servo_centre();
 		break;
-	case ST_MONITORING:
 	case ST_AVOIDING:
+		p_ctx->ds_prev = motion_ds_read();	/* see avoid_ping() */
+		servo_centre();
+		break;
+	case ST_MONITORING:
 	case ST_BLOCKED:
 		servo_centre();			/* forward pings */
 		break;
@@ -356,18 +365,38 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	scan_if_clear(SCAN_FLG_TICK);
 }
 
-/* One forward ping for Monitoring / Avoiding / Blocked / Sensor Lost. */
-LOCAL sl_ping_t fwd_ping(scan_ctx_t *p_ctx)
+/* One forward ping, "close" below stop_mm. */
+LOCAL sl_ping_t ping_at(scan_ctx_t *p_ctx, int32_t stop_mm)
 {
 	UW		dist_mm = 0;
 	UW		width_us = 0;
 	us_status_t	status = us_ping(&dist_mm, &width_us);
 	sl_ping_t	ping;
 
-	ping = sl_classify(US_NO_ECHO == status,
-			   (US_OK == status) ? (uint32_t)dist_mm : SL_FAR);
+	ping = sl_classify_at(US_NO_ECHO == status,
+			      (US_OK == status) ? (uint32_t)dist_mm : SL_FAR,
+			      stop_mm);
 	sl_runs_add(&p_ctx->runs, ping);
 	return ping;
+}
+
+/* One forward ping for Monitoring / Blocked / Sensor Lost: D_stop. */
+LOCAL sl_ping_t fwd_ping(scan_ctx_t *p_ctx)
+{
+	return ping_at(p_ctx, SL_D_STOP_MM);
+}
+
+/* One forward ping in Avoiding: D_stop while the car moves along its
+ * heading, D_rev while it is still or pivots (sl_avoid_stop_mm, D13).
+ * The move is read from distance_state (motion_ds.h, one aligned load),
+ * which is the two wheels' average, so a pivot on the spot adds 0. */
+LOCAL sl_ping_t avoid_ping(scan_ctx_t *p_ctx)
+{
+	uint32_t	ds = motion_ds_read();
+	int32_t		moved_mm = motion_ds_delta_mm(ds, p_ctx->ds_prev);
+
+	p_ctx->ds_prev = ds;
+	return ping_at(p_ctx, sl_avoid_stop_mm(moved_mm));
 }
 
 /* One ping during a scan, as a grid value. No echo is NOT a clear
@@ -436,6 +465,43 @@ LOCAL uint16_t median3(scan_ctx_t *p_ctx)
 	/* FAR (0) sorts first and NOT_MEASURED (0xFFFF) last, so one stray
 	 * of either is ignored */
 	return ping_mid;
+}
+
+/* Bypass looks (D14), motion_task braked. b_ahead: along the sidestep it
+ * is about to drive (SCAN_FLG_LOOK_AHEAD, servo 0). Otherwise motion has
+ * pivoted 45 deg toward the obstacle and the servo turns 45 deg further
+ * the same way, square-on to its side (SCAN_FLG_LOOK; the obstacle is on
+ * the far side from the bypass, negative = left). Median of 3,
+ * re-centre, and answer with an AVOID_LOOK. */
+LOCAL void side_look(scan_ctx_t *p_ctx, bool b_ahead)
+{
+	INT		deg = b_ahead ? 0
+			      : ((SL_BYPASS_RIGHT == (sl_action_t)p_ctx->action)
+				 ? -SL_LIMIT_DEG : SL_LIMIT_DEG);
+	uint16_t	grid_mm;
+	avoid_cmd_t	cmd;
+	UB		line[96];
+
+	scan_if_clear(SCAN_FLG_LOOK | SCAN_FLG_LOOK_AHEAD);
+	(void)look(p_ctx, deg);			/* moves the servo, one ping */
+	tk_dly_tsk(US_CYCLE_MS);
+	grid_mm = median3(p_ctx);
+	servo_centre();
+	/* a no-echo here is "unknown", not a sensor fault: Avoiding's own
+	 * counters decide that from the forward pings */
+	ctx_set_flag(p_ctx, CTX_ABORT_SCAN | CTX_LOST_IN_SCAN, false);
+	ctx_set_no_echo(p_ctx, 0U);
+	sl_runs_reset(&p_ctx->runs);
+	p_ctx->ds_prev = motion_ds_read();
+
+	cmd.type = (uint8_t)AVOID_LOOK;
+	cmd.side = (uint8_t)AVOID_SIDE_NONE;
+	cmd.dist_mm = sl_look_reply_mm(grid_mm);
+	(void)tm_sprintf(line, (UB *)"[scan] %s look %d deg: %d mm (sent %d)%s\n",
+			 b_ahead ? "lane" : "side", deg, (INT)((SL_NOT_MEASURED == grid_mm) ? -1 : (INT)grid_mm),
+			 (INT)cmd.dist_mm,
+			 scan_if_send_cmd(&cmd) ? "" : "  NOT SENT");
+	tm_printf(line);
 }
 
 LOCAL void coarse_scan(scan_ctx_t *p_ctx)
@@ -662,6 +728,45 @@ LOCAL void cmd_not_sent(scan_ctx_t *p_ctx)
 	}
 }
 
+/* motion_task found the sidestep lane blocked and is back on the heading
+ * this avoidance was planned in (D14): try the other side once, from the
+ * same profile, in the Planning order; otherwise Blocked (FR-18). */
+LOCAL void switch_side(scan_ctx_t *p_ctx)
+{
+	sl_action_t	other = sl_other_side(&p_ctx->prof, (sl_action_t)p_ctx->action);
+	avoid_cmd_t	cmd;
+	UB		line[96];
+
+	scan_if_clear(SCAN_FLG_SIDE_BLOCKED);
+	scan_if_stop_set();				/* motion brakes */
+	if(!ctx_flag(p_ctx, CTX_SIDE_SWITCHED) && (SL_BLOCKED != other)) {
+		(void)tm_sprintf(line, (UB *)"[scan] %s lane blocked: trying %s\n",
+				 sl_action_name((sl_action_t)p_ctx->action),
+				 sl_action_name(other));
+		tm_printf(line);
+		ctx_set_flag(p_ctx, CTX_SIDE_SWITCHED, true);
+		p_ctx->action = (uint8_t)other;
+		cmd.type = (uint8_t)AVOID_BYPASS;
+		cmd.side = (SL_BYPASS_LEFT == other) ? (uint8_t)AVOID_SIDE_LEFT
+						     : (uint8_t)AVOID_SIDE_RIGHT;
+		cmd.dist_mm = (uint16_t)((SL_BYPASS_LEFT == other)
+					 ? p_ctx->prof.offset_left_mm
+					 : p_ctx->prof.offset_right_mm);
+		scan_if_clear(SCAN_FLG_REPLIES);
+		if(scan_if_send_cmd(&cmd)) {
+			scan_if_stop_clear();		/* AFTER the command (Section 4) */
+			enter(p_ctx, ST_AVOIDING);
+		} else {
+			cmd_not_sent(p_ctx);
+		}
+	} else {
+		(void)tm_sprintf(line, (UB *)"[scan] %s lane blocked, no other side: Blocked\n",
+				 sl_action_name((sl_action_t)p_ctx->action));
+		tm_printf(line);
+		enter(p_ctx, ST_BLOCKED);		/* STOP_SCAN stays set */
+	}
+}
+
 LOCAL void do_planning(scan_ctx_t *p_ctx)
 {
 	avoid_cmd_t	cmd;
@@ -810,14 +915,23 @@ LOCAL void scan_task_run(void)
 
 		case ST_AVOIDING:
 			bits = scan_if_wait(SCAN_FLG_TICK | SCAN_FLG_LINE_FOUND |
-					    SCAN_FLG_LINE_LOST, TMO_FEVR);
+					    SCAN_FLG_LINE_LOST | SCAN_FLG_LOOK |
+					    SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED,
+					    TMO_FEVR);
 			if(0U != (bits & SCAN_FLG_LINE_FOUND)) {
-				ctx_set_flag(&ctx, CTX_REVERSE_TRIED, false);	/* this avoidance is over */
+				/* this avoidance is over */
+				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED, false);
 				enter(&ctx, ST_MONITORING);
 			} else if(0U != (bits & SCAN_FLG_LINE_LOST)) {
 				enter(&ctx, ST_IDLE);		/* nav_ctrl_task decides */
+			} else if(0U != (bits & SCAN_FLG_SIDE_BLOCKED)) {
+				switch_side(&ctx);		/* D14 */
+			} else if(0U != (bits & SCAN_FLG_LOOK_AHEAD)) {
+				side_look(&ctx, true);		/* the sidestep lane (D14) */
+			} else if(0U != (bits & SCAN_FLG_LOOK)) {
+				side_look(&ctx, false);		/* bypass probe (D14) */
 			} else {
-				(void)fwd_ping(&ctx);
+				(void)avoid_ping(&ctx);
 				if(sl_runs_no_echo(&ctx.runs) >= SL_N_NO_ECHO) {
 					enter(&ctx, ST_SENSOR_LOST);
 				} else if(sl_runs_close(&ctx.runs) >= n_stop()) {
