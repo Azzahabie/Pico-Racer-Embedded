@@ -175,6 +175,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	ir_cal_acc_t	right_acc;
 	ir_cal_result_t	left_res;
 	ir_cal_result_t	right_res;
+	BOOL		cal_ok;
 	line_track_out_t	out;
 	line_reader_raw_t	raw;
 	mission_state_t	mission = nav_mission_state();
@@ -277,17 +278,19 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			if(0U == --cal_left) {
 				left_new = g_trk.left_cal;	/* kept if it fails */
 				right_new = g_trk.right_cal;
-				left_res = ir_cal_finish(&left_acc, &left_def, &left_new);
-				right_res = ir_cal_finish(&right_acc, &right_def, &right_new);
-				if((IR_CAL_OK == left_res) && (IR_CAL_OK == right_res)) {
+				cal_ok = ir_cal_finish_pair(&left_acc, &right_acc,
+							    &left_def, &right_def,
+							    &left_new, &right_new,
+							    &left_res, &right_res)
+					 ? TRUE : FALSE;
+				if(cal_ok) {
 					line_track_set_cal(&g_trk, &left_new, &right_new);
 					tell_nav(NAV_FLG_CAL_OK_IR);
 				} else {
 					tell_nav(NAV_FLG_CAL_FAIL);
 				}
 				tm_printf((UB *)"[line] calibration %s: GP26 %s (white %u, black %u, rise %u) GP27 %s (white %u, black %u, rise %u)\n",
-					  ((IR_CAL_OK == left_res) && (IR_CAL_OK == right_res))
-						  ? "OK" : "FAILED",
+					  cal_ok ? "OK" : "FAILED",
 					  ir_cal_result_name(left_res), (UINT)left_new.white,
 					  (UINT)left_new.black, (UINT)left_new.rise,
 					  ir_cal_result_name(right_res), (UINT)right_new.white,

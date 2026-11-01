@@ -302,6 +302,99 @@ static void test_adapt_black_is_low(void)
 	CHECK(!run(&cal, 3800u, 20u, black));
 }
 
+/* ---- Both sensors together: the line edge ---- */
+
+static void fill(ir_cal_acc_t *acc, uint16_t raw)
+{
+	uint32_t i;
+
+	ir_cal_begin(acc, true);
+	for (i = 0u; i < IR_CAL_SAMPLES; ++i) {
+		ir_cal_add(acc, (uint16_t)(raw - 15u + (i % 30u)));
+	}
+}
+
+/* S5 attempt 1 (31 Oct): GP27 on black (~2,040), GP26 on the line edge
+   (~715, between the white and black limits).  It failed 3 times in 5;
+   now GP26 is "edge", starts from the defaults and learns its levels. */
+static void test_pair_edge(void)
+{
+	ir_cal_sensor_t def = ir_cal_default(true,
+		LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD,
+		LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD);
+	ir_cal_sensor_t l = def;
+	ir_cal_sensor_t r = def;
+	ir_cal_acc_t al;
+	ir_cal_acc_t ar;
+	ir_cal_result_t rl;
+	ir_cal_result_t rr;
+	bool black;
+
+	fill(&al, 715u);
+	fill(&ar, 2040u);
+	CHECK(ir_cal_finish_pair(&al, &ar, &def, &def, &l, &r, &rl, &rr));
+	CHECK(rl == IR_CAL_EDGE);
+	CHECK(rr == IR_CAL_OK);
+	CHECK((l.rise == def.rise) && (l.fall == def.fall));	/* defaults */
+	CHECK(r.black >= 2040u);
+	CHECK(ir_cal_result_name(IR_CAL_EDGE)[0] == 'e');
+
+	/* driving: GP26 sees its real black (1,065) and floor (250) */
+	black = run(&l, 715u, 3000u, false);			/* parked */
+	black = run(&l, 1065u, 2000u, black);
+	CHECK(black);
+	black = run(&l, 250u, 4000u, black);
+	CHECK(!black);
+	black = run(&l, 1065u, 4000u, black);
+	CHECK(black);
+	CHECK((l.white < 330u) && (l.black > 950u) && (l.black < 1200u));
+	CHECK(!run(&l, 300u, 50u, true));			/* floor is white */
+
+	/* mirrored: GP27 on the edge */
+	l = def;
+	r = def;
+	fill(&al, 1500u);
+	fill(&ar, 760u);
+	CHECK(ir_cal_finish_pair(&al, &ar, &def, &def, &l, &r, &rl, &rr));
+	CHECK((rl == IR_CAL_OK) && (rr == IR_CAL_EDGE));
+}
+
+/* What must still fail: both on the edge, edge + off the line, a stuck
+   sensor; and a failure leaves both outputs untouched. */
+static void test_pair_failures(void)
+{
+	ir_cal_sensor_t def = ir_cal_default(true,
+		LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD,
+		LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD);
+	ir_cal_sensor_t l = def;
+	ir_cal_sensor_t r = def;
+	ir_cal_acc_t al;
+	ir_cal_acc_t ar;
+	ir_cal_result_t rl;
+	ir_cal_result_t rr;
+	uint32_t i;
+
+	l.white = 11u;					/* marker: must survive */
+	fill(&al, 715u);
+	fill(&ar, 800u);
+	CHECK(!ir_cal_finish_pair(&al, &ar, &def, &def, &l, &r, &rl, &rr));
+	CHECK((rl == IR_CAL_LOW_CONTRAST) && (rr == IR_CAL_LOW_CONTRAST));
+
+	fill(&al, 715u);
+	fill(&ar, 250u);				/* off the line: white */
+	CHECK(!ir_cal_finish_pair(&al, &ar, &def, &def, &l, &r, &rl, &rr));
+	CHECK(rl == IR_CAL_LOW_CONTRAST);
+
+	fill(&al, 715u);
+	ir_cal_begin(&ar, true);
+	for (i = 0u; i < 100u; ++i) {
+		ir_cal_add(&ar, 4095u);			/* stuck at the rail */
+	}
+	CHECK(!ir_cal_finish_pair(&al, &ar, &def, &def, &l, &r, &rl, &rr));
+	CHECK(rr == IR_CAL_RAIL_STUCK);
+	CHECK(l.white == 11u);
+}
+
 int main(void)
 {
 	test_both_colours();
@@ -316,5 +409,7 @@ int main(void)
 	test_stranded_black();
 	test_contrast_floor_and_rails();
 	test_adapt_black_is_low();
+	test_pair_edge();
+	test_pair_failures();
 	return check_report("ir calibration");
 }

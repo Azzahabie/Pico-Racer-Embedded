@@ -171,6 +171,45 @@ void ir_cal_adapt(ir_cal_sensor_t *cal, uint16_t raw, bool black)
 	set_thresholds(cal);
 }
 
+/* The window clearly saw black: as the one-colour black rule in
+   ir_cal_finish, or both colours. */
+static bool saw_black(const ir_cal_acc_t *acc, const ir_cal_sensor_t *defaults)
+{
+	return ((uint32_t)acc->max_dark >=
+		((uint32_t)defaults->rise + IR_CAL_WHITE_MARGIN));
+}
+
+bool ir_cal_finish_pair(const ir_cal_acc_t *acc_l, const ir_cal_acc_t *acc_r,
+			const ir_cal_sensor_t *def_l,
+			const ir_cal_sensor_t *def_r,
+			ir_cal_sensor_t *out_l, ir_cal_sensor_t *out_r,
+			ir_cal_result_t *res_l, ir_cal_result_t *res_r)
+{
+	ir_cal_sensor_t cal_l = *out_l;
+	ir_cal_sensor_t cal_r = *out_r;
+
+	*res_l = ir_cal_finish(acc_l, def_l, &cal_l);
+	*res_r = ir_cal_finish(acc_r, def_r, &cal_r);
+	if ((IR_CAL_LOW_CONTRAST == *res_l) && (IR_CAL_OK == *res_r) &&
+	    saw_black(acc_r, def_r)) {
+		*res_l = IR_CAL_EDGE;
+		cal_l = *def_l;
+	} else if ((IR_CAL_LOW_CONTRAST == *res_r) && (IR_CAL_OK == *res_l) &&
+		   saw_black(acc_l, def_l)) {
+		*res_r = IR_CAL_EDGE;
+		cal_r = *def_r;
+	} else {
+		/* both passed, or a real failure */
+	}
+	if (((IR_CAL_OK != *res_l) && (IR_CAL_EDGE != *res_l)) ||
+	    ((IR_CAL_OK != *res_r) && (IR_CAL_EDGE != *res_r))) {
+		return false;
+	}
+	*out_l = cal_l;
+	*out_r = cal_r;
+	return true;
+}
+
 const char *ir_cal_result_name(ir_cal_result_t result)
 {
 	switch (result) {
@@ -182,6 +221,8 @@ const char *ir_cal_result_name(ir_cal_result_t result)
 		return "rail_stuck";
 	case IR_CAL_LOW_CONTRAST:
 		return "low_contrast";
+	case IR_CAL_EDGE:
+		return "edge";
 	default:
 		return "?";
 	}

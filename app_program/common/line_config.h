@@ -84,7 +84,10 @@
    black (the start pose: centred, both sensors inside the line) must sit at
    least IR_CAL_WHITE_MARGIN above the rising one, white as far below the
    falling one; the missing level is guessed (white = IR_CAL_WHITE_GUESS_PCT
-   of black, or black = white + 2 x IR_CAL_MIN_CONTRAST).
+   of black, or black = white + 2 x IR_CAL_MIN_CONTRAST).  A sensor between
+   the two while the other clearly saw black is on the line edge (car not
+   quite centred): it passes as "edge" from the defaults and learns its
+   levels while driving (ir_cal_finish_pair).
    Thresholds are always the level midpoint +/- IR_CAL_HYST_PCT of the
    span.  From then on, every sample moves its colour's level 1/2^
    IR_ADAPT_SHIFT of the way towards it (2048 samples, about 2 s), so the

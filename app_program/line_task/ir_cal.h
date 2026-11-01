@@ -22,7 +22,8 @@ typedef enum {
 	IR_CAL_OK = 0,
 	IR_CAL_NO_SAMPLES,
 	IR_CAL_RAIL_STUCK,	/* reading pinned at an ADC rail       */
-	IR_CAL_LOW_CONTRAST	/* white too close to the black level  */
+	IR_CAL_LOW_CONTRAST,	/* white too close to the black level  */
+	IR_CAL_EDGE		/* passed: on the line edge, see below */
 } ir_cal_result_t;
 
 /* One sensor's calibration.  Levels and thresholds are in darkness units.
@@ -59,6 +60,20 @@ void ir_cal_add(ir_cal_acc_t *acc, uint16_t raw);
 ir_cal_result_t ir_cal_finish(const ir_cal_acc_t *acc,
 			      const ir_cal_sensor_t *defaults,
 			      ir_cal_sensor_t *out);
+
+/*
+ * Both sensors together.  The start pose is the car on the line, so a
+ * sensor that saw one colour between the thresholds (IR_CAL_LOW_CONTRAST)
+ * while the other clearly saw black is on the line edge, not broken: it
+ * gets IR_CAL_EDGE, starts from its defaults and finds its levels while
+ * driving (ir_cal_adapt).  Anything else that failed still fails.  true
+ * when both results may be used; each *out is changed only then.
+ */
+bool ir_cal_finish_pair(const ir_cal_acc_t *acc_l, const ir_cal_acc_t *acc_r,
+			const ir_cal_sensor_t *def_l,
+			const ir_cal_sensor_t *def_r,
+			ir_cal_sensor_t *out_l, ir_cal_sensor_t *out_r,
+			ir_cal_result_t *res_l, ir_cal_result_t *res_r);
 
 const char *ir_cal_result_name(ir_cal_result_t result);
 
