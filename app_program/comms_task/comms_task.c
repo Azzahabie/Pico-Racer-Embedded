@@ -363,7 +363,8 @@ LOCAL void send_snapshot(UH *seq)
 	dg.ip = cyw43_utk_ip4();
 	dg.qd = (UB)cyw43_utk_mqtt_queue_depth();
 	dg.mqv = (state == CYW43_MQTT_CONNECTED) ? COMM_W_D_MQV_UP
-		: (state == CYW43_MQTT_CONNECTING) ? COMM_W_D_MQV_CONNECTING
+		: ((state == CYW43_MQTT_CONNECTING)
+		   || (state == CYW43_MQTT_SCANNING)) ? COMM_W_D_MQV_CONNECTING
 		: COMM_W_D_MQV_DOWN;
 	up = now_ms();
 	len = comm_w_pack_d(rec, *seq, up, &s_cache, &dg);

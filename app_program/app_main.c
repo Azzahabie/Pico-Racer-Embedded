@@ -106,7 +106,8 @@ LOCAL const char *net_state_name(UW state)
 LOCAL const char *mqtt_state_name(UW state)
 {
 	static const char *const name[] = {
-		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED"
+		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED",
+		"SCANNING"
 	};
 
 	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";

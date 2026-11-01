@@ -71,7 +71,16 @@
  * a pool entry, and the cumulative image now opens two connections in
  * sequence (Phase 7, then Phase 8).  Two entries would force lwIP to
  * start reaping to make room. */
+#if TM_WIFI_MQTT
+/* MQTT builds may scan for the broker (UTK_MQTT_BROKER_DISCOVER in
+ * broker_config.h): 8 probe connections at once, plus the MQTT pcb and any
+ * left in TIME_WAIT.  Each probe also needs an ARP entry while it resolves,
+ * on top of the gateway and the broker.  About 1 KB of RAM in all. */
+#define MEMP_NUM_TCP_PCB                12
+#define ARP_TABLE_SIZE                  16
+#else
 #define MEMP_NUM_TCP_PCB                6
+#endif
 #define MEMP_NUM_TCP_PCB_LISTEN         1
 #define MEMP_NUM_TCP_SEG                16
 #define TCP_MSS                         1460

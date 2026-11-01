@@ -29,10 +29,27 @@
 #include "lwip/ip4_addr.h"
 #include "lwip/netif.h"
 #include "lwip/sys.h"
+#include "lwip/tcp.h"
 #include "lwip/apps/mqtt.h"
 
 #include "lwip_utk_mqtt.h"
 #include "broker_config.h"
+
+/* Broker discovery (broker_config.h, off unless set).  Instead of one fixed
+   address, each connect attempt first finds a host with UTK_MQTT_BROKER_PORT
+   open: the configured address, then the last broker that accepted us, then
+   every host .1-.254 of the car's own /24, UTK_MQTT_PROBE_SLOTS raw TCP
+   connects at a time.  The first host to complete the TCP handshake gets an
+   MQTT CONNECT; if it refuses, the scan carries on after it.  A full pass
+   with no broker backs off like a failed connect.  Worst case is about
+   254 / slots x UTK_MQTT_PROBE_MS (~22 s); a host that drops SYNs (the
+   Windows firewall) costs only one probe timeout. */
+#ifndef UTK_MQTT_BROKER_DISCOVER
+#define UTK_MQTT_BROKER_DISCOVER  0
+#endif
+#define UTK_MQTT_PROBE_SLOTS  8U    /* needs MEMP_NUM_TCP_PCB headroom   */
+#define UTK_MQTT_PROBE_MS     700U  /* ARP + SYN-ACK on a LAN: well under */
+#define UTK_MQTT_SCAN_END     256U  /* positions: hint, last good, .1-.254 */
 
 /* Short on purpose.  A broker host that drops SYNs to a closed port (the
    Windows firewall does) never refuses, so each attempt runs to this timeout;
@@ -95,6 +112,22 @@ static uint32_t in_length;
 static uint8_t in_bad;
 static uint8_t in_payload[LWIP_UTK_MQTT_IN_MAX];
 static uint8_t sub_pending;      /* bit per LWIP_UTK_MQTT_IN_*: SUBACK awaited */
+
+#if UTK_MQTT_BROKER_DISCOVER
+/* The scan.  Position 0 is the configured address, 1 the last broker that
+   sent a CONNACK, 2..255 host (position - 1) of the car's /24. */
+typedef struct {
+    struct tcp_pcb *pcb;         /* NULL: slot free                     */
+    uint32_t        start_ms;
+} probe_slot_t;
+
+static probe_slot_t probe[UTK_MQTT_PROBE_SLOTS];
+static ip4_addr_t   broker_hint;     /* from UTK_MQTT_BROKER_ADDRESS, may be any */
+static ip4_addr_t   broker_last;     /* any until the first CONNACK            */
+static ip4_addr_t   probe_found;
+static uint8_t      probe_hit;       /* set by probe_connected()               */
+static uint32_t     scan_pos;        /* next position to probe                 */
+#endif
 
 static void enter(uint32_t state, uint32_t now)
 {
@@ -226,11 +259,21 @@ static void subscribe_missing(void)
 
 static void initialize(void)
 {
+#if UTK_MQTT_BROKER_DISCOVER
+    /* The address is only a hint here: "0.0.0.0" means scan only. */
+    if(!ip4addr_aton(UTK_MQTT_BROKER_ADDRESS, &broker_hint)) {
+        mqtt_status.init_result = ERR_ARG;
+        return;
+    }
+    ip4_addr_set_any(&broker_last);
+    mqtt_broker = broker_hint;
+#else
     if(!ip4addr_aton(UTK_MQTT_BROKER_ADDRESS, &mqtt_broker)
        || ip4_addr_isany_val(mqtt_broker)) {
         mqtt_status.init_result = ERR_ARG;
         return;
     }
+#endif
     copy_address(mqtt_status.broker, &mqtt_broker);
 
     mqtt_client = mqtt_client_new();
@@ -257,6 +300,143 @@ static void start_connect(uint32_t now)
                                  mqtt_connection_cb, NULL, &client_info);
     mqtt_status.connect_request = result;
     if(result != ERR_OK) session_lost = 1;
+}
+
+#if UTK_MQTT_BROKER_DISCOVER
+/* Probe callbacks run in the radio-owner task like the MQTT ones.  arg is the
+   slot index.  An error means the pcb is already freed (RST: a host with the
+   port closed; or our own abort), so only the slot is cleared. */
+static void probe_err(void *arg, err_t err)
+{
+    (void)err;
+    probe[(uintptr_t)arg].pcb = NULL;
+}
+
+/* Handshake done: a host is listening on the port.  The probe connection is
+   aborted (RST, no TIME_WAIT pcb left behind); the MQTT client connects
+   to the address on the next poll. */
+static err_t probe_connected(void *arg, struct tcp_pcb *pcb, err_t err)
+{
+    (void)err;
+    if(!probe_hit) {
+        probe_hit = 1;
+        ip4_addr_copy(probe_found, *ip_2_ip4(&pcb->remote_ip));
+    }
+    probe[(uintptr_t)arg].pcb = NULL;
+    tcp_arg(pcb, NULL);
+    tcp_err(pcb, NULL);
+    tcp_abort(pcb);
+    return ERR_ABRT;
+}
+
+static void probe_abort(uint32_t slot)
+{
+    struct tcp_pcb *pcb = probe[slot].pcb;
+
+    if(pcb != NULL) {
+        probe[slot].pcb = NULL;
+        tcp_arg(pcb, NULL);
+        tcp_err(pcb, NULL);
+        tcp_abort(pcb);
+    }
+}
+
+static void probe_abort_all(void)
+{
+    uint32_t slot;
+
+    for(slot = 0; slot < UTK_MQTT_PROBE_SLOTS; slot++) probe_abort(slot);
+}
+
+/* The address at scan position pos, or 0 when that position is skipped (an
+   unset hint or last broker, our own address, or one already tried). */
+static int scan_candidate(uint32_t pos, const struct netif *netif,
+                          ip4_addr_t *out)
+{
+    const ip4_addr_t *own = netif_ip4_addr(netif);
+    uint32_t host;
+
+    if(pos == 0U) {
+        *out = broker_hint;
+    } else if(pos == 1U) {
+        if(ip4_addr_cmp(&broker_last, &broker_hint)) return 0;
+        *out = broker_last;
+    } else {
+        host = pos - 1U;
+        IP4_ADDR(out, ip4_addr1(own), ip4_addr2(own), ip4_addr3(own),
+                 (uint8_t)host);
+        if(ip4_addr_cmp(out, &broker_hint) || ip4_addr_cmp(out, &broker_last)) {
+            return 0;
+        }
+    }
+    return !ip4_addr_isany_val(*out) && !ip4_addr_cmp(out, own);
+}
+
+/* One SCANNING poll: expire slow probes, start new ones, and hand a hit to
+   the MQTT connect. */
+static void scan_step(struct netif *netif, uint32_t now)
+{
+    uint32_t slot;
+    uint32_t busy = 0;
+    ip4_addr_t addr;
+    struct tcp_pcb *pcb;
+
+    if(probe_hit) {
+        probe_abort_all();
+        probe_hit = 0;
+        mqtt_broker = probe_found;
+        copy_address(mqtt_status.broker, &mqtt_broker);
+        mqtt_status.scan_found++;
+        start_connect(now);
+        return;
+    }
+
+    for(slot = 0; slot < UTK_MQTT_PROBE_SLOTS; slot++) {
+        if(probe[slot].pcb != NULL
+           && now - probe[slot].start_ms >= UTK_MQTT_PROBE_MS) {
+            probe_abort(slot);
+        }
+        while(probe[slot].pcb == NULL && scan_pos < UTK_MQTT_SCAN_END) {
+            if(!scan_candidate(scan_pos, netif, &addr)) {
+                scan_pos++;
+                continue;
+            }
+            pcb = tcp_new_ip_type(IPADDR_TYPE_V4);
+            if(pcb == NULL) break;           /* pool full: retry next poll */
+            tcp_arg(pcb, (void *)(uintptr_t)slot);
+            tcp_err(pcb, probe_err);
+            probe[slot].pcb = pcb;
+            probe[slot].start_ms = now;
+            if(tcp_connect(pcb, (const ip_addr_t *)&addr,
+                           (u16_t)UTK_MQTT_BROKER_PORT, probe_connected)
+               != ERR_OK) {
+                probe_abort(slot);
+            }
+            scan_pos++;
+            mqtt_status.scan_probed++;
+        }
+        if(probe[slot].pcb != NULL) busy++;
+    }
+
+    if(busy == 0U && scan_pos >= UTK_MQTT_SCAN_END) {
+        /* A whole pass and no broker: wait, then start again at the hint. */
+        scan_pos = 0;
+        mqtt_status.scan_passes++;
+        enter(LWIP_UTK_MQTT_BACKOFF, now);
+    }
+}
+#endif
+
+/* Start the next connect attempt: straight to the broker, or (discovery)
+   find one first. */
+static void begin_attempt(uint32_t now)
+{
+#if UTK_MQTT_BROKER_DISCOVER
+    probe_hit = 0;
+    enter(LWIP_UTK_MQTT_SCANNING, now);
+#else
+    start_connect(now);
+#endif
 }
 
 /* Close whatever is left of the session and wait before trying again.  The
@@ -321,6 +501,10 @@ void lwip_utk_mqtt_poll(struct netif *netif)
                 mqtt_status.sessions_lost++;
             }
             mqtt_disconnect(mqtt_client);
+#if UTK_MQTT_BROKER_DISCOVER
+            probe_abort_all();
+            scan_pos = 0;
+#endif
             pending = 0;
             enter(LWIP_UTK_MQTT_WAIT_ADDR, now);
         }
@@ -332,8 +516,14 @@ void lwip_utk_mqtt_poll(struct netif *netif)
 
     switch(mqtt_status.state) {
     case LWIP_UTK_MQTT_WAIT_ADDR:
-        start_connect(now);
+        begin_attempt(now);
         break;
+
+#if UTK_MQTT_BROKER_DISCOVER
+    case LWIP_UTK_MQTT_SCANNING:
+        scan_step(netif, now);
+        break;
+#endif
 
     case LWIP_UTK_MQTT_CONNECTING:
         if(session_lost
@@ -341,6 +531,10 @@ void lwip_utk_mqtt_poll(struct netif *netif)
             back_off(now);
         } else if(mqtt_client_is_connected(mqtt_client)) {
             mqtt_status.backoff_ms = UTK_MQTT_BACKOFF_FIRST_MS;
+#if UTK_MQTT_BROKER_DISCOVER
+            broker_last = mqtt_broker;  /* tried first after a loss */
+            scan_pos = 0;
+#endif
             mqtt_status.subscribed = 0;     /* clean session: none held */
             sub_pending = 0;
             enter(LWIP_UTK_MQTT_CONNECTED, now);
@@ -368,7 +562,7 @@ void lwip_utk_mqtt_poll(struct netif *netif)
             if(mqtt_status.backoff_ms > UTK_MQTT_BACKOFF_MAX_MS) {
                 mqtt_status.backoff_ms = UTK_MQTT_BACKOFF_MAX_MS;
             }
-            start_connect(now);
+            begin_attempt(now);
         }
         break;
 

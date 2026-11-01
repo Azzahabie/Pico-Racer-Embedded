@@ -22,6 +22,7 @@
 #define CYW43_MQTT_CONNECTED    2
 #define CYW43_MQTT_BACKOFF      3
 #define CYW43_MQTT_FAILED       4
+#define CYW43_MQTT_SCANNING     5   /* broker discovery */
 
 /* Outbound record queue (cyw43_utk_kernel.c).  Packed records only: the
    largest is the 23-byte D snapshot (docs/comms/MQTT_SCHEMA.md section 7);
