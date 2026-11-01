@@ -5,11 +5,13 @@ Raspberry Pi Pico W (RP2040)** running on both cores (SMP). The build is a
 hand-written **GNU make** system inherited from upstream µT-Kernel — there is
 **no CMake anywhere**, despite the Pico SDK being a real dependency.
 
-`docs/` holds the reference set: `ARCHITECTURE.md` (repo map, plain-language
-overview, glossary), `GETTING_STARTED.md`, `PORT_RP2040.md`, and the graded team
-design doc `embedded .md`. **Buddy 1's WiFi + Telemetry subsystem docs live in
-`docs/comms/`** — start at `docs/comms/README.md` (the progress hub); every other
-file in that folder is detail behind a link from it.
+**Start at `docs/INTEGRATION.md`**: the baseline for the integrated car (what is
+built, measured, deviated from the design, and still open). Where another doc
+disagrees with it, it is current. The rest of `docs/` is subsystem detail and
+history: `ARCHITECTURE.md` (repo map, plain-language overview, glossary),
+`GETTING_STARTED.md`, `PORT_RP2040.md`, `BUDDY3_LINE_BARCODE.md`, `motion/`,
+`imu/`, `obstacle/`, and **Buddy 1's Wi-Fi + Telemetry docs in `docs/comms/`**
+(start at `docs/comms/README.md`, the progress hub).
 
 ## 1. Never build on the host — always build through Docker
 
@@ -57,6 +59,7 @@ SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_UDP=1 WIFI
 | `... WIFI_UDP=1` | UDP — needs `config/udp_test_config.h` | yes |
 | `... WIFI_TCP=1` | TCP — needs `config/tcp_test_config.h` | yes |
 | `... WIFI_DNS=1 WIFI_MQTT=1` | **the car build**: MQTT telemetry, no echo tests — needs `config/broker_config.h` | yes |
+| `... WIFI_MQTT=1 WIFI_NETLOG=1` | **debug only, never demo day**: the car build plus its whole console over UDP to the broker's host (port 31884), shown by the viewer as `serial`; image name ends `_netlog` | yes |
 
 `WIFI_STATIC=1` is an alternative to `WIFI_DHCP=1` (mutually exclusive; both
 require `WIFI_NETIF=1`).
@@ -114,15 +117,16 @@ so an up-to-date tree yields a near-empty database.
 ## 6. Not implemented — do not assume it exists
 
 - **No HTTP or CoAP layer.** MQTT is implemented and verified on hardware
-  (gated by `WIFI_MQTT`): a persistent client with reconnect, and `comms_task`
-  publishing the packed `H` heartbeat. What is *not* built yet is the rest of the
-  application layer — the `S`/`E`/`D` records, the inbound command channel, and
-  the `tele_mbf` intake from other tasks (M7–M10, see
-  `docs/comms/APPLICATION.md`). The `docs/GETTING_STARTED.md` §7 and
-  `docs/PORT_RP2040.md:119` notes predate MQTT.
-- `app_program/{motor_task,line_task,obstacle_task,imu_task}/` are empty team
-  stubs. `app_program/common/messages.h` holds only the MQTT record header and
-  the `H` packer so far.
+  (gated by `WIFI_MQTT`): a persistent client with reconnect (back-off 2/4/5 s),
+  `comms_task` publishing the packed `S`/`H`/`E`/`D` records, inbound `cmd` and
+  `map`, and the `tele_mbf` intake from the other tasks. The
+  `docs/GETTING_STARTED.md` §7 and `docs/PORT_RP2040.md:119` notes predate MQTT.
+- **Every subsystem is built and integrated** (`docs/INTEGRATION.md` §2-§5):
+  motion, line + barcode, IMU, scan, nav. **Not built** (`INTEGRATION.md` §6, §8):
+  an end-of-course trigger (D10: Finished only by an MQTT command), battery
+  sense on GP28 (M4), the RGB LED (M5), and an `E imu` record (M6). **Junction
+  turns are coded but never run on the car**: the GP7 barcode/junction sensor is
+  faulty.
 - The Wi-Fi driver and the MQTT client live in `lib/`, not the app:
   `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` and
   `lib/libnet/lwip/lwip_utk_mqtt.c`. App code publishes only through
@@ -149,6 +153,10 @@ so an up-to-date tree yields a near-empty database.
   (`kernel/tkernel/ready_queue.h:51`), so an unpinned task can run on core 1 and
   interfere with the time-critical tasks there. Create tasks with `TA_ASSPRC`;
   Buddy 1's tasks use `TP_PRC1` (core 0).
+- **Kernel and lwIP headers can't share a `.c` file**: `tk/syslib.h` and lwIP's
+  `<stddef.h>` disagree on `size_t`. Keep kernel code (spinlocks, `tm_printf`)
+  and lwIP code in separate files joined by a plain `<stdint.h>` header, as
+  `cyw43_utk.c` / `cyw43_utk_kernel.c` and `tm_com.c` / `lwip_utk_netlog.c` do.
 
 ## 8. Do not commit generated files
 

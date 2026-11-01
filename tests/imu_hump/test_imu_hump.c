@@ -84,6 +84,17 @@ static const PT WEDGES[] = {
 	{ 0, 0 }, { 200, 0 }, { 300, 10 }, { 400, 10 }, { 401, 0 },
 	{ 800, 0 }, { 900, 10 }, { 1000, 10 }, { 1001, 0 }, { 2000, 0 },
 };
+/* The demo-day hump (the only one, from the prof): 195 mm long, 10 mm at
+   the middle, up half way and down the other half. */
+static const PT DEMO[] = {
+	{ 0, 0 }, { 200, 0 }, { 297, 10 }, { 395, 0 }, { 2000, 0 },
+};
+/* The demo hump as the car read it (S6 attempt 1, 1 Nov): the climb, then
+   about 0 tilt, never the way down (its body is as long as the hump). */
+static const PT DEMO_AS_READ[] = {
+	{ 0, 0 }, { 200, 0 }, { 297, 10 }, { 3000, 10 },
+};
+
 /* Two humps, 9 mm and 23 mm, 300 mm apart. */
 static const PT TWO[] = {
 	{ 0, 0 }, { 200, 0 }, { 310, 9 }, { 420, 0 }, { 720, 0 },
@@ -163,6 +174,12 @@ static void stop(double seconds)
 }
 
 /* ---- scenarios ---- */
+
+/* The demo hump, over at the car's line-following speed (~48 mm/s). */
+static void demo_over(void);
+/* As the car read it: the hump must close within 160 mm of level after
+   the crest (HUMP_TOP_MAX_MM 120 + windows), not 250 mm on (S6 attempt 1). */
+static void demo_as_read(void);
 
 typedef struct {
 	const char	*name;
@@ -333,6 +350,19 @@ static void flat(void)
 	drive(150, 80); stop(2);
 }
 
+static void demo_over(void)
+{
+	USE(DEMO); stop(2); drive(1000, 48); stop(2);
+}
+
+static void demo_as_read(void)
+{
+	USE(DEMO_AS_READ); stop(2); drive(297, 48);
+	while (hump_get_state() != HUMP_NONE && pos < 297 + 400) window(4.8, 1);
+	if (pos - 297 > 160) _exit(3);		/* closed too late: FAIL */
+	drive(1000, 48); stop(2);
+}
+
 static const SCENARIO scenarios[] = {
 	{ "straight over",			over,			1 },
 	{ "up, stop on top, back down",		up_stop_back,		1 },
@@ -357,6 +387,8 @@ static const SCENARIO scenarios[] = {
 	{ "stop 1.7 mm up the slope, on over",	stop_low_on_slope_over,	1 },
 	{ "stop part way up, back down",	stop_on_slope_back,	0 },
 	{ "flat floor only",			flat,			0 },
+	{ "demo hump 195 mm, 10 mm, over",	demo_over,		1 },
+	{ "demo hump as read: closes in 160 mm",	demo_as_read,	1 },
 };
 
 int main(int argc, char **argv)

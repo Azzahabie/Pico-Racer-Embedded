@@ -22,6 +22,7 @@
  *	                      plus its motion_report printer on core 0)
  *	    blink_task        GP16 liveness LED          (TM_BLINK_LED=1 only)
  *	    race_test tasks   Tribunal 1 race test.       (TM_RACE_TEST=1 only)
+ *	    word_stress tasks lock-free word stress test (TM_WORD_STRESS=1 only)
  */
 
 #include <tk/tkernel.h>
@@ -31,6 +32,7 @@
 #include "usb_console_compat.h"
 #include "demo_tasks.h"
 #include "race_test/race_test.h"
+#include "race_test/word_stress.h"
 #include "line_task/line_task.h"
 #include "line_task/barcode_task.h"
 #include "comms_task/comms_task.h"
@@ -104,7 +106,8 @@ LOCAL const char *net_state_name(UW state)
 LOCAL const char *mqtt_state_name(UW state)
 {
 	static const char *const name[] = {
-		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED"
+		"WAIT_ADDR", "CONNECTING", "CONNECTED", "BACKOFF", "FAILED",
+		"SCANNING"
 	};
 
 	return (state < sizeof(name) / sizeof(name[0])) ? name[state] : "?";
@@ -514,6 +517,9 @@ LOCAL void print_banner(void)
 	tk_dly_tsk(500);
 
 	tm_printf((UB *)"\n=== uT-Kernel 3.0 / RP2040 car ===\n");
+#if defined(TM_WIFI_NETLOG) && TM_WIFI_NETLOG
+	tm_printf((UB *)"[netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)\n");
+#endif
 #if TK_SUPPORT_SMP
 	tm_printf((UB *)"SMP build: %d processors\n\n", TK_MAX_CORE);
 #else
@@ -554,14 +560,15 @@ EXPORT INT usermain(void)
 	}
 
 	/* Buddy 5: tell scan_task where the mission and motion interfaces are,
-	 * so its STOP_SCAN brakes the car. avoid_cmd_mbf stays 0 until Buddy 2
-	 * adds it (step 1.7), so bypass and reverse commands fail closed. */
+	 * so its STOP_SCAN brakes the car and its REVERSE / BYPASS commands
+	 * reach motion's avoid_cmd_mbf (stage 7: Bypass drives). */
 	if(E_OK == nav_er) {
 		scan_if_bind_t scan_bind = {
 			.nav_flgid		= nav_flag(),
 			.p_mission_running	= nav_mission_running,
 			.p_hump_active		= scan_on_hump,
 			.motion_flgid		= (E_OK == motion_ercd) ? motor_task_flag() : 0,
+			.avoid_mbfid		= (E_OK == motion_ercd) ? motor_task_avoid_mbf() : 0,
 		};
 		/* Buddy 4: imu_flg, so nav's CAL_REQ reaches imu_task and the
 		 * mission waits for CAL_OK_IMU (FR-02).  Buddy 3: ir_flg, the same
@@ -576,6 +583,11 @@ EXPORT INT usermain(void)
 			.ir_flgid		= (ir_flgid > 0) ? ir_flgid : 0,
 			.imu_flgid		= (imu_flgid > 0) ? imu_flgid : 0,
 			.cal_req_bit		= IMU_FLG_CAL_REQ,
+			/* Buddy 1: MQTT start/pause/resume/reset/finish (0 without MQTT) */
+			.mission_cmd_mbfid	= comms_mission_mbf(),
+			/* Buddy 2: FAULT_CLEAR reaches motion (STOP_IMU, Motion
+			 * Fault); JUNCTION gets CMD_REJECTED until turns are built */
+			.nav_cmd_mbfid		= (E_OK == motion_ercd) ? motor_task_nav_cmd_mbf() : 0,
 		};
 
 		if(imu_flgid <= 0) {
@@ -626,6 +638,14 @@ EXPORT INT usermain(void)
 	   flip TM_RACE_TEST in race_test.h to build it in. */
 	if(race_test_start() < E_OK) {
 		tm_printf((UB *)"[init] race_test_start failed\n");
+	}
+#endif
+
+#if TM_WORD_STRESS
+	/* Lock-free shared-word stress test (Tribunal 1 C row 2).  Off by
+	   default: flip TM_WORD_STRESS in word_stress.h to build it in. */
+	if(word_stress_start() < E_OK) {
+		tm_printf((UB *)"[init] word_stress_start failed\n");
 	}
 #endif
 

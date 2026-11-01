@@ -55,4 +55,13 @@ static const T_VECTOR vectors[] = {
 static const uint32_t s_example_values[] = {0, 5, 137, 41230, 0, 2, 20, 1, 131, 4, 2, 3, 12, 0, 0, 1, 3, 0, 4, 2018};
 static const uint8_t s_example_bytes[18] = {0x34, 0x11, 0xc0, 0x21, 0x14, 0x00, 0x00, 0x10, 0x8a, 0x06, 0x89, 0xc3, 0x00, 0x40, 0x06, 0x08, 0xf1, 0x03};
 
+/* Record D: the S example's header (t = 3) and fields, then these diagnostics. */
+static const uint32_t d_example_diag[4] = {58, 0x0732a8c0u, 2, 2};   /* rssi, ip, qd, mqv */
+static const uint8_t d_example_bytes[23] = {0x37, 0x11, 0xc0, 0x21, 0x14, 0x00, 0x00, 0x10, 0x8a, 0x06, 0x89, 0xc3, 0x00, 0x40, 0x06, 0x08, 0xf1, 0xd3, 0x01, 0xa3, 0xca, 0x1c, 0x48};
+
+/* A map payload (schema section 8.3) and what it unpacks to. */
+static const uint8_t map_example_mv = 11;
+static const uint8_t map_example_act[26] = {1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0, 3, 2, 1, 0};
+static const uint8_t map_example_bytes[7] = {0x1b, 0x1b, 0x1b, 0x1b, 0x1b, 0x1b, 0x1b};
+
 #endif /* TEST_VECTORS_H */

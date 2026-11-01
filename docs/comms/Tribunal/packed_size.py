@@ -109,7 +109,7 @@ H_FIELDS = HEADER
 D_FIELDS = HEADER + S_BODY + D_EXTRA
 
 CMD_FIELDS = [
-    ("op",  "command opcode", "1 snap, 2 ping", 3, "0 and 3..7 rejected"),
+    ("op",  "command opcode", "1 snap, 2 ping, 3..7 start/pause/resume/reset/finish", 3, "0 rejected"),
     ("rsv", "reserved",       "must be 0",      5, "non-zero is rejected"),
 ]
 MAP_FIELDS = [("mv", "table version", "0..15", 4, "wraps")] + [

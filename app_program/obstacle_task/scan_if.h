@@ -40,8 +40,17 @@
 #define SCAN_FLG_REVERSE_DONE	0x04U	/* set by motion_task */
 #define SCAN_FLG_LINE_FOUND	0x08U	/* set by motion_task, after a bypass */
 #define SCAN_FLG_LINE_LOST	0x10U	/* set by motion_task, after a bypass */
+#define SCAN_FLG_LOOK		0x20U	/* set by motion_task: look at the box's
+					   side now (bypass probe, D14); scan_task
+					   answers with an AVOID_LOOK command */
+#define SCAN_FLG_LOOK_AHEAD	0x40U	/* set by motion_task: the same, servo
+					   straight ahead (the sidestep lane) */
+#define SCAN_FLG_SIDE_BLOCKED	0x80U	/* set by motion_task: the sidestep lane
+					   is blocked, the car is back on its
+					   heading: re-plan the other side */
 #define SCAN_FLG_REPLIES	(SCAN_FLG_REVERSE_DONE | SCAN_FLG_LINE_FOUND | \
-				 SCAN_FLG_LINE_LOST)
+				 SCAN_FLG_LINE_LOST | SCAN_FLG_LOOK | \
+				 SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED)
 
 #define SCAN_TICK_MS		60	/* one HC-SR04 cycle */
 
@@ -50,7 +59,8 @@
 
 typedef enum {
 	AVOID_REVERSE = MOTION_AVOID_OP_REVERSE,
-	AVOID_BYPASS  = MOTION_AVOID_OP_BYPASS
+	AVOID_BYPASS  = MOTION_AVOID_OP_BYPASS,
+	AVOID_LOOK    = MOTION_AVOID_OP_LOOK
 } avoid_type_t;
 
 typedef enum {

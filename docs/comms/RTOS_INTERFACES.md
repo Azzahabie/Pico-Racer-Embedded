@@ -233,6 +233,8 @@ question, pointed the other way, and the answer is symmetric:
 
 - **Under Option A:** a second message buffer owned by `line_task`
   (`tele_cmd_mbfid`). `comms_task` posts the new table; `line_task` drains it.
+  *(Superseded 2026-10-29: the queue is Buddy 3's `map_mbf`, drained by
+  `barcode_task`; `WIFI_SUBSYSTEM_DESIGN.md` §3.2.)*
   Clean, and the change is an event (`EVT_CMD_REMAP`) in the same vocabulary.
 - **Under Option B:** `line_task` reads the shared struct — but then it needs an
   **event flag** to know the table changed, so you end up introducing a second

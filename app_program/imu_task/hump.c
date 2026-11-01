@@ -23,10 +23,16 @@
 #define HUMP_GROUND_UM	2000		/* back within 2 mm of the start      */
 #define HUMP_END_MM	40		/* level this far, once on the way
 					   down: the hump is over            */
-#define HUMP_TOP_MAX_MM	250		/* level this far, down or not: over.
+#define HUMP_TOP_MAX_MM	120		/* level this far, down or not: over.
 					   For a far side that drops off too
 					   fast to read as a slope; above the
-					   practice ramp's level top (~100)  */
+					   practice ramp's level top (~100).
+					   Was 250: on the demo hump (195 mm,
+					   10 mm, peak halfway; the only one on
+					   demo day) the car never reads the way
+					   down (body as long as the hump), so
+					   the hump stayed open 250 mm past it
+					   (S6 attempt 1, 1 Nov)            */
 #define HUMP_MIN_MM	4		/* shorter climbs are not humps       */
 #define HUMP_STILL_WIN	10		/* stopped 1 s, any tilt: hump over   */
 #define HUMP_STILL_MM	1		/* per window: encoder jitter, still  */

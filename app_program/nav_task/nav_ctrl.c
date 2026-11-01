@@ -49,12 +49,22 @@
 #include "../obstacle_task/scan_if.h"	/* NAV_FLG_BLOCKED */
 #include "../line_task/barcode_task.h"		/* barcode_cmd_word() */
 #include "../line_task/barcode_action.h"
+#include "../common/messages.h"		/* comm_w_pack_mission() */
+#include "../comms_task/comms_task.h"	/* comms_tele_send() */
 
 #define BTN_START_PIN		20U	/* Button 1 */
 #define BTN_PAUSE_PIN		21U	/* Button 2 */
-#define BUZZER_PIN		22U	/* PWM slice 3, channel A */
+#define BUZZER_PIN		22U	/* PWM slice 3, channel A; no motor on slice 3 */
 
 #define BTN_DEBOUNCE_MS		30
+
+/* S5 turn test without barcodes: a junction with no barcode command uses
+   this action (barcode_action_t: 0 forward, 1 left, 2 right, 3 U-turn)
+   instead of going straight on.  -1, the default, is the real behaviour;
+   never set it for the demo build. */
+#ifndef NAV_TEST_JUNCTION_ACTION
+#define NAV_TEST_JUNCTION_ACTION	(-1)
+#endif
 #define BTN_LOCKOUT_MS		300	/* ignore bounces after a press */
 #define CAL_TIMEOUT_MS		10000	/* [TBD with Buddies 3 and 4] */
 #define HEARTBEAT_MS		1000	/* wake at least this often */
@@ -70,10 +80,6 @@
 				 NAV_FLG_JUNCTION | NAV_FLG_MOVE_DONE | \
 				 NAV_FLG_CMD_REJECTED | NAV_FLG_CONN | \
 				 NAV_FLG_MOTION_STOPPED)
-
-/* FAULT_CLEAR arguments for nav_cmd_mbf (opcodes in nav_ctrl.h) */
-#define FAULT_CLEAR_IMU		0x01U
-#define FAULT_CLEAR_MOTION	0x02U
 
 LOCAL volatile uint32_t	g_mission = (uint32_t)MS_INITIALISING;	/* one store */
 LOCAL ID		g_nav_flgid = 0;
@@ -203,6 +209,17 @@ LOCAL bool pressed(UINT pin)
 	return (0U == gpio_get_val(pin));
 }
 
+/* Silent: GP22 as a plain output driven low, off the PWM.  Slice 3 is
+   shared only with GP6/GP7/GP23 (no motor: those are slices 4 and 5, the
+   servo 6), and GP7 (barcode DO) and GP23 (CYW43 WL_ON) are SIO pins, so
+   the slice itself sounds nothing unless GP22 is routed to it. */
+LOCAL void buzzer_off(void)
+{
+	pwm_set_enabled(BUZZER_PIN, FALSE);
+	(void)gpio_set_val(BUZZER_PIN, 0U);		/* low before it drives */
+	(void)gpio_set_pin(BUZZER_PIN, GPIO_MODE_OUT);	/* FUNCSEL SIO */
+}
+
 LOCAL void buzzer_init(void)
 {
 	/* same rule as servo_init(): release the PWM block, never re-reset it */
@@ -210,21 +227,24 @@ LOCAL void buzzer_init(void)
 	while(0U == (in_w(RESETS_RESET_DONE) & RESETS_RESET_PWM)) {
 		;
 	}
-	pwm_set_pin(BUZZER_PIN);
+	buzzer_off();					/* silent by default */
 	out_w(BUZZER_DIV_REG, 1U << 4);			/* divider 1 */
 	pwm_set_wrap(BUZZER_PIN, BUZZER_WRAP);
-	pwm_set_cc(BUZZER_PIN, 0U);			/* silent */
-	pwm_set_enabled(BUZZER_PIN, TRUE);
+	pwm_set_cc(BUZZER_PIN, (BUZZER_WRAP + 1U) / 2U);	/* 50 %, used only by beep() */
 }
 
+/* The only place the buzzer sounds: GP22 is on the PWM for each on_ms
+   and back on a driven-low GPIO otherwise. */
 LOCAL void beep(INT count, INT on_ms)
 {
 	INT idx;
 
+	tm_printf((UB *)"[nav] buzzer: %d x %d ms\n", count, on_ms);
 	for(idx = 0; idx < count; idx++) {
-		pwm_set_cc(BUZZER_PIN, (BUZZER_WRAP + 1U) / 2U);	/* 50 % duty */
+		pwm_set_enabled(BUZZER_PIN, TRUE);
+		pwm_set_pin(BUZZER_PIN);
 		tk_dly_tsk(on_ms);
-		pwm_set_cc(BUZZER_PIN, 0U);
+		buzzer_off();
 		tk_dly_tsk(100);
 	}
 }
@@ -242,6 +262,15 @@ LOCAL void set_state(mission_state_t next)
 	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
+
+	/* E mission: one record per change, so a run can be rebuilt from the
+	   broker (FR-23).  Never blocks; a full queue counts a drop.  S.mis
+	   does not depend on it: comms_task reads the state itself. */
+	{
+		UB	body[COMM_W_INTAKE_SIZE_MISSION];
+
+		(void)comms_tele_send(body, (INT)comm_w_pack_mission(body, (uint32_t)next));
+	}
 }
 
 LOCAL void send_fault_clear(UB which)
@@ -303,6 +332,14 @@ LOCAL bool calibrate(void)
 			ok = false;
 			done = true;
 		} else {
+			if(0U != (flgptn & NAV_FLG_CAL_OK_IMU)) {
+				/* imu_task cleared its own fault when it answered OK:
+				   an IMU_FAULT it raised before that (e.g. no data at
+				   boot) is stale, and left set it would drop Ready
+				   straight back to Fault */
+				(void)tk_clr_flg(g_nav_flgid, ~NAV_FLG_IMU_FAULT);
+				tm_printf((UB *)"[nav] CAL_OK_IMU: stale IMU_FAULT cleared\n");
+			}
 			got |= (flgptn & need);
 			done = (need == got);
 		}
@@ -318,6 +355,8 @@ LOCAL void enter_calibrating(bool after_fault)
 			send_fault_clear(FAULT_CLEAR_IMU);	/* only after both pass */
 			send_fault_clear(FAULT_CLEAR_MOTION);
 		}
+		/* junctions seen while calibrating are not this mission's */
+		(void)tk_clr_flg(g_nav_flgid, ~NAV_FLG_JUNCTION);
 		set_state(MS_READY);
 		beep(1, 100);
 	} else {
@@ -414,11 +453,18 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] junction during a move: ignored\n");
 		return;
 	}
-	if(!barcode_cmd_pending(cmd, g_cmd_taken)) {
+	if(barcode_cmd_pending(cmd, g_cmd_taken)) {
+		g_cmd_taken = barcode_cmd_seq(cmd);	/* this junction used it */
+	} else {
+#if NAV_TEST_JUNCTION_ACTION >= 0
+		action = (uint32_t)NAV_TEST_JUNCTION_ACTION;
+		tm_printf((UB *)"[nav] junction, no barcode command: TEST action %s\n",
+			  barcode_action_name(action));
+#else
 		tm_printf((UB *)"[nav] junction, no barcode command: straight on\n");
 		return;
+#endif
 	}
-	g_cmd_taken = barcode_cmd_seq(cmd);		/* this junction used it */
 	msg[0] = (UB)NAV_CMD_JUNCTION;
 	msg[1] = (UB)action;
 	if(0 < g_nav_bind.nav_cmd_mbfid) {

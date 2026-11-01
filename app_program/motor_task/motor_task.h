@@ -9,8 +9,8 @@
  *  runs a 10 ms tick on core 1, detects stalls (FR-30), brakes on
  *  STOP_SCAN and STOP_IMU (NFR-18), publishes distance_state for imu_task
  *  (read it through motion_ds.h), feeds the hardware watchdog
- *  (motion_wdt.c) and runs a button-started bench test.  The command
- *  interface from nav_ctrl_task and scan_task comes next.
+ *  (motion_wdt.c), takes commands from nav_ctrl_task and scan_task
+ *  through two command buffers, and runs a button-started bench test.
  */
 
 #ifndef MOTOR_TASK_H
@@ -28,11 +28,12 @@
  *
  *    TICK       0x01  set by motion's 10 ms cyclic handler.
  *    CMD        0x02  set by a command sender after it has placed a
- *                     command (step 1.7; motion does not read it yet).
+ *                     command.  Optional: motion polls both command
+ *                     buffers every tick and only clears it.
  *    STOP_SCAN  0x04  set and cleared ONLY by scan_task: "obstacle".
  *    STOP_IMU   0x08  set by imu_task, which never clears it; motion_task
  *                     clears it when nav_ctrl_task sends FAULT_CLEAR(IMU)
- *                     (step 1.7; until then nothing clears it).
+ *                     through nav_cmd_mbf.
  *
  *  A STOP bit is a level: motion brakes in the wake that first sees it
  *  and stays braked while any is set, except that a reverse commanded by
@@ -52,6 +53,17 @@ ID motor_task_flag(void);
    tk_set_flg, with the bit it is about to set.  It notes the 1 MHz time,
    so motion can report how long after the request it braked. */
 void motion_stop_stamp(UINT stop_bit);
+
+/* The two command buffers (design Section 4), created by
+   motor_task_start(), one writer each; 0 before that and in bench images.
+     nav_cmd_mbf    nav_ctrl_task: 2 bytes { NAV_CMD_*, arg } (nav_ctrl.h),
+                    room 4.  JUNCTION gets CMD_REJECTED until Turning is
+                    built; FAULT_CLEAR(IMU) / (MOTION) work.
+     avoid_cmd_mbf  scan_task: the packed 16-bit command (messages.h),
+                    room 2.  Bind it to scan_task only once Bypass drives.
+   Send with TMO_POL; a full buffer is the sender's to handle. */
+ID motor_task_nav_cmd_mbf(void);
+ID motor_task_avoid_mbf(void);
 
 /* Motion fault bitmask: one bit per fault, packed in one byte. */
 #define MOTION_FAULT_STALL_L (1u << 0) /* FR-30 motor stall, left    */

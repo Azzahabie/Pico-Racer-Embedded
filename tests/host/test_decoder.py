@@ -73,6 +73,23 @@ def main():
             rejects(word.to_bytes(length, "little"), f"kind {k}, {length} B")
     rejects(b"", "empty payload")
 
+    # Inbound commands: the laptop's packers match the reference bytes (section 8).
+    for cmd in vectors["commands"]:
+        want = bytes.fromhex(cmd["payload"])
+        if cmd["topic"] == "cmd":
+            name = cmd["name"].split()[1]
+            ok(td.pack_cmd(name) == want, f"{cmd['name']}: pack_cmd")
+            ok(td.describe_command("robocar/x/cmd", want) == f"cmd {name}", f"{cmd['name']}: described")
+        else:
+            acts = [cmd["values"][f"act_{chr(65 + i)}"] for i in range(26)]
+            ok(td.pack_map(cmd["values"]["mv"], acts) == want, f"{cmd['name']}: pack_map")
+            letters = "".join(td.ACTIONS[a] for a in acts)
+            ok(td.pack_map(cmd["values"]["mv"], letters) == want, f"{cmd['name']}: pack_map letters")
+            ok(td.describe_command("robocar/x/map", want) == f"map mv={cmd['values']['mv']} {letters}",
+               f"{cmd['name']}: described")
+    ok(td.describe_command("robocar/x/telemetry", b"\x01") is None, "telemetry is not a command")
+    ok("invalid" in td.describe_command("robocar/x/cmd", b"\x01\x02"), "2-byte cmd shown invalid")
+
     # Fault names in bit order (MQTT_SCHEMA.md section 4.1).
     ok(td.describe({"faults": 0x20}) == "faults=wifi_loss", "faults bit 5 is wifi_loss")
     ok(td.describe({"faults": 0x11}) == "faults=motor_stall|line_sensor", "faults bits 0 and 4")

@@ -24,12 +24,27 @@ struct netif;
 #define LWIP_UTK_MQTT_TOPIC_STATE      2U
 #define LWIP_UTK_MQTT_TOPIC_COUNT      3U
 
+/* Inbound topics, subscribed at QoS 1 on every new session (MQTT_SCHEMA.md
+ * section 8; design decision 22).  A message longer than
+ * LWIP_UTK_MQTT_IN_MAX bytes is rejected here, never truncated. */
+#define LWIP_UTK_MQTT_IN_CMD   0U
+#define LWIP_UTK_MQTT_IN_MAP   1U
+#define LWIP_UTK_MQTT_IN_COUNT 2U
+#define LWIP_UTK_MQTT_IN_MAX   7U
+
+/* Called inside the radio task with one complete inbound message; the
+ * pointer is valid only during the call.  Returns 0 when it was kept. */
+typedef int32_t (*lwip_utk_mqtt_inbound_fn)(uint32_t topic,
+                                            const uint8_t *payload,
+                                            uint32_t length);
+
 /* Session state machine (docs/comms/WIFI_SUBSYSTEM_DESIGN.md section 6.2). */
 #define LWIP_UTK_MQTT_WAIT_ADDR   0U   /* no address yet, or it was lost      */
 #define LWIP_UTK_MQTT_CONNECTING  1U   /* connect sent, waiting for CONNACK   */
 #define LWIP_UTK_MQTT_CONNECTED   2U
 #define LWIP_UTK_MQTT_BACKOFF     3U   /* session failed or lost; retry later */
 #define LWIP_UTK_MQTT_FAILED      4U   /* bad broker config or no memory; terminal */
+#define LWIP_UTK_MQTT_SCANNING    5U   /* discovery: probing hosts for the port */
 
 typedef struct {
     int32_t  init_result;        /* client alloc / broker address parse        */
@@ -49,6 +64,14 @@ typedef struct {
     uint32_t guard_blocked;
     uint32_t connect_ms;         /* last connect request to CONNACK            */
     uint32_t backoff_ms;         /* wait before the next connect attempt       */
+    int32_t  subscribe_result;   /* last mqtt_subscribe() return or SUBACK err */
+    uint32_t subscribed;         /* bit per LWIP_UTK_MQTT_IN_*, this session   */
+    uint32_t inbound_received;   /* messages handed to the inbound function   */
+    uint32_t inbound_rejected;   /* unknown topic, empty or too long           */
+    uint32_t inbound_dropped;    /* the inbound function refused (queue full)  */
+    uint32_t scan_probed;        /* discovery: TCP probes started            */
+    uint32_t scan_found;         /* discovery: hosts found with the port open */
+    uint32_t scan_passes;        /* discovery: full passes with no broker     */
     uint8_t  broker[4];
     uint16_t port;
     uint8_t  payload_len;        /* length of the last publish                 */
@@ -62,5 +85,11 @@ int  lwip_utk_mqtt_ready(void);
 int32_t lwip_utk_mqtt_offer(uint32_t topic, const uint8_t *payload,
                             uint32_t length);
 void lwip_utk_mqtt_get_status(T_LWIP_UTK_MQTT_STATUS *status);
+
+/* Any task: sets a flag that the next poll acts on (no lwIP call). */
+void lwip_utk_mqtt_request_restart(void);
+
+/* Radio-owner task, before the first poll: where inbound messages go. */
+void lwip_utk_mqtt_set_inbound(lwip_utk_mqtt_inbound_fn fn);
 
 #endif

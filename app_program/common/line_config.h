@@ -6,14 +6,19 @@
 #define LINE_SENSOR_LEFT_GPIO                    (26u)
 #define LINE_SENSOR_LEFT_ADC_CHANNEL             (0u)
 #define LINE_SENSOR_LEFT_BLACK_IS_HIGH           (1u)
-#define LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD  (2500u)
-#define LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD (2000u)
+/* measured 2026-10-29: white 175-300, centred black 2410-2493;
+   2026-10-31 (sensors raised): white 150-530, centred black 1250-1330.
+   These are only the boot guess and the white/black split for a
+   one-colour calibration: once calibrated, the thresholds follow the
+   measured levels (see Calibration below). */
+#define LINE_SENSOR_LEFT_BLACK_RISING_THRESHOLD  (900u)
+#define LINE_SENSOR_LEFT_BLACK_FALLING_THRESHOLD (700u)
 
 #define LINE_SENSOR_RIGHT_GPIO                    (27u)
 #define LINE_SENSOR_RIGHT_ADC_CHANNEL             (1u)
 #define LINE_SENSOR_RIGHT_BLACK_IS_HIGH           (1u)
-#define LINE_SENSOR_RIGHT_BLACK_RISING_THRESHOLD  (2500u)
-#define LINE_SENSOR_RIGHT_BLACK_FALLING_THRESHOLD (2000u)
+#define LINE_SENSOR_RIGHT_BLACK_RISING_THRESHOLD  (900u)
+#define LINE_SENSOR_RIGHT_BLACK_FALLING_THRESHOLD (700u)
 
 #define BARCODE_SENSOR_GPIO                       (7u)
 /* Verify the digital DO polarity on hardware. */
@@ -52,14 +57,21 @@
 #define BARCODE_DEFAULT_TABLE_SET                 (0)
 #define BARCODE_DEFAULT_TABLE                     ""
 
-/* Junctions seen while a barcode is being read, or this soon after, are
-   the barcode's own bars under the line sensors and are ignored. */
+/* While a barcode is being read, and this long after, line_state holds
+   rl/steer/error at 0 (the bars cross the line sensors).  It no longer
+   gates junctions: those come from GP7's run length (below). */
 #define BARCODE_JUNCTION_HOLDOFF_MS               (300u)
 
 /* ---- Junction detection (ticks of 1 ms) ----
-   J_n: both line sensors black this many samples running = one junction.
-   Rearm: both must leave black this many samples running first. */
-#define LINE_JUNCTION_SAMPLES                     (3u)
+   GP26 and GP27 both sit inside the 18 mm line, so both read black (rl 11)
+   whenever the car is centred, and a cross-junction looks the same to them:
+   they cannot see one.  The junction comes from the barcode sensor (GP7)
+   instead: a crossbar is one black run far longer than any barcode bar.
+   J_n: GP7 black this many samples running = one junction.  It must be
+   above the widest barcode bar and below the crossbar (18 mm at
+   MOTION_LF_BASE, ~12 cm/s, is ~150 ms).  Rearm: GP7 white this many
+   samples running first.  PROVISIONAL until measured on the car. */
+#define LINE_JUNCTION_SAMPLES                     (80u)
 #define LINE_JUNCTION_REARM_SAMPLES               (20u)
 
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
@@ -67,17 +79,31 @@
 
 /* ---- Calibration (CAL_REQ from nav_ctrl_task), ADC counts ----
    IR_CAL_SAMPLES ticks are recorded per sensor with the car still.  If a
-   sensor saw both black and white (span >= IR_CAL_MIN_CONTRAST), its
-   thresholds are set at the measured midpoint +/- IR_CAL_HYST_PCT of the
-   span.  If it saw one colour only (the start pose straddles the line, so
-   white), the tested thresholds above are kept and white must sit at least
-   IR_CAL_WHITE_MARGIN below the falling threshold.  A sensor reading at an
-   ADC rail (<= IR_RAIL_LOW or >= IR_RAIL_HIGH) for most of the window, or
-   for IR_RAIL_FAULT_SAMPLES running in use, is stuck.  PROVISIONAL. */
+   sensor saw both black and white (span >= IR_CAL_MIN_CONTRAST), those are
+   its levels.  If it saw one colour only, the thresholds above decide which:
+   black (the start pose: centred, both sensors inside the line) must sit at
+   least IR_CAL_WHITE_MARGIN above the rising one, white as far below the
+   falling one; the missing level is guessed (white = IR_CAL_WHITE_GUESS_PCT
+   of black, or black = white + 2 x IR_CAL_MIN_CONTRAST).  A sensor between
+   the two while the other clearly saw black is on the line edge (car not
+   quite centred): it passes as "edge" from the defaults and learns its
+   levels while driving (ir_cal_finish_pair).
+   Thresholds are always the level midpoint +/- IR_CAL_HYST_PCT of the
+   span.  From then on, every sample moves its colour's level 1/2^
+   IR_ADAPT_SHIFT of the way towards it (2048 samples, about 2 s), so the
+   thresholds follow sensor height, tape and floor; a "white" sample far
+   darker than white pulls black down 2^IR_ADAPT_STRANDED_SHIFT times
+   slower.  The levels never come closer than IR_CAL_MIN_CONTRAST.
+   A sensor reading at an ADC rail (<= IR_RAIL_LOW or >= IR_RAIL_HIGH) for
+   most of the window, or for IR_RAIL_FAULT_SAMPLES running in use, is
+   stuck.  PROVISIONAL. */
 #define IR_CAL_SAMPLES                            (1000u)
 #define IR_CAL_MIN_CONTRAST                       (400u)
 #define IR_CAL_HYST_PCT                           (10u)
-#define IR_CAL_WHITE_MARGIN                       (200u)
+#define IR_CAL_WHITE_MARGIN                       (100u)
+#define IR_CAL_WHITE_GUESS_PCT                    (25u)
+#define IR_ADAPT_SHIFT                            (11u)
+#define IR_ADAPT_STRANDED_SHIFT                   (2u)
 #define IR_RAIL_LOW                               (2u)
 #define IR_RAIL_HIGH                              (4093u)
 #define IR_RAIL_FAULT_SAMPLES                     (200u)

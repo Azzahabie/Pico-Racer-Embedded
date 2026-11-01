@@ -63,6 +63,8 @@ typedef enum {
  *   { NAV_CMD_FAULT_CLEAR, which }           0x01 IMU, 0x02 MOTION         */
 #define NAV_CMD_FAULT_CLEAR	0x10U
 #define NAV_CMD_JUNCTION	0x20U
+#define FAULT_CLEAR_IMU		0x01U	/* FAULT_CLEAR argument */
+#define FAULT_CLEAR_MOTION	0x02U
 
 /* ---- optional links, filled in by app_main.c as teammates' tasks appear */
 typedef struct {

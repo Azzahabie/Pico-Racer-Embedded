@@ -5,6 +5,10 @@ Companion documents:
 - [`GETTING_STARTED.md`](GETTING_STARTED.md) — build and flash, step by step
 - [`PORT_RP2040.md`](PORT_RP2040.md) — what is validated vs. still unproven
 
+> **For the integrated car, read [`INTEGRATION.md`](INTEGRATION.md) first.** It is
+> the current baseline (1 Nov 2026); this file is background on the kernel port
+> and the repo, and is kept as written.
+>
 > **Status note.** This file describes the design as it exists in the tree
 > today(26 Sep 2026). Where the shipped docs disagree with the code, the code is treated as
 > the truth, and the disagreement is called out explicitly.

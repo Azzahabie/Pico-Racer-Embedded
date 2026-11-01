@@ -34,6 +34,7 @@
 #define TELE_LINE_ON		0U
 #define TELE_LINE_LOST		1U
 #define TELE_LINE_CROSSING	2U
+#define TELE_LINE_UNSENT	3U	/* never sent: forces the first record */
 
 LOCAL ID		g_ir_flgid;
 LOCAL ID		g_ir_tid;
@@ -150,12 +151,14 @@ LOCAL ir_cal_sensor_t default_cal(BOOL black_is_high, uint16_t rise, uint16_t fa
 	return ir_cal_default(black_is_high ? true : false, rise, fall);
 }
 
-LOCAL UINT tele_line_state(const line_state_fields_t *f)
+/* rl 11 is the centred car (both sensors inside the line): ON, not
+   CROSSING.  CROSSING is GP7 on a junction's crossbar. */
+LOCAL UINT tele_line_state(const line_track_out_t *o)
 {
-	if(f->lost) {
+	if(o->fields.lost) {
 		return TELE_LINE_LOST;
 	}
-	return (LINE_RL_JUNCTION == f->rl) ? TELE_LINE_CROSSING : TELE_LINE_ON;
+	return o->crossing ? TELE_LINE_CROSSING : TELE_LINE_ON;
 }
 
 EXPORT void ir_sense_task(INT stacd, void *exinf)
@@ -172,6 +175,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	ir_cal_acc_t	right_acc;
 	ir_cal_result_t	left_res;
 	ir_cal_result_t	right_res;
+	BOOL		cal_ok;
 	line_track_out_t	out;
 	line_reader_raw_t	raw;
 	mission_state_t	mission = nav_mission_state();
@@ -179,11 +183,15 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	UINT		missed;
 	UINT		holdoff = 0U;
 	UINT		print_ms = 0U;
-	UINT		tele_state = TELE_LINE_LOST;
+	UINT		tele_state = TELE_LINE_UNSENT;	/* S.lin defaults to ON */
 	UINT		last_rl = LINE_RL_CENTRED;
 	BOOL		black;
 	BOOL		adc_ok;
 	BOOL		fault_reported = FALSE;
+	BOOL		lost_reported = TRUE;	/* LINE_STATE_INITIAL is lost */
+#if LINE_GP7_DIAG
+	UINT		gp7_ms = 0U;
+#endif
 	UB		body[COMM_W_INTAKE_SIZE_LINE];
 	char		bits[3];
 	ER		ercd;
@@ -238,7 +246,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			line_track_disarm_junction(&g_trk);
 		}
 
-		if(bar_capture_busy(&g_cap)) {
+		/* reading, not busy: after a width_too_long abort GP7 may stay
+		   black for as long as the car is parked on it */
+		if(bar_capture_reading(&g_cap)) {
 			holdoff = BARCODE_JUNCTION_HOLDOFF_MS;
 		} else if(0U < holdoff) {
 			holdoff--;
@@ -246,7 +256,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			/* not held */
 		}
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
-				adc_ok ? true : false, 0U < holdoff, &out);
+				adc_ok ? true : false, 0U < holdoff,
+				black ? true : false, &out);
 		g_line_state = out.word;			/* one store */
 
 		if(out.junction) {
@@ -267,33 +278,59 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			if(0U == --cal_left) {
 				left_new = g_trk.left_cal;	/* kept if it fails */
 				right_new = g_trk.right_cal;
-				left_res = ir_cal_finish(&left_acc, &left_def, &left_new);
-				right_res = ir_cal_finish(&right_acc, &right_def, &right_new);
-				if((IR_CAL_OK == left_res) && (IR_CAL_OK == right_res)) {
+				cal_ok = ir_cal_finish_pair(&left_acc, &right_acc,
+							    &left_def, &right_def,
+							    &left_new, &right_new,
+							    &left_res, &right_res)
+					 ? TRUE : FALSE;
+				if(cal_ok) {
 					line_track_set_cal(&g_trk, &left_new, &right_new);
 					tell_nav(NAV_FLG_CAL_OK_IR);
 				} else {
 					tell_nav(NAV_FLG_CAL_FAIL);
 				}
-				tm_printf((UB *)"[line] calibration %s: GP26 %s (white %u, rise %u) GP27 %s (white %u, rise %u)\n",
-					  ((IR_CAL_OK == left_res) && (IR_CAL_OK == right_res))
-						  ? "OK" : "FAILED",
+				tm_printf((UB *)"[line] calibration %s: GP26 %s (white %u, black %u, rise %u) GP27 %s (white %u, black %u, rise %u)\n",
+					  cal_ok ? "OK" : "FAILED",
 					  ir_cal_result_name(left_res), (UINT)left_new.white,
-					  (UINT)left_new.rise,
+					  (UINT)left_new.black, (UINT)left_new.rise,
 					  ir_cal_result_name(right_res), (UINT)right_new.white,
-					  (UINT)right_new.rise);
+					  (UINT)right_new.black, (UINT)right_new.rise);
 			}
 		}
 
 		/* telemetry on edges only; comms_tele_send never blocks */
-		if(tele_line_state(&out.fields) != tele_state) {
-			tele_state = tele_line_state(&out.fields);
+		if(tele_line_state(&out) != tele_state) {
+			tele_state = tele_line_state(&out);
 			(void)comms_tele_send(body, (INT)comm_w_pack_line(body,
 				tele_state, out.fields.error));
 		}
 
-		/* console: never while a barcode is under the car */
-		if(bar_capture_busy(&g_cap)) {
+		/* the crossbar under GP7 is itself a capture, so this line must
+		   come before the barcode check below */
+		if(out.junction) {
+			tm_printf((UB *)"[line] junction (GP7 black %u ms) -> nav\n",
+				  (UINT)LINE_JUNCTION_SAMPLES);
+		}
+
+#if LINE_GP7_DIAG
+		/* before the barcode check below: it must print even while GP7
+		   looks like a bar */
+		if(++gp7_ms >= 500U) {
+			uint16_t	pd, pu, none;
+
+			gp7_ms = 0U;
+			barcode_scanner_probe(&pd, &pu, &none);
+			tm_printf((UB *)"[gp7] pull-down=%u pull-up=%u no-pull=%u -> %s\n",
+				  (UINT)pd, (UINT)pu, (UINT)none,
+				  (pd != pu) ? "NOT CONNECTED (follows the pull)"
+				  : (0U != none) ? "driven HIGH (sensor says black)"
+						 : "driven LOW (sensor says white)");
+		}
+#endif
+
+		/* console: never while a barcode is being read (an aborted one
+		   being discarded does not count) */
+		if(bar_capture_reading(&g_cap)) {
 			continue;
 		}
 		if(out.fields.fault && !fault_reported) {
@@ -301,13 +338,17 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  (UINT)raw.left_guard, (UINT)raw.right_guard);
 		}
 		fault_reported = out.fields.fault ? TRUE : FALSE;
-		if(out.junction) {
-			tm_printf((UB *)"[line] junction -> nav\n");
-		}
 		if(out.fields.rl != last_rl) {
 			last_rl = out.fields.rl;
 			line_reader_format_2bit((UB)last_rl, bits);
 			tm_printf((UB *)"[line] RL=%s err=%d\n", bits, (INT)out.fields.error);
+		}
+		if((out.fields.lost ? TRUE : FALSE) != lost_reported) {
+			lost_reported = out.fields.lost ? TRUE : FALSE;
+			tm_printf(lost_reported
+				  ? (UB *)"[line] LOST: RL=00 for %u ms\n"
+				  : (UB *)"[line] line found (LOST_MS %u)\n",
+				  (UINT)LINE_LOST_MS);
 		}
 		print_ms++;
 		if(print_ms >= ((LINE_COMMISSIONING_MODE != 0) ? IR_COMMISSION_MS
@@ -322,6 +363,17 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  (INT)BARCODE_SENSOR_GPIO,
 				  (UINT)barcode_scanner_get_last_raw(),
 				  black ? "black" : "white");
+			tm_printf((UB *)"[line] dbg GP26 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d"
+				  " | GP27 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d | dark_ms=%u lost=%d\n",
+				  (UINT)raw.left_guard, (UINT)g_trk.left_cal.white,
+				  (UINT)g_trk.left_cal.black, (UINT)out.left_norm,
+				  (UINT)g_trk.left_cal.rise, (UINT)g_trk.left_cal.fall,
+				  g_trk.left_black ? 1 : 0,
+				  (UINT)raw.right_guard, (UINT)g_trk.right_cal.white,
+				  (UINT)g_trk.right_cal.black, (UINT)out.right_norm,
+				  (UINT)g_trk.right_cal.rise, (UINT)g_trk.right_cal.fall,
+				  g_trk.right_black ? 1 : 0,
+				  (UINT)out.fields.dark_ms, out.fields.lost ? 1 : 0);
 		}
 	}
 }

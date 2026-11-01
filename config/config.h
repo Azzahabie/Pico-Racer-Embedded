@@ -51,12 +51,13 @@
 #define CNF_MAX_SEMID		16	/* Semaphore */
 #define CNF_MAX_FLGID		16	/* Event flag */
 #define CNF_MAX_MBXID		4	/* Mailbox*/
-#define CNF_MAX_MTXID		4	/* Mutex */
-#define CNF_MAX_MBFID		8	/* Message buffer: MQTT out, tele_mbf, tele_cmd_mbf, motion commands, ... */
+#define CNF_MAX_MTXID		8	/* Mutex */
+#define CNF_MAX_MBFID		12	/* Message buffer: 7 in the car build (tele, mission, MQTT out/in,
+					   motion report, barcode bar/map) + nav_cmd, avoid_cmd = 9 */
 #define CNF_MAX_MPLID		4	/* Memory pool */
 #define CNF_MAX_MPFID		4	/* Fixed size memory pool */
-#define CNF_MAX_CYCID		4	/* Cyclic handler */
-#define CNF_MAX_ALMID		4	/* Alarm handler */
+#define CNF_MAX_CYCID		8	/* Cyclic handler: imu, ir_sense, motion, scan = 4 */
+#define CNF_MAX_ALMID		8	/* Alarm handler */
 
 /* Device configuration */
 #define CNF_MAX_REGDEV		(8)	/* Max registered device */

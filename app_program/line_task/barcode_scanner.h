@@ -37,4 +37,17 @@ bool barcode_scanner_read_black(void);
 /** Returns the digital level captured by the most recent read. */
 uint16_t barcode_scanner_get_last_raw(void);
 
+/* 1: GP7 wiring check.  ir_sense_task prints "[gp7]" every 500 ms with GP7
+ * read under the pad's pull-down, pull-up and no pull.  A connected,
+ * working DO reads the same in all three and follows the card; a floating
+ * (unconnected) pin follows the pull; a stuck DO reads 1 in all three. */
+#ifndef LINE_GP7_DIAG
+#define LINE_GP7_DIAG	0
+#endif
+
+#if LINE_GP7_DIAG
+/** Reads GP7 under each pull setting, then restores no pull. */
+void barcode_scanner_probe(uint16_t *p_pd, uint16_t *p_pu, uint16_t *p_none);
+#endif
+
 #endif

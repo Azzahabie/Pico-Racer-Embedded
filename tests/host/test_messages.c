@@ -379,6 +379,65 @@ static void test_avoid_command(void)
        "reserved high bits must be zero", "avoid command");
 }
 
+/* Record D: S's fields from the section 10 example, then the diagnostics. */
+static void test_pack_d(void)
+{
+    const uint32_t *v = s_example_values;
+    T_COMM_W_S st = {
+        (uint8_t)v[4], (uint8_t)v[5], (uint8_t)v[6], (uint8_t)v[7], (uint8_t)v[8],
+        (uint8_t)v[9], (uint8_t)v[10], (uint8_t)v[11], (uint8_t)v[12], (uint8_t)v[13],
+        (uint8_t)v[14], (uint8_t)v[15], (uint8_t)v[16], (uint8_t)v[17], (uint8_t)v[18],
+        (uint16_t)v[19],
+    };
+    T_COMM_W_D_DIAG dg = { (uint8_t)d_example_diag[0], d_example_diag[1],
+                           (uint8_t)d_example_diag[2], (uint8_t)d_example_diag[3] };
+    T_COMM_W_D_DIAG big = dg;
+    uint8_t rec[COMM_W_D_SIZE];
+    uint8_t ref[COMM_W_D_SIZE];
+    uint32_t len;
+
+    ok(COMM_W_D_BITS == 183U && COMM_W_D_SIZE == 23U, "D is 183 bits, 23 B", "D size");
+    len = comm_w_pack_d(rec, (uint16_t)v[2], v[3], &st, &dg);
+    check_bytes("comm_w_pack_d, D example", rec, len, d_example_bytes, sizeof d_example_bytes);
+
+    /* rssi 200 and qd 9 do not fit: stored 127 and 7. */
+    big.rssi = 200;
+    big.qd = 9;
+    dg.rssi = 127;
+    dg.qd = 7;
+    comm_w_pack_d(rec, (uint16_t)v[2], v[3], &st, &big);
+    comm_w_pack_d(ref, (uint16_t)v[2], v[3], &st, &dg);
+    check_bytes("comm_w_pack_d clamps rssi 200 -> 127, qd 9 -> 7", rec, sizeof rec, ref, sizeof ref);
+}
+
+/* cmd and map checks (schema section 8). */
+static void test_commands(void)
+{
+    uint8_t b, mv = 0xFF, act[COMM_W_MAP_LETTERS];
+    uint8_t long_map[COMM_W_MAP_SIZE + 1] = {0};
+    int same = 1;
+
+    for(b = 1; b <= 7; b++) {
+        ok(comm_w_check_cmd(&b, 1) == b, "op 1..7 accepted", "cmd op");
+    }
+    b = 0x00; ok(comm_w_check_cmd(&b, 1) == 0U, "op 0 rejected", "cmd op 0");
+    b = 0x09; ok(comm_w_check_cmd(&b, 1) == 0U, "reserved bit 3 rejected", "cmd reserved");
+    b = 0x81; ok(comm_w_check_cmd(&b, 1) == 0U, "reserved bit 7 rejected", "cmd reserved");
+    b = 0x01; ok(comm_w_check_cmd(&b, 2) == 0U, "length 2 rejected", "cmd length");
+    ok(comm_w_check_cmd(&b, 0) == 0U, "length 0 rejected", "cmd length");
+    ok(comm_w_check_cmd(NULL, 1) == 0U, "NULL rejected", "cmd NULL");
+
+    ok(comm_w_check_map(map_example_bytes, sizeof map_example_bytes, &mv, act),
+       "7-byte map accepted", "map");
+    ok(mv == map_example_mv, "mv unpacked", "map mv");
+    for(uint32_t i = 0; i < COMM_W_MAP_LETTERS; i++) {
+        if(act[i] != map_example_act[i]) same = 0;
+    }
+    ok(same, "26 actions unpacked, A first", "map actions");
+    ok(!comm_w_check_map(map_example_bytes, 6, &mv, act), "6 bytes rejected", "map length");
+    ok(!comm_w_check_map(long_map, sizeof long_map, &mv, act), "8 bytes rejected", "map length");
+}
+
 int main(void)
 {
     test_s_v2_sanity();
@@ -391,6 +450,8 @@ int main(void)
     test_reject();
     test_sizes_and_wrap();
     test_avoid_command();
+    test_pack_d();
+    test_commands();
 
     printf("%d checks passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

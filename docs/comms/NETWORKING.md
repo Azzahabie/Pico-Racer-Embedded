@@ -239,6 +239,36 @@ exactly 1000 ms apart in T5), with the radio retrying on the same core.
   detection (≈ 5–6 s off every lease), shorten the lease timeout, and the
   radio's link-loss timeout (not yet checked for the CYW43439).
 
+**Short AP outage (2026-10-29).** The AP's SSID was switched off for 20–30 s
+with the Wi-Fi toggle in the router's web interface (ASUS); after toggle-on
+the SSID takes ~18 s to answer joins. Twice the outage did **not** take the
+link down: no `link DOWN`, the MQTT session stayed `CONNECTED`, and records
+simply stopped leaving. Left alone, the stalled session moved again 28 s after
+toggle-on in one test, and in the other waited out the MQTT keep-alive timeout
+(1.5 × `UTK_MQTT_KEEPALIVE_S` 60 = 90 s), 64 s after toggle-on. **Fix:** `comms_task`'s stall rule (`S` refused on 2 ticks in a row
+while `CONNECTED`, `MQTT_SCHEMA.md` §4.1) calls `cyw43_utk_mqtt_restart()`. That
+only sets a flag; the radio task's next poll drops the session and reconnects
+through the normal back-off (2 s, 5 s connect timeout, then 4 s and 5 s;
+15 s at the time of these tests, capped at 5 s since 2026-11-01, D7).
+Tested twice (2026-10-29):
+
+| Run | Link reported lost? | Stall seen | Reconnected |
+|---|---|---|---|
+| SSID off ~30 s | yes, 4 s after the stall | ~6 s after off; session dropped 0.9 s after the request | 21.6 s after toggle-on, ~3 s after the SSID answered joins |
+| SSID off 40 s | **no** (silent stall) | 7.1 s after off | **31.8 s after toggle-on** (64 s without the restart), ~14 s after the SSID was back (inferred from the ~18 s SSID start-up) |
+
+The same toggle gives either case, so neither can be chosen in a test. What
+set recovery here was the 15 s back-off cap: an attempt just before the SSID
+returns fails, and the next waits the full step. **Since 2026-11-01 the cap
+is 5 s** (the design's fixed 2-5 s, Integration Rules D7), so that step
+costs at most 5 s plus the 5 s connect timeout. Not re-measured yet.
+
+*Observed 2026-10-29 (M8a test), not changed:* after an AP outage MQTT
+reconnected about 10 s before `[wifi] state=ONLINE`, while the radio still
+showed "waiting for lease". lwIP keeps the previous address on the netif and
+the MQTT client's address guard accepts it. Harmless while DHCP hands back the
+same address; logged for the optimisation pass.
+
 **Telemetry while offline:** every record produced before the first connect or
 during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
 `H` + `S`), and the ~6 records that fit are delivered late on reconnect. These
