@@ -81,9 +81,99 @@ LOCAL void uart_snd_dat(const UB* buf, INT size)
 #if TM_CONSOLE_USB_CDC
 IMPORT void tm_usb_console_put(const UB *buf, INT size);
 #endif
+#if defined(TM_WIFI_NETLOG) && TM_WIFI_NETLOG
+/* Development profile: every console byte also goes out over Wi-Fi
+   (lib/libnet/lwip/lwip_utk_netlog.c).  Never waits. */
+#include "lwip_utk_netlog.h"
+#include <tk/smp.h>
+
+/* The ring (lwip_utk_netlog.h).  16 KB: the console averaged ~0.8 KB/s on
+   the car (S7 attempt 1) with bursts at each scan, so this holds ~20 s and
+   boot lines printed before Wi-Fi is up mostly survive to the first send.
+   Same lock pattern as the USB console's ring (usb_console.c). */
+#define NETLOG_SIZE	16384U
+#define NETLOG_MASK	(NETLOG_SIZE - 1U)
+
+LOCAL UB		netlog_ring[NETLOG_SIZE];
+LOCAL volatile UW	netlog_head;	/* next byte written */
+LOCAL volatile UW	netlog_tail;	/* next byte to send */
+LOCAL volatile UW	netlog_dropped;	/* bytes dropped: ring full */
+LOCAL T_SPLOCK		netlog_lock;
+
+LOCAL void netlog_enter(UINT *intsts)
+{
+#if TK_SUPPORT_SMP
+	(void)ISpinLock(&netlog_lock, intsts);
+#else
+	DI(*intsts);
+#endif
+}
+
+LOCAL void netlog_leave(UINT intsts)
+{
+#if TK_SUPPORT_SMP
+	(void)ISpinUnlock(&netlog_lock, intsts);
+#else
+	EI(intsts);
+#endif
+}
+
+EXPORT void lwip_utk_netlog_put(const uint8_t *buf, int32_t size)
+{
+	UINT	intsts;
+	UW	next;
+
+	if((buf == NULL) || (size <= 0)) return;
+	netlog_enter(&intsts);
+	while(size-- > 0) {
+		next = (netlog_head + 1U) & NETLOG_MASK;
+		if(next == netlog_tail) {
+			netlog_dropped += (UW)size + 1U;	/* never wait */
+			break;
+		}
+		netlog_ring[netlog_head] = *buf++;
+		netlog_head = next;
+	}
+	netlog_leave(intsts);
+}
+
+EXPORT uint32_t lwip_utk_netlog_peek(uint8_t *out, uint32_t max)
+{
+	UINT	intsts;
+	UW	h, t, n, i;
+
+	netlog_enter(&intsts);
+	h = netlog_head;
+	t = netlog_tail;
+	netlog_leave(intsts);
+	n = (h - t) & NETLOG_MASK;
+	if(n > max) n = max;
+	for(i = 0U; i < n; i++) {
+		out[i] = netlog_ring[(t + i) & NETLOG_MASK];	/* only the drain moves tail */
+	}
+	return (uint32_t)n;
+}
+
+EXPORT void lwip_utk_netlog_take(uint32_t n)
+{
+	UINT	intsts;
+
+	netlog_enter(&intsts);
+	netlog_tail = (netlog_tail + (UW)n) & NETLOG_MASK;
+	netlog_leave(intsts);
+}
+
+EXPORT uint32_t lwip_utk_netlog_dropped(void)
+{
+	return (uint32_t)netlog_dropped;
+}
+#endif
 
 EXPORT	void	tm_snd_dat( const UB* buf, INT size )
 {
+#if defined(TM_WIFI_NETLOG) && TM_WIFI_NETLOG
+	lwip_utk_netlog_put((const uint8_t *)buf, (int32_t)size);
+#endif
 #if TM_CONSOLE_USB_CDC
 	tm_usb_console_put(buf, size);
 #endif

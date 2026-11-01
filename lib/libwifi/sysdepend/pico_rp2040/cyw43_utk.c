@@ -30,6 +30,16 @@
 #endif
 #if TM_WIFI_MQTT
 #include "lwip_utk_mqtt.h"
+#if TM_WIFI_NETLOG
+#include "lwip/ip4_addr.h"
+#include "lwip_utk_netlog.h"
+#include "broker_config.h"
+/* Where the wireless console goes: by default the broker's host (the laptop
+   running the viewer), else UTK_NETLOG_ADDRESS from broker_config.h. */
+#ifndef UTK_NETLOG_PORT
+#define UTK_NETLOG_PORT 31884U
+#endif
+#endif
 #endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP
 #include "lwip_utk_ipv4.h"
@@ -334,6 +344,33 @@ static void update_mqtt_status(void)
         radio_status.mqtt_payload[i] = status.payload[i];
     }
 }
+
+#if TM_WIFI_NETLOG
+/* Wireless console (WIFI_NETLOG=1, development only): send the console ring
+   to the viewer's host.  Radio-owner task only (lwIP is NO_SYS). */
+static void netlog_drain(void)
+{
+    static uint8_t  dst[4];
+    static uint8_t  b_fixed;
+    uint8_t         now[4];
+    unsigned int    i;
+#ifdef UTK_NETLOG_ADDRESS
+    ip4_addr_t      a;
+
+    if(!b_fixed && ip4addr_aton(UTK_NETLOG_ADDRESS, &a)) {
+        dst[0] = ip4_addr1(&a); dst[1] = ip4_addr2(&a);
+        dst[2] = ip4_addr3(&a); dst[3] = ip4_addr4(&a);
+        b_fixed = 1;
+    }
+#endif
+    if(!b_fixed) {
+        for(i = 0; i < 4U; i++) now[i] = radio_status.mqtt_broker[i];
+        for(i = 0; i < 4U; i++) dst[i] = now[i];    /* follows a broker scan */
+    }
+    lwip_utk_netlog_poll(&cyw43_state.netif[CYW43_ITF_STA], dst,
+                         (uint16_t)UTK_NETLOG_PORT);
+}
+#endif
 #endif
 
 #if TM_WIFI_TCPBULK
@@ -857,6 +894,9 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         lwip_utk_mqtt_poll(&cyw43_state.netif[CYW43_ITF_STA]);
         drain_mqtt_queue();
         update_mqtt_status();
+#endif
+#if TM_WIFI_NETLOG
+        netlog_drain();
 #endif
 #if TM_WIFI_STATIC || TM_WIFI_DHCP
         radio_status.poll_stage = 5;

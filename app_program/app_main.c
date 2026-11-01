@@ -517,6 +517,9 @@ LOCAL void print_banner(void)
 	tk_dly_tsk(500);
 
 	tm_printf((UB *)"\n=== uT-Kernel 3.0 / RP2040 car ===\n");
+#if defined(TM_WIFI_NETLOG) && TM_WIFI_NETLOG
+	tm_printf((UB *)"[netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)\n");
+#endif
 #if TK_SUPPORT_SMP
 	tm_printf((UB *)"SMP build: %d processors\n\n", TK_MAX_CORE);
 #else
