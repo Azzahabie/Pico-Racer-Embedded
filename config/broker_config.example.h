@@ -58,4 +58,12 @@
  */
 #define UTK_MQTT_BROKER_DISCOVER  0
 
+/*
+ * Optional, debug images only (make ... WIFI_NETLOG=1): where the wireless
+ * console goes.  By default the broker's host, on UDP 31884 (the viewer's
+ * --netlog port).  Uncomment to send it somewhere else.
+ */
+/* #define UTK_NETLOG_ADDRESS        "192.168.1.100" */
+/* #define UTK_NETLOG_PORT           31884U */
+
 #endif

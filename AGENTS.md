@@ -57,6 +57,7 @@ SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1 WIFI_UDP=1 WIFI
 | `... WIFI_UDP=1` | UDP — needs `config/udp_test_config.h` | yes |
 | `... WIFI_TCP=1` | TCP — needs `config/tcp_test_config.h` | yes |
 | `... WIFI_DNS=1 WIFI_MQTT=1` | **the car build**: MQTT telemetry, no echo tests — needs `config/broker_config.h` | yes |
+| `... WIFI_MQTT=1 WIFI_NETLOG=1` | **debug only, never demo day**: the car build plus its whole console over UDP to the broker's host (port 31884), shown by the viewer as `serial`; image name ends `_netlog` | yes |
 
 `WIFI_STATIC=1` is an alternative to `WIFI_DHCP=1` (mutually exclusive; both
 require `WIFI_NETIF=1`).
