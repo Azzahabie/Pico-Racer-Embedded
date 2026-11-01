@@ -153,6 +153,10 @@ so an up-to-date tree yields a near-empty database.
   (`kernel/tkernel/ready_queue.h:51`), so an unpinned task can run on core 1 and
   interfere with the time-critical tasks there. Create tasks with `TA_ASSPRC`;
   Buddy 1's tasks use `TP_PRC1` (core 0).
+- **Kernel and lwIP headers can't share a `.c` file**: `tk/syslib.h` and lwIP's
+  `<stddef.h>` disagree on `size_t`. Keep kernel code (spinlocks, `tm_printf`)
+  and lwIP code in separate files joined by a plain `<stdint.h>` header, as
+  `cyw43_utk.c` / `cyw43_utk_kernel.c` and `tm_com.c` / `lwip_utk_netlog.c` do.
 
 ## 8. Do not commit generated files
 

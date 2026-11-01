@@ -123,9 +123,9 @@ All are lock-free single-writer words (D1-D3).
 | S1 mission + comms | **Pass** | E mission records on every change; S.mis live |
 | S2 safety chain | **Pass** (FR-30 partial) | NFR-18 stop ≤ 314 µs (stand-in) / 217 µs (real senders); NFR-19 21.4 ms; FR-30 brakes and faults. Lock-free word stress test (Tribunal C row 2): 18/18 pass |
 | S3 line sensing (by hand) | **Pass**, except barcode decode | Line lost/found, junctions, map → barcode_task (M8b). Barcode decode **open**: the KY-033 cannot resolve 2 mm bars |
-| S4 line following | **Pass** | Base 4 (3.1 cm/s): 5/5 laps, 0 LOST. **Now base 6 (~4.7 cm/s): 4 laps, 0 LOST, ~31 s a lap** (47.5 s at base 4). NFR-11: motion 36/39 and imu 17/19 windows within 10 ms ±1 (max 11.5 / 11.7 ms), **open** |
+| S4 line following | **Pass** | Base 4: 1 m in 32 s = 3.1 cm/s; 5/5 laps, 0 LOST. **Now base 6: 4 laps, 0 LOST, ~31 s a lap** (47.5 s at base 4), so ~4.7 cm/s *(calculated from the lap times)*. NFR-02 proposed "3 cm/s, 4 of 5 runs". NFR-11: motion 36/39 and imu 17/19 windows within 10 ms ±1 (max 11.5 / 11.7 ms), **open** |
 | S5 junction turns | **Built, not run on the car** | Sim only. **Blocked by hardware:** the GP7 KY-033 reads stuck HIGH, and must sit beside the line (D11) |
-| S6 hump | **Pass**, hump close fix not yet run on the car | Prof's hump (195 mm, 10 mm): 9.7 / 9.6 mm (NFR-05); no IMU fault, no false STOP_SCAN, line not lost. Hump mode now ends ~13 cm after the crest (was ~25) |
+| S6 hump | **Partly tested**: 2 of the planned 5 crossings; the hump-close fix not run on the car | Prof's hump (195 mm, 10 mm): 9.7 / 9.6 mm (NFR-05 OK); no IMU fault, no false STOP_SCAN, line not lost. The V_hump cap and 2 × t_lost never fired (speeds under the cap, no LOST). Hump mode should now end ~13 cm after the crest, not ~25 *(host test)* |
 | S7 obstacle | **Works**; NFR-07 not met | Probe bypass passes boxes of unknown depth and rejoins the line (user, attempts 3-4). Side choice by clearance; reverse when < 100 mm. NFR-07's 7 s is out of reach: the scan alone takes 3.9-5.3 s, the bypass ~20-30 s. Sim: 200 mm box 26.4 s, 500 mm box 34.5 s |
 | S8 full mission | **Not started** | D7 done. Missing: end-of-course trigger (D10), ≥ 5 full-course runs, AP/broker outage runs (NFR-09) |
 
@@ -145,20 +145,28 @@ Commit hashes are on `integration`; see section 11 for the full list.
   - Base 8 swung left and right: the slew limit, hard-turn timer and damper
     window are fixed in time, not distance.
 - **Turning** (`3580c38`): drive `MOTION_TURN_FWD_MM` (50, PROPOSED: GP7 to axle,
-  to measure), pivot 90° / 180° by encoder count, resume after a stop.
+  to measure), pivot 90° / 180° by encoder count (`MOTION_TURN_SPEED` 6), resume
+  after a stop. The same commit held the first bypass (fixed 45° legs and
+  L_pass), replaced by the probe bypass below.
 - **Bypass**, the probe bypass (`44b2955`, `bf892b5`, D14). By encoder count, for
   obstacles of unknown size:
-  1. **Sidestep:** pivot 70° out and look along the lane. If it is blocked, pivot
-     back and let scan re-plan the other side. Otherwise sidestep
+  1. **Sidestep:** pivot 70° out and look along the lane (servo 0°). Anything
+     closer than leg + 205 mm (capped at 511): pivot back to the heading and set
+     SIDE_BLOCKED, so scan re-plans the other side from its original profile.
+     No new command within 5 s: give up into Line Search. Otherwise sidestep
      offset / sin 70° and pivot back.
   2. **Alongside:** 250 then 100 mm steps. After each, pivot 45° toward the box,
-     scan looks square-on, pivot back.
-  3. **Passed** = clear (≥ 450 mm) after it was seen; then 120 mm more. Still
-     beside it at 1.5 m: no turn in (FR-18 "otherwise stop").
-  4. **Back in:** pivot 70° in, drive until GP26/GP27 see the line, 125 mm more
-     (sensor to axle), pivot onto the heading.
+     scan looks square-on, pivot back. A reading below 450 mm, no echo, or no
+     answer within 3 s counts as "still there".
+  3. **Passed** = clear (≥ 450 mm) after the box was seen once, or clear and
+     never seen after 450 mm alongside (shallower than a step); then 120 mm
+     more. Still beside it at 1.5 m: no turn in, so Line Search ends in
+     LINE_LOST (FR-18 "otherwise stop").
+  4. **Back in:** pivot 70° in, drive until GP26/GP27 see the line (at most
+     leg + 150 mm), 125 mm more (sensor to axle), pivot onto the heading.
   - Bypass pivots 10 counts/tick, legs 12. Pivots are scaled to 90 % (90°
-    turned ~100° at that speed).
+    turned ~100° at that speed). A stop on the way brakes; if it clears with
+    no new command the bypass carries on; a new BYPASS starts over.
 - **Hump** (`a0f9eba`, M3): every wheel target capped at V_hump 15 cm/s
   (18 counts/tick) while `hump_state` ≠ NONE. On a hump the line may be missing
   2 × t_lost (3 s) before Line Search.
@@ -196,6 +204,17 @@ Commit hashes are on `integration`; see section 11 for the full list.
 
 ### Buddy 1: comms and tools
 
+- **From `buddy_1`, not yet on `master`:**
+  - Wi-Fi-loss fault bit 5, latched into S, and the stall restart (S refused
+    twice while CONNECTED → reconnect) (`d3d697b`; docs `cf33ff6`, `88e2498`);
+  - subscribing to `cmd` and `map`, the inbound mailbox and the retained D
+    state (`4ff2389`);
+  - `snap`, `ping`, mission commands and the map check (M8a) (`25bbce2`; docs
+    `e980b93`);
+  - viewer: sends commands, bad-input tests, broker stop/start (`5d810be`);
+  - the PR #17 build workaround (`0a71379`), reverted once the missing files
+    arrived (`1b6abae`);
+  - a merge of `origin/master` into `buddy_1` (`c22694e`).
 - **Comms:**
   - S.mis from nav (`e77c62c`);
   - checked map → barcode_task (`14adcf7`);
@@ -285,7 +304,13 @@ Commit hashes are on `integration`; see section 11 for the full list.
   - Lost datagrams and bytes the car dropped show as `viewer` lines.
   - Allow UDP 31884 in the PC firewall, and set the serial port to none on
     wireless runs.
-  - Flashing still needs the cable.
+  - On the car: a 16 KB ring in `tm_com.c` (copied in `tm_snd_dat()`, never
+    waits; drops are counted) is drained by the radio task
+    (`lwip_utk_netlog.c`) in datagrams of up to 1 KB, whole lines. In this
+    profile `tm_usb_state()` reports the console ready at once, because the
+    tasks' 20 s wait for a USB host would stall every boot on battery.
+  - Flashing still needs the cable, and the last lines before a crash or
+    watchdog reset can be lost.
 - **Over MQTT alone** (no cable, no netlog) you only get the S/E/H/D records.
   Fault reasons, bypass phases, raw line values and tick timing are console
   only.
@@ -346,10 +371,14 @@ e2c4603 fix(comms): cap the MQTT retry back-off at 5 s (D7)
 4bdc9b2 feat(comms): wireless console debug profile (WIFI_NETLOG=1)
 4dc6f4d feat(tools): viewer shows the wireless console (WIFI_NETLOG=1 images)
 e2fccdb docs: WIFI_NETLOG debug profile in AGENTS.md and the example config
+071657b docs: integration baseline (docs/INTEGRATION.md)
 ```
 
-Against `origin/master` (`340da59`, PR #17), `integration` adds **48 commits**:
-the 39 above, plus 9 from `buddy_1` that had not reached `master`:
+(plus the review fixes to this file after `071657b`.)
+
+Against `origin/master` (`340da59`, PR #17), `integration` adds the 40 commits
+above (and the review commit), plus 9 from `buddy_1` that had not reached
+`master`:
 - the Wi-Fi-loss fault bit and the stall restart;
 - inbound `cmd` / `map` with the inbound mailbox and retained state (M8a);
 - viewer commands;
