@@ -1423,25 +1423,135 @@ bypass_begin (uint8_t side, uint16_t offset_mm)
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS);
 }
 
+/* The obstacle the stand-in scan_task sees during a bypass probe (D14),
+   in mm alongside from where the pass leg starts.  A probe looks square-on
+   at pass + 110 mm (the sensor after a 45 deg pivot); the HC-SR04 cone
+   adds 29 mm either way at that range.  near > far = no obstacle. */
+static int32_t	g_box_near;
+static int32_t	g_box_far;
+static int	g_scan_answers;		/* 0: scan_task never answers */
+static int	g_probes;
+static int	g_seen_probes;
+static uint32_t	g_max_phase;
+static uint32_t	g_phases;		/* bit per bypass phase visited */
+static int32_t	g_step_in_l;		/* positions when STEP_IN began */
+static int32_t	g_step_in_r;
+static int32_t	g_line_at_mm;		/* STEP_IN distance to the line */
+static uint16_t	g_lane_mm;		/* lane look reading (511 = clear) */
+static int	g_lane_looks;
+static int	g_switches;		/* SIDE_BLOCKED re-plans done */
+static uint16_t	g_other_offset;		/* the other side's offset */
+static int	g_no_replan;		/* stand-in ignores SIDE_BLOCKED */
+
+/* One tick with the stand-in scan_task and line model: answer a LOOK the
+   way scan_task does (a separate AVOID_LOOK command), and put the line
+   under the sensors g_line_at_mm into the step back in. */
+static void
+bypass_tick (void)
+{
+	uint16_t word = 0u;
+	int32_t  at;
+	int	 b_seen;
+
+	if ((g_scan_flag & SCAN_FLG_LOOK_AHEAD) != 0u) {
+		g_scan_flag &= ~SCAN_FLG_LOOK_AHEAD;
+		g_lane_looks++;
+		if (g_scan_answers) {
+			CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+						    MOTION_AVOID_SIDE_NONE,
+						    g_lane_mm, &word));
+			CHECK(sim_send_avoid(word));
+		}
+	}
+	if (((g_scan_flag & SCAN_FLG_SIDE_BLOCKED) != 0u) && !g_no_replan) {
+		/* scan_task's switch_side(): STOP_SCAN, the other side's BYPASS,
+		   STOP_SCAN cleared; the new lane is clear */
+		g_scan_flag &= ~SCAN_FLG_SIDE_BLOCKED;
+		g_switches++;
+		g_lane_mm = 511u;
+		stop_request(MOTION_EVT_STOP_SCAN, 0);
+		sim_tick();
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+		CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+					    (g_ctx.bypass_side > 0)
+						? MOTION_AVOID_SIDE_RIGHT
+						: MOTION_AVOID_SIDE_LEFT,
+					    g_other_offset, &word));
+		CHECK(sim_send_avoid(word));
+		sim_tick();
+		(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+		g_max_phase = 0u;
+	}
+	if ((g_scan_flag & SCAN_FLG_LOOK) != 0u) {
+		g_scan_flag &= ~SCAN_FLG_LOOK;
+		g_probes++;
+		at = g_ctx.bypass_pass_mm + 110;
+		b_seen = (g_box_near <= g_box_far)
+			 && ((at + 29) >= g_box_near) && ((at - 29) <= g_box_far);
+		g_seen_probes += b_seen;
+		if (g_scan_answers) {
+			CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+						    MOTION_AVOID_SIDE_NONE,
+						    b_seen ? 108u : 511u, &word));
+			CHECK(sim_send_avoid(word));
+		}
+	}
+	g_phases |= (1u << g_ctx.bypass_phase);
+	if (g_ctx.bypass_phase > g_max_phase) {
+		g_max_phase = g_ctx.bypass_phase;
+		if (BYP_PH_STEP_IN == g_ctx.bypass_phase) {
+			g_step_in_l = g_ctx.pos_l;
+			g_step_in_r = g_ctx.pos_r;
+		}
+	}
+	if ((BYP_PH_STEP_IN == g_ctx.bypass_phase)
+	    && (FWD_MM(g_ctx.pos_l - g_step_in_l, g_ctx.pos_r - g_step_in_r)
+		>= g_line_at_mm)) {
+		g_line.rl = LINE_RL_JUNCTION;		/* both black: the line */
+		g_line.dark_ms = 0u;
+	}
+	sim_tick();
+}
+
+/* Start a bypass around a box (near..far alongside), off the line. */
+static void
+bypass_setup (uint8_t side, uint16_t offset_mm, int32_t near_mm,
+	      int32_t far_mm)
+{
+	g_box_near     = near_mm;
+	g_box_far      = far_mm;
+	g_scan_answers = 1;
+	g_probes       = 0;
+	g_seen_probes  = 0;
+	g_max_phase    = 0u;
+	g_phases       = 0u;
+	g_line_at_mm   = (int32_t)offset_mm;
+	g_lane_mm      = 511u;
+	g_lane_looks   = 0;
+	g_switches     = 0;
+	g_other_offset = offset_mm;
+	bypass_begin(side, offset_mm);
+	g_line.rl = LINE_RL_CENTRED;			/* both white: off it */
+	g_line.dark_ms = 5000u;				/* for a while */
+}
+
 /* Ticks until the bypass ends (-1: never). */
 static int
 bypass_finish (void)
 {
 	int n = 0;
 
-	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS) && (n < 6000)) {
-		sim_tick();
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS) && (n < 12000)) {
+		bypass_tick();
 		n++;
 	}
-	return (n < 6000) ? n : -1;
+	return (n < 12000) ? n : -1;
 }
 
-/* path length of the straight legs: 2 x offset / sin 45 + L_pass */
-#define BYP_PATH_MM(off)	((2 * (((off) * MOTION_BYPASS_LEG_X1000) / 1000)) + MOTION_BYPASS_PASS_MM)
-
-/* avoid_cmd_mbf: BYPASS drives out, alongside and back by encoder count,
-   ends on its original heading, then the search finds the line and tells
-   nav and scan (FR-18 to FR-20). */
+/* avoid_cmd_mbf: BYPASS goes round a 200 mm box it was never told the
+   depth of: sidestep, probe alongside until the box is seen and then
+   clear, step back in to the line, and onto the old heading; then the
+   search finds the line at once and tells nav and scan (FR-18 to FR-20). */
 static void
 scenario_bypass (void)
 {
@@ -1451,43 +1561,142 @@ scenario_bypass (void)
 	int32_t dr;
 	int	n;
 
-	sim_reset("bypass: LEFT 150 mm, back on the heading, LINE_FOUND to nav and scan");
-	bypass_begin(MOTION_AVOID_SIDE_LEFT, 150u);
+	/* d_c 246 mm: near face 155 + 246 = 401, 200 mm deep */
+	sim_reset("bypass: LEFT round a 200 mm box of unknown depth, back on the line");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
 	l0 = g_ctx.pos_l;
 	r0 = g_ctx.pos_r;
 	CHECK(g_ctx.bypass_side == 1);
 	n = bypass_finish();
 	CHECK(n > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	CHECK(g_ctx.b_bypass_seen);
+	CHECK(g_seen_probes >= 1);
+	CHECK(g_probes >= g_seen_probes + 1);		/* ends on the first clear after it */
+	/* the last look was clear: far face + 29 < pass + 110 */
+	CHECK(g_ctx.bypass_pass_mm + 110 - 29 > 601);
 	dl = g_ctx.pos_l - l0;
 	dr = g_ctx.pos_r - r0;
 	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
-	CHECK(FWD_MM(dl, dr) >= BYP_PATH_MM(150) - 10);
-	CHECK(FWD_MM(dl, dr) <= BYP_PATH_MM(150) + 30);
-	CHECK(g_ctx.line_dir == -1);			/* line to the right now */
-	sim_ticks(10);
+	sim_ticks(20);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 	CHECK((g_nav_flag & NAV_FLG_LINE_FOUND) != 0u);
 	CHECK((g_scan_flag & SCAN_FLG_LINE_FOUND) != 0u);
 	CHECK(strstr(g_log, "avoid_cmd BYPASS left") != NULL);
-	(void)printf("-- bypass 150 mm: %d ticks (%d.%02d s) in Bypass\n", n,
-		     n / 100, n % 100);
+	CHECK(strstr(g_log, "avoid_cmd LOOK") != NULL);
+	(void)printf("-- bypass 200 mm box, offset 300: %d ticks (%d.%02d s), %d probes, %d mm alongside\n",
+		     n, n / 100, n % 100, g_probes, (int)g_ctx.bypass_pass_mm);
 
-	sim_reset("bypass: RIGHT pivots clockwise first, line to the left after");
-	bypass_begin(MOTION_AVOID_SIDE_RIGHT, 150u);
+	sim_reset("bypass: RIGHT pivots clockwise first, back on the heading");
+	bypass_setup(MOTION_AVOID_SIDE_RIGHT, 300u, 401, 601);
 	l0 = g_ctx.pos_l;
 	r0 = g_ctx.pos_r;
 	sim_ticks(20);
 	CHECK((g_ctx.pos_r - r0) < (g_ctx.pos_l - l0));	/* clockwise */
 	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
 	dl = g_ctx.pos_l - l0;
 	dr = g_ctx.pos_r - r0;
 	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
-	CHECK(g_ctx.line_dir == 1);
+
+	sim_reset("bypass: a 500 mm deep box takes more probes, same ending");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 901);
+	n = bypass_finish();
+	CHECK(n > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	CHECK(g_ctx.bypass_pass_mm + 110 - 29 > 901);
+	(void)printf("-- bypass 500 mm box: %d ticks (%d.%02d s), %d probes\n",
+		     n, n / 100, n % 100, g_probes);
+
+	sim_reset("bypass: nothing seen alongside: in once past UNSEEN_MM");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 1, 0);
+	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	CHECK(!g_ctx.b_bypass_seen);
+	CHECK(g_ctx.bypass_pass_mm >= MOTION_BYPASS_UNSEEN_MM);
+	CHECK(g_ctx.bypass_pass_mm < MOTION_BYPASS_UNSEEN_MM + MOTION_BYPASS_STEP_MM + 10);
+
+	sim_reset("bypass: line found early on the way in: onto it from there");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
+	g_line_at_mm = 200;
+	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	sim_ticks(20);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+}
+
+/* The sidestep lane is blocked (S7 attempt 3: a blocker outside the scan's
+   view): the car pivots back to its heading before driving it, scan_task
+   re-plans the other side from its profile, and that bypass runs
+   normally, back on the heading. */
+static void
+scenario_bypass_lane_blocked (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int32_t dl;
+	int32_t dr;
+
+	sim_reset("bypass: RIGHT lane blocked: back on the heading, LEFT instead");
+	bypass_setup(MOTION_AVOID_SIDE_RIGHT, 300u, 401, 601);
+	g_lane_mm = 250u;				/* blocker 25 cm along it */
+	g_other_offset = 310u;
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	CHECK(bypass_finish() > 0);
+	CHECK(g_switches == 1);
+	CHECK(g_lane_looks == 2);			/* one per side */
+	CHECK(g_ctx.bypass_side == 1);			/* went left */
+	CHECK(g_ctx.bypass_off_mm == 310);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	dl = g_ctx.pos_l - l0;
+	dr = g_ctx.pos_r - r0;
+	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
+	sim_ticks(20);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK(strstr(g_log, "avoid_cmd BYPASS left 310 mm") != NULL);
+
+	sim_reset("bypass: lane blocked and no re-plan within 5 s: no sidestep, gives up");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
+	g_lane_mm = 250u;
+	g_no_replan = 1;
+	CHECK(bypass_finish() > 0);
+	g_no_replan = 0;
+	CHECK((g_phases & (1u << BYP_PH_SIDESTEP)) == 0u);
+	CHECK((g_phases & (1u << BYP_PH_SWITCH)) != 0u);
+	CHECK(g_switches == 0);
+}
+
+/* An obstacle longer than MOTION_BYPASS_MAX_PASS_MM, or a scan_task that
+   never answers, never turns the car in beside it (FR-18 "otherwise
+   stop"): the bypass ends without stepping in and the search reports
+   LINE_LOST. */
+static void
+scenario_bypass_give_up (void)
+{
+	sim_reset("bypass: still beside it after MAX_PASS_MM: no turn in, LINE_LOST");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 5000);
+	CHECK(bypass_finish() > 0);
+	CHECK((g_phases & (1u << BYP_PH_TURN_IN)) == 0u);	/* never went in */
+	CHECK(g_ctx.bypass_pass_mm >= MOTION_BYPASS_MAX_PASS_MM);
+	sim_ticks(2000);
+	(void)printf("-- give up: state %d, nav 0x%x\n",
+		     (int)motion_sm_state(&g_ctx.sm), (unsigned)g_nav_flag);
+	CHECK((g_nav_flag & NAV_FLG_LINE_LOST) != 0u);
+
+	sim_reset("bypass: no answer to a look counts as blocked / still there");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 1, 0);
+	g_scan_answers = 0;
+	g_no_replan = 1;
+	CHECK(bypass_finish() > 0);
+	g_no_replan = 0;
+	CHECK((g_phases & (1u << BYP_PH_SIDESTEP)) == 0u);	/* lane unknown */
+	CHECK((g_phases & (1u << BYP_PH_TURN_IN)) == 0u);
 }
 
 /* A stop during the bypass (the obstacle seen again) brakes it; if it
-   clears with no new command the same bypass carries on and ends as one
-   uninterrupted run would. */
+   clears with no new command the same bypass carries on from the same
+   phase and ends as one uninterrupted run would. */
 static void
 scenario_bypass_resume (void)
 {
@@ -1496,12 +1705,12 @@ scenario_bypass_resume (void)
 	int32_t dl;
 	int32_t dr;
 
-	sim_reset("bypass: a stop on the way out, cleared, the bypass carries on");
-	bypass_begin(MOTION_AVOID_SIDE_LEFT, 150u);
+	sim_reset("bypass: a stop alongside, cleared, the bypass carries on");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
 	l0 = g_ctx.pos_l;
 	r0 = g_ctx.pos_r;
-	while ((g_ctx.bypass_phase < 3u) && (g_tick < 6000)) {	/* alongside */
-		sim_tick();
+	while ((g_ctx.bypass_phase < BYP_PH_STEP) && (g_tick < 12000)) {
+		bypass_tick();
 	}
 	sim_ticks(20);
 	stop_request(MOTION_EVT_STOP_SCAN, 1);
@@ -1511,13 +1720,12 @@ scenario_bypass_resume (void)
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS);
-	CHECK(g_ctx.bypass_phase == 3u);
+	CHECK(g_ctx.bypass_phase == BYP_PH_STEP);
 	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
 	dl = g_ctx.pos_l - l0;
 	dr = g_ctx.pos_r - r0;
 	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
-	CHECK(FWD_MM(dl, dr) >= BYP_PATH_MM(150) - 10);
-	CHECK(FWD_MM(dl, dr) <= BYP_PATH_MM(150) + 40);
 }
 
 /* A JUNCTION outside Line Following is refused; unknown commands and a bad
@@ -2358,6 +2566,8 @@ main (int argc, char **argv)
 	scenario_turn_no_line();
 	scenario_turn_resume();
 	scenario_bypass();
+	scenario_bypass_give_up();
+	scenario_bypass_lane_blocked();
 	scenario_bypass_resume();
 	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();

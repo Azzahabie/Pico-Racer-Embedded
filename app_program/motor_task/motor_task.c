@@ -309,9 +309,15 @@ typedef struct
     /* bypass: side, offset and leg, kept like the turn's */
     int32_t bypass_side;    /* +1 left (counter-clockwise), -1 right */
     int32_t bypass_off_mm;  /* lateral offset from scan_task         */
-    uint8_t bypass_phase;   /* leg 0..BYP_PH_DONE                   */
-    int32_t bypass_start_l; /* positions at the leg's start          */
+    uint8_t bypass_phase;   /* BYP_PH_*                              */
+    int32_t bypass_start_l; /* positions at the phase's start        */
     int32_t bypass_start_r;
+    int32_t bypass_pass_mm; /* driven alongside so far               */
+    bool    b_bypass_seen;  /* a probe has seen the obstacle         */
+    bool    b_look_present; /* the last probe's answer               */
+    uint8_t look_state;     /* LOOK_*: the probe's request to scan   */
+    uint16_t look_mm;       /* scan_task's AVOID_LOOK reading        */
+    uint32_t look_ticks;    /* ticks waited for it                   */
 
     /* reporting */
     int32_t  rep_l;
@@ -1354,8 +1360,47 @@ sm_send_replies (uint32_t replies)
 /* Bypass legs (motion_cfg.h): pivot out, out, pivot parallel, alongside,
    pivot in, back in, pivot parallel.  The pivot direction of each leg, x
    the side; 0 = a straight leg. */
-#define BYP_PH_DONE (7u)
-static int8_t const g_byp_pivot[BYP_PH_DONE] = { 1, 0, -1, 0, -1, 0, 1 };
+/* Bypass phases (motion_cfg.h, D14).  Each measures from its own start. */
+#define BYP_PH_OUT       (0u)  /* pivot SIDE_DEG toward the side      */
+#define BYP_PH_LANE_LOOK (1u)  /* braked: scan_task looks along it    */
+#define BYP_PH_LANE_BACK (2u)  /* blocked: pivot back to the heading  */
+#define BYP_PH_SWITCH    (3u)  /* braked: scan_task picks the other   */
+#define BYP_PH_SIDESTEP  (4u)  /* offset / sin SIDE_DEG               */
+#define BYP_PH_PARALLEL  (5u)  /* pivot SIDE_DEG back to the heading  */
+#define BYP_PH_STEP      (6u)  /* alongside, one step                 */
+#define BYP_PH_PROBE_IN  (7u)  /* pivot 45 toward the obstacle        */
+#define BYP_PH_LOOK      (8u)  /* braked: scan_task looks at its side */
+#define BYP_PH_PROBE_OUT (9u)  /* pivot 45 back                       */
+#define BYP_PH_CLEAR     (10u) /* past the far face                   */
+#define BYP_PH_TURN_IN   (11u) /* pivot SIDE_DEG toward the line      */
+#define BYP_PH_STEP_IN   (12u) /* until GP26/GP27 see the line        */
+#define BYP_PH_ONTO      (13u) /* axle onto the line                  */
+#define BYP_PH_ALONG     (14u) /* pivot SIDE_DEG onto the heading     */
+#define BYP_PH_DONE      (15u)
+
+/* Pivot direction of each phase, x the side (+1 = toward the bypass
+   side), and its angle; 0 = straight or braked (the looks, SWITCH, DONE). */
+static int8_t const g_byp_turn[BYP_PH_DONE] = {
+    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1
+};
+static uint8_t const g_byp_deg[BYP_PH_DONE] = {
+    MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
+    MOTION_BYPASS_SIDE_DEG, 0, 45, 0, 45, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
+    MOTION_BYPASS_SIDE_DEG
+};
+
+/* A bypass pivot's encoder target: scaled for the overshoot measured at
+   the bypass pivot speed (S7 attempt 3). */
+#define BYP_PIVOT_COUNTS(deg)                                                  \
+    ((PIVOT_COUNTS(deg) * MOTION_BYPASS_PIVOT_PCT) / 100)
+
+/* The sidestep leg and the lane it needs clear ahead (capped at the
+   largest LOOK reading, 511 = nothing in range). */
+#define BYP_LEG_MM(off) (((off) * MOTION_BYPASS_SIDE_LEG_X1000) / 1000)
+
+#define LOOK_NONE     (0u)
+#define LOOK_ASKED    (1u)
+#define LOOK_ANSWERED (2u)
 
 /* Has the manoeuvre of this state reached its target? */
 static bool
@@ -1508,9 +1553,14 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
         p_ctx->bypass_side    = (MOTION_AVOID_SIDE_RIGHT == p_ctx->avoid_side)
                                     ? -1 : 1;
         p_ctx->bypass_off_mm  = (int32_t)p_ctx->avoid_mm;
-        p_ctx->bypass_phase   = 0u;
+        p_ctx->bypass_phase   = BYP_PH_OUT;
         p_ctx->bypass_start_l = p_ctx->pos_l;
         p_ctx->bypass_start_r = p_ctx->pos_r;
+        p_ctx->bypass_pass_mm = 0;
+        p_ctx->b_bypass_seen  = false;
+        p_ctx->b_look_present = false;
+        p_ctx->look_state     = LOOK_NONE;
+        p_ctx->look_ticks     = 0u;
     }
     else if ((MOTION_ST_TURNING == state) && !b_resumed)
     {
@@ -1707,71 +1757,241 @@ turn_drive (motion_ctx_t *p_ctx)
     }
 }
 
-/* BYPASS (FR-18): the legs in g_byp_pivot, each measured from its own
-   start.  At the end the line is on the far side from the bypass, so the
-   search that follows looks there first. */
+/* Next bypass phase: its own start positions and a fresh PID. */
+static void
+byp_next (motion_ctx_t *p_ctx, uint32_t ph)
+{
+    p_ctx->bypass_phase   = (uint8_t)ph;
+    p_ctx->bypass_start_l = p_ctx->pos_l;
+    p_ctx->bypass_start_r = p_ctx->pos_r;
+    p_ctx->look_ticks     = 0u;
+    motion_pid_reset(&p_ctx->pid_l);
+    motion_pid_reset(&p_ctx->pid_r);
+}
+
+/* Ask scan_task to look (SCAN_FLG_LOOK or SCAN_FLG_LOOK_AHEAD); the answer
+   comes back as an AVOID_LOOK command (take_commands). */
+static void
+byp_ask (motion_ctx_t *p_ctx, UINT bit)
+{
+    ID scan_id = scan_if_flag();
+
+    p_ctx->look_state = LOOK_ASKED;
+    if (scan_id > 0)
+    {
+        (void)tk_set_flg(scan_id, bit);
+    }
+}
+
+/* A look is over when answered or timed out; a timeout counts as "something
+   there".  true when over, with *p_near set when it read below near_mm. */
+static bool
+byp_look_done (motion_ctx_t *p_ctx, int32_t near_mm, bool *p_near)
+{
+    bool b_done;
+
+    p_ctx->look_ticks++;
+    b_done = (LOOK_ANSWERED == p_ctx->look_state)
+             || (p_ctx->look_ticks >= MOTION_BYPASS_LOOK_TICKS);
+    if (b_done)
+    {
+        *p_near = (LOOK_ANSWERED != p_ctx->look_state)
+                  || ((int32_t)p_ctx->look_mm < near_mm);
+        p_ctx->look_state = LOOK_NONE;
+    }
+    return b_done;
+}
+
+/* After a probe, back on the heading: go past, give up, or another step. */
+static void
+byp_after_probe (motion_ctx_t *p_ctx)
+{
+    if (p_ctx->b_look_present)
+    {
+        p_ctx->b_bypass_seen = true;
+    }
+    if (!p_ctx->b_look_present
+        && (p_ctx->b_bypass_seen
+            || (p_ctx->bypass_pass_mm >= MOTION_BYPASS_UNSEEN_MM)))
+    {
+        byp_next(p_ctx, BYP_PH_CLEAR);
+    }
+    else if (p_ctx->bypass_pass_mm >= MOTION_BYPASS_MAX_PASS_MM)
+    {
+        /* Still beside it: no safe way back in (FR-18 "otherwise stop"). */
+        byp_next(p_ctx, BYP_PH_DONE);
+        p_ctx->line_dir = -p_ctx->bypass_side;
+    }
+    else
+    {
+        byp_next(p_ctx, BYP_PH_STEP);
+    }
+}
+
+/* BYPASS (FR-18, D14): the phases in motion_cfg.h.  It ends with the axle
+   on the line and the car on its old heading, so Line Search finds the
+   line at once. */
 static void
 bypass_drive (motion_ctx_t *p_ctx)
 {
-    uint32_t ph = p_ctx->bypass_phase;
-    int32_t  dl = p_ctx->pos_l - p_ctx->bypass_start_l;
-    int32_t  dr = p_ctx->pos_r - p_ctx->bypass_start_r;
+    uint32_t ph    = p_ctx->bypass_phase;
+    int32_t  side  = p_ctx->bypass_side;
+    int32_t  dl    = p_ctx->pos_l - p_ctx->bypass_start_l;
+    int32_t  dr    = p_ctx->pos_r - p_ctx->bypass_start_r;
+    int32_t  moved = motion_ds_dist_mm(dl, dr);
+    int32_t  leg   = BYP_LEG_MM(p_ctx->bypass_off_mm);
+    int32_t  lane  = leg + MOTION_BYPASS_LANE_MARGIN_MM;
+    int32_t  turned;
     int32_t  dir;
-    bool     b_next;
+    bool     b_pivot_done;
+    bool     b_near;
+    ID       scan_id;
 
-    if (ph < BYP_PH_DONE)
+    dir          = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
+    turned       = ((dr - dl) / 2) * dir;
+    b_pivot_done = (0 != dir)
+                   && (turned >= BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph]));
+    if (lane > (int32_t)MOTION_AVOID_DIST_MAX)
     {
-        dir = (int32_t)g_byp_pivot[ph] * p_ctx->bypass_side;
-        if (0 != dir)
-        {
-            b_next = ((((dr - dl) / 2) * dir)
-                      >= PIVOT_COUNTS(MOTION_BYPASS_DEG));
-        }
-        else
-        {
-            b_next = (motion_ds_dist_mm(dl, dr)
-                      >= ((3u == ph) ? MOTION_BYPASS_PASS_MM
-                                     : ((p_ctx->bypass_off_mm
-                                         * MOTION_BYPASS_LEG_X1000)
-                                        / 1000)));
-        }
-        if (b_next)
-        {
-            ph++;
-            p_ctx->bypass_phase   = (uint8_t)ph;
-            p_ctx->bypass_start_l = p_ctx->pos_l;
-            p_ctx->bypass_start_r = p_ctx->pos_r;
-            motion_pid_reset(&p_ctx->pid_l);
-            motion_pid_reset(&p_ctx->pid_r);
-            if (BYP_PH_DONE == ph)
-            {
-                p_ctx->line_dir = -p_ctx->bypass_side;
-            }
-        }
+        lane = (int32_t)MOTION_AVOID_DIST_MAX; /* 511 = nothing in range */
     }
 
-    if (ph >= BYP_PH_DONE)
+    switch (ph)
+    {
+        case BYP_PH_OUT:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_LANE_LOOK);
+                byp_ask(p_ctx, SCAN_FLG_LOOK_AHEAD);
+            }
+            break;
+        case BYP_PH_LANE_LOOK:
+            if (byp_look_done(p_ctx, lane, &b_near))
+            {
+                byp_next(p_ctx, b_near ? BYP_PH_LANE_BACK : BYP_PH_SIDESTEP);
+            }
+            break;
+        case BYP_PH_LANE_BACK:
+            if (b_pivot_done)
+            {
+                /* Back on the heading scan_task planned in: it re-plans
+                   the other side from that profile, or Blocked. */
+                byp_next(p_ctx, BYP_PH_SWITCH);
+                scan_id = scan_if_flag();
+                if (scan_id > 0)
+                {
+                    (void)tk_set_flg(scan_id, SCAN_FLG_SIDE_BLOCKED);
+                }
+            }
+            break;
+        case BYP_PH_SWITCH:
+            /* A new BYPASS (after STOP_SCAN) starts over; none: give up. */
+            p_ctx->look_ticks++;
+            if (p_ctx->look_ticks >= MOTION_BYPASS_SWITCH_TICKS)
+            {
+                byp_next(p_ctx, BYP_PH_DONE);
+                p_ctx->line_dir = -side;
+            }
+            break;
+        case BYP_PH_SIDESTEP:
+            if (moved >= leg)
+            {
+                byp_next(p_ctx, BYP_PH_PARALLEL);
+            }
+            break;
+        case BYP_PH_PARALLEL:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_STEP);
+            }
+            break;
+        case BYP_PH_STEP:
+            if (moved >= ((0 == p_ctx->bypass_pass_mm) ? MOTION_BYPASS_FIRST_MM
+                                                       : MOTION_BYPASS_STEP_MM))
+            {
+                p_ctx->bypass_pass_mm += moved;
+                byp_next(p_ctx, BYP_PH_PROBE_IN);
+            }
+            break;
+        case BYP_PH_PROBE_IN:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_LOOK);
+                byp_ask(p_ctx, SCAN_FLG_LOOK);
+            }
+            break;
+        case BYP_PH_LOOK:
+            if (byp_look_done(p_ctx, MOTION_BYPASS_SEEN_MM, &b_near))
+            {
+                p_ctx->b_look_present = b_near;
+                byp_next(p_ctx, BYP_PH_PROBE_OUT);
+            }
+            break;
+        case BYP_PH_PROBE_OUT:
+            if (b_pivot_done)
+            {
+                byp_after_probe(p_ctx);
+            }
+            break;
+        case BYP_PH_CLEAR:
+            if (moved >= MOTION_BYPASS_CLEAR_MM)
+            {
+                byp_next(p_ctx, BYP_PH_TURN_IN);
+            }
+            break;
+        case BYP_PH_TURN_IN:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_STEP_IN);
+            }
+            break;
+        case BYP_PH_STEP_IN:
+            /* LINE_RL_CENTRED is "both white": anything else is the line. */
+            if ((LINE_RL_CENTRED != line_state_rl(p_ctx->line_word))
+                || (moved >= (leg + MOTION_BYPASS_IN_EXTRA_MM)))
+            {
+                byp_next(p_ctx, BYP_PH_ONTO);
+            }
+            break;
+        case BYP_PH_ONTO:
+            if (moved >= MOTION_LINE_SENSOR_MM)
+            {
+                byp_next(p_ctx, BYP_PH_ALONG);
+            }
+            break;
+        case BYP_PH_ALONG:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_DONE);
+                p_ctx->line_dir = -side;
+            }
+            break;
+        default:
+            /* Done: braked until the statechart leaves Bypass. */
+            break;
+    }
+
+    ph  = p_ctx->bypass_phase;
+    dir = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
+    if ((ph >= BYP_PH_DONE) || (BYP_PH_LOOK == ph)
+        || (BYP_PH_LANE_LOOK == ph) || (BYP_PH_SWITCH == ph))
     {
         p_ctx->cmd_l = 0;
         p_ctx->cmd_r = 0;
     }
+    else if (0 != dir)
+    {
+        p_ctx->cmd_l = motion_pid_step(
+            &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(
+            &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
+    }
     else
     {
-        dir = (int32_t)g_byp_pivot[ph] * p_ctx->bypass_side;
-        if (0 != dir)
-        {
-            p_ctx->cmd_l = motion_pid_step(
-                &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
-            p_ctx->cmd_r = motion_pid_step(
-                &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
-        }
-        else
-        {
-            p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_BYPASS_SPEED,
-                                           p_ctx->d_l);
-            p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_BYPASS_SPEED,
-                                           p_ctx->d_r);
-        }
+        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_BYPASS_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_BYPASS_SPEED,
+                                       p_ctx->d_r);
     }
 }
 
@@ -1866,7 +2086,19 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         && ((INT)CMD_MSG_BYTES == tk_rcv_mbf(g_avoid_mbfid, &word, TMO_POL)))
     {
         res = CMD_RES_INVALID;
-        if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
+        if (motion_avoid_cmd_unpack(word, &op, &side, &mm)
+            && (MOTION_AVOID_OP_LOOK == op))
+        {
+            /* A probe's answer (D14), not a manoeuvre: kept only while
+               a probe is waiting for it. */
+            res = CMD_RES_TAKEN;
+            if (LOOK_ASKED == p_ctx->look_state)
+            {
+                p_ctx->look_mm    = mm;
+                p_ctx->look_state = LOOK_ANSWERED;
+            }
+        }
+        else if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
         {
             res              = CMD_RES_TAKEN;
             p_ctx->avoid_mm   = mm;
@@ -2568,6 +2800,7 @@ print_cmd (UB *p_line, motion_report_t const *p_rep)
         if (motion_avoid_cmd_unpack((uint16_t)raw, &op, &side, &mm))
         {
             what = (MOTION_AVOID_OP_REVERSE == op) ? "REVERSE"
+                   : (MOTION_AVOID_OP_LOOK == op)     ? "LOOK"
                    : (MOTION_AVOID_SIDE_LEFT == side) ? "BYPASS left"
                                                       : "BYPASS right";
         }

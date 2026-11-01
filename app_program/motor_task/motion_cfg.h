@@ -177,20 +177,64 @@
 #define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
 #define MOTION_TURN_SPEED     (6)
 
-/* Bypass (statechart BYPASS, FR-18), by encoder count, ignoring the line:
-   pivot MOTION_BYPASS_DEG toward the side in scan_task's command, drive
-   out until the car is the command's lateral offset to that side (leg =
-   offset / sin 45 deg), pivot back parallel, drive MOTION_BYPASS_PASS_MM
-   ([L_pass]) alongside the obstacle, pivot in, drive the same leg back to
-   the line, pivot parallel again; then Line Search, toward the line.  A
-   stop on the way brakes it; it carries on if the stop clears with no new
-   command, and a new BYPASS from scan_task starts over.
-   PROPOSED: L_pass to be set on the floor; legs at the reverse speed. */
-#define MOTION_BYPASS_DEG        (45)
-#define MOTION_BYPASS_LEG_X1000  (1414) /* 1 / sin 45 deg, x 1000       */
-#define MOTION_BYPASS_PASS_MM    (250)
-#define MOTION_BYPASS_SPEED      (MOTION_REV_TARGET)
-#define MOTION_BYPASS_TURN_SPEED (MOTION_TURN_SPEED)
+/* Bypass (statechart BYPASS, FR-18; Integration Rules D14), by encoder
+   count: a rectangle with side probes, so an obstacle of unknown size is
+   passed (S7 attempts 1-2: fixed 45 deg legs hit long boxes, went wide
+   and came back to the line late).  Turns: + = toward the bypass side.
+     1. Pivot MOTION_BYPASS_SIDE_DEG out, look along the sidestep (lane
+        check, below), drive offset / sin SIDE_DEG, pivot back.  All of
+        it happens behind the obstacle (>= 255 mm ahead of the axle).
+     2. Drive alongside, MOTION_BYPASS_FIRST_MM, then MOTION_BYPASS_STEP_MM
+        at a time.  After each step: pivot 45 toward the obstacle, set
+        SCAN_FLG_LOOK so scan_task looks with the servo 45 the same way
+        (square-on to its side: at 45 deg incidence the box reflects the
+        sound away, S7 echo test 1 Nov), pivot 45 back.  A reading below
+        MOTION_BYPASS_SEEN_MM, no echo, or no answer within
+        MOTION_BYPASS_LOOK_TICKS = still there.
+     3. Passed = clear after it was seen once, or clear and never seen
+        after MOTION_BYPASS_UNSEEN_MM alongside (shallower than a step).
+        Then MOTION_BYPASS_CLEAR_MM more: a clear look means the far face
+        is behind axle + 110 - 29 (the beam cone at 108 mm); stepping in
+        needs it behind the axle - 63 (half width) - 50 (margin).
+     4. Pivot SIDE_DEG in, drive toward the line until GP26/GP27 see it
+        (at most the leg + MOTION_BYPASS_IN_EXTRA_MM), MOTION_LINE_SENSOR_MM
+        more so the axle is on the line, pivot SIDE_DEG onto the heading.
+   Still there after MOTION_BYPASS_MAX_PASS_MM alongside: give up into
+   Line Search (FR-18 "otherwise stop": it ends in LINE_LOST).
+   A stop on the way brakes it; it carries on if the stop clears with no
+   new command, and a new BYPASS from scan_task starts over.
+   The probe pivots happen beside the obstacle, so C_pass 218 (D12) keeps
+   the 168 mm corner sweep clear of it. */
+/* S7 attempt 3 (1 Nov): the 90 deg pivots turned about 100 deg at the
+   bypass pivot speed (user, by eye), so bypass pivots are scaled to 90 %
+   of their encoder count.  The sidestep and the turn back in are
+   MOTION_BYPASS_SIDE_DEG (70, user suggestion) instead of 90: the leg is
+   offset / sin 70 (MOTION_BYPASS_SIDE_LEG_X1000), and stepping in at 70
+   needs the axle only far face + 38 mm, not + 113 (calculated).
+   Before the sidestep the car looks along it (servo 0): anything closer
+   than the leg + MOTION_BYPASS_LANE_MARGIN_MM (front 155 + 50) and it
+   pivots back to its heading and sets SCAN_FLG_SIDE_BLOCKED, so
+   scan_task re-plans the other side from its original profile instead
+   of re-scanning sideways (attempt 3: right side blocked out of the
+   scan's view).  No new command within MOTION_BYPASS_SWITCH_TICKS: Line
+   Search (it ends in LINE_LOST). */
+#define MOTION_BYPASS_PIVOT_PCT       (90)
+#define MOTION_BYPASS_SIDE_DEG        (70)
+#define MOTION_BYPASS_SIDE_LEG_X1000  (1064)  /* 1 / sin 70 deg, x 1000 */
+#define MOTION_BYPASS_LANE_MARGIN_MM  (205)
+#define MOTION_BYPASS_SWITCH_TICKS    (500u)  /* 5 s */
+#define MOTION_BYPASS_FIRST_MM    (250)
+#define MOTION_BYPASS_STEP_MM     (100)
+#define MOTION_BYPASS_UNSEEN_MM   (450)
+#define MOTION_BYPASS_CLEAR_MM    (200)
+#define MOTION_BYPASS_MAX_PASS_MM (1500)
+#define MOTION_BYPASS_IN_EXTRA_MM (150)
+#define MOTION_BYPASS_SEEN_MM     (300)
+#define MOTION_BYPASS_LOOK_TICKS  (300u)  /* 3 s with no answer: still there */
+#define MOTION_LINE_SENSOR_MM     (125)   /* GP26/GP27 to the axle, measured 1 Nov */
+/* Raised 1 Nov (user OK): legs 10 -> 12 counts per tick, pivots 6 -> 10. */
+#define MOTION_BYPASS_SPEED       (12)
+#define MOTION_BYPASS_TURN_SPEED  (10)
 
 /* Measured on the car, docs/motion/results.md: counts per wheel turn
    (x4 quadrature, 2 trials), wheel diameter and the distance between the
