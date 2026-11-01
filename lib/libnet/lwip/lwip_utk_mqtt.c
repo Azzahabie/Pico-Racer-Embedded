@@ -56,8 +56,13 @@
    at 15 s that swamped the backoff ladder and put NFR-09's 15 s recovery at
    risk (first hardware test, 2026-10-21).  A LAN CONNACK takes milliseconds. */
 #define UTK_MQTT_CONNECT_TIMEOUT_MS  5000U
+/* Retry wait 2 s, then 4 s, then 5 s every time: the design's fixed 2-5 s
+   back-off (W6 8.2 / 6.1, Tribunal A; Integration Rules D7).  It used to
+   double to 15 s, and an attempt just before the AP or broker returned then
+   waited the full 15 s, which alone could break NFR-09's 15 s recovery
+   (NETWORKING.md section 5, 2026-10-29: 31.8 s after an SSID outage). */
 #define UTK_MQTT_BACKOFF_FIRST_MS    2000U
-#define UTK_MQTT_BACKOFF_MAX_MS     15000U
+#define UTK_MQTT_BACKOFF_MAX_MS      5000U
 
 #define UTK_MQTT_TOPIC_PREFIX "robocar/" UTK_MQTT_CLIENT_ID
 
