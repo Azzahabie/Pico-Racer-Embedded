@@ -163,6 +163,35 @@
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
 
+/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION once GP7 has
+   been on the crossbar LINE_JUNCTION_SAMPLES; the car then drives
+   MOTION_TURN_FWD_MM straight so the axle is over the crossing ([d_sensor]:
+   GP7 to the wheel axle), and pivots on the spot at MOTION_TURN_SPEED
+   until each wheel has turned PIVOT_COUNTS(90) (left, right) or (180)
+   (U-turn, counter-clockwise).  Straight on drives MOTION_TURN_CROSS_MM
+   ([L_cross]) across the crossing, ignoring the line.  Then MOVE_DONE, and
+   Line Following if the line is under the sensors, else Line Search.
+   PROPOSED: measure d_sensor on the car; turn speed as the line search. */
+#define MOTION_TURN_FWD_MM    (50)
+#define MOTION_TURN_CROSS_MM  (40)
+#define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
+#define MOTION_TURN_SPEED     (6)
+
+/* Bypass (statechart BYPASS, FR-18), by encoder count, ignoring the line:
+   pivot MOTION_BYPASS_DEG toward the side in scan_task's command, drive
+   out until the car is the command's lateral offset to that side (leg =
+   offset / sin 45 deg), pivot back parallel, drive MOTION_BYPASS_PASS_MM
+   ([L_pass]) alongside the obstacle, pivot in, drive the same leg back to
+   the line, pivot parallel again; then Line Search, toward the line.  A
+   stop on the way brakes it; it carries on if the stop clears with no new
+   command, and a new BYPASS from scan_task starts over.
+   PROPOSED: L_pass to be set on the floor; legs at the reverse speed. */
+#define MOTION_BYPASS_DEG        (45)
+#define MOTION_BYPASS_LEG_X1000  (1414) /* 1 / sin 45 deg, x 1000       */
+#define MOTION_BYPASS_PASS_MM    (250)
+#define MOTION_BYPASS_SPEED      (MOTION_REV_TARGET)
+#define MOTION_BYPASS_TURN_SPEED (MOTION_TURN_SPEED)
+
 /* Measured on the car, docs/motion/results.md: counts per wheel turn
    (x4 quadrature, 2 trials), wheel diameter and the distance between the
    two wheels (ruler).  Distance uses the first two; turn rate uses all

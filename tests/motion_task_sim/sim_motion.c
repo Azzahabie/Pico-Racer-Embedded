@@ -1268,22 +1268,282 @@ scenario_cmd_fault_clear_imu (void)
 	CHECK((g_duty[0] != 0) || (g_duty[1] != 0));
 }
 
-/* nav_cmd_mbf: a JUNCTION gets exactly one CMD_REJECTED while turns are
-   not built, and the car keeps following the line.  An unknown command
-   is dropped and changes nothing. */
+/* Run a junction turn to its end: the counts each wheel turned and the
+   ticks it took, or -1 ticks if it never left Turning. */
+static int
+run_turn (uint8_t action, int32_t *p_dl, int32_t *p_dr)
+{
+	int32_t l0;
+	int32_t r0;
+	int	n = 0;
+
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, action));
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n < 3000)) {
+		sim_tick();
+		n++;
+	}
+	sim_ticks(30);				/* let the wheels coast out */
+	*p_dl = g_ctx.pos_l - l0;
+	*p_dr = g_ctx.pos_r - r0;
+	return (n < 3000) ? n : -1;
+}
+
+/* counter-clockwise counts per wheel (+ = left), and the forward mm */
+#define TURNED(dl, dr)	(((dr) - (dl)) / 2)
+#define FWD_MM(dl, dr)	motion_ds_dist_mm((dl), (dr))
+
+/* nav_cmd_mbf: a JUNCTION in Line Following drives to the crossing, pivots
+   by encoder count and replies MOVE_DONE (FR-08); within 5 deg (NFR-04). */
+static void
+scenario_turns (void)
+{
+	int32_t dl;
+	int32_t dr;
+	int32_t tol = PIVOT_COUNTS(5);
+
+	sim_reset("turning: LEFT drives to the crossing, pivots 90 deg, MOVE_DONE");
+	CHECK(run_turn(BARCODE_ACT_LEFT, &dl, &dr) > 0);
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK(TURNED(dl, dr) >= PIVOT_COUNTS(90));
+	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + tol);
+	CHECK(FWD_MM(dl, dr) >= MOTION_TURN_FWD_MM);
+	CHECK(FWD_MM(dl, dr) <= MOTION_TURN_FWD_MM + 20);	/* + the line follow after */
+	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2001): taken") != NULL);
+
+	sim_reset("turning: RIGHT pivots clockwise");
+	CHECK(run_turn(BARCODE_ACT_RIGHT, &dl, &dr) > 0);
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK(-TURNED(dl, dr) >= PIVOT_COUNTS(90));
+	CHECK(-TURNED(dl, dr) <= PIVOT_COUNTS(90) + tol);
+
+	sim_reset("turning: U-turn pivots 180 deg counter-clockwise");
+	CHECK(run_turn(BARCODE_ACT_UTURN, &dl, &dr) > 0);
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK(TURNED(dl, dr) >= PIVOT_COUNTS(180));
+	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(180) + tol);
+
+	sim_reset("turning: FORWARD crosses without a pivot");
+	CHECK(run_turn(BARCODE_ACT_FORWARD, &dl, &dr) > 0);
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK((TURNED(dl, dr) < tol) && (TURNED(dl, dr) > -tol));
+	CHECK(FWD_MM(dl, dr) >= MOTION_TURN_CROSS_MM);
+}
+
+/* The turn ends off the line: Line Search, not Line Following */
+static void
+scenario_turn_no_line (void)
+{
+	int n = 0;
+
+	sim_reset("turning: no line under the sensors after the pivot -> LINE_SEARCH");
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	g_line.rl = LINE_RL_CENTRED;			/* both white */
+	g_line.dark_ms = 500u;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK((g_nav_flag & NAV_FLG_MOVE_DONE) != 0u);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+}
+
+/* An obstacle stop during the pivot: braked, then the turn carries on
+   where it was and still ends at 90 deg, with one MOVE_DONE. */
+static void
+scenario_turn_resume (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int32_t dl;
+	int32_t dr;
+	int	n = 0;
+
+	sim_reset("turning: a stop mid-pivot resumes the same turn");
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	while ((g_ctx.turn_phase != 1u) && (n++ < 3000)) {	/* TURN_PH_PIVOT */
+		sim_tick();
+	}
+	sim_ticks(60);					/* part way round */
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	sim_ticks(50);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	g_nav_flag = 0u;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	CHECK(g_ctx.turn_phase == 1u);				/* still pivoting */
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	sim_ticks(30);
+	dl = g_ctx.pos_l - l0;
+	dr = g_ctx.pos_r - r0;
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK(TURNED(dl, dr) >= PIVOT_COUNTS(90));
+	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + PIVOT_COUNTS(5));
+}
+
+/* Start a bypass the way scan_task does: STOP_SCAN, the command, then
+   STOP_SCAN cleared (Section 4 order). */
+static void
+bypass_begin (uint8_t side, uint16_t offset_mm)
+{
+	uint16_t word = 0u;
+
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS, side, offset_mm, &word));
+	CHECK(sim_send_avoid(word));
+	sim_tick();
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	g_nav_flag = 0u;
+	g_scan_flag = 0u;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS);
+}
+
+/* Ticks until the bypass ends (-1: never). */
+static int
+bypass_finish (void)
+{
+	int n = 0;
+
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS) && (n < 6000)) {
+		sim_tick();
+		n++;
+	}
+	return (n < 6000) ? n : -1;
+}
+
+/* path length of the straight legs: 2 x offset / sin 45 + L_pass */
+#define BYP_PATH_MM(off)	((2 * (((off) * MOTION_BYPASS_LEG_X1000) / 1000)) + MOTION_BYPASS_PASS_MM)
+
+/* avoid_cmd_mbf: BYPASS drives out, alongside and back by encoder count,
+   ends on its original heading, then the search finds the line and tells
+   nav and scan (FR-18 to FR-20). */
+static void
+scenario_bypass (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int32_t dl;
+	int32_t dr;
+	int	n;
+
+	sim_reset("bypass: LEFT 150 mm, back on the heading, LINE_FOUND to nav and scan");
+	bypass_begin(MOTION_AVOID_SIDE_LEFT, 150u);
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	CHECK(g_ctx.bypass_side == 1);
+	n = bypass_finish();
+	CHECK(n > 0);
+	dl = g_ctx.pos_l - l0;
+	dr = g_ctx.pos_r - r0;
+	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
+	CHECK(FWD_MM(dl, dr) >= BYP_PATH_MM(150) - 10);
+	CHECK(FWD_MM(dl, dr) <= BYP_PATH_MM(150) + 30);
+	CHECK(g_ctx.line_dir == -1);			/* line to the right now */
+	sim_ticks(10);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK((g_nav_flag & NAV_FLG_LINE_FOUND) != 0u);
+	CHECK((g_scan_flag & SCAN_FLG_LINE_FOUND) != 0u);
+	CHECK(strstr(g_log, "avoid_cmd BYPASS left") != NULL);
+	(void)printf("-- bypass 150 mm: %d ticks (%d.%02d s) in Bypass\n", n,
+		     n / 100, n % 100);
+
+	sim_reset("bypass: RIGHT pivots clockwise first, line to the left after");
+	bypass_begin(MOTION_AVOID_SIDE_RIGHT, 150u);
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	sim_ticks(20);
+	CHECK((g_ctx.pos_r - r0) < (g_ctx.pos_l - l0));	/* clockwise */
+	CHECK(bypass_finish() > 0);
+	dl = g_ctx.pos_l - l0;
+	dr = g_ctx.pos_r - r0;
+	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
+	CHECK(g_ctx.line_dir == 1);
+}
+
+/* A stop during the bypass (the obstacle seen again) brakes it; if it
+   clears with no new command the same bypass carries on and ends as one
+   uninterrupted run would. */
+static void
+scenario_bypass_resume (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int32_t dl;
+	int32_t dr;
+
+	sim_reset("bypass: a stop on the way out, cleared, the bypass carries on");
+	bypass_begin(MOTION_AVOID_SIDE_LEFT, 150u);
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	while ((g_ctx.bypass_phase < 3u) && (g_tick < 6000)) {	/* alongside */
+		sim_tick();
+	}
+	sim_ticks(20);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	sim_ticks(50);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS);
+	CHECK(g_ctx.bypass_phase == 3u);
+	CHECK(bypass_finish() > 0);
+	dl = g_ctx.pos_l - l0;
+	dr = g_ctx.pos_r - r0;
+	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
+	CHECK(FWD_MM(dl, dr) >= BYP_PATH_MM(150) - 10);
+	CHECK(FWD_MM(dl, dr) <= BYP_PATH_MM(150) + 40);
+}
+
+/* A JUNCTION outside Line Following is refused; unknown commands and a bad
+   action are dropped. */
 static void
 scenario_cmd_junction_rejected (void)
 {
-	sim_reset("nav_cmd: JUNCTION gets CMD_REJECTED, the car follows the line on");
+	sim_reset("nav_cmd: JUNCTION while braked gets CMD_REJECTED; bad commands dropped");
 	g_mission = MS_RUNNING;
 	sim_ticks(3);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	g_nav_flag = 0u;
 	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, 1u));	/* LEFT */
 	sim_tick();
 	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(3);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
-	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2001): sent CMD_REJECTED") != NULL);
-	sim_ticks(5);
-	CHECK((g_duty[0] != 0) || (g_duty[1] != 0));		/* still driving */
+
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, 7u));	/* no such action */
+	sim_tick();
+	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2007): dropped (invalid)") != NULL);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 
 	CHECK(sim_send_cmd(SIM_NAV_MBFID, 0x77u, 0u));
 	sim_tick();
@@ -2094,6 +2354,11 @@ main (int argc, char **argv)
 	scenario_line_follow_off_curve();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
+	scenario_turns();
+	scenario_turn_no_line();
+	scenario_turn_resume();
+	scenario_bypass();
+	scenario_bypass_resume();
 	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();
 	scenario_reverse();

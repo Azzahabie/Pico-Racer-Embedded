@@ -43,6 +43,7 @@
 #include "../obstacle_task/scan_if.h"
 #include "../line_task/line_task.h"
 #include "../line_task/line_state.h"
+#include "../line_task/barcode_action.h"
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -173,7 +174,6 @@ typedef enum
 #define CMD_SRC_NAV       (0)
 #define CMD_SRC_AVOID     (1)
 #define CMD_RES_TAKEN     (0) /* passed to the statechart          */
-#define CMD_RES_NO_TURNS  (1) /* JUNCTION: CMD_REJECTED, see below  */
 #define CMD_RES_INVALID   (2) /* unknown or malformed: dropped      */
 
 typedef struct
@@ -280,6 +280,7 @@ typedef struct
     int32_t     man_mm;    /* distance it was asked to drive, mm */
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
+    uint8_t     avoid_side; /* MOTION_AVOID_SIDE_* of a BYPASS     */
 
     /* line_state (line_state.h), read once per tick */
     uint32_t line_word;     /* the word this tick                  */
@@ -298,6 +299,19 @@ typedef struct
     int32_t search_dir;
     uint8_t search_phase;   /* 0 toward the line, 1 the other way  */
     bool    b_search_over;  /* both sweeps done, no line            */
+
+    /* turning: the junction's action and how far the turn has got */
+    uint8_t turn_action;    /* barcode_action_t from nav            */
+    uint8_t turn_phase;     /* TURN_PH_*                            */
+    int32_t turn_start_l;   /* positions at the phase's start, kept */
+    int32_t turn_start_r;   /* while Braked so a resume carries on  */
+
+    /* bypass: side, offset and leg, kept like the turn's */
+    int32_t bypass_side;    /* +1 left (counter-clockwise), -1 right */
+    int32_t bypass_off_mm;  /* lateral offset from scan_task         */
+    uint8_t bypass_phase;   /* leg 0..BYP_PH_DONE                   */
+    int32_t bypass_start_l; /* positions at the leg's start          */
+    int32_t bypass_start_r;
 
     /* reporting */
     int32_t  rep_l;
@@ -1331,8 +1345,19 @@ sm_send_replies (uint32_t replies)
     }
 }
 
-/* Has the manoeuvre of this state reached its target?  Only the reverse
-   is built so far. */
+/* Turning phases: straight to the crossing (or across it), then the
+   pivot, then done. */
+#define TURN_PH_FORWARD (0u)
+#define TURN_PH_PIVOT   (1u)
+#define TURN_PH_DONE    (2u)
+
+/* Bypass legs (motion_cfg.h): pivot out, out, pivot parallel, alongside,
+   pivot in, back in, pivot parallel.  The pivot direction of each leg, x
+   the side; 0 = a straight leg. */
+#define BYP_PH_DONE (7u)
+static int8_t const g_byp_pivot[BYP_PH_DONE] = { 1, 0, -1, 0, -1, 0, 1 };
+
+/* Has the manoeuvre of this state reached its target? */
 static bool
 man_done (motion_ctx_t const *p_ctx, motion_state_t state)
 {
@@ -1344,6 +1369,18 @@ man_done (motion_ctx_t const *p_ctx, motion_state_t state)
         moved_mm = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->man_start_l,
                                      p_ctx->pos_r - p_ctx->man_start_r);
         b_done   = ((-moved_mm) >= p_ctx->man_mm);
+    }
+    else if (MOTION_ST_TURNING == state)
+    {
+        b_done = (TURN_PH_DONE == p_ctx->turn_phase);
+    }
+    else if (MOTION_ST_BYPASS == state)
+    {
+        b_done = (BYP_PH_DONE == p_ctx->bypass_phase);
+    }
+    else
+    {
+        /* Not a manoeuvre with a target. */
     }
 
     return b_done;
@@ -1451,18 +1488,37 @@ lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
 
 /* A state was just entered: set up its manoeuvre. */
 static void
-man_start (motion_ctx_t *p_ctx, motion_state_t state)
+man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
 {
-    p_ctx->man_start_l = p_ctx->pos_l;
-    p_ctx->man_start_r = p_ctx->pos_r;
     motion_pid_reset(&p_ctx->pid_l);
     motion_pid_reset(&p_ctx->pid_r);
     motion_stall_reset(&p_ctx->stall_l);
     motion_stall_reset(&p_ctx->stall_r);
 
+    p_ctx->man_start_l = p_ctx->pos_l;
+    p_ctx->man_start_r = p_ctx->pos_r;
+
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->man_mm = (int32_t)p_ctx->avoid_mm;
+    }
+    else if ((MOTION_ST_BYPASS == state) && !b_resumed)
+    {
+        /* A new BYPASS starts over; a resumed one carries on (as Turning). */
+        p_ctx->bypass_side    = (MOTION_AVOID_SIDE_RIGHT == p_ctx->avoid_side)
+                                    ? -1 : 1;
+        p_ctx->bypass_off_mm  = (int32_t)p_ctx->avoid_mm;
+        p_ctx->bypass_phase   = 0u;
+        p_ctx->bypass_start_l = p_ctx->pos_l;
+        p_ctx->bypass_start_r = p_ctx->pos_r;
+    }
+    else if ((MOTION_ST_TURNING == state) && !b_resumed)
+    {
+        /* A resumed turn carries on from its own start positions: the
+           wheels did not move while Braked (a reverse drops the turn). */
+        p_ctx->turn_phase   = TURN_PH_FORWARD;
+        p_ctx->turn_start_l = p_ctx->pos_l;
+        p_ctx->turn_start_r = p_ctx->pos_r;
     }
     else if (MOTION_ST_LINE_FOLLOW == state)
     {
@@ -1584,9 +1640,142 @@ search_drive (motion_ctx_t *p_ctx)
     }
 }
 
-/* What the wheels do this tick in the current state.  The reverse, line
-   following and the line search are built; every other state brakes
-   until its manoeuvre exists. */
+/* TURNING (FR-08): straight until the axle is over the crossing, then a
+   pivot on the spot by encoder count: 90 deg left or right, 180 deg
+   counter-clockwise for a U-turn.  Straight on only drives across.  Each
+   phase measures from its own start, so a stop and resume keeps it. */
+static void
+turn_drive (motion_ctx_t *p_ctx)
+{
+    int32_t moved_mm;
+    int32_t turned;
+    int32_t deg;
+    int32_t dir = (BARCODE_ACT_RIGHT == p_ctx->turn_action) ? -1 : 1;
+
+    if (TURN_PH_FORWARD == p_ctx->turn_phase)
+    {
+        moved_mm = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->turn_start_l,
+                                     p_ctx->pos_r - p_ctx->turn_start_r);
+        if (moved_mm >= ((BARCODE_ACT_FORWARD == p_ctx->turn_action)
+                             ? MOTION_TURN_CROSS_MM
+                             : MOTION_TURN_FWD_MM))
+        {
+            p_ctx->turn_phase   = (BARCODE_ACT_FORWARD == p_ctx->turn_action)
+                                      ? TURN_PH_DONE
+                                      : TURN_PH_PIVOT;
+            p_ctx->turn_start_l = p_ctx->pos_l;
+            p_ctx->turn_start_r = p_ctx->pos_r;
+            motion_pid_reset(&p_ctx->pid_l);
+            motion_pid_reset(&p_ctx->pid_r);
+        }
+    }
+    else if (TURN_PH_PIVOT == p_ctx->turn_phase)
+    {
+        deg    = (BARCODE_ACT_UTURN == p_ctx->turn_action) ? 180 : 90;
+        turned = (((p_ctx->pos_r - p_ctx->turn_start_r)
+                   - (p_ctx->pos_l - p_ctx->turn_start_l))
+                  / 2)
+                 * dir;
+        if (turned >= PIVOT_COUNTS(deg))
+        {
+            p_ctx->turn_phase = TURN_PH_DONE;
+        }
+    }
+    else
+    {
+        /* Done: braked until the statechart leaves Turning. */
+    }
+
+    if (TURN_PH_FORWARD == p_ctx->turn_phase)
+    {
+        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_TURN_FWD_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_TURN_FWD_SPEED,
+                                       p_ctx->d_r);
+    }
+    else if (TURN_PH_PIVOT == p_ctx->turn_phase)
+    {
+        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, -dir * MOTION_TURN_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, dir * MOTION_TURN_SPEED,
+                                       p_ctx->d_r);
+    }
+    else
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+}
+
+/* BYPASS (FR-18): the legs in g_byp_pivot, each measured from its own
+   start.  At the end the line is on the far side from the bypass, so the
+   search that follows looks there first. */
+static void
+bypass_drive (motion_ctx_t *p_ctx)
+{
+    uint32_t ph = p_ctx->bypass_phase;
+    int32_t  dl = p_ctx->pos_l - p_ctx->bypass_start_l;
+    int32_t  dr = p_ctx->pos_r - p_ctx->bypass_start_r;
+    int32_t  dir;
+    bool     b_next;
+
+    if (ph < BYP_PH_DONE)
+    {
+        dir = (int32_t)g_byp_pivot[ph] * p_ctx->bypass_side;
+        if (0 != dir)
+        {
+            b_next = ((((dr - dl) / 2) * dir)
+                      >= PIVOT_COUNTS(MOTION_BYPASS_DEG));
+        }
+        else
+        {
+            b_next = (motion_ds_dist_mm(dl, dr)
+                      >= ((3u == ph) ? MOTION_BYPASS_PASS_MM
+                                     : ((p_ctx->bypass_off_mm
+                                         * MOTION_BYPASS_LEG_X1000)
+                                        / 1000)));
+        }
+        if (b_next)
+        {
+            ph++;
+            p_ctx->bypass_phase   = (uint8_t)ph;
+            p_ctx->bypass_start_l = p_ctx->pos_l;
+            p_ctx->bypass_start_r = p_ctx->pos_r;
+            motion_pid_reset(&p_ctx->pid_l);
+            motion_pid_reset(&p_ctx->pid_r);
+            if (BYP_PH_DONE == ph)
+            {
+                p_ctx->line_dir = -p_ctx->bypass_side;
+            }
+        }
+    }
+
+    if (ph >= BYP_PH_DONE)
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    else
+    {
+        dir = (int32_t)g_byp_pivot[ph] * p_ctx->bypass_side;
+        if (0 != dir)
+        {
+            p_ctx->cmd_l = motion_pid_step(
+                &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
+            p_ctx->cmd_r = motion_pid_step(
+                &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
+        }
+        else
+        {
+            p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_BYPASS_SPEED,
+                                           p_ctx->d_l);
+            p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_BYPASS_SPEED,
+                                           p_ctx->d_r);
+        }
+    }
+}
+
+/* What the wheels do this tick in the current state. */
 static void
 man_drive (motion_ctx_t *p_ctx, motion_state_t state)
 {
@@ -1619,6 +1808,14 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     {
         search_drive(p_ctx);
     }
+    else if (MOTION_ST_TURNING == state)
+    {
+        turn_drive(p_ctx);
+    }
+    else if (MOTION_ST_BYPASS == state)
+    {
+        bypass_drive(p_ctx);
+    }
     else
     {
         p_ctx->cmd_l = 0;
@@ -1638,12 +1835,9 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
    a tick.  Nothing waits on CMD (every tick looks), so it is only cleared,
    before the receives, so a command placed after it is still read.
 
-   Turning is not built yet: a JUNCTION gets CMD_REJECTED here and the car
-   follows the line straight on, which nav treats as a refused turn (design
-   Assumption 2).  Passing it to the statechart would enter Turning, which
-   brakes and never finishes.  A BYPASS would do the same in Bypass, so
-   app_main.c binds avoid_cmd_mbf to scan_task only once Bypass drives;
-   until then it stays empty. */
+   A JUNCTION goes to the statechart with its action kept for turn_drive();
+   outside Line Following the statechart refuses it (CMD_REJECTED).
+   A BYPASS keeps its side and offset for bypass_drive(). */
 static void
 report_cmd (motion_ctx_t *p_ctx, int32_t src, uint32_t raw, int32_t res)
 {
@@ -1675,7 +1869,8 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
         {
             res              = CMD_RES_TAKEN;
-            p_ctx->avoid_mm  = mm;
+            p_ctx->avoid_mm   = mm;
+            p_ctx->avoid_side = side;
             p_ctx->avoid_cmd = (uint8_t)((MOTION_AVOID_OP_REVERSE == op)
                                              ? MOTION_SM_AVOID_REVERSE
                                              : MOTION_SM_AVOID_BYPASS);
@@ -1695,10 +1890,11 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         {
             p_in->nav = MOTION_SM_NAV_CLEAR_MOTION;
         }
-        else if (NAV_CMD_JUNCTION == msg[0])
+        else if ((NAV_CMD_JUNCTION == msg[0])
+                 && (msg[1] <= (UB)BARCODE_ACT_UTURN))
         {
-            res = CMD_RES_NO_TURNS;
-            sm_send_replies(MOTION_SM_REP_CMD_REJECTED);
+            p_in->nav          = MOTION_SM_NAV_JUNCTION;
+            p_ctx->turn_action = msg[1];
         }
         else
         {
@@ -1751,8 +1947,8 @@ tele_motion (motion_ctx_t const *p_ctx)
 
 /* One statechart step per tick, after the stall check.  The mission state
    comes from nav_ctrl_task (one aligned load), commands from
-   take_commands().  Turns and bypass are not built yet, so those states
-   brake; line following, the line search and the reverse are built.
+   take_commands().  Every driving state is built: line following, the
+   line search, the turn, the reverse and the bypass.
    distance_state is never reset: imu_task works from differences, and a
    jump would read as a fake movement. */
 static void
@@ -1795,7 +1991,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     }
     if (out.b_changed)
     {
-        man_start(p_ctx, motion_sm_state(&p_ctx->sm));
+        man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
     if (0u != (out.replies & MOTION_SM_REP_MOTION_FAULT))
@@ -2376,10 +2572,7 @@ print_cmd (UB *p_line, motion_report_t const *p_rep)
                                                       : "BYPASS right";
         }
     }
-    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken"
-          : (CMD_RES_NO_TURNS == p_rep->rate_l)
-              ? "sent CMD_REJECTED (turns not built yet, straight on)"
-              : "dropped (invalid)";
+    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken" : "dropped (invalid)";
 
     if (CMD_SRC_NAV == p_rep->val_l)
     {
