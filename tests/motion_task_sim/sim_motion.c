@@ -1442,6 +1442,8 @@ static int	g_lane_looks;
 static int	g_switches;		/* SIDE_BLOCKED re-plans done */
 static uint16_t	g_other_offset;		/* the other side's offset */
 static int	g_no_replan;		/* stand-in ignores SIDE_BLOCKED */
+/* the box as the car read it square-on (S7 attempt 3: 230-333 mm) */
+static uint16_t	g_seen_mm = 333u;
 
 /* One tick with the stand-in scan_task and line model: answer a LOOK the
    way scan_task does (a separate AVOID_LOOK command), and put the line
@@ -1492,7 +1494,7 @@ bypass_tick (void)
 		if (g_scan_answers) {
 			CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
 						    MOTION_AVOID_SIDE_NONE,
-						    b_seen ? 108u : 511u, &word));
+						    b_seen ? g_seen_mm : 511u, &word));
 			CHECK(sim_send_avoid(word));
 		}
 	}
@@ -1615,6 +1617,17 @@ scenario_bypass (void)
 	CHECK(!g_ctx.b_bypass_seen);
 	CHECK(g_ctx.bypass_pass_mm >= MOTION_BYPASS_UNSEEN_MM);
 	CHECK(g_ctx.bypass_pass_mm < MOTION_BYPASS_UNSEEN_MM + MOTION_BYPASS_STEP_MM + 10);
+
+	/* S7 attempt 3: a 333 mm reading of the box counted as clear, so the
+	   car stepped on to UNSEEN_MM.  It must count as seen and end the
+	   probing at the next clear look. */
+	sim_reset("bypass: the box at 333 mm counts as seen: no extra look");
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 300, 420);
+	CHECK(bypass_finish() > 0);
+	CHECK(g_ctx.b_bypass_seen);
+	CHECK(g_seen_probes == 1);
+	CHECK(g_probes == 2);				/* seen, then clear: in */
+	CHECK(g_ctx.bypass_pass_mm == MOTION_BYPASS_FIRST_MM + MOTION_BYPASS_STEP_MM);
 
 	sim_reset("bypass: line found early on the way in: onto it from there");
 	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);

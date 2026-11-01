@@ -194,8 +194,9 @@
      3. Passed = clear after it was seen once, or clear and never seen
         after MOTION_BYPASS_UNSEEN_MM alongside (shallower than a step).
         Then MOTION_BYPASS_CLEAR_MM more: a clear look means the far face
-        is behind axle + 110 - 29 (the beam cone at 108 mm); stepping in
-        needs it behind the axle - 63 (half width) - 50 (margin).
+        is behind axle + 110 - 29 = axle + 81 (the beam cone at 108 mm);
+        stepping in at 70 deg needs the axle only far face + 38 (margin
+        included), so 81 + 38 = 119 -> 120 (was 200 for a 90 deg step).
      4. Pivot SIDE_DEG in, drive toward the line until GP26/GP27 see it
         (at most the leg + MOTION_BYPASS_IN_EXTRA_MM), MOTION_LINE_SENSOR_MM
         more so the axle is on the line, pivot SIDE_DEG onto the heading.
@@ -226,10 +227,14 @@
 #define MOTION_BYPASS_FIRST_MM    (250)
 #define MOTION_BYPASS_STEP_MM     (100)
 #define MOTION_BYPASS_UNSEEN_MM   (450)
-#define MOTION_BYPASS_CLEAR_MM    (200)
+#define MOTION_BYPASS_CLEAR_MM    (120)
 #define MOTION_BYPASS_MAX_PASS_MM (1500)
 #define MOTION_BYPASS_IN_EXTRA_MM (150)
-#define MOTION_BYPASS_SEEN_MM     (300)
+/* "Seen": the box read 230-333 mm square-on and clear looks 966-1551 mm
+   on the car (S7 attempt 3).  At 300 a 333 mm box reading counted as
+   clear, so the box was never "seen" and the car stepped on to
+   MOTION_BYPASS_UNSEEN_MM: one look too many and an overshoot. */
+#define MOTION_BYPASS_SEEN_MM     (450)
 #define MOTION_BYPASS_LOOK_TICKS  (300u)  /* 3 s with no answer: still there */
 #define MOTION_LINE_SENSOR_MM     (125)   /* GP26/GP27 to the axle, measured 1 Nov */
 /* Raised 1 Nov (user OK): legs 10 -> 12 counts per tick, pivots 6 -> 10. */
