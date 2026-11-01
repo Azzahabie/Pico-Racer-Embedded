@@ -57,6 +57,14 @@
 #define BUZZER_PIN		22U	/* PWM slice 3, channel A; no motor on slice 3 */
 
 #define BTN_DEBOUNCE_MS		30
+
+/* S5 turn test without barcodes: a junction with no barcode command uses
+   this action (barcode_action_t: 0 forward, 1 left, 2 right, 3 U-turn)
+   instead of going straight on.  -1, the default, is the real behaviour;
+   never set it for the demo build. */
+#ifndef NAV_TEST_JUNCTION_ACTION
+#define NAV_TEST_JUNCTION_ACTION	(-1)
+#endif
 #define BTN_LOCKOUT_MS		300	/* ignore bounces after a press */
 #define CAL_TIMEOUT_MS		10000	/* [TBD with Buddies 3 and 4] */
 #define HEARTBEAT_MS		1000	/* wake at least this often */
@@ -445,11 +453,18 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] junction during a move: ignored\n");
 		return;
 	}
-	if(!barcode_cmd_pending(cmd, g_cmd_taken)) {
+	if(barcode_cmd_pending(cmd, g_cmd_taken)) {
+		g_cmd_taken = barcode_cmd_seq(cmd);	/* this junction used it */
+	} else {
+#if NAV_TEST_JUNCTION_ACTION >= 0
+		action = (uint32_t)NAV_TEST_JUNCTION_ACTION;
+		tm_printf((UB *)"[nav] junction, no barcode command: TEST action %s\n",
+			  barcode_action_name(action));
+#else
 		tm_printf((UB *)"[nav] junction, no barcode command: straight on\n");
 		return;
+#endif
 	}
-	g_cmd_taken = barcode_cmd_seq(cmd);		/* this junction used it */
 	msg[0] = (UB)NAV_CMD_JUNCTION;
 	msg[1] = (UB)action;
 	if(0 < g_nav_bind.nav_cmd_mbfid) {
