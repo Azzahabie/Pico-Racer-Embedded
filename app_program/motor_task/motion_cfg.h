@@ -131,11 +131,17 @@
    off the line, 8 (about 6 cm/s) next.  31 Oct: 5 (about 4 cm/s) with
    gain 3 strayed within a few cm, so slower again and stronger: 4 is
    about 3.2 cm/s (calculated, 0.079 mm a count), half error already gives
-   2.5 counts, and the soft cap leaves the inner wheel at 1 count. */
-#define MOTION_LF_BASE        (4)
+   2.5 counts, and the soft cap leaves the inner wheel at 1 count.
+   1 Nov (user: faster): base 4 -> 6 (about 4.7 cm/s), now that the
+   adaptive thresholds and the last-seen steering are in.  The gain and
+   damper scale with the base (tuned 5 and 15 at base 4), so a given
+   error turns the car on the same curve at any base speed. */
+#ifndef MOTION_LF_BASE
+#define MOTION_LF_BASE        (6)
+#endif
 #define MOTION_LF_SCALE       (100)
-#define MOTION_LF_GAIN        (5)   /* e 60 and up -> the soft cap       */
-#define MOTION_LF_DAMP        (15)  /* per unit of e change              */
+#define MOTION_LF_GAIN        ((5 * MOTION_LF_BASE) / 4)  /* 7 at base 6  */
+#define MOTION_LF_DAMP        ((15 * MOTION_LF_BASE) / 4) /* 22 at base 6 */
 #define MOTION_LF_DAMP_TICKS  (5u)  /* change measured over 50 ms        */
 #define MOTION_LF_SOFT_MAX    ((MOTION_LF_BASE - 1) * MOTION_LF_SCALE)
 #define MOTION_LF_SLEW        (50)  /* 0 to SOFT_MAX in 60 ms            */
