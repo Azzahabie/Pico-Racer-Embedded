@@ -44,6 +44,8 @@
 #include "../line_task/line_task.h"
 #include "../line_task/line_state.h"
 #include "../line_task/barcode_action.h"
+#include "../imu_task/imu_task.h"       /* hump_state word (D1) */
+#include "../common/line_config.h"      /* LINE_LOST_MS */
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -287,6 +289,8 @@ typedef struct
     uint32_t line_ctr;      /* its counter at the last change      */
     uint32_t line_same;     /* ticks the counter has not moved     */
     uint32_t line_seen_run; /* ticks in a row the line was seen    */
+    bool     b_on_hump;     /* hump_state != NONE this tick (M3)    */
+    uint32_t dark_sat_ticks; /* ticks with line dark time saturated */
     int32_t  line_dir;      /* +1 line last left, -1 right, 0 none */
     int32_t  lf_rem;        /* steering remainder, x 1/MOTION_LF_SCALE
                                counts per tick, carried to the next */
@@ -325,6 +329,20 @@ typedef struct
     uint32_t rep_ticks;
     uint32_t rep_dropped;
 } motion_ctx_t;
+
+/* Every wheel speed target goes through here: capped at V_hump while
+   imu_task reports a hump (M3, motion_cfg.h). */
+static int32_t
+pid_capped (motion_ctx_t const *p_ctx, motion_pid_t *p_pid, int32_t target,
+            int32_t measured)
+{
+    if (p_ctx->b_on_hump)
+    {
+        target = motion_clamp(target, -MOTION_HUMP_MAX_CPT,
+                              MOTION_HUMP_MAX_CPT);
+    }
+    return motion_pid_step(p_pid, target, measured);
+}
 
 static motion_ctx_t g_ctx;
 
@@ -838,9 +856,9 @@ static void
 bench_pid (motion_ctx_t *p_ctx)
 {
     p_ctx->cmd_l =
-        motion_pid_step(&p_ctx->pid_l, MOTION_PID_TARGET, p_ctx->d_l);
+        pid_capped(p_ctx, &p_ctx->pid_l, MOTION_PID_TARGET, p_ctx->d_l);
     p_ctx->cmd_r =
-        motion_pid_step(&p_ctx->pid_r, MOTION_PID_TARGET, p_ctx->d_r);
+        pid_capped(p_ctx, &p_ctx->pid_r, MOTION_PID_TARGET, p_ctx->d_r);
     p_ctx->step_ticks++;
 
     if (p_ctx->step_ticks >= MOTION_PID_TICKS)
@@ -1630,7 +1648,20 @@ line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
                         || (line_state_dark_ms(word) < MOTION_LF_SEEN_MS);
     p_ctx->line_seen_run = p_in->b_line_seen ? (p_ctx->line_seen_run + 1u) : 0u;
     p_in->b_line_found   = (p_ctx->line_seen_run >= MOTION_LF_FOUND_TICKS);
-    p_in->b_line_missing = line_state_lost(word) || line_state_fault(word)
+    /* On a hump the line may be missing 2 x t_lost (M3, motion_cfg.h). */
+    p_ctx->b_on_hump = (0u != IMU_W_GET(imu_word_read(), HUMP));  /* 0 = none */
+    p_ctx->dark_sat_ticks
+        = (line_state_dark_ms(word)
+           >= (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS))
+              ? (p_ctx->dark_sat_ticks + 1u)
+              : 0u;
+    p_in->b_line_missing
+        = (p_ctx->b_on_hump
+               ? ((p_ctx->dark_sat_ticks * 10u)
+                  >= (MOTION_HUMP_LOST_MS
+                      - (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS)))
+               : line_state_lost(word))
+          || line_state_fault(word)
                            || (p_ctx->line_same >= LINE_ST_STALE_TICKS);
     p_in->b_search_over  = p_ctx->b_search_over;
 }
@@ -1683,9 +1714,9 @@ search_drive (motion_ctx_t *p_ctx)
     {
         dir = (0u == p_ctx->search_phase) ? p_ctx->search_dir
                                           : -p_ctx->search_dir;
-        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, -dir * MOTION_LS_SPEED,
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, -dir * MOTION_LS_SPEED,
                                        p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, dir * MOTION_LS_SPEED,
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, dir * MOTION_LS_SPEED,
                                        p_ctx->d_r);
     }
 }
@@ -1738,16 +1769,16 @@ turn_drive (motion_ctx_t *p_ctx)
 
     if (TURN_PH_FORWARD == p_ctx->turn_phase)
     {
-        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_TURN_FWD_SPEED,
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_TURN_FWD_SPEED,
                                        p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_TURN_FWD_SPEED,
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_TURN_FWD_SPEED,
                                        p_ctx->d_r);
     }
     else if (TURN_PH_PIVOT == p_ctx->turn_phase)
     {
-        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, -dir * MOTION_TURN_SPEED,
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, -dir * MOTION_TURN_SPEED,
                                        p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, dir * MOTION_TURN_SPEED,
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, dir * MOTION_TURN_SPEED,
                                        p_ctx->d_r);
     }
     else
@@ -1981,16 +2012,16 @@ bypass_drive (motion_ctx_t *p_ctx)
     }
     else if (0 != dir)
     {
-        p_ctx->cmd_l = motion_pid_step(
-            &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(
-            &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
+        p_ctx->cmd_l = pid_capped(
+            p_ctx, &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(
+            p_ctx, &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
     }
     else
     {
-        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_BYPASS_SPEED,
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_BYPASS_SPEED,
                                        p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_BYPASS_SPEED,
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_BYPASS_SPEED,
                                        p_ctx->d_r);
     }
 }
@@ -2004,9 +2035,9 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->cmd_l =
-            motion_pid_step(&p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
+            pid_capped(p_ctx, &p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
         p_ctx->cmd_r =
-            motion_pid_step(&p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
+            pid_capped(p_ctx, &p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
     }
     else if (MOTION_ST_LINE_FOLLOW == state)
     {
@@ -2019,9 +2050,9 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
                                        line_state_barcode(p_ctx->line_word));
         corr = p_ctx->lf_rem / MOTION_LF_SCALE;
         p_ctx->lf_rem -= corr * MOTION_LF_SCALE;
-        p_ctx->cmd_l = motion_pid_step(&p_ctx->pid_l, MOTION_LF_BASE - corr,
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_LF_BASE - corr,
                                        p_ctx->d_l);
-        p_ctx->cmd_r = motion_pid_step(&p_ctx->pid_r, MOTION_LF_BASE + corr,
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_LF_BASE + corr,
                                        p_ctx->d_r);
     }
     else if (MOTION_ST_LINE_SEARCH == state)

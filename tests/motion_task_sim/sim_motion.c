@@ -330,6 +330,10 @@ ER comms_tele_send(const UB *body, INT length)
    counter moves every tick (sim_tick), so motion never sees it stale. */
 static line_state_fields_t	g_line;
 uint32_t line_state_word(void) { return line_state_pack(&g_line); }
+
+/* imu_task.h (Buddy 4): the hump_state word; 0 = no hump. */
+static UW		g_imu_word;
+UW imu_word_read(void) { return g_imu_word; }
 /* As the kernel does it (eventflag.c): wake if any waited bit is set,
    return the whole pattern from before the clear, and with TWF_BITCLR
    clear every waited bit. */
@@ -569,6 +573,7 @@ sim_reset (const char *p_name)
 {
 	if (p_name != NULL) { printf("-- %s\n", p_name); }
 	memset(&g_ctx, 0, sizeof g_ctx);
+	g_imu_word = 0u;				/* no hump */
 	memset(g_wheel, 0, sizeof g_wheel);
 	g_duty[0] = g_duty[1] = 0;
 	g_duty_max_abs = 0;
@@ -1741,6 +1746,56 @@ scenario_bypass_resume (void)
 	CHECK((TURNED(dl, dr) < PIVOT_COUNTS(5)) && (TURNED(dl, dr) > -PIVOT_COUNTS(5)));
 }
 
+/* Hump (M3): speed targets capped at V_hump; the line may be missing
+   2 x t_lost before Line Search (motion_cfg.h). */
+static void
+scenario_hump (void)
+{
+	motion_pid_t	pid_a;
+	motion_pid_t	pid_b;
+	int		n;
+
+	sim_reset("hump: V_hump cap is 18 counts per tick, only on a hump");
+	CHECK(MOTION_HUMP_MAX_CPT == 18);
+	pid_a = g_ctx.pid_l;
+	pid_b = g_ctx.pid_l;
+	motion_pid_reset(&pid_a);
+	motion_pid_reset(&pid_b);
+	g_ctx.b_on_hump = true;
+	CHECK(pid_capped(&g_ctx, &pid_a, 40, 0) == motion_pid_step(&pid_b, 18, 0));
+	CHECK(pid_capped(&g_ctx, &pid_a, -40, 0) == motion_pid_step(&pid_b, -18, 0));
+	g_ctx.b_on_hump = false;
+	CHECK(pid_capped(&g_ctx, &pid_a, 40, 0) == motion_pid_step(&pid_b, 40, 0));
+
+	sim_reset("hump: line missing 1.5 s off a hump -> Line Search at once");
+	g_mission = MS_RUNNING;
+	sim_ticks(5);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_line.rl = LINE_RL_CENTRED;			/* both white */
+	g_line.dark_ms = 2550u;
+	g_line.lost = true;				/* line_track: >= 1500 ms */
+	sim_ticks(2);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+
+	sim_reset("hump: on a hump the search waits for 2 x t_lost (3 s)");
+	g_mission = MS_RUNNING;
+	sim_ticks(5);
+	g_imu_word = imu_w_pack(1u, 2u, 10u, 0u, 0u, 0u, 8u);	/* climbing */
+	g_line.rl = LINE_RL_CENTRED;
+	g_line.dark_ms = 2550u;				/* saturated */
+	g_line.lost = true;
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW) && (n < 200)) {
+		sim_tick();
+		n++;
+	}
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+	CHECK((n * 10) >= ((int)MOTION_HUMP_LOST_MS - 2550));	/* 450 ms more */
+	CHECK((n * 10) <= ((int)MOTION_HUMP_LOST_MS - 2550) + 30);
+	(void)printf("-- hump: Line Search after %d ms at saturated dark time\n", n * 10);
+	g_imu_word = 0u;
+}
+
 /* A JUNCTION outside Line Following is refused; unknown commands and a bad
    action are dropped. */
 static void
@@ -2582,6 +2637,7 @@ main (int argc, char **argv)
 	scenario_bypass_give_up();
 	scenario_bypass_lane_blocked();
 	scenario_bypass_resume();
+	scenario_hump();
 	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();
 	scenario_reverse();

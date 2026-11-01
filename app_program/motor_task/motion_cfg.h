@@ -249,6 +249,22 @@
 #define MOTION_WHEEL_DIA_MM   (64)
 #define MOTION_WHEELBASE_MM   (127)
 
+/* Hump (W6 6.2 / 6.4, Integration Rules 2.7; M3), while imu_task's
+   hump_state is not NONE (imu_word_read(), one aligned load, D1):
+   - every wheel speed target is capped at V_hump = 15 cm/s, in counts per
+     tick: v x counts per turn / (pi x wheel diameter x 100 ticks/s), with
+     pi as 355/113, rounded down (18 at 150 mm/s; calculated);
+   - the line may be missing 2 x t_lost (LINE_LOST_MS) before Line Search.
+     line_state's dark time saturates at 2550 ms (8 bits x 10 ms), so past
+     that motion counts its own ticks: MOTION_HUMP_LOST_TICKS more ticks at
+     the saturated value = 2 x 1500 ms. */
+#define MOTION_HUMP_MAX_MMPS   (150)
+#define MOTION_MMPS_TO_CPT(v)                                                  \
+    (((v) * MOTION_COUNTS_PER_REV * 113)                                       \
+     / (355 * MOTION_WHEEL_DIA_MM * 100))
+#define MOTION_HUMP_MAX_CPT    (MOTION_MMPS_TO_CPT(MOTION_HUMP_MAX_MMPS))
+#define MOTION_HUMP_LOST_MS    (2 * LINE_LOST_MS)
+
 /* Turn rate and acceleration are averaged over this many ticks.
    PROPOSED: 5 ticks = 50 ms, the most agreed with Buddy 4 (23 Oct), so
    her 5-sample stationary rule still works.  One count of difference
