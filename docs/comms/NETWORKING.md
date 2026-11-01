@@ -248,7 +248,8 @@ toggle-on in one test, and in the other waited out the MQTT keep-alive timeout
 (1.5 × `UTK_MQTT_KEEPALIVE_S` 60 = 90 s), 64 s after toggle-on. **Fix:** `comms_task`'s stall rule (`S` refused on 2 ticks in a row
 while `CONNECTED`, `MQTT_SCHEMA.md` §4.1) calls `cyw43_utk_mqtt_restart()`. That
 only sets a flag; the radio task's next poll drops the session and reconnects
-through the normal back-off (2 s, 5 s connect timeout, doubling to 15 s).
+through the normal back-off (2 s, 5 s connect timeout, then 4 s and 5 s;
+15 s at the time of these tests, capped at 5 s since 2026-11-01, D7).
 Tested twice (2026-10-29):
 
 | Run | Link reported lost? | Stall seen | Reconnected |
@@ -257,9 +258,10 @@ Tested twice (2026-10-29):
 | SSID off 40 s | **no** (silent stall) | 7.1 s after off | **31.8 s after toggle-on** (64 s without the restart), ~14 s after the SSID was back (inferred from the ~18 s SSID start-up) |
 
 The same toggle gives either case, so neither can be chosen in a test. What
-now sets recovery is the 15 s back-off cap: an attempt just before the SSID
-returns fails, and the next waits the full step (optimisation-pass item, the
-reconnect worst case at the cap).
+set recovery here was the 15 s back-off cap: an attempt just before the SSID
+returns fails, and the next waits the full step. **Since 2026-11-01 the cap
+is 5 s** (the design's fixed 2-5 s, Integration Rules D7), so that step
+costs at most 5 s plus the 5 s connect timeout. Not re-measured yet.
 
 *Observed 2026-10-29 (M8a test), not changed:* after an AP outage MQTT
 reconnected about 10 s before `[wifi] state=ONLINE`, while the radio still

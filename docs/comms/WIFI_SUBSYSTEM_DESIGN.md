@@ -938,7 +938,8 @@ the difference between one pass and three.
 ```
 connection lost (callback status, publish error, or is_connected() false)
     → state DISCONNECTED, disconnect + free the client if needed
-    → wait backoff: 2 s, 4 s, 8 s, capped at 15 s
+    → wait backoff: 2 s, 4 s, then 5 s every time (capped at 5 s, D7;
+      was 2/4/8/15 s until 2026-11-01)
     → CONNECTING: mqtt_client_connect() again
     → on CONNACK: re-subscribe to …/cmd   ← subscriptions do NOT survive a new session
 ```
