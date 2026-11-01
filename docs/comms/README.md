@@ -4,6 +4,12 @@ The one page to read for Buddy 1's subsystem: what it does, what other tasks
 need from it, and where the contracts live. Every other document in this folder
 is *detail behind a link* — open one only when you need it.
 
+> **Integrated car:** [`../INTEGRATION.md`](../INTEGRATION.md) is the current
+> baseline (1 Nov 2026). Comms changes made during integration (broker
+> discovery, the 5 s back-off cap, the wireless console, the SCANNING state)
+> are listed there; this folder stays the reference for the Wi-Fi and MQTT
+> contracts.
+
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Last updated:** 2026-10-21 — working notes, test logs and reports moved out
   of the repo; this folder now holds only the reference and interface docs
