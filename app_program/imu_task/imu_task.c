@@ -27,7 +27,8 @@
  *	    [imu] >>> turning LEFT
  *	    [imu] <<< turned LEFT 92 deg in 1.6 s  (turns so far: 2 left, ...)
  *	    [imu] >>> picked up (hands on)      [imu] <<< put down (hands off)
- *	    [imu] >>> leaning RIGHT 6 deg       [imu] >>> nose UP 6 deg
+ *	    [imu] >>> leaning RIGHT 6 deg (left side up)
+ *	    [imu] >>> nose UP 6 deg
  *	    [imu] hump: climbing (4 deg up, 2 mm)
  *	    [imu]     rising: 6 mm              (at most every HUMP_SHOW_MS)
  *	    [imu] ===== HUMP 1: 12.3 mm high =====  (...)
@@ -192,7 +193,8 @@ LOCAL void raise_fault(BOOL tilt, UW t_first, const W a[3])
 		nose = IMU_NOSE_SIGN * a[IMU_NOSE_AXIS];
 		if(((side < 0) ? -side : side) >= ((nose < 0) ? -nose : nose)) {
 			tm_sprintf(what, (UB *)"car tipped over (%u.%u deg to the"
-				   " %s)", t10 / 10, t10 % 10, ev_side_name(side));
+				   " %s, %s)", t10 / 10, t10 % 10,
+				   ev_side_name(side), ev_side_up_name(side));
 		} else {
 			tm_sprintf(what, (UB *)"car tipped over (%u.%u deg nose"
 				   " %s)", t10 / 10, t10 % 10, ev_nose_name(nose));
@@ -574,8 +576,9 @@ LOCAL void print_events(UINT ev)
 	}
 	if((ev & EV_LEAN) != 0) {
 		if(ev_lean() != 0) {
-			tm_printf((UB *)"[imu] >>> leaning %s %u deg\n",
-				  ev_side_name(ev_lean()), mg_deg(ev_lean_mg()));
+			tm_printf((UB *)"[imu] >>> leaning %s %u deg (%s)\n",
+				  ev_side_name(ev_lean()), mg_deg(ev_lean_mg()),
+				  ev_side_up_name(ev_lean()));
 		} else {
 			tm_printf((UB *)"[imu] <<< level side to side again\n");
 		}
@@ -608,6 +611,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	W	hsum[3];
 	UW	ds_hump;
 	INT	hn;
+	UW	win_tilt_mg = 0;	/* tilt of the last 100 ms mean, S.tlt */
 	BOOL	has_mag = FALSE, got_mag;
 	UW	amag = 0, amax;
 	W	dmm;
@@ -766,8 +770,9 @@ EXPORT void imu_task(INT stacd, void *exinf)
 
 		/* Mission changes (Statechart 6.4): a new mission starts the
 		   hump count and highest hump from zero (FR-12); Paused ->
-		   Running keeps them; pause, end or fault drops an unfinished
-		   hump.  A pause keeps "on top": the car has not moved. */
+		   Running keeps them.  A pause or the end counts a hump past
+		   its top and drops one still climbing; a fault drops it.  A
+		   pause keeps "on top": the car has not moved. */
 		if(ms != ms_prev) {
 			if(ms_prev == MS_READY && ms == MS_RUNNING) {
 				hump_mission_reset();
@@ -777,6 +782,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 					       " bumps and heading reset\n");
 			} else if(ms_prev == MS_RUNNING && ms == MS_PAUSED) {
 				hump_pause();
+			} else if(ms_prev == MS_RUNNING && ms == MS_FINISHED) {
+				hump_mission_end();
 			} else if(ms_prev == MS_RUNNING) {
 				hump_abort();
 			}
@@ -846,7 +853,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		/* The tilt-state word for the 1 s status line (FR-29,
 		   imu_ts.h): tilt while samples are good, turn rate while
 		   distance_state is updating.  One store, as above. */
-		imu_ts_word = imu_ts_pack(imu_deg10(safety_tilt_mg()) / 10,
+		imu_ts_word = imu_ts_pack(imu_deg10(win_tilt_mg) / 10,
 					  motion_ds_turn_dps(ds),
 					  !safety_no_data(),
 					  ds_quiet < TS_DS_QUIET);
@@ -874,6 +881,13 @@ EXPORT void imu_task(INT stacd, void *exinf)
 					  motion_ds_state(ds) == MOTION_DS_STEADY);
 			}
 			if(hn > 0) {
+				/* S.tlt from the 100 ms mean of x and y: a
+				   single 10 ms sample read 8-18 deg on flat
+				   floor from motor vibration (3 Nov).  The
+				   safety check keeps the per-sample tilt. */
+				win_tilt_mg = imu_isqrt((UW)(
+					(hsum[0] / hn) * (hsum[0] / hn)
+					+ (hsum[1] / hn) * (hsum[1] / hn)));
 				print_events(ev_window_step(hsum[0] / hn,
 						hsum[1] / hn, hsum[2] / hn,
 						motion_ds_delta_mm(ds, ds_hump)));
@@ -955,8 +969,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				}
 				if(ev_lean() != 0) {
 					p += tm_sprintf(p, (UB *)", leaning %s %u"
-							" deg", ev_side_name(ev_lean()),
-							mg_deg(ev_lean_mg()));
+							" deg (%s)",
+							ev_side_name(ev_lean()),
+							mg_deg(ev_lean_mg()),
+							ev_side_up_name(ev_lean()));
 				}
 				p += tm_sprintf(p, (UB *)" | turns: %u left, %u"
 						" right", ev_turns_left(),

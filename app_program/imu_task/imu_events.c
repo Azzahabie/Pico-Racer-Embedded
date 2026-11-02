@@ -22,6 +22,11 @@ LOCAL W		last_deg;
 LOCAL UW	last_ms;
 LOCAL UW	n_left, n_right;
 LOCAL W		head_mdeg;		/* since mission start               */
+LOCAL W		rate_q8;		/* smoothed turn rate, deg/s x 256   */
+LOCAL UW	bend_ms;		/* smoothed rate over EV_BEND_ON_DPS */
+LOCAL W		bend_dir;
+LOCAL UW	calm_ms;		/* in a turn: under EV_BEND_OFF_DPS  */
+LOCAL UW	act_ms;			/* in a turn: up to its last motion  */
 
 /* Lifted by hand. */
 LOCAL BOOL	held;
@@ -29,6 +34,7 @@ LOCAL BOOL	have_prev;
 LOCAL W		prev[3];		/* last window                       */
 LOCAL W		rest[3];		/* last window resting on the floor  */
 LOCAL INT	jump_n, quiet_n;
+LOCAL INT	settle_n;		/* windows left to settle after a stop */
 
 /* Lean (side to side) and nose (front to back). */
 LOCAL W		lean, nose;		/* reported */
@@ -50,10 +56,16 @@ EXPORT void ev_reset(void)
 	acc_ms = 0;
 	last_deg = 0;
 	last_ms = 0;
+	rate_q8 = 0;
+	bend_ms = 0;
+	bend_dir = 0;
+	calm_ms = 0;
+	act_ms = 0;
 	ev_mission_reset();
 	held = FALSE;
 	have_prev = FALSE;
 	jump_n = quiet_n = 0;
+	settle_n = 0;
 	lean = nose = lean_cand = nose_cand = 0;
 	lean_n = nose_n = 0;
 	lean_mg = nose_mg = 0;
@@ -68,25 +80,54 @@ EXPORT UINT ev_turn_step(BOOL turning, W turn_dps, W sample_ms)
 	UINT	ev = 0U;
 	W	deg;
 
-	head_mdeg += turn_dps * sample_ms;
+	BOOL	bending;
 
-	if(turning || ABS(turn_dps) > EV_TURN_PRE_DPS) {
+	head_mdeg += turn_dps * sample_ms;
+	rate_q8 += (turn_dps * 256 - rate_q8) / EV_RATE_DIV;
+	bending = ABS(rate_q8) > EV_BEND_ON_DPS * 256;
+
+	/* A bend: held one way.  Swinging side to side starts over. */
+	if(bending && SIGN(rate_q8) == bend_dir) {
+		bend_ms += (UW)sample_ms;
+	} else if(bending) {
+		bend_dir = SIGN(rate_q8);
+		bend_ms = (UW)sample_ms;
+	} else {
+		bend_dir = 0;
+		bend_ms = 0;
+	}
+
+	if(in_turn) {
 		acc_mdeg += turn_dps * sample_ms;
 		acc_ms += (UW)sample_ms;
-	} else if(!in_turn) {
+		if(ABS(turn_dps) >= EV_BEND_OFF_DPS) act_ms = acc_ms;
+	} else if(turning || ABS(rate_q8) > EV_BEND_PRE_DPS * 256
+		  || ABS(turn_dps) > EV_TURN_PRE_DPS) {
+		/* Not yet a turn: summed from here so the start counts. */
+		acc_mdeg += turn_dps * sample_ms;
+		acc_ms += (UW)sample_ms;
+		act_ms = acc_ms;
+	} else {
 		acc_mdeg = 0;
 		acc_ms = 0;
 	}
 
-	if(turning && !in_turn) {
+	if(!in_turn && (turning || bend_ms >= EV_BEND_ON_MS)) {
 		in_turn = TRUE;
+		calm_ms = 0;
 		turn_dir = SIGN(acc_mdeg != 0 ? acc_mdeg : turn_dps);
 		ev |= EV_TURN_START;
-	} else if(!turning && in_turn) {
+	} else if(in_turn) {
+		calm_ms = (!turning && ABS(rate_q8) < EV_BEND_OFF_DPS * 256)
+			  ? calm_ms + (UW)sample_ms : 0;
+	}
+	if(in_turn && calm_ms >= EV_BEND_OFF_MS) {
 		in_turn = FALSE;
+		calm_ms = 0;
+		bend_ms = 0;
 		deg = acc_mdeg / 1000;
 		last_deg = deg;
-		last_ms = acc_ms;
+		last_ms = act_ms;
 		turn_dir = SIGN(deg);
 		if(ABS(deg) < EV_TURN_MIN_DEG) {
 			ev |= EV_TURN_SMALL;
@@ -156,11 +197,20 @@ EXPORT UINT ev_window_step(W mx, W my, W mz, W dmm)
 	if(dmm != 0 || !have_prev) {
 		jump_n = 0;
 		quiet_n = 0;
+		settle_n = (dmm != 0) ? EV_SETTLE_WIN : 0;
 		for(i = 0; i < 3; i++) rest[i] = a[i];
 		if(held) {
 			held = FALSE;
 			ev |= EV_PUT_DOWN;
 		}
+	} else if(!held && settle_n > 0) {
+		/* Just stopped: the body still rocks from the brake while the
+		   wheels stand still, and that read as "picked up" after every
+		   stop at the end of the line (3 Nov).  Rest is where it
+		   settles, not the last window while driving. */
+		settle_n--;
+		jump_n = 0;
+		for(i = 0; i < 3; i++) rest[i] = a[i];
 	} else if(!held) {
 		/* A knock springs back within a window, so it never holds
 		   two in a row away from rest. */
@@ -210,6 +260,13 @@ EXPORT W    ev_nose_mg(void)	 { return nose_mg; }
 EXPORT const char *ev_side_name(W s)
 {
 	return (s > 0) ? "LEFT" : (s < 0) ? "RIGHT" : "";
+}
+
+/* The side that is up when leaning to s: "leaning LEFT" alone read as
+   "the car is on the left" (2 Nov), so the lean lines say both. */
+EXPORT const char *ev_side_up_name(W s)
+{
+	return (s > 0) ? "right side up" : (s < 0) ? "left side up" : "";
 }
 
 EXPORT const char *ev_nose_name(W s)

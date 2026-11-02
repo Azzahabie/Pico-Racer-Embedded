@@ -126,17 +126,40 @@ EXPORT void hump_abort(void)
 	pend_win = 0;
 }
 
-/* Paused on top, hump_abort() forgot the car was up there, and backing
-   down the slope counted as HUMP 2 (2026-10-28).  A pause does not move
-   the car, so only the unfinished hump goes. */
-EXPORT void hump_pause(void)
+LOCAL void hump_finish(void);
+LOCAL void top_begin(void);
+
+/* Pause or end of the mission with a hump open.  Past its top (read the
+   way down, or level since) it is counted, as a stop on top would be
+   after 1 s: on the demo hump the car reads no way down, so the hump only
+   closes after HUMP_TOP_MAX_MM of level, and a GP21 pause ~80 mm after
+   the hump dropped an 11 mm hump (S6 crossing 4, 2 Nov).  The hump may be
+   near the end of the line on demo day, where the car stops that soon.
+   Still climbing: dropped, as before, so a pause half way up does not
+   count a part height.  Paused on top, hump_abort() once forgot the car
+   was up there, and backing down the slope counted as HUMP 2
+   (2026-10-28); a pause does not move the car, so "on top" is kept. */
+LOCAL void hump_end_early(const char *why)
 {
-	if(hump_state != HUMP_NONE) {
-		tm_printf((UB *)"[imu] hump discarded (mission paused)\n");
+	if(hump_state == HUMP_NONE) {
+		pend_win = 0;
+		return;
 	}
-	hump_state = HUMP_NONE;
+	if(hump_state == HUMP_DESCENDING || level_mm > 0) {
+		tm_printf((UB *)"[imu] hump: mission %s past its top, closed"
+			       " now\n", why);
+		hump_finish();
+		if(h_um >= HUMP_GROUND_UM) top_begin();
+	} else {
+		tm_printf((UB *)"[imu] hump discarded (mission %s on the way"
+			       " up)\n", why);
+		hump_state = HUMP_NONE;
+	}
 	pend_win = 0;
 }
+
+EXPORT void hump_pause(void)		{ hump_end_early("paused"); }
+EXPORT void hump_mission_end(void)	{ hump_end_early("ended"); }
 
 EXPORT void hump_mission_reset(void)
 {
@@ -172,6 +195,18 @@ LOCAL void hump_finish(void)
 			  tenths / 10, tenths % 10);
 	}
 	hump_state = HUMP_NONE;
+}
+
+/* A hump ended with the car still up on it: follow it back down
+   (top_step()) so the way down is not taken for a new climb. */
+LOCAL void top_begin(void)
+{
+	on_top = TRUE;
+	top_um = h_um;
+	top_onset[0] = onset[0]; top_onset[1] = onset[1];
+	top_level = 0;
+	top_down = FALSE;
+	top_still = FALSE;
 }
 
 /* After a hump ended with the car stopped on top: follow the height left
@@ -350,12 +385,7 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 		   rounds up to a counted 4 mm hump, and its way down once
 		   slipped past a >= 4.0 mm test as HUMP 4. */
 		if(h_um >= HUMP_GROUND_UM) {
-			on_top = TRUE;
-			top_um = h_um;
-			top_onset[0] = onset[0]; top_onset[1] = onset[1];
-			top_level = 0;
-			top_down = FALSE;
-			top_still = FALSE;
+			top_begin();
 			tm_printf((UB *)"[imu] hump: stopped on top, %d mm up\n",
 				  h_um / 1000);
 		}

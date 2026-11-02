@@ -363,6 +363,39 @@ static void demo_as_read(void)
 	drive(1000, 48); stop(2);
 }
 
+/* S6 crossing 4 (2 Nov): GP21 ~80 mm after the hump, before the 120 mm
+   level close, dropped an 11 mm hump.  Past the top, a pause counts it,
+   at the right height, and driving on does not count it again. */
+static void demo_as_read_pause(void)
+{
+	USE(DEMO_AS_READ); stop(2); drive(297 + 80, 48);
+	if (hump_get_state() == HUMP_NONE) _exit(3);	/* not open: no test */
+	hump_pause();
+	if (hump_get_count() != 1 || hump_get_last_mm() < 9
+	    || hump_get_last_mm() > 11) _exit(3);
+	stop(2); drive(1500, 48); stop(2);
+}
+
+/* The same at the end of the mission (the hump near the end of the line). */
+static void demo_as_read_end(void)
+{
+	USE(DEMO_AS_READ); stop(2); drive(297 + 80, 48);
+	hump_mission_end();
+}
+
+/* Paused on the way down the demo hump: counted once, not again after. */
+static void demo_pause_way_down(void)
+{
+	USE(DEMO); stop(2); drive(360, 48); hump_pause();
+	stop(2); drive(1000, 48); stop(2);
+}
+
+/* Mission ended half way up: a part height is not counted. */
+static void end_mid_climb(void)
+{
+	USE(HUMP); stop(2); drive(280, 50); hump_mission_end();
+}
+
 static const SCENARIO scenarios[] = {
 	{ "straight over",			over,			1 },
 	{ "up, stop on top, back down",		up_stop_back,		1 },
@@ -389,6 +422,10 @@ static const SCENARIO scenarios[] = {
 	{ "flat floor only",			flat,			0 },
 	{ "demo hump 195 mm, 10 mm, over",	demo_over,		1 },
 	{ "demo hump as read: closes in 160 mm",	demo_as_read,	1 },
+	{ "demo as read, paused 80 mm after",	demo_as_read_pause,	1 },
+	{ "demo as read, mission ends 80 mm after", demo_as_read_end,	1 },
+	{ "demo hump, paused on the way down",	demo_pause_way_down,	1 },
+	{ "mission ends mid-climb",		end_mid_climb,		0 },
 };
 
 int main(int argc, char **argv)
