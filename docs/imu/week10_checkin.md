@@ -71,7 +71,7 @@ Other changes to imu_task in the integration (on master):
   (`distance_state` silent for 50 ms).
 
 ## 4. Gaps to close (priority order)
-
+\
 1. **Finish S6:** 3 more self-driven crossings for the 5 planned, with the
    120 mm hump close on the car. Save the viewer logs.
 2. **`E imu` record (M6).** imu_task is the only task not sending E records.
