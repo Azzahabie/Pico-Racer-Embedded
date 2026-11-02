@@ -28,7 +28,11 @@ typedef enum {
 					   Proposed 5 samples, but dist_mm is
 					   1 mm per count: at 30 mm/s a mm
 					   comes only every 33 ms            */
-#define MC_IMPACT_MG	1500		/* A = 1.5 g on one sample            */
+#define MC_IMPACT_MG	2500		/* A = 2.5 g on one sample.  Was 1.5:
+					   normal driving reached 1.5-2.0 g
+					   (a wheel onto the hump's edge, the
+					   bend, braking out of a pivot, 3 Nov),
+					   so 1.5 g did not mean a crash      */
 #define MC_IMPACT_HOLD	50		/* report impact for 500 ms           */
 #define MC_MOVED_N	100		/* impact only within 1 s of moving:
 					   carrying the car by hand hit 2.4 g */
