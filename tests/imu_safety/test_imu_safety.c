@@ -409,6 +409,30 @@ int main(void)
 	expect((ev & EV_PICKED_UP) != 0 && ev_held(),
 	       "events: picked up after the car has settled");
 
+	/* Held by hand (tremor > 8 mg each window) reaches the lift fault
+	   time; the in-hand time starts at the pick-up. */
+	expect(ev_held_ms() == 100, "events: in hand 100 ms at the pick-up");
+	for (i = 0; i < 11; i++) ev_window_step((i & 1) ? -5 : 25, 40, 990, 0);
+	expect(ev_held_ms() >= EV_LIFT_FAULT_MS,
+	       "events: held 1.2 s reaches the lift fault");
+
+	/* A jolt that settles somewhere new: "put down" after 1 s steady,
+	   before the lift fault time. */
+	ev_reset();
+	for (i = 0; i < 5; i++) ev_window_step(0, 0, 1000, 0);
+	ev = ev_window_step(50, 0, 1000, 0);
+	ev |= ev_window_step(50, 0, 1000, 0);		/* seen as a pick-up */
+	{
+		UW	most = 0;
+
+		for (i = 0; i < 15; i++) {
+			ev |= ev_window_step(50, 0, 1000, 0);
+			if (ev_held_ms() > most) most = ev_held_ms();
+		}
+		expect((ev & EV_PUT_DOWN) != 0 && most < EV_LIFT_FAULT_MS,
+		       "events: a jolt that settles never reaches the lift fault");
+	}
+
 	/* ---- readable events: lean and nose ---- */
 	{
 		W	w[3];

@@ -35,6 +35,7 @@ LOCAL W		prev[3];		/* last window                       */
 LOCAL W		rest[3];		/* last window resting on the floor  */
 LOCAL INT	jump_n, quiet_n;
 LOCAL INT	settle_n;		/* windows left to settle after a stop */
+LOCAL UW	held_ms;		/* in hand this long                 */
 
 /* Lean (side to side) and nose (front to back). */
 LOCAL W		lean, nose;		/* reported */
@@ -66,6 +67,7 @@ EXPORT void ev_reset(void)
 	have_prev = FALSE;
 	jump_n = quiet_n = 0;
 	settle_n = 0;
+	held_ms = 0;
 	lean = nose = lean_cand = nose_cand = 0;
 	lean_n = nose_n = 0;
 	lean_mg = nose_mg = 0;
@@ -236,6 +238,7 @@ EXPORT UINT ev_window_step(W mx, W my, W mz, W dmm)
 		}
 	}
 	have_prev = TRUE;
+	held_ms = held ? held_ms + 100U : 0U;	/* one window = 100 ms */
 
 	/* In the hand the angles mean nothing to the car. */
 	if(!held) {
@@ -252,6 +255,7 @@ EXPORT UW   ev_turns_left(void)	 { return n_left; }
 EXPORT UW   ev_turns_right(void) { return n_right; }
 EXPORT W    ev_heading_deg(void) { return head_mdeg / 1000; }
 EXPORT BOOL ev_held(void)	 { return held; }
+EXPORT UW   ev_held_ms(void)	 { return held_ms; }
 EXPORT W    ev_lean(void)	 { return lean; }
 EXPORT W    ev_nose(void)	 { return nose; }
 EXPORT W    ev_lean_mg(void)	 { return lean_mg; }

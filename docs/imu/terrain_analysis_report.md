@@ -354,6 +354,7 @@ in RUNNING, jerky ones included, gave no fault; a hand tilt in RUNNING faulted a
 | Recover: GP20 recalibration → FAULT cleared → a new mission drives | 23:53:02 `cal ok`, 23:53:47 mission start, car at 48 mm/s (FAULT_CLEAR(IMU) now reaches motion_task) | ✅ (was limitation 8) |
 | Read failures, then re-init | 00:03:22 `reads failing: setting the IMU up again` (20 read errors, 0 missed samples) after rough handling, car already in FAULT; not seen again | ✅ recovered; check GP16/GP17 wiring |
 | Hump driven during a mission: no false IMU fault | all 12 self-driven crossings (§4.5), steepest 16° | ✅ |
+| **Picked up in a mission** → IMU fault (added 3 Nov at the prof's request): in hand 1.2 s (`EV_LIFT_FAULT_MS`) in Running or Paused; not in Ready, where the car is lifted onto the start | 02:34:15 paused, `picked up` → 02:34:16 `STOPPING: car picked up (in hand 1.2 s)`, brake + FAULT; lifted while driving (02:33:47) it tipped 26° on the way up, so the tilt fault came first (21.2 ms) | ✅ |
 
 Brake time is motion_task's own stamp (`motion_stop_stamp`), so NFR-18 is met by a
 wide margin.
@@ -416,9 +417,11 @@ Motion shows the same jitter (Buddy 2).
    the demo hump and flat-floor runs are done driving (§4.5). Still from hand pushes
    or too few: the 23 mm hump (2 of 5 passes), the "still" threshold, and impact
    A = 1.5 g, which normal driving reaches (§4.7).
-10. **Not implemented yet:** IMU events to comms_task (the `E imu` record,
-   `comm_w_pack_imu`, M6). Tilt and turn rate **are** in telemetry now (`S.tlt`,
-   `S.trn`, FR-29, §3.6).
+10. **The pick-up detector needs the wheels still.** Lifted while driving, the
+   wheels spin in the air and it reads as driving; the fault comes once the car
+   loses the line and stops (~2 s after the wheels stop), unless the lift tilts
+   it past T first. A free-spinning-wheel cue from motion_task would make it
+   immediate (Buddy 2).
 11. **Magnetometer** is read but unused. It works: turned flat by hand through 4 ×
    90° (3 Nov, `IMU_VERBOSE`), x and y swung ±400 mG and gave 87/89/89/95° steps,
    z stayed 245–270 mG, |B| ≈ 455 mG, a hard-iron offset of about (−66, +29) mG
@@ -440,8 +443,8 @@ Motion shows the same jitter (Buddy 2).
 | FR-02 | ✅ nav waits for CAL_OK_IMU; CAL_FAIL → FAULT |
 | FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested); self-driven: 12 crossings, two humps in one mission, an obstacle stop on the hump with reversing off it, three flat runs with 0 humps (§4.5) |
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
-| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5). 🟡 not in an `E imu` record yet |
-| FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second, checked in the viewer (§3.6). 🟡 FR-23: the `E imu` event record (M6) is not sent yet |
+| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count and height in `E imu` and `S.hum` / `S.hgt` |
+| FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
 | FR-27 | 🟡 classifier running on the car under motor power: moving, turning, climbing, stopped as expected; impact A = 1.5 g is reached by normal driving (§4.7) |
 | FR-28 | ✅ T = 25°, N = 3; humps up to 16° self-driven do not trip; knocks filtered (one residual false fault, §6) |
 | NFR-05 | ✅ demo hump (10 mm), self-driven: **10/10 within target**, mean −0.16 mm, range 8.9–10.7 mm (§4.5). 🟡 23 mm hump: 2 of 5 passes, 1/2 within target, 2/2 within the limit. Hand pushes: every clean pass within target |

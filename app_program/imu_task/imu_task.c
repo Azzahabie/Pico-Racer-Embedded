@@ -57,6 +57,7 @@
 #include "../motor_task/motion_ds.h"
 #include "../motor_task/motor_task.h"	/* motor_task_flag: STOP_IMU   */
 #include "../nav_task/nav_ctrl.h"	/* nav_flg, mission state      */
+#include "../comms_task/comms_task.h"	/* comms_tele_send: E imu      */
 #include "hump.h"
 #include "imu_safety.h"
 #include "imu_class.h"
@@ -167,8 +168,13 @@ LOCAL void tell_nav(UINT bits)
    sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
    goes on Buddy 5's shared fault flag, and only a passed calibration
    clears it (answer_cal). */
-LOCAL void raise_fault(BOOL tilt, UW t_first, const W a[3])
+#define WHY_NO_DATA	0		/* raise_fault(): why                  */
+#define WHY_TILT	1
+#define WHY_LIFTED	2		/* picked up in a mission (3 Nov)     */
+
+LOCAL void raise_fault(INT why, UW t_first, const W a[3])
 {
+	BOOL		tilt = (why == WHY_TILT);
 	mission_state_t	ms = nav_mission_state();
 	BOOL		in_mission = (ms == MS_RUNNING || ms == MS_PAUSED);
 	UW		t10, us;
@@ -199,14 +205,18 @@ LOCAL void raise_fault(BOOL tilt, UW t_first, const W a[3])
 			tm_sprintf(what, (UB *)"car tipped over (%u.%u deg nose"
 				   " %s)", t10 / 10, t10 % 10, ev_nose_name(nose));
 		}
+	} else if(why == WHY_LIFTED) {
+		tm_sprintf(what, (UB *)"car picked up (in hand %u.%u s)",
+			   ev_held_ms() / 1000, ev_held_ms() % 1000 / 100);
 	} else {
 		tm_sprintf(what, (UB *)"lost the IMU (no good reading for %d ms)",
 			   SAFETY_BAD_N * SAMPLE_MS);
 	}
 	tm_printf((UB *)"[imu] !!! %s: %s !!!\n",
 		  in_mission ? "STOPPING" : "IMU FAULT", what);
-	tm_printf((UB *)"[imu]     caught %u.%u ms after the first bad sample;"
+	tm_printf((UB *)"[imu]     caught %u.%u ms after the first %s;"
 		       " %s, nav told (IMU_FAULT)\n", us / 1000, us % 1000 / 100,
+		  (why == WHY_LIFTED) ? "lift" : "bad sample",
 		  in_mission ? "brake requested (STOP_IMU)"
 			     : "not in a mission, so no brake needed");
 }
@@ -545,6 +555,22 @@ LOCAL UW mg_deg(W mg)
 	return (imu_deg10((UW)((mg < 0) ? -mg : mg)) + 5) / 10;
 }
 
+/* The E imu record (M6, FR-23): queued for comms_task on every motion
+   class change and every change of the hump count (a hump counted, or the
+   reset at mission start).  comms_task also fills S.hum and S.hgt from it,
+   so without it they read 0.  Height: the hump in progress, else the last
+   one.  comms_tele_send() never waits; a full queue counts a drop. */
+LOCAL void send_imu_record(void)
+{
+	UB	body[COMM_W_INTAKE_SIZE_IMU];
+	UW	hgt;
+
+	hgt = (hump_get_state() != HUMP_NONE && hump_height_mm() > 0)
+	      ? (UW)hump_height_mm() : hump_get_last_mm();
+	(void)comms_tele_send(body, (INT)comm_w_pack_imu(body,
+				(uint32_t)mclass_get(), hump_get_count(), hgt));
+}
+
 /* Print what imu_events.c reported, one line per event, in words. */
 LOCAL void print_events(UINT ev)
 {
@@ -623,6 +649,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 	BOOL	ok;
 	UINT	ev, eev;
 	BOOL	mc_changed;
+	UW	sent_count = 0;		/* hump count in the last E imu        */
+	UW	t_lift = 0;		/* 1 MHz time the car was seen in hand */
 	UW	bumps = 0;		/* impacts this mission               */
 	HUMP_STATE prog_hs = HUMP_NONE;	/* hump progress lines: last state,  */
 	W	prog_mm = 0;		/* height last printed, time since   */
@@ -761,11 +789,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 			setup();
 		}
 		if(safety_no_data()) {
-			raise_fault(FALSE, t_bad, a);
+			raise_fault(WHY_NO_DATA, t_bad, a);
 		}
 		ms = nav_mission_state();
 		if(safety_tilted() && (ms == MS_RUNNING || ms == MS_PAUSED)) {
-			raise_fault(TRUE, t_tilt, a);
+			raise_fault(WHY_TILT, t_tilt, a);
 		}
 
 		/* Mission changes (Statechart 6.4): a new mission starts the
@@ -891,10 +919,27 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				print_events(ev_window_step(hsum[0] / hn,
 						hsum[1] / hn, hsum[2] / hn,
 						motion_ds_delta_mm(ds, ds_hump)));
+				/* Picked up in a mission: IMU fault, as a tilt
+				   past T is (the prof, 3 Nov).  Not in Ready,
+				   where the car is lifted onto the start. */
+				if(ev_held_ms() == 100U) {
+					t_lift = in_w(TIMER_TIMERAWL);
+				}
+				if(ev_held_ms() >= EV_LIFT_FAULT_MS
+				   && (ms == MS_RUNNING || ms == MS_PAUSED)) {
+					raise_fault(WHY_LIFTED, t_lift, a);
+				}
 			}
 			ds_hump = ds;
 			hsum[0] = hsum[1] = hsum[2] = 0;
 			hn = 0;
+		}
+
+		/* E imu: one record per sample at most, class and count
+		   changes in the same sample go out together. */
+		if(mc_changed || hump_get_count() != sent_count) {
+			sent_count = hump_get_count();
+			send_imu_record();
 		}
 
 		/* On a hump: its height as it changes, at most every

@@ -25,8 +25,13 @@ From here on, work on `imu_task`, not master: it has master's features
 
 ## 1. Code (do first, so the runs test the final firmware)
 
-- [ ] **`E imu` record (M6):** send IMU events to comms through
+- [x] **`E imu` record (M6):** send IMU events to comms through
       `comm_w_pack_imu()`; check it in the viewer as `E imu`
+      *(3 Nov: `send_imu_record()` in `imu_task.c`, on every class change
+      and hump-count change. On the car: class 6 at the start, class 2 on
+      the climb, `hump_count=1 hump_height_mm=10` at the hump, class 0 at
+      the stop, count 0 at mission start; `S.hum=1 S.hgt=10`, which read 0
+      before)*
 - [ ] Fix anything unclear found in section 0's console check
 - [ ] **PR `imu_task` → master:** readable console (`d84590b`), merge fix
       (`df9ee24`), check-in doc, the `E imu` record; build passes, host tests pass
@@ -143,6 +148,15 @@ Target ±2 mm or 20 %, limit ±5 mm.
   |B| ≈ 455 mG, hard-iron offset ≈ (-66, +29) mG, noise ±3 mG. Unused by
   the firmware (known limitation)
 - [ ] Share the results with Buddy 2 (motion shows the same jitter)
+
+### Picked up in a mission → IMU fault (the prof, 3 Nov)
+
+- [x] Built: in hand 1.2 s (`EV_LIFT_FAULT_MS`) in Running or Paused →
+      `STOPPING: car picked up` + STOP_IMU + FAULT; not in Ready.
+      *(3 Nov 02:34:16: paused, lifted → fault 1.1 s after `picked up`;
+      lifted while driving → tipped 26° on the way up → tilt fault 21.2 ms;
+      `cmd reset` → cal ok → new mission drove)*
+- [ ] No false lift fault in normal runs (obstacle stops, scans, end of line)
 
 ### FR-28 / NFR-19: tilt fault (limit 40 ms)
 

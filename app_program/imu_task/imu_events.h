@@ -58,6 +58,12 @@
 #define EV_HAND_OFF_WIN	10		/* ... for 1 s: put down               */
 #define EV_SETTLE_WIN	5		/* after the wheels stop, 500 ms of
 					   braking rock is not a pick-up      */
+#define EV_LIFT_FAULT_MS 1200		/* in hand this long, in a mission:
+					   IMU fault (the prof, 3 Nov).  Over
+					   the 1 s steady that puts a car down,
+					   so a jolt that just settles does not
+					   reach it; a hand never holds that
+					   still */
 
 /* Events, as bits. */
 #define EV_TURN_START	0x01U		/* ev_turn_dir() says which way        */
@@ -87,6 +93,7 @@ IMPORT UW   ev_turns_left(void);
 IMPORT UW   ev_turns_right(void);
 IMPORT W    ev_heading_deg(void);	/* since mission start, left + */
 IMPORT BOOL ev_held(void);		/* picked up, not put down    */
+IMPORT UW   ev_held_ms(void);		/* ... for this long (0 if not)*/
 IMPORT W    ev_lean(void);		/* +1 left, -1 right, 0 level */
 IMPORT W    ev_nose(void);		/* +1 up, -1 down, 0 level    */
 IMPORT W    ev_lean_mg(void);		/* signed, left + */
