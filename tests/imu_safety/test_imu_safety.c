@@ -226,7 +226,14 @@ int main(void)
 
 	/* Impact while moving: at once, held 500 ms, then back. */
 	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
-	expect(mclass_step(TRUE, 2000, 1, 0, FALSE, 0) == TRUE
+	/* Normal driving knocks (3 Nov: 1.5-2.0 g) are not impacts. */
+	for (i = 0; i < 10; i++) {
+		mclass_step(TRUE, (i & 1) ? 2000 : 1500, 1, 0, FALSE, 0);
+		if (mclass_get() == MC_IMPACT) break;
+	}
+	expect(mclass_get() != MC_IMPACT, "class: 1.5-2.0 g driving knocks");
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_step(TRUE, 3000, 1, 0, FALSE, 0) == TRUE
 	       && mclass_get() == MC_IMPACT, "class: impact reported at once");
 	for (i = 0; i < MC_IMPACT_HOLD - 2; i++) {
 		mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
@@ -237,7 +244,7 @@ int main(void)
 
 	/* Hit just after stopping (a crash brakes the car): still impact. */
 	for (i = 0; i < 30; i++) mclass_step(TRUE, 1000, 0, 0, FALSE, 0);
-	mclass_step(TRUE, 1800, 0, 0, FALSE, 0);
+	mclass_step(TRUE, 2800, 0, 0, FALSE, 0);
 	expect(mclass_get() == MC_IMPACT, "class: impact 0.3 s after stopping");
 
 	/* Carried by hand long after stopping: 2.4 g is not an impact. */

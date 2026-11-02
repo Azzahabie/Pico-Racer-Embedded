@@ -336,7 +336,7 @@ two passes are too few to fit anything to, and the demo uses only the 10 mm hump
 | θ_on | 5° for 3 samples | **2.9° (50 mg) for 3 × 100 ms windows** | a 10 mm ramp peaks at only 6–10°, so a lower onset catches more of the climb; windows (not single samples) keep it above the 1.7° floor variation |
 | θ_off | 3° | **2.0° (35 mg)**, plus 40 mm on the way down | floor spots differ by up to 1.7° |
 | Level close (cap) | — | **120 mm** (was 250) | demo hump never reads the way down; 250 mm kept it open ~25 cm past the crest (§4.5) |
-| A (impact) | 1.5 g | **1.5 g**, gated on motion (§3.4) | carrying the car reached 2.4 g. Under motor power (3 Nov) normal driving still reached it: 1.5 g as a wheel hit the hump's edge, 1.5 g on the bend, 1.6 g braking out of a pivot. These print `BUMP` and change nothing else, but A is too low to mean a crash (§6) |
+| A (impact) | 1.5 g | **2.5 g** (was 1.5), gated on motion (§3.4) | carrying the car reached 2.4 g, so impact is gated on motion. Under motor power (3 Nov) normal driving reached 1.5–2.0 g: a wheel onto the hump's edge, the bend, braking out of a pivot, the car catching on the 23 mm ramp. At 1.5 g those printed `BUMP`, so A was raised above them; host test: 1.5–2.0 g knocks are not impacts |
 
 Peak tilt of the reference humps: 10 mm ramp 5.6…10°, 23.5 mm ramp 12.5…15.7°. With
 T = 25° the lower (demo) ramp has a 15° margin.
@@ -390,10 +390,16 @@ to 0.4 ms. 10 trials were run instead of the 100 planned, as the spread shows no
 variation worth sampling further.
 
 NFR-11 with Wi-Fi on: early and late periods come in pairs (8.5 ms next to 11.5 ms),
-so the task wakes up to ~1.5 ms late now and then; no sample is missed. That run had
-the heaviest console load (every line over Wi-Fi, verbose output), so it still has
-to be repeated on the plain car build to tell the radio from the debug console.
-Motion shows the same jitter (Buddy 2).
+so the task wakes up to ~1.5 ms late now and then; no sample is missed. Motion shows
+the same jitter (Buddy 2); the cause is not found.
+
+**NFR-11 is reported as a known limitation, not repeated.** The car build already
+missed it while driving (S4), so a repeat without the wireless console would only
+confirm it, and the timing line is printed only by the `IMU_VERBOSE` build, which
+adds load itself. It does not affect the results: the hump height is tilt ×
+**encoder distance**, not time, so a sample ~1.5 ms late changes nothing (the 14/14
+of §4.5 were measured with this jitter), and the tilt fault stays at 20.5–21.2 ms
+of its 40 ms limit.
 
 ## 6. Limitations and error sources
 
@@ -429,7 +435,8 @@ Motion shows the same jitter (Buddy 2).
 9. **Self-driven runs: done for the demo hump, not finished elsewhere.** NFR-05 on
    the demo hump and flat-floor runs are done driving (§4.5); the higher ramp is
    out of the demo (prof, 3 Nov). Still from hand pushes or too few: the "still"
-   threshold, and impact A = 1.5 g, which normal driving reaches (§4.7).
+   threshold, and impact A = 2.5 g (raised from 1.5 g, which normal driving
+   reached, §4.7), not yet driven into a real obstacle.
 10. **The pick-up detector needs the wheels still.** Lifted while driving, the
    wheels spin in the air and it reads as driving; the fault comes once the car
    loses the line and stops (~2 s after the wheels stop), unless the lift tilts
@@ -448,6 +455,10 @@ Motion shows the same jitter (Buddy 2).
    reads as turning, and line-search sweeps at the end of the line count as turns.
    The heading (`facing N deg`) is the better number. Console only; nothing else
    uses it.
+14. **The 5987 mg boot glitch** (x = y = z = 5987 mg at some boots, Week 10): cause
+   not found; **0 of 4** logged boots on 2–3 Nov (plus ~8 unlogged reboots after
+   flashing). Demo day: after power-on check the `[imu] cal ok` line; if it shows
+   5987, power off and on, then recalibrate.
 
 ## 7. Requirements status
 
@@ -458,10 +469,10 @@ Motion shows the same jitter (Buddy 2).
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
 | FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count and height in `E imu` and `S.hum` / `S.hgt` |
 | FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
-| FR-27 | 🟡 classifier running on the car under motor power: moving, turning, climbing, stopped as expected; impact A = 1.5 g is reached by normal driving (§4.7) |
+| FR-27 | ✅ classifier running on the car under motor power: moving, turning, climbing, descending, stopped as expected; impact A raised to 2.5 g after normal driving reached 1.5–2.0 g (§4.7). 🟡 not yet driven into a real obstacle |
 | FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6) |
 | NFR-05 | ✅ demo hump (10 mm), self-driven: **14/14 within target**, mean −0.04 mm, range 8.9–11.3 mm (§4.5). The final ramp is about this height (prof, 3 Nov). 23 mm hump, no longer required: target 3/4, limit 4/4. Hand pushes: every clean pass within target |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |
 | NFR-18 | ✅ brake 47–61 µs after STOP_IMU (limit 20 ms) |
 | NFR-19 | ✅ 20.5–20.9 ms over 10 trials, 4 on the integrated car (limit 40 ms) |
-| NFR-11 | ✅ Wi-Fi off, bench: 9 653–10 352 µs. ❌ driving 17/19 windows (worst 11.7 ms); Wi-Fi on, debug console: 10/16 (worst 8.2–11.8 ms). Repeat on the plain car build (§5.1) |
+| NFR-11 | ✅ Wi-Fi off, bench: 9 653–10 352 µs. ❌ driving 17/19 windows (worst 11.7 ms); Wi-Fi on, debug console: 10/16 (worst 8.2–11.8 ms). **Known limitation**, shared with motion_task, cause not found; no effect on hump height or the tilt fault (§5.1) |
