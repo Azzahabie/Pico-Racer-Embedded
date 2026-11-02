@@ -166,7 +166,7 @@ LOCAL void tell_nav(UINT bits)
    sends FAULT_CLEAR(IMU) after a calibration passes.  FAULT_IMU (bit 2)
    goes on Buddy 5's shared fault flag, and only a passed calibration
    clears it (answer_cal). */
-LOCAL void raise_fault(const char *why, UW t_first)
+LOCAL void raise_fault(BOOL tilt, UW t_first, const W a[3])
 {
 	mission_state_t	ms = nav_mission_state();
 	BOOL		in_mission = (ms == MS_RUNNING || ms == MS_PAUSED);
@@ -846,7 +846,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		/* The tilt-state word for the 1 s status line (FR-29,
 		   imu_ts.h): tilt while samples are good, turn rate while
 		   distance_state is updating.  One store, as above. */
-		imu_ts_word = imu_ts_pack(tilt_deg10(safety_tilt_mg()) / 10,
+		imu_ts_word = imu_ts_pack(imu_deg10(safety_tilt_mg()) / 10,
 					  motion_ds_turn_dps(ds),
 					  !safety_no_data(),
 					  ds_quiet < TS_DS_QUIET);
