@@ -112,9 +112,140 @@
    scan_task's 150 mm reverse takes about 2 s, inside its 5 s timeout. */
 #define MOTION_REV_TARGET (10)
 
+/* Line following (statechart LINE_FOLLOW, Buddy 3's line_state word).
+   Both wheels run under the PID at MOTION_LF_BASE; a correction moves the
+   two targets apart, + = turn left.  The correction is in 1/100 counts per
+   tick (MOTION_LF_SCALE), built each tick from the line error e
+   (-100..+100):
+     target = e x MOTION_LF_GAIN + (e - e MOTION_LF_DAMP_TICKS ago) x
+              MOTION_LF_DAMP
+   The second term is the damper: while the car swings back toward the
+   line the error falls, so it takes correction off before the car
+   overshoots.  The target is capped at MOTION_LF_SOFT_MAX, and the
+   applied correction moves toward it by at most MOTION_LF_SLEW a tick, so
+   it eases in and out.  Only an error of at least MOTION_LF_HARD_ERR held
+   for MOTION_LF_HARD_TICKS gets the hard turn, MOTION_LF_HARD_MAX: the
+   inner wheel turns back at 1 count per tick, a near pivot (never 0, so
+   the stall check still sees it move).
+   PROPOSED, tune on the floor.  S4 (30 Oct): base 15 (about 12 cm/s) ran
+   off the line, 8 (about 6 cm/s) next.  31 Oct: 5 (about 4 cm/s) with
+   gain 3 strayed within a few cm, so slower again and stronger: 4 is
+   about 3.2 cm/s (calculated, 0.079 mm a count), half error already gives
+   2.5 counts, and the soft cap leaves the inner wheel at 1 count.
+   1 Nov (user: faster): base 4 -> 6 (about 4.7 cm/s), now that the
+   adaptive thresholds and the last-seen steering are in.  The gain and
+   damper scale with the base (tuned 5 and 15 at base 4), so a given
+   error turns the car on the same curve at any base speed. */
+#ifndef MOTION_LF_BASE
+#define MOTION_LF_BASE        (6)
+#endif
+#define MOTION_LF_SCALE       (100)
+#define MOTION_LF_GAIN        ((5 * MOTION_LF_BASE) / 4)  /* 7 at base 6  */
+#define MOTION_LF_DAMP        ((15 * MOTION_LF_BASE) / 4) /* 22 at base 6 */
+#define MOTION_LF_DAMP_TICKS  (5u)  /* change measured over 50 ms        */
+#define MOTION_LF_SOFT_MAX    ((MOTION_LF_BASE - 1) * MOTION_LF_SCALE)
+#define MOTION_LF_SLEW        (50)  /* 0 to SOFT_MAX in 60 ms            */
+#define MOTION_LF_HARD_ERR    (80)
+#define MOTION_LF_HARD_TICKS  (25u) /* 250 ms                            */
+#define MOTION_LF_HARD_MAX    ((MOTION_LF_BASE + 1) * MOTION_LF_SCALE)
+#define MOTION_LF_SEEN_MS     (30u) /* dark below this: line still seen */
+#define MOTION_LF_FOUND_TICKS (3u)  /* seen this many ticks: found      */
+
+/* Line search (statechart LINE_SEARCH, [L_search]).  Both sensors sit
+   inside the 18 mm line, so a centred car reads 11 and only a car off the
+   line reads 00: after LINE_LOST_MS of 00 the car pivots on the spot
+   toward the side the line was last seen (|error| >= MOTION_LS_DIR_MIN
+   while a sensor saw it; the sign already includes LINE_STEER_INVERT; Line
+   Following steers to the same side at full error during that 00), up to
+   MOTION_LS_SWEEP_DEG,
+   then back past the start to the same angle the other side.  The line
+   under a sensor ends it (LINE_FOUND); a full sweep without it is
+   LINE_LOST.  PROPOSED: 6 counts per tick per wheel, about 5 cm/s. */
+#define MOTION_LS_SPEED     (6)
+#define MOTION_LS_SWEEP_DEG (45)
+#define MOTION_LS_DIR_MIN   (10)
+
 /* ------------------------------------------------------------------ *
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
+
+/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION once GP7 has
+   been on the crossbar LINE_JUNCTION_SAMPLES; the car then drives
+   MOTION_TURN_FWD_MM straight so the axle is over the crossing ([d_sensor]:
+   GP7 to the wheel axle), and pivots on the spot at MOTION_TURN_SPEED
+   until each wheel has turned PIVOT_COUNTS(90) (left, right) or (180)
+   (U-turn, counter-clockwise).  Straight on drives MOTION_TURN_CROSS_MM
+   ([L_cross]) across the crossing, ignoring the line.  Then MOVE_DONE, and
+   Line Following if the line is under the sensors, else Line Search.
+   PROPOSED: measure d_sensor on the car; turn speed as the line search. */
+#define MOTION_TURN_FWD_MM    (50)
+#define MOTION_TURN_CROSS_MM  (40)
+#define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
+#define MOTION_TURN_SPEED     (6)
+
+/* Bypass (statechart BYPASS, FR-18; Integration Rules D14), by encoder
+   count: a rectangle with side probes, so an obstacle of unknown size is
+   passed (S7 attempts 1-2: fixed 45 deg legs hit long boxes, went wide
+   and came back to the line late).  Turns: + = toward the bypass side.
+     1. Pivot MOTION_BYPASS_SIDE_DEG out, look along the sidestep (lane
+        check, below), drive offset / sin SIDE_DEG, pivot back.  All of
+        it happens behind the obstacle (>= 255 mm ahead of the axle).
+     2. Drive alongside, MOTION_BYPASS_FIRST_MM, then MOTION_BYPASS_STEP_MM
+        at a time.  After each step: pivot 45 toward the obstacle, set
+        SCAN_FLG_LOOK so scan_task looks with the servo 45 the same way
+        (square-on to its side: at 45 deg incidence the box reflects the
+        sound away, S7 echo test 1 Nov), pivot 45 back.  A reading below
+        MOTION_BYPASS_SEEN_MM, no echo, or no answer within
+        MOTION_BYPASS_LOOK_TICKS = still there.
+     3. Passed = clear after it was seen once, or clear and never seen
+        after MOTION_BYPASS_UNSEEN_MM alongside (shallower than a step).
+        Then MOTION_BYPASS_CLEAR_MM more: a clear look means the far face
+        is behind axle + 110 - 29 = axle + 81 (the beam cone at 108 mm);
+        stepping in at 70 deg needs the axle only far face + 38 (margin
+        included), so 81 + 38 = 119 -> 120 (was 200 for a 90 deg step).
+     4. Pivot SIDE_DEG in, drive toward the line until GP26/GP27 see it
+        (at most the leg + MOTION_BYPASS_IN_EXTRA_MM), MOTION_LINE_SENSOR_MM
+        more so the axle is on the line, pivot SIDE_DEG onto the heading.
+   Still there after MOTION_BYPASS_MAX_PASS_MM alongside: give up into
+   Line Search (FR-18 "otherwise stop": it ends in LINE_LOST).
+   A stop on the way brakes it; it carries on if the stop clears with no
+   new command, and a new BYPASS from scan_task starts over.
+   The probe pivots happen beside the obstacle, so C_pass 218 (D12) keeps
+   the 168 mm corner sweep clear of it. */
+/* S7 attempt 3 (1 Nov): the 90 deg pivots turned about 100 deg at the
+   bypass pivot speed (user, by eye), so bypass pivots are scaled to 90 %
+   of their encoder count.  The sidestep and the turn back in are
+   MOTION_BYPASS_SIDE_DEG (70, user suggestion) instead of 90: the leg is
+   offset / sin 70 (MOTION_BYPASS_SIDE_LEG_X1000), and stepping in at 70
+   needs the axle only far face + 38 mm, not + 113 (calculated).
+   Before the sidestep the car looks along it (servo 0): anything closer
+   than the leg + MOTION_BYPASS_LANE_MARGIN_MM (front 155 + 50) and it
+   pivots back to its heading and sets SCAN_FLG_SIDE_BLOCKED, so
+   scan_task re-plans the other side from its original profile instead
+   of re-scanning sideways (attempt 3: right side blocked out of the
+   scan's view).  No new command within MOTION_BYPASS_SWITCH_TICKS: Line
+   Search (it ends in LINE_LOST). */
+#define MOTION_BYPASS_PIVOT_PCT       (90)
+#define MOTION_BYPASS_SIDE_DEG        (70)
+#define MOTION_BYPASS_SIDE_LEG_X1000  (1064)  /* 1 / sin 70 deg, x 1000 */
+#define MOTION_BYPASS_LANE_MARGIN_MM  (205)
+#define MOTION_BYPASS_SWITCH_TICKS    (500u)  /* 5 s */
+#define MOTION_BYPASS_FIRST_MM    (250)
+#define MOTION_BYPASS_STEP_MM     (100)
+#define MOTION_BYPASS_UNSEEN_MM   (450)
+#define MOTION_BYPASS_CLEAR_MM    (120)
+#define MOTION_BYPASS_MAX_PASS_MM (1500)
+#define MOTION_BYPASS_IN_EXTRA_MM (150)
+/* "Seen": the box read 230-333 mm square-on and clear looks 966-1551 mm
+   on the car (S7 attempt 3).  At 300 a 333 mm box reading counted as
+   clear, so the box was never "seen" and the car stepped on to
+   MOTION_BYPASS_UNSEEN_MM: one look too many and an overshoot. */
+#define MOTION_BYPASS_SEEN_MM     (450)
+#define MOTION_BYPASS_LOOK_TICKS  (300u)  /* 3 s with no answer: still there */
+#define MOTION_LINE_SENSOR_MM     (125)   /* GP26/GP27 to the axle, measured 1 Nov */
+/* Raised 1 Nov (user OK): legs 10 -> 12 counts per tick, pivots 6 -> 10. */
+#define MOTION_BYPASS_SPEED       (12)
+#define MOTION_BYPASS_TURN_SPEED  (10)
 
 /* Measured on the car, docs/motion/results.md: counts per wheel turn
    (x4 quadrature, 2 trials), wheel diameter and the distance between the
@@ -123,6 +254,22 @@
 #define MOTION_COUNTS_PER_REV (2535)
 #define MOTION_WHEEL_DIA_MM   (64)
 #define MOTION_WHEELBASE_MM   (127)
+
+/* Hump (W6 6.2 / 6.4, Integration Rules 2.7; M3), while imu_task's
+   hump_state is not NONE (imu_word_read(), one aligned load, D1):
+   - every wheel speed target is capped at V_hump = 15 cm/s, in counts per
+     tick: v x counts per turn / (pi x wheel diameter x 100 ticks/s), with
+     pi as 355/113, rounded down (18 at 150 mm/s; calculated);
+   - the line may be missing 2 x t_lost (LINE_LOST_MS) before Line Search.
+     line_state's dark time saturates at 2550 ms (8 bits x 10 ms), so past
+     that motion counts its own ticks: MOTION_HUMP_LOST_TICKS more ticks at
+     the saturated value = 2 x 1500 ms. */
+#define MOTION_HUMP_MAX_MMPS   (150)
+#define MOTION_MMPS_TO_CPT(v)                                                  \
+    (((v) * MOTION_COUNTS_PER_REV * 113)                                       \
+     / (355 * MOTION_WHEEL_DIA_MM * 100))
+#define MOTION_HUMP_MAX_CPT    (MOTION_MMPS_TO_CPT(MOTION_HUMP_MAX_MMPS))
+#define MOTION_HUMP_LOST_MS    (2 * LINE_LOST_MS)
 
 /* Turn rate and acceleration are averaged over this many ticks.
    PROPOSED: 5 ticks = 50 ms, the most agreed with Buddy 4 (23 Oct), so

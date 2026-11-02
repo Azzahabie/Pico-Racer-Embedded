@@ -80,7 +80,7 @@ static int32_t find_closest(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm)
 
 	for(idx = 0; idx < SL_SLOTS; idx++) {
 		if(is_hit(grid[idx], d_obs_mm)) {
-			in_corr = (abs_val(lateral_mm((int32_t)grid[idx], idx)) <= SL_C_PASS_MM);
+			in_corr = (abs_val(lateral_mm((int32_t)grid[idx], idx)) <= SL_CORRIDOR_MM);
 			if(-1 == best) {
 				better = true;
 			} else if(in_corr != best_in) {
@@ -190,16 +190,18 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	}
 
 	p_prof->found = true;
-	p_prof->d_close_mm = (int32_t)grid[close_idx];
-	p_prof->close_deg = SL_DEG(close_idx);
+	/* hits are <= d_obs_mm (a few hundred mm) and angles -45..+45, so
+	 * every int16_t field below holds its value */
+	p_prof->d_close_mm = (int16_t)grid[close_idx];
+	p_prof->close_deg = (int16_t)SL_DEG(close_idx);
 
 	grow(grid, d_obs_mm, close_idx, -1, &left_idx, &left_stop);
 	grow(grid, d_obs_mm, close_idx, +1, &right_idx, &right_stop);
 	p_prof->left_open  = (left_stop >= 0);		/* stopped before -45 */
 	p_prof->right_open = (right_stop < SL_SLOTS);	/* stopped before +45 */
 
-	p_prof->left_deg  = SL_DEG(left_idx);
-	p_prof->right_deg = SL_DEG(right_idx);
+	p_prof->left_deg  = (int16_t)SL_DEG(left_idx);
+	p_prof->right_deg = (int16_t)SL_DEG(right_idx);
 
 	/* closest point d_c of THIS object (FR-16): the search above started
 	 * from the closest in-corridor hit, so re-check the whole object */
@@ -208,33 +210,33 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 		   (((int32_t)grid[idx] < p_prof->d_close_mm) ||
 		    (((int32_t)grid[idx] == p_prof->d_close_mm) &&
 		     (abs_val(SL_DEG(idx)) < abs_val(p_prof->close_deg))))) {
-			p_prof->d_close_mm = (int32_t)grid[idx];
-			p_prof->close_deg = SL_DEG(idx);
+			p_prof->d_close_mm = (int16_t)grid[idx];
+			p_prof->close_deg = (int16_t)SL_DEG(idx);
 		}
 	}
 
 	/* lateral edge positions x = d * sin(theta), then beam correction:
 	 * the cone makes each edge look ~d*tan(7.5) too far out, so pull
 	 * both edges inward */
-	p_prof->x_left_mm  = lateral_mm((int32_t)grid[left_idx], left_idx) +
-			     beam_corr_mm((int32_t)grid[left_idx]);
-	p_prof->x_right_mm = lateral_mm((int32_t)grid[right_idx], right_idx) -
-			     beam_corr_mm((int32_t)grid[right_idx]);
+	p_prof->x_left_mm  = (int16_t)(lateral_mm((int32_t)grid[left_idx], left_idx) +
+				       beam_corr_mm((int32_t)grid[left_idx]));
+	p_prof->x_right_mm = (int16_t)(lateral_mm((int32_t)grid[right_idx], right_idx) -
+				       beam_corr_mm((int32_t)grid[right_idx]));
 
-	p_prof->width_mm = p_prof->x_right_mm - p_prof->x_left_mm;
+	p_prof->width_mm = (int16_t)(p_prof->x_right_mm - p_prof->x_left_mm);
 	if(p_prof->width_mm < 0) {
 		p_prof->width_mm = 0;		/* tiny object: cone wider */
 	}
 
-	/* in the way if it overlaps the corridor -C_pass..+C_pass */
-	p_prof->in_path = (p_prof->x_left_mm <= SL_C_PASS_MM) &&
-			  (p_prof->x_right_mm >= -SL_C_PASS_MM);
+	/* in the way if it overlaps the corridor -SL_CORRIDOR_MM..+SL_CORRIDOR_MM */
+	p_prof->in_path = (p_prof->x_left_mm <= SL_CORRIDOR_MM) &&
+			  (p_prof->x_right_mm >= -SL_CORRIDOR_MM);
 
 	/* sideways move needed so the car's near side clears the edge:
 	 * pass left  -> car centre must reach x_left  - C_pass
 	 * pass right -> car centre must reach x_right + C_pass */
-	p_prof->offset_left_mm  = -(p_prof->x_left_mm - SL_C_PASS_MM);
-	p_prof->offset_right_mm =   p_prof->x_right_mm + SL_C_PASS_MM;
+	p_prof->offset_left_mm  = (int16_t)(-(p_prof->x_left_mm - SL_C_PASS_MM));
+	p_prof->offset_right_mm = (int16_t)(p_prof->x_right_mm + SL_C_PASS_MM);
 	if(p_prof->offset_left_mm < 0) {
 		p_prof->offset_left_mm = 0;
 	}
@@ -243,10 +245,55 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	}
 
 	/* free space beyond each edge; a side that runs off the scan has none */
-	p_prof->clear_left_mm = p_prof->left_open ?
-		clearance(grid, d_obs_mm, left_stop, -1, p_prof->x_left_mm) : 0;
-	p_prof->clear_right_mm = p_prof->right_open ?
-		clearance(grid, d_obs_mm, right_stop, +1, p_prof->x_right_mm) : 0;
+	p_prof->clear_left_mm = (int16_t)(p_prof->left_open ?
+		clearance(grid, d_obs_mm, left_stop, -1, p_prof->x_left_mm) : 0);
+	p_prof->clear_right_mm = (int16_t)(p_prof->right_open ?
+		clearance(grid, d_obs_mm, right_stop, +1, p_prof->x_right_mm) : 0);
+}
+
+bool sl_fine_starts(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+		    int32_t *p_left_deg, int32_t *p_right_deg)
+{
+	sl_profile_t prof;
+
+	/* the same object rule sl_profile() uses, applied to the coarse grid */
+	sl_profile(grid, d_obs_mm, &prof);
+	if(prof.found) {
+		*p_left_deg = prof.left_deg;
+		*p_right_deg = prof.right_deg;
+	}
+	return prof.found;
+}
+
+bool sl_same_object(uint16_t prev_mm, uint16_t dist_mm, int32_t d_obs_mm)
+{
+	return is_hit(dist_mm, d_obs_mm) &&
+	       (abs_val((int32_t)dist_mm - (int32_t)prev_mm) <= SL_DEPTH_JUMP_MM);
+}
+
+/* Can the car pass on this side (clearance and offset limit)? */
+static bool side_ok(const sl_profile_t *p_prof, bool b_left)
+{
+	return b_left ? (p_prof->left_open &&
+			 (p_prof->clear_left_mm >= SL_C_PASS_MM) &&
+			 (p_prof->offset_left_mm <= SL_MAX_OFFSET_MM))
+		      : (p_prof->right_open &&
+			 (p_prof->clear_right_mm >= SL_C_PASS_MM) &&
+			 (p_prof->offset_right_mm <= SL_MAX_OFFSET_MM));
+}
+
+sl_action_t sl_other_side(const sl_profile_t *p_prof, sl_action_t tried)
+{
+	sl_action_t other = SL_BLOCKED;
+
+	if((SL_BYPASS_LEFT == tried) && side_ok(p_prof, false)) {
+		other = SL_BYPASS_RIGHT;
+	} else if((SL_BYPASS_RIGHT == tried) && side_ok(p_prof, true)) {
+		other = SL_BYPASS_LEFT;
+	} else {
+		/* no other side to try */
+	}
+	return other;
 }
 
 sl_action_t sl_decide(const sl_profile_t *p_prof, bool reverse_tried)
@@ -260,12 +307,8 @@ sl_action_t sl_decide(const sl_profile_t *p_prof, bool reverse_tried)
 	} else if(p_prof->d_close_mm < SL_D_REV_MM) {
 		action = reverse_tried ? SL_BLOCKED : SL_REVERSE;
 	} else {
-		ok_left  = p_prof->left_open &&
-			   (p_prof->clear_left_mm >= SL_C_PASS_MM) &&
-			   (p_prof->offset_left_mm <= SL_MAX_OFFSET_MM);
-		ok_right = p_prof->right_open &&
-			   (p_prof->clear_right_mm >= SL_C_PASS_MM) &&
-			   (p_prof->offset_right_mm <= SL_MAX_OFFSET_MM);
+		ok_left  = side_ok(p_prof, true);
+		ok_right = side_ok(p_prof, false);
 
 		if(ok_left && ok_right) {
 			/* NFR-07: the side with the larger clearance; on a tie the
@@ -308,11 +351,16 @@ const char *sl_action_name(sl_action_t action)
 /* ------------------------------------------------------------------ */
 sl_ping_t sl_classify(bool no_echo, uint32_t dist_mm)
 {
+	return sl_classify_at(no_echo, dist_mm, SL_D_STOP_MM);
+}
+
+sl_ping_t sl_classify_at(bool no_echo, uint32_t dist_mm, int32_t stop_mm)
+{
 	sl_ping_t ping;
 
 	if(no_echo) {
 		ping = SL_PING_NO_ECHO;
-	} else if((SL_FAR != dist_mm) && (dist_mm < (uint32_t)SL_D_STOP_MM)) {
+	} else if((SL_FAR != dist_mm) && (dist_mm < (uint32_t)stop_mm)) {
 		ping = SL_PING_CLOSE;
 	} else {
 		ping = SL_PING_CLEAR;		/* includes out of range */
@@ -320,35 +368,101 @@ sl_ping_t sl_classify(bool no_echo, uint32_t dist_mm)
 	return ping;
 }
 
-void sl_runs_reset(sl_runs_t *p_runs)
+int32_t sl_avoid_stop_mm(int32_t moved_mm)
 {
-	p_runs->close_run = 0U;
-	p_runs->clear_run = 0U;
-	p_runs->no_echo_run = 0U;
-	p_runs->echo_run = 0U;
+	return (abs_val(moved_mm) <= SL_PIVOT_MOVE_MM) ? SL_D_REV_MM : SL_D_STOP_MM;
 }
 
-static uint8_t inc_sat(uint8_t count)
+uint16_t sl_look_reply_mm(uint16_t grid_mm)
 {
-	return (count < 255U) ? (uint8_t)(count + 1U) : count;
+	uint16_t reply;
+
+	if(SL_NOT_MEASURED == grid_mm) {
+		reply = SL_LOOK_UNKNOWN_MM;
+	} else if((SL_FAR == grid_mm) || (grid_mm >= SL_LOOK_FAR_MM)) {
+		reply = SL_LOOK_FAR_MM;
+	} else {
+		reply = grid_mm;		/* 1..510 mm */
+	}
+	return reply;
+}
+
+/* Field positions in sl_runs_t.packed (see scan_logic.h). */
+#define RUN_CLOSE_SHIFT		0U
+#define RUN_CLOSE_MAX		7U
+#define RUN_CLEAR_SHIFT		3U
+#define RUN_CLEAR_MAX		3U
+#define RUN_NO_ECHO_SHIFT	5U
+#define RUN_NO_ECHO_MAX		3U
+#define RUN_ECHO_SHIFT		7U
+#define RUN_ECHO_MAX		3U
+
+_Static_assert((SL_N_STOP <= RUN_CLOSE_MAX) && (SL_N_STOP_HUMP <= RUN_CLOSE_MAX) &&
+	       (SL_N_CLEAR <= RUN_CLEAR_MAX) && (SL_N_NO_ECHO <= RUN_NO_ECHO_MAX) &&
+	       (SL_N_ECHO <= RUN_ECHO_MAX), "a run counter field is too narrow");
+
+static uint8_t run_get(const sl_runs_t *p_runs, uint32_t shift, uint32_t max)
+{
+	return (uint8_t)((p_runs->packed >> shift) & max);
+}
+
+/* +1, saturating at the field maximum */
+static void run_inc(sl_runs_t *p_runs, uint32_t shift, uint32_t max)
+{
+	uint32_t count = run_get(p_runs, shift, max);
+
+	if(count < max) {
+		count++;
+	}
+	p_runs->packed = (uint16_t)((p_runs->packed & ~(max << shift)) | (count << shift));
+}
+
+static void run_zero(sl_runs_t *p_runs, uint32_t shift, uint32_t max)
+{
+	p_runs->packed = (uint16_t)(p_runs->packed & ~(max << shift));
+}
+
+void sl_runs_reset(sl_runs_t *p_runs)
+{
+	p_runs->packed = 0U;
 }
 
 void sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping)
 {
 	if(SL_PING_NO_ECHO == ping) {
-		p_runs->no_echo_run = inc_sat(p_runs->no_echo_run);
-		p_runs->echo_run = 0U;
-		p_runs->close_run = 0U;		/* a gap breaks "in a row" */
-		p_runs->clear_run = 0U;
+		run_inc(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
+		run_zero(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
+		run_zero(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);	/* a gap breaks "in a row" */
+		run_zero(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
 	} else {
-		p_runs->echo_run = inc_sat(p_runs->echo_run);
-		p_runs->no_echo_run = 0U;
+		run_inc(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
+		run_zero(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
 		if(SL_PING_CLOSE == ping) {
-			p_runs->close_run = inc_sat(p_runs->close_run);
-			p_runs->clear_run = 0U;
+			run_inc(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
+			run_zero(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
 		} else {
-			p_runs->clear_run = inc_sat(p_runs->clear_run);
-			p_runs->close_run = 0U;
+			run_inc(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
+			run_zero(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
 		}
 	}
+}
+
+uint8_t sl_runs_close(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_CLOSE_SHIFT, RUN_CLOSE_MAX);
+}
+
+uint8_t sl_runs_clear(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_CLEAR_SHIFT, RUN_CLEAR_MAX);
+}
+
+uint8_t sl_runs_no_echo(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_NO_ECHO_SHIFT, RUN_NO_ECHO_MAX);
+}
+
+uint8_t sl_runs_echo(const sl_runs_t *p_runs)
+{
+	return run_get(p_runs, RUN_ECHO_SHIFT, RUN_ECHO_MAX);
 }

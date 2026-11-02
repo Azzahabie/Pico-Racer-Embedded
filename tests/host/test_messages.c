@@ -17,6 +17,7 @@
 
 #include "../../app_program/common/messages.h"
 #include "vectors.h"
+#include "../../app_program/imu_task/imu_ts.h"
 
 static int failures;
 static int passes;
@@ -72,33 +73,34 @@ static void test_s_v2_sanity(void)
     check_bytes("S v2 sanity (MQTT_SCHEMA v2 section 10)", rec, len, want, sizeof want);
 }
 
-/* 2. S v4: 6 fault bits (v3 had 5), 16 bytes. */
-static void test_s_v4(void)
+/* 2. S v5: v4 (6 fault bits) plus tilt 6 and turn rate 12, 18 bytes. */
+static void test_s_v5(void)
 {
-    static const uint8_t widths[] = {2, 3, 16, 32, 6, 4, 8, 2, 8, 5, 2, 4, 8, 8, 2, 3, 4, 4};
-    uint8_t rec[16];
+    static const uint8_t widths[] = {2, 3, 16, 32, 6, 4, 8, 2, 8, 5, 2, 4, 8, 8, 2, 3, 4, 4, 6, 12};
+    uint8_t rec[18];
     uint32_t len = pack_fields(rec, sizeof rec, widths, s_example_values, sizeof widths);
 
-    check_bytes("S v4 example", rec, len, s_example_bytes, sizeof s_example_bytes);
+    check_bytes("S v5 example", rec, len, s_example_bytes, sizeof s_example_bytes);
 }
 
 /* 2b. The firmware S packer agrees with the field list, and clamps. */
 static void test_pack_s(void)
 {
-    const uint32_t *v = s_example_values;   /* t, v, s, up, then the 14 fields */
+    const uint32_t *v = s_example_values;   /* t, v, s, up, then the 16 fields */
     T_COMM_W_S st = {
         (uint8_t)v[4], (uint8_t)v[5], (uint8_t)v[6], (uint8_t)v[7], (uint8_t)v[8],
         (uint8_t)v[9], (uint8_t)v[10], (uint8_t)v[11], (uint8_t)v[12], (uint8_t)v[13],
-        (uint8_t)v[14], (uint8_t)v[15], (uint8_t)v[16], (uint8_t)v[17],
+        (uint8_t)v[14], (uint8_t)v[15], (uint8_t)v[16], (uint8_t)v[17], (uint8_t)v[18],
+        (uint16_t)v[19],
     };
     uint8_t rec[COMM_W_S_SIZE];
     uint8_t ref[COMM_W_S_SIZE];
     T_COMM_W_S big = st;
     uint32_t len;
 
-    ok(COMM_W_S_BITS == 121U && COMM_W_S_SIZE == 16U, "S is 121 bits, 16 B", "S size");
+    ok(COMM_W_S_BITS == 139U && COMM_W_S_SIZE == 18U, "S is 139 bits, 18 B", "S size");
     len = comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
-    check_bytes("comm_w_pack_s, S v4 example", rec, len, s_example_bytes, sizeof s_example_bytes);
+    check_bytes("comm_w_pack_s, S v5 example", rec, len, s_example_bytes, sizeof s_example_bytes);
 
     /* mot 20 does not fit 4 bits: stored 15, every other field unchanged. */
     big.mot = 20;
@@ -124,9 +126,51 @@ static void test_pack_s(void)
     st.faults = 0x7FU;
     comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
     check_bytes("comm_w_pack_s clamps faults 0x7f -> 0x3f", rec, sizeof rec, ref, sizeof ref);
+
+    /* Tilt and turn rate clamp to their widths: 70 -> 63, 5000 -> 4095. */
+    st.faults = (uint8_t)v[4];
+    st.tlt = COMM_W_S_TLT_NA;
+    st.trn = 4095U;
+    comm_w_pack_s(ref, (uint16_t)v[2], v[3], &st);
+    st.tlt = 70U;
+    st.trn = 5000U;
+    comm_w_pack_s(rec, (uint16_t)v[2], v[3], &st);
+    check_bytes("comm_w_pack_s clamps tlt 70 -> 63, trn 5000 -> 4095", rec, sizeof rec, ref,
+                sizeof ref);
 }
 
 /* 2c. The fault-bit contract with Buddy 5 (schema section 4.1). */
+/* 2d. imu_task's tilt-state word (imu_ts.h) carries S.tlt and S.trn as stored. */
+static void test_imu_ts(void)
+{
+    uint32_t w;
+
+    ok(imu_ts_tilt_raw(IMU_TS_WORD_NA) == COMM_W_S_TLT_NA
+       && imu_ts_turn_raw(IMU_TS_WORD_NA) == COMM_W_S_TRN_NA,
+       "NA word decodes to S's NA codes", "imu_ts NA");
+    ok(IMU_TS_TILT_BITS == COMM_W_S_TLT_BITS && IMU_TS_TURN_BITS == COMM_W_S_TRN_BITS,
+       "same widths as S", "imu_ts widths");
+
+    w = imu_ts_pack(4, -30, true, true);
+    ok(imu_ts_tilt_raw(w) == 4U && imu_ts_turn_raw(w) == 2018U,
+       "tilt 4, turn -30 -> stored 4, 2018 (the section 10 S example)", "imu_ts pack");
+    ok((w >> 18) == 0U, "bits 18-31 zero", "imu_ts spare");
+
+    w = imu_ts_pack(70, 5000, true, true);
+    ok(imu_ts_tilt_raw(w) == 62U && imu_ts_turn_raw(w) == 4095U,
+       "tilt 70 -> 62, turn 5000 -> 2047", "imu_ts clamp high");
+    w = imu_ts_pack(0, -5000, true, true);
+    ok(imu_ts_tilt_raw(w) == 0U && imu_ts_turn_raw(w) == 1U,
+       "turn -5000 -> -2047, never the NA code", "imu_ts clamp low");
+
+    w = imu_ts_pack(10, 100, false, true);
+    ok(imu_ts_tilt_raw(w) == IMU_TS_TILT_NA && imu_ts_turn_raw(w) == 2148U,
+       "tilt not ok -> 63, turn kept", "imu_ts tilt NA");
+    w = imu_ts_pack(10, 100, true, false);
+    ok(imu_ts_tilt_raw(w) == 10U && imu_ts_turn_raw(w) == IMU_TS_TURN_NA,
+       "turn not ok -> 0, tilt kept", "imu_ts turn NA");
+}
+
 static void test_fault_bits(void)
 {
     ok(FAULT_COUNT == 6U && FAULT_ALL == 0x3FU, "six bits, 0x3f", "fault count");
@@ -138,12 +182,12 @@ static void test_fault_bits(void)
     ok(COMM_W_S_FAULTS_BITS == FAULT_COUNT, "S carries every fault bit", "S faults width");
 }
 
-/* 3. H, schema v4. */
+/* 3. H, schema v5. */
 static void test_h(void)
 {
-    static const uint8_t h_min[] = {0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    static const uint8_t h_ex[]  = {0x12, 0x12, 0x00, 0x82, 0x14, 0x00, 0x00};
-    static const uint8_t h_max[] = {0xf2, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f};
+    static const uint8_t h_min[] = {0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    static const uint8_t h_ex[]  = {0x16, 0x12, 0x00, 0x82, 0x14, 0x00, 0x00};
+    static const uint8_t h_max[] = {0xf6, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1f};
     uint8_t rec[COMM_W_H_SIZE];
     T_COMM_W_HEADER h;
     uint32_t pos = 0;
@@ -153,7 +197,7 @@ static void test_h(void)
                 h_ex, sizeof h_ex);
     check_bytes("H max", rec, comm_w_pack_h(rec, 65535, 0xffffffffUL), h_max, sizeof h_max);
     comm_w_get_header(rec, &pos, &h);
-    ok(h.t == COMM_W_REC_H && h.v == 4 && h.s == 65535 && h.up == 0xffffffffUL
+    ok(h.t == COMM_W_REC_H && h.v == 5 && h.s == 65535 && h.up == 0xffffffffUL
        && pos == COMM_W_HDR_BITS, "header round trip", "H max");
 }
 
@@ -279,16 +323,135 @@ static void test_sizes_and_wrap(void)
     ok(comm_w_dist_delta_mm(1500, 1000) == 500, "no wrap", "dist wrap");
 }
 
+static void test_avoid_command(void)
+{
+    uint16_t word = 0U;
+    uint16_t dist_mm = 0U;
+    uint8_t op = 0U;
+    uint8_t side = 0U;
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                             MOTION_AVOID_SIDE_NONE, 150U, &word),
+       "reverse command packs", "avoid command");
+    ok(word == 0x0961U, "reverse payload has the specified bit layout",
+       "avoid command");
+    ok(motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_REVERSE) &&
+       (side == MOTION_AVOID_SIDE_NONE) && (dist_mm == 150U),
+       "reverse payload round-trips", "avoid command");
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                             MOTION_AVOID_SIDE_RIGHT, 300U, &word),
+       "right bypass command packs", "avoid command");
+    ok(word == 0x12CAU, "bypass payload has the specified bit layout",
+       "avoid command");
+    ok(motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_BYPASS) &&
+       (side == MOTION_AVOID_SIDE_RIGHT) && (dist_mm == 300U),
+       "bypass payload round-trips", "avoid command");
+
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                             MOTION_AVOID_SIDE_LEFT, 300U, &word) &&
+       (word == 0x12C2U),
+       "left bypass uses side bit zero", "avoid command");
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                             MOTION_AVOID_SIDE_NONE,
+                             MOTION_AVOID_DIST_MAX, &word) &&
+       (word == 0x1FF1U),
+       "9-bit maximum distance is supported", "avoid command");
+
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_REVERSE,
+                              MOTION_AVOID_SIDE_LEFT, 150U, &word),
+       "reverse rejects a side", "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                              MOTION_AVOID_SIDE_NONE, 300U, &word),
+       "bypass requires a side", "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_BYPASS,
+                              MOTION_AVOID_SIDE_LEFT,
+                              MOTION_AVOID_DIST_MAX + 1U, &word),
+       "distance overflow is rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack(0x0000U, &op, &side, &dist_mm),
+       "zero operation and distance are rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack(0x0004U, &op, &side, &dist_mm),
+       "undefined operation is rejected", "avoid command");
+    ok(!motion_avoid_cmd_unpack((uint16_t)(0x12CAU | 0x8000U),
+                                &op, &side, &dist_mm),
+       "reserved high bits must be zero", "avoid command");
+}
+
+/* Record D: S's fields from the section 10 example, then the diagnostics. */
+static void test_pack_d(void)
+{
+    const uint32_t *v = s_example_values;
+    T_COMM_W_S st = {
+        (uint8_t)v[4], (uint8_t)v[5], (uint8_t)v[6], (uint8_t)v[7], (uint8_t)v[8],
+        (uint8_t)v[9], (uint8_t)v[10], (uint8_t)v[11], (uint8_t)v[12], (uint8_t)v[13],
+        (uint8_t)v[14], (uint8_t)v[15], (uint8_t)v[16], (uint8_t)v[17], (uint8_t)v[18],
+        (uint16_t)v[19],
+    };
+    T_COMM_W_D_DIAG dg = { (uint8_t)d_example_diag[0], d_example_diag[1],
+                           (uint8_t)d_example_diag[2], (uint8_t)d_example_diag[3] };
+    T_COMM_W_D_DIAG big = dg;
+    uint8_t rec[COMM_W_D_SIZE];
+    uint8_t ref[COMM_W_D_SIZE];
+    uint32_t len;
+
+    ok(COMM_W_D_BITS == 183U && COMM_W_D_SIZE == 23U, "D is 183 bits, 23 B", "D size");
+    len = comm_w_pack_d(rec, (uint16_t)v[2], v[3], &st, &dg);
+    check_bytes("comm_w_pack_d, D example", rec, len, d_example_bytes, sizeof d_example_bytes);
+
+    /* rssi 200 and qd 9 do not fit: stored 127 and 7. */
+    big.rssi = 200;
+    big.qd = 9;
+    dg.rssi = 127;
+    dg.qd = 7;
+    comm_w_pack_d(rec, (uint16_t)v[2], v[3], &st, &big);
+    comm_w_pack_d(ref, (uint16_t)v[2], v[3], &st, &dg);
+    check_bytes("comm_w_pack_d clamps rssi 200 -> 127, qd 9 -> 7", rec, sizeof rec, ref, sizeof ref);
+}
+
+/* cmd and map checks (schema section 8). */
+static void test_commands(void)
+{
+    uint8_t b, mv = 0xFF, act[COMM_W_MAP_LETTERS];
+    uint8_t long_map[COMM_W_MAP_SIZE + 1] = {0};
+    int same = 1;
+
+    for(b = 1; b <= 7; b++) {
+        ok(comm_w_check_cmd(&b, 1) == b, "op 1..7 accepted", "cmd op");
+    }
+    b = 0x00; ok(comm_w_check_cmd(&b, 1) == 0U, "op 0 rejected", "cmd op 0");
+    b = 0x09; ok(comm_w_check_cmd(&b, 1) == 0U, "reserved bit 3 rejected", "cmd reserved");
+    b = 0x81; ok(comm_w_check_cmd(&b, 1) == 0U, "reserved bit 7 rejected", "cmd reserved");
+    b = 0x01; ok(comm_w_check_cmd(&b, 2) == 0U, "length 2 rejected", "cmd length");
+    ok(comm_w_check_cmd(&b, 0) == 0U, "length 0 rejected", "cmd length");
+    ok(comm_w_check_cmd(NULL, 1) == 0U, "NULL rejected", "cmd NULL");
+
+    ok(comm_w_check_map(map_example_bytes, sizeof map_example_bytes, &mv, act),
+       "7-byte map accepted", "map");
+    ok(mv == map_example_mv, "mv unpacked", "map mv");
+    for(uint32_t i = 0; i < COMM_W_MAP_LETTERS; i++) {
+        if(act[i] != map_example_act[i]) same = 0;
+    }
+    ok(same, "26 actions unpacked, A first", "map actions");
+    ok(!comm_w_check_map(map_example_bytes, 6, &mv, act), "6 bytes rejected", "map length");
+    ok(!comm_w_check_map(long_map, sizeof long_map, &mv, act), "8 bytes rejected", "map length");
+}
+
 int main(void)
 {
     test_s_v2_sanity();
-    test_s_v4();
+    test_s_v5();
     test_pack_s();
+    test_imu_ts();
     test_fault_bits();
     test_h();
     test_vectors();
     test_reject();
     test_sizes_and_wrap();
+    test_avoid_command();
+    test_pack_d();
+    test_commands();
 
     printf("%d checks passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

@@ -30,9 +30,17 @@ must write a subscriber or a publisher **without reading any C**.
 > from 5 to 6 bits, so `S` is **16 bytes**; `D` stays 21. `E`, `H`, `cmd` and
 > `map` change only `v`.
 
+> **Schema v5 (2026-10-28) — tilt and turn rate in `S` (FR-29).** `S` gains
+> `tlt` (6 bits) and `trn` (12 bits) after `drp`, so `S` is **18 bytes** and `D`
+> **23**. Both are *pulled*: `comms_task` reads them from Buddy 4's tilt-state
+> word when it builds each `S`, instead of folding them from events (§4). `D`
+> was already at the radio's 21-byte record limit, so `CYW43_MQTT_RECORD_MAX`
+> rises to **24**. The imu event's `class` range widens to 0–6 with no layout
+> change. `E`, `H`, `cmd` and `map` change only `v`.
+
 - **Owner:** Buddy 1 (WiFi + Telemetry)
-- **Status:** contract, schema **v4**, revised 2026-10-23. Schema v3 was
-  2026-10-22; v2 was
+- **Status:** contract, schema **v5**, revised 2026-10-28. Schema v4 was
+  2026-10-23; v3 was 2026-10-22; v2 was
   2026-10-19 (Tribunal 1); first written 2026-09-28 as JSON schema v1. Derived from
   [`WIFI_SUBSYSTEM_DESIGN.md`](WIFI_SUBSYSTEM_DESIGN.md) §4, §7, §8, §9, §12 —
   that document holds the reasoning; this one is the flat statement of *what
@@ -94,10 +102,11 @@ wins and this one is the bug.
 ## 3. Rules that apply to every payload
 
 *Rewritten for schema v2 (Tribunal 1, 2026-10-19); rules 1, 4 and 5 updated
-for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23).*
+for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23) and v5
+(2026-10-28).*
 
 1. **One record per MQTT message**, no batching. The payload length is fixed per
-   record type — S 16 B, H 7 B, D 21 B — and for `E` per event kind, 8–13 B
+   record type — S 18 B, H 7 B, D 23 B — and for `E` per event kind, 8–13 B
    (§5.1); a reader rejects any other length.
 2. **Bit order: LSB-first, little-endian.** Fields are packed in the order of
    each table. The first field starts at bit 0 of byte 0; bit *n* of the record
@@ -121,28 +130,60 @@ for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23).*
 | Bits | Field | Range | Meaning |
 |---|---|---|---|
 | 2 | `t` | 0–3 | record type: 0 `S`, 1 `E`, 2 `H`, 3 `D` |
-| 3 | `v` | 0–7 | schema version. **4** = this layout (3 = five fault bits, 2 = Tribunal 1 binary, 1 = JSON) |
+| 3 | `v` | 0–7 | schema version. **5** = this layout (4 = no tilt/turn rate, 3 = five fault bits, 2 = Tribunal 1 binary, 1 = JSON) |
 | 16 | `s` | 0–65535 | sequence number for the run, shared by every record on `telemetry` |
 | 32 | `up` | ms | milliseconds since boot (`tk_get_otm()` low word, design §4.1) |
 
-> **`s` and `drp` still make gaps attributable.** A gap in `s` with `drp`
-> unchanged means the *network* lost a record; a gap with `drp` rising means the
-> *car* dropped it at its intake queue.
+> **What a gap in `s` means** *(corrected 2026-10-23 from the v4 hardware
+> test)*. The car can drop a record at two queues, and `drp` counts only the
+> first:
+>
+> - **`drp` rose** → the car dropped it at its **intake** queue (`tele_mbf`):
+>   a producer sent faster than `comms_task` reads.
+> - **`drp` unchanged** → the car was **not connected** to the broker, so the
+>   radio's **outbound** queue (112 B, about 3 s of `H` + `S`) filled and the
+>   record was dropped there — every boot before the first connect, and every
+>   outage — **or** the laptop was not subscribed at the time. These drops show
+>   only on the car's console (`[mqtt] … drop=N`), not on the wire.
+>
+> It is almost never the network: records travel over one TCP connection,
+> which retransmits while it is up. The earlier wording ("`drp` unchanged
+> means the *network* lost it") was wrong; on 2026-10-23 a 42-record gap with
+> `drp` = 0 matched the console's outbound drop count exactly. Counting
+> outbound drops on the wire is open item 20 (§12).
 
 ---
 
-## 4. Record `S` — the periodic state line (16 bytes)
+## 4. Record `S` — the periodic state line (18 bytes)
 
 Published on `robocar/<id>/telemetry` once per second (NFR-10). It is a **fold
 of the latest value per source**, so a late subscriber waits at most one second
 for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 
 > **Built 2026-10-22** (`comm_w_pack_s()`, published by `comms_task` right after
-> each `H`, on the same `s` counter). Until the sources exist, two fields are
-> fixed: **`faults` is 0** — including the Wi-Fi-loss bit — until Buddy 5's
-> fault flag exists (§12 item 19), and **`mpv` is 0** until the `map` command
-> (M8) is built. A field no event has reported yet keeps its initial value:
-> `bar` 31 (none), `dev` 128 (0 tenths), everything else 0.
+> each `H`, on the same `s` counter). **`faults`** is copied from Buddy 5's
+> fault flag before each `S`, with the Wi-Fi-loss latch added (§4.1; since
+> 2026-10-29). **`mpv` is 0** until the `map` command (M8) is built. A field no event has reported yet keeps its initial value:
+> `bar` 31 (none), `dev` 128 (0 tenths), `tlt` 63 and `trn` 0 (not
+> available), everything else 0.
+
+> **Two ways a field reaches `S` (v5).** A field that records **a discrete
+> event** — a motion change, a barcode, a finished hump — is *pushed*: its
+> producer sends an event on `tele_mbf` and `comms_task` folds it in (and
+> publishes it as `E`, §5). A field that is **a continuously changing value**
+> the requirement wants every second — tilt and turn rate (FR-29), and the
+> fault bitmask (§4.1) — is *pulled*: its producer keeps one packed word
+> current (one writer, one aligned store, as Buddy 2's `distance_state`), and
+> `comms_task` reads it once per `S`. Pulling sends nothing extra and is never
+> stale. A new `S` field asks the same question.
+
+> **Where `tlt` and `trn` come from.** `imu_task` writes the **tilt-state
+> word** ([`app_program/imu_task/imu_ts.h`](../../app_program/imu_task/imu_ts.h))
+> every 10 ms sample — one store, stored exactly as `S` carries both fields —
+> and `comms_task` copies it with `imu_ts_read()` just before packing each `S`.
+> Tilt is the same whole-degree value as Buddy 4's `hump_state` word; that
+> word is full and has no "not available" code, hence a second word. Until
+> `imu_task` runs (or in a build without it), the word reads "not available".
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
@@ -159,12 +200,23 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 2 | `byp` | 0–2 | bypass taken: 1 left, 2 right; 0 = none (Buddy 5) |
 | 3 | `mis` | 0–6 | mission state, 7 states (Vehicle Controller) |
 | 4 | `mpv` | 0–15 | barcode-table version the car is **actually running** (§8.3), wraps |
-| 4 | `drp` | 0–15 | records dropped at the intake queue, cumulative, **saturates at 15** |
+| 4 | `drp` | 0–15 | records dropped at the **intake** queue, cumulative, **saturates at 15**. Outbound-queue drops are not counted (§3) |
+| 6 | `tlt` | 0–62 °, **63 = not available** | tilt from level, a magnitude (FR-29), from Buddy 4's tilt-state word. *new in v5* |
+| 12 | `trn` | −2047–2047 °/s, stored + 2048, **0 = not available** | turn rate from the wheel encoders, counter-clockwise positive (FR-29), copied by Buddy 4 from `distance_state`. *new in v5* |
 
-**121 bits → 16 bytes** (v3 was exactly 120 bits, so v4's sixth fault bit
-costs one byte; the last 7 bits are padding). The measured JSON line of schema
-v1 was 141 bytes, so this is **8.8× smaller**. (v3's 15-byte `S` was measured
-on the link on 2026-10-22; v4's 16 bytes is calculated until re-checked.)
+**139 bits → 18 bytes** (v4 was 121 bits, 16 bytes; v5's 18 bits for tilt and
+turn rate cost two; the last 5 bits are padding). The measured JSON line of
+schema v1 was 141 bytes, so this is **7.8× smaller**. (v3's 15-byte `S` was
+measured on the link on 2026-10-22; v5's 18 bytes is calculated until
+re-checked.)
+
+> **"Not available" (FR-29 says "when available").** `tlt` = 63 means the IMU
+> has had no good sample for 50 ms (NFR-13's Y); `trn` = 0 means
+> `distance_state` has not changed for 50 ms (motion_task stalled or not
+> running). An abnormal-tilt fault does **not** make `tlt` n/a: the tilt is
+> still measured, and is what the laptop most wants to see then. The producer clamps a real turn rate
+> to ±2047, so stored 0 (−2048) never means a real value. The decoder prints
+> both as `n/a`.
 
 > **Sentinels, revised.** `bar` now has its own "none" code (31), so `act` no
 > longer needs a `0 = not yet` sentinel and all four of its codes are real
@@ -203,14 +255,37 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 
 > **Which bits are wired.** A bit reads 0 until its owner's code sets it, so
 > `faults = 0` means "no fault reported", not "every subsystem checked". As of
-> 2026-10-23 **none are wired**: the flag itself does not exist yet (§12
-> item 19).
+> 2026-10-29 bits **2** (IMU), **3** (scan sensor lost) and **5** (Wi-Fi loss)
+> are wired; bits 0, 1 and 4 are not yet.
 
 > **The Wi-Fi-loss bit and the wire.** An `S` line cannot be published while
 > Wi-Fi is down, so a live "Wi-Fi lost" bit would never reach the laptop.
-> **Proposed:** `comms_task` keeps bit 5 set in its published copy until the
-> first `S` after reconnect has carried it, then clears it. The bit on the
-> kernel flag itself follows the link state in real time.
+> **Built 2026-10-29** (`comms_task.c`, `wifi_loss_step()`): `comms_task` keeps
+> bit 5 set in its published copy until an `S` queued while connected has
+> carried it, then clears it. The bit on the kernel flag follows the session,
+> checked once per `S` tick.
+>
+> - **What counts as a loss**, either of:
+>   - **the MQTT session is not `CONNECTED`.** The radio drops the session
+>     within one 2 ms poll when the link or the lease goes, so this covers
+>     Wi-Fi, DHCP lease **and a broker outage** with Wi-Fi still up. The name
+>     says Wi-Fi; on the laptop it is the same outage.
+>   - **a stall:** `S` refused by the full outbound queue on **2 ticks in a
+>     row** while the session still says `CONNECTED`. A short AP outage
+>     (about 20 s, tested 2026-10-29) neither took the link down nor ended the
+>     TCP session; records only stopped leaving, and the first rule never
+>     fired. Refusals before the first connect, or while not
+>     `CONNECTED`, do not count. The stall ends after `S` is queued on 2 ticks
+>     in a row, so a partial drain does not flicker it. Detection waits for
+>     lwIP's TCP send buffer to fill: about 10 s after the AP went in that
+>     test. On a stall `comms_task` also asks the radio to reopen the session
+>     (`cyw43_utk_mqtt_restart()`), so the car does not wait out the 90 s
+>     keep-alive timeout (`NETWORKING.md` §5.1); from then on the first rule
+>     (not `CONNECTED`) holds the bit.
+> - **Never before the first connect.** A loss means the link was had and lost,
+>   so the first `S` of a run does not carry bit 5.
+> - **Drops shorter than one tick** still latch the bit: `comms_task` also
+>   watches the radio's lost-session counter (`cyw43_utk_mqtt_sessions_lost()`).
 
 ---
 
@@ -278,7 +353,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
-| 3 | `class` | 0–4 | FR-27 motion event class (stationary, turning, climbing, descending, impact) |
+| 3 | `class` | 0–6 | motion class: 0 still, 1 turning, 2 climbing, 3 descending, 4 impact (FR-27), 5 accelerating, 6 moving; 7 reserved. *v5: was 0–4, same width* |
 | 4 | `hump_count` | 0–15 | humps detected; also `S.hum` |
 | 8 | `hump_height_mm` | 0–255 mm, clamped | hump height; also `S.hgt` |
 
@@ -293,7 +368,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
-| 3 | `state` | 0–6 | mission state; also `S.mis` |
+| 3 | `state` | 0–6 | mission state: 0 Initialising, 1 Calibrating, 2 Ready, 3 Running, 4 Paused, 5 Finished, 6 Fault (`mission_state_t`, `nav_ctrl.h`). Sent by `nav_ctrl_task` on every change. `S.mis` is read from nav directly each second, so it does not depend on this record |
 
 > **Two different alphabets, still.** `k` says *what kind* of event it is. The
 > barcode's decoded letter is a separate field. `k = 2, letter = 4` means "a
@@ -329,8 +404,9 @@ allocation, not a permanent limit.
 | 5 | mission | 6 | 1 | 2 | 8 | 5 |
 
   Growing a body past a byte boundary grows that kind's intake and wire size by
-  one byte. A wire `E` is capped at **21 bytes** by the radio's outbound record
-  limit (`CYW43_MQTT_RECORD_MAX`), so a body may be **at most 115 bits**.
+  one byte. A wire `E` is capped at **24 bytes** by the radio's outbound record
+  limit (`CYW43_MQTT_RECORD_MAX`, 21 before v5), so a body may be **at most
+  139 bits**.
 
 ---
 
@@ -344,7 +420,7 @@ subscriber tells "alive" from "stale" by `up`.
 
 ---
 
-## 7. Record `D` — the snapshot on `robocar/<id>/state` (21 bytes)
+## 7. Record `D` — the snapshot on `robocar/<id>/state` (23 bytes)
 
 Published only in reply to `snap`, and **retained**. It is record `S` with
 `t = 3`, followed by diagnostics, so "why did it fail?" can be answered from the
@@ -357,11 +433,15 @@ laptop:
 | 3 | `qd` | 0–7 | publish-queue depth at the moment of the reply |
 | 2 | `mqv` | 0–2 | MQTT verdict: 0 disconnected, 1 connecting, 2 connected |
 
-**165 bits → 21 bytes** (162 in v2, 164 in v3; the wider `mot` and v4's sixth
-fault bit both came out of the padding).
+**183 bits → 23 bytes** (162 in v2, 164 in v3, 165 = 21 bytes in v4; the
+wider `mot` and v4's sixth fault bit came out of the padding, and v5's tilt and
+turn rate are why the record limit rose to 24).
 `ip` and `mqv` were the only strings in schema v1; both are now integers.
 
-> **Proposed:** the diagnostics set and widths.
+> **Built 2026-10-29** (`comm_w_pack_d()`, sent by `comms_task` on `snap`;
+> retained on `…/state`). `rssi` is the value measured at the last Wi-Fi join,
+> not a live reading; 127 also stands for "unknown". `qd` counts records waiting
+> in the radio's outbound queue.
 
 ---
 
@@ -373,15 +453,44 @@ payloads. That makes the device-side check simpler than `strtok`: **a length
 check and a reserved-bits check**, then a table lookup. Anything else is counted,
 printed on the car's console, and changes nothing.
 
-### 8.1 `cmd` — `snap` and `ping` (1 byte, on `robocar/<id>/cmd`)
+> **Built 2026-10-29 (M8a).** The car subscribes to `…/cmd` and `…/map` at
+> QoS 1 on every new session. The radio task copies each message into the
+> inbound mailbox; `comms_task` handles it on its next 1 s tick, after `H`
+> and `S` (design decision 21), so a reply comes within one tick. `snap`,
+> `ping` and the mission commands are built. A checked `map` goes to
+> `barcode_task` (M8b, 2026-10-30, `integration` branch), which applies it
+> between barcodes; `S.mpv` is then the version actually running, read from
+> `barcode_map_version()`. A refused or rejected map leaves the table and
+> `mpv` as they were.
+>
+> **Tested on hardware 2026-10-29:** replies 0.3–0.7 s after the command;
+> every rejection case of §8.4 gives its one line; 26 snaps in ~13 s left the
+> `S` cadence at exactly 1000 ms; the car re-subscribes after a broker restart
+> and after an AP outage; a retained `map` published while the car was
+> offline reached it on its first subscribe. Optimisations found, not yet made:
+> §12 items 23–25.
+
+### 8.1 `cmd` — `snap`, `ping` and mission commands (1 byte, on `robocar/<id>/cmd`)
 
 | Bits | Field | Meaning |
 |---|---|---|
-| 3 | `op` | 1 = `snap` (reply: one `D` on `…/state` within one tick), 2 = `ping` (reply: one `H` on `…/heartbeat`) |
+| 3 | `op` | 1 = `snap` (reply: one `D` on `…/state` within one tick), 2 = `ping` (reply: one `H` on `…/heartbeat`), 3–7 = mission commands (below) |
 | 5 | reserved | must be 0 |
 
-`op` values 0 and 3–7, a non-zero reserved field, or a length other than 1 byte
-are rejected. So `snap` is the single byte `0x01` and `ping` is `0x02`.
+`op` 0, a non-zero reserved field, or a length other than 1 byte is rejected.
+So `snap` is the single byte `0x01` and `ping` is `0x02`.
+
+**Mission commands** (*added 2026-10-29*, design decision 24): `comms_task`
+passes them to `nav_ctrl_task`, which acts on each only in the right mission
+state and otherwise ignores it.
+
+| `op` | Byte | Command | `nav_ctrl_task` (`mission_cmd_t`) |
+|---|---|---|---|
+| 3 | `0x03` | start | `MCMD_START`: Ready → Running |
+| 4 | `0x04` | pause | `MCMD_PAUSE`: Running → Paused |
+| 5 | `0x05` | resume | `MCMD_RESUME`: Paused → Running |
+| 6 | `0x06` | reset | `MCMD_RESET`: Finished → Ready, Fault → Calibrating |
+| 7 | `0x07` | finish | `MCMD_FINISH`: Running/Paused → Finished (operator stop) |
 
 ### 8.2 Why commands are still checked on the car
 
@@ -416,6 +525,13 @@ car echoes** — observe delivery, do not assume it.
 Produces exactly one visible line on the car's console and no state change — a
 graded requirement (design §14, M8).
 
+*Built 2026-10-29:* a `cmd` or `map` that fails the check prints
+`[comms] cmd rejected #n: len=… bytes=…` (or `map rejected`). A message the
+radio refuses before it reaches `comms_task` — unknown topic, empty, longer than
+7 bytes, or the inbound mailbox full — is counted and reported once per tick:
+`[comms] radio refused n inbound message(s)…`. A mission command that finds
+`mission_cmd_mbf` full is rejected the same way, never a Fault.
+
 ---
 
 ## 9. Reading and sending — the demo-day path
@@ -435,11 +551,16 @@ printf '\x02' | mosquitto_pub -h <broker-ip> -t 'robocar/pico-racer-01/cmd' -s
 Reading the fields needs the **laptop decoder**,
 [`tools/telemetry_decode.py`](../../tools/telemetry_decode.py) — it applies §3
 and the tables above, dispatching on `t` and then on `k`, and rejects a wrong
-length or an unknown `v`:
+length or an unknown `v`. It runs inside the **telemetry viewer**, which shows
+the decoded records next to the serial console and can run the broker itself:
 
 ```sh
-python tools/telemetry_decode.py --broker <broker-ip>
+py tools\telemetry_viewer.py --broker <broker-ip>     # or TelemetryViewer.exe
 ```
+
+*Until 2026-10-28 the decoder was also a command-line program; the viewer
+replaces it. The `.exe` is a snapshot — rebuild it (`tools\build_viewer.bat`)
+after any schema change, or it rejects every record with `unknown schema v`.*
 
 It is checked byte for byte against the firmware packer by
 `tests/host/test_decoder.py` and `tests/host/test_messages.c`, which share
@@ -456,24 +577,24 @@ live in the same script, because hand-typing 7 packed bytes is error-prone.
 
 ## 10. A worked run — what the bytes look like
 
-Generated by `packed_size.py` (schema v4, 2026-10-23), so the bytes are checked
+Generated by `packed_size.py` (schema v5, 2026-10-28), so the bytes are checked
 rather than typed; the same records are in the shared test vectors.
 
 | Record | Values | Payload (hex) |
 |---|---|---|
-| `S` | v 4, s 137, up 41230, faults 0, mot 2, dst 20, lin 1, dev 3, bar 4 (`E`), act 2, hum 3, hgt 12, obs 0, byp 0, mis 1, mpv 3, drp 0 | `30 11 c0 21 14 00 00 10 8a 06 89 c3 00 40 06 00` |
-| `E` motion | v 4, s 138, up 41310, k 0, state 2, speed_l 20, speed_r 24, dist_mm 1500, turn_rate −30, fault 0, ovf 0 | `51 11 c0 2b 14 00 00 42 89 c9 5d 10 0f` |
-| `E` line | v 4, s 139, up 41320, k 1, state 1, deviation −12 | `71 11 00 2d 14 00 20 d1 01` |
-| `E` barcode | v 4, s 140, up 41330, k 2, letter 4 (`E`), action 2 | `91 11 40 2e 14 00 40 44` |
-| `E` imu | v 4, s 141, up 41340, k 3, class 2, hump_count 1, hump_height_mm 12 | `b1 11 80 2f 14 00 60 0a 06` |
-| `E` obstacle | v 4, s 142, up 41350, k 4, width_cm 18, bypass 1 | `d1 11 c0 30 14 00 80 12 01` |
-| `E` mission | v 4, s 143, up 41360, k 5, state 1 | `f1 11 00 32 14 00 a0 01` |
-| `H` | v 4, s 144, up 42000 | `12 12 00 82 14 00 00` |
+| `S` | v 5, s 137, up 41230, faults 0, mot 2, dst 20, lin 1, dev 3, bar 4 (`E`), act 2, hum 3, hgt 12, obs 0, byp 0, mis 1, mpv 3, drp 0, tlt 4, trn −30 | `34 11 c0 21 14 00 00 10 8a 06 89 c3 00 40 06 08 f1 03` |
+| `E` motion | v 5, s 138, up 41310, k 0, state 2, speed_l 20, speed_r 24, dist_mm 1500, turn_rate −30, fault 0, ovf 0 | `55 11 c0 2b 14 00 00 42 89 c9 5d 10 0f` |
+| `E` line | v 5, s 139, up 41320, k 1, state 1, deviation −12 | `75 11 00 2d 14 00 20 d1 01` |
+| `E` barcode | v 5, s 140, up 41330, k 2, letter 4 (`E`), action 2 | `95 11 40 2e 14 00 40 44` |
+| `E` imu | v 5, s 141, up 41340, k 3, class 2, hump_count 1, hump_height_mm 12 | `b5 11 80 2f 14 00 60 0a 06` |
+| `E` obstacle | v 5, s 142, up 41350, k 4, width_cm 18, bypass 1 | `d5 11 c0 30 14 00 80 12 01` |
+| `E` mission | v 5, s 143, up 41360, k 5, state 1 | `f5 11 00 32 14 00 a0 01` |
+| `H` | v 5, s 144, up 42000 | `16 12 00 82 14 00 00` |
 | `cmd` | `snap` | `01` |
 | `map` | mv 3, `E` → 3, `L` → 1, everything else 0 | `03 30 00 04 00 00 00` |
 
-Read the first byte of the `S` line: `0x30` = `0011 0000`. Bits 0–1 are `00`
-(`t` = S), bits 2–4 are `100` (`v` = 4), and bits 5–7 are the low three bits of
+Read the first byte of the `S` line: `0x34` = `0011 0100`. Bits 0–1 are `00`
+(`t` = S), bits 2–4 are `101` (`v` = 5), and bits 5–7 are the low three bits of
 `s`. Every other field follows the same way. In an `E`, `k` sits at bits 53–55,
 the top three bits of byte 6 (`0x40` in the barcode line: `k` = 2).
 
@@ -484,8 +605,8 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 
 ## 11. Versioning and compatibility
 
-*Rewritten for schema v2 (Tribunal 1); updated for v3 (2026-10-22) and v4
-(2026-10-23).*
+*Rewritten for schema v2 (Tribunal 1); updated for v3 (2026-10-22), v4
+(2026-10-23) and v5 (2026-10-28).*
 
 - **Positional format, so no change is free.** In JSON a new key was additive;
   in a packed layout position is meaning, and a version skew looks like
@@ -493,7 +614,9 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
   body (§5.2) or to a fault-bit position (§4.1) — bumps `v`, and a reader that
   sees a `v` it does not know rejects the record instead of misreading it. v3
   changed `E` (per-kind bodies) and `S`/`D` (`mot` 2 → 4 bits); v4 changed
-  `S`/`D` (`faults` 5 → 6 bits, bit 4 now line sensor, Wi-Fi loss bit 5).
+  `S`/`D` (`faults` 5 → 6 bits, bit 4 now line sensor, Wi-Fi loss bit 5); v5
+  added `tlt` and `trn` at the end of `S` (so `D`'s diagnostics moved) and
+  widened the imu `class` range to 0–6 within its 3 bits.
 - **The fixed length per (`t`, `v`), and per `k` for `E`, is the second
   check.** A record of the wrong length is rejected.
 - **`messages.h` and this document change in the same pull request** (NFR-17),
@@ -509,7 +632,7 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 |---|---|---|---|
 | 1 | ~~The kind names `M`, `L`, `O`, `N`~~ | §5.1 | **closed by v3:** kinds are numbered 0–5 with names motion … mission; the letters are gone |
 | 2 | The heartbeat body | §6 | header only |
-| 3 | The snapshot diagnostics set and widths | §7 | `rssi`, `ip`, `qd`, `mqv` |
+| 3 | ~~The snapshot diagnostics set and widths~~ | §7 | **closed 2026-10-29:** built as proposed, `rssi`, `ip`, `qd`, `mqv` |
 | 4 | The publish cadence | §4 | 1 s |
 | 5 | Topic prefix / endpoint names as config | §2 | add to `config/broker_config.h` |
 | 6 | ~~Inbound `key=value` vs. flat JSON~~ | §8 | **closed by Tribunal 1 (2026-10-19): binary** |
@@ -518,14 +641,20 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 9 | A compiled-in default table | §8.3 | to specify with Buddy 3 |
 | 10 | **Every field range and width** | §4–§8 | *new (Tribunal 1).* Proposed in `packed_size.py`; agree with each producer (Tribunal roadmap step 2). *v3:* Buddy 2's motion record is now the motion body (§5.1); owners change their own kind through §5.2 |
 | 11 | ~~**Fault-bit positions**~~ | §4.1 | **closed by v4 (2026-10-23):** agreed with Buddy 5 — bits 0–4 as Buddy 5 proposed, Wi-Fi loss at bit 5 and report-only; names in `messages.h` |
-| 12 | **Wi-Fi-loss bit latched until reported** | §4.1 | *new (Tribunal 1).* Latch bit 5 in `comms_task`'s published copy |
+| 12 | ~~**Wi-Fi-loss bit latched until reported**~~ | §4.1 | **closed 2026-10-29:** built in `comms_task` (§4.1, "The Wi-Fi-loss bit and the wire") |
 | 13 | **`up` as ms since boot (32 bits) or since run start (19 bits)** | §3 | *new (Tribunal 1).* Keep 32; 19 saves a byte but changes meaning |
 | 14 | **`dst`, `hgt`, `obs` at 8 bits** | §4 | *new (Tribunal 1).* Clamped; widen if a measured range exceeds 255 |
 | 15 | **Motion `speed_l`, `speed_r`, `ovf`** | §5.1 | *new (v3).* **PLACEHOLDER** widths (8, 8, 1) proposed by Buddy 1; pending unit and range from Buddy 2 |
-| 16 | **Tilt and encoder counts** | §5.1 | *new (v3).* Pending range from owner (FR-23, FR-29); not in any body yet |
+| 16 | **Tilt and encoder counts** | §4, §5.1 | *new (v3).* **Tilt and turn rate closed by v5 (2026-10-28):** `S.tlt` and `S.trn` (FR-29), ranges from Buddy 4, read from Buddy 4's tilt-state word. **Encoder counts (FR-23) still open**, pending range from Buddy 2 |
 | 17 | **Motion `fault` vs. `S.faults`** | §4.1, §5.1 | *new (v3).* The motion event's `fault` bits record the faults **at the moment of that event**; the `S` fault bitmask is the **current state**. They can differ, and both are kept |
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |
-| 19 | **`S.faults` is published as 0** | §4, §4.1 | *new (2026-10-22).* Until Buddy 5's fault event flag exists, `comms_task` has no bitmask to copy; the Wi-Fi-loss bit (item 12) is added with it |
+| 19 | ~~**`S.faults` is published as 0**~~ | §4, §4.1 | **closed 2026-10-29:** Buddy 5's fault flag is on master; `comms_task` copies `fault_bits()` into each `S`, plus the Wi-Fi-loss latch (item 12) |
+| 20 | **Outbound drops on the wire** | §3, §4 | *new (2026-10-23).* `drp` counts intake drops only. Goal: a separate **wrapping** outbound-drop counter in `S` (e.g. 8 bits, the reader takes differences across a gap), so the laptop can account for every lost record. Not in v5: adding it makes `S` 18 → 19 B and `D` 23 → 24 B, exactly the new record limit. A saturating 4-bit field would not work: every boot drops ~30 before the first connect |
+| 21 | ~~**Mission commands over MQTT**~~ | §8.1 | **closed 2026-10-29:** `op` 3–7, design decision 24. *Was:* The Week 6 report sends "supported mission command → `nav_ctrl_task`" (FR-24), and Buddy 5's side is built: `mission_cmd_mbf`, 1 byte, `MCMD_START` 1 … `MCMD_FINISH` 5 (`nav_ctrl.h`). `cmd` has only `snap` and `ping`, with `op` 3–7 reserved. To agree with Buddy 5 which commands the laptop may send |
+| 22 | ~~**`…/cmd` subscription QoS**~~ | §2 | **closed 2026-10-29:** QoS 1, design decision 22. *Was:* §2 here and design §9.2 say QoS 1; design §16 decision 11 says QoS 0. Proposed: QoS 1 (the library sends the PUBACK; a duplicate `snap` is harmless) |
+| 23 | **One `D` per tick** | §7, §8.1 | *optimisation (2026-10-29), not made.* Four `snap`s in one tick produced four `D`; the fourth was dropped at the full outbound queue (`S` unaffected). Answer all snaps of one tick with a single `D` |
+| 24 | **Why the radio refused an inbound message** | §8.4 | *optimisation (2026-10-29), not made.* One unexplained `radio refused 1` right after an AP reconnect. Count rejected (topic, length) and mailbox-full separately and print the topic |
+| 25 | **Retained `map` delivered twice on subscribe** | §8.3 | *observed (2026-10-29), harmless.* Two identical `map` deliveries on one subscription, with the viewer's built-in broker (amqtt); the remap is idempotent. Find which side repeats it |
 
 ---
 

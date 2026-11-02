@@ -120,18 +120,28 @@ And **outbound to Buddy 3:** the live letter→action remap command.
       message sizes, then switch to the **packed binary** records — Week 13
       needs the before-and-after comparison.
 - [ ] *(Tribunal 1)* Write the **laptop decoder** (Python) for schema v2.
-- [ ] *(Tribunal 1)* Set the **Wi-Fi-loss fault bit** from the connection state
-      and publish the fault bitmask in every `S` record.
+- [x] *(Tribunal 1)* Set the **Wi-Fi-loss fault bit** from the connection state
+      and publish the fault bitmask in every `S` record. *Done 2026-10-29
+      (`MQTT_SCHEMA.md` §4.1).*
 
 ### M8 — Command channel
-- [ ] Subscribe to a command topic and dispatch by message type.
-- [ ] **Snapshot:** on request, reply with current state at that instant
-      (separate from the regular stream).
+- [x] Subscribe to a command topic and dispatch by message type. *Built
+      2026-10-29 (M8a): `…/cmd` and `…/map` at QoS 1, re-subscribed on every
+      session; `snap`, `ping`, start/pause/resume/reset/finish. Hardware-tested
+      2026-10-29.*
+- [x] **Snapshot:** on request, reply with current state at that instant
+      (separate from the regular stream). *Built 2026-10-29: one `D` on
+      `…/state`, within one tick.*
 - [ ] **Live barcode remap:** the command carries the letter→action mapping and
       updates a runtime table (Buddy 3 reads it). **Must not require
-      recompiling** — this is the hard demo-day requirement.
-- [ ] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
+      recompiling** — this is the hard demo-day requirement. *M8a (2026-10-29):
+      received, checked and logged on the car. M8b (2026-10-30, `integration`
+      branch): passed to `barcode_task` through `barcode_map_submit()` /
+      `map_mbf` and applied between barcodes; `S.mpv` reads
+      `barcode_map_version()`. Hardware test in integration stage 3.*
+- [x] *(Tribunal 1)* Commands are binary: `cmd` is 1 byte, `map` is 7 bytes
       (4-bit version + 26 × 2-bit actions). The laptop publisher packs them.
+      *Built 2026-10-29: the viewer's "Send to car" panel.*
 
 ### M9 — Robustness
 - [ ] Reconnect / recover on Wi-Fi drop.

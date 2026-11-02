@@ -38,8 +38,14 @@
 #include "../usb_console_compat.h"
 #include "../common/gpio_irq.h"
 #include "../common/messages.h"
+#include "../comms_task/comms_task.h"
 #include "../nav_task/nav_ctrl.h"
 #include "../obstacle_task/scan_if.h"
+#include "../line_task/line_task.h"
+#include "../line_task/line_state.h"
+#include "../line_task/barcode_action.h"
+#include "../imu_task/imu_task.h"       /* hump_state word (D1) */
+#include "../common/line_config.h"      /* LINE_LOST_MS */
 #include "motion_cfg.h"
 #include "motion_lib.h"
 #include "motion_ds.h"
@@ -159,9 +165,18 @@ typedef enum
     EVT_STOPTEST, /* stop test result for one source: val_l
                      = STOP bit, val_r = stops, rate_l = max
                      us, rate_r = mean us, duty_l = min us  */
-    EVT_STATE     /* statechart: val_l = new state, val_r =
+    EVT_STATE,    /* statechart: val_l = new state, val_r =
                      old state, rate_l = replies sent       */
+    EVT_CMD       /* a command taken from a buffer: val_l =
+                     CMD_SRC_*, val_r = the raw 2 bytes,
+                     rate_l = CMD_RES_*                     */
 } report_event_t;
+
+/* EVT_CMD fields */
+#define CMD_SRC_NAV       (0)
+#define CMD_SRC_AVOID     (1)
+#define CMD_RES_TAKEN     (0) /* passed to the statechart          */
+#define CMD_RES_INVALID   (2) /* unknown or malformed: dropped      */
 
 typedef struct
 {
@@ -267,6 +282,46 @@ typedef struct
     int32_t     man_mm;    /* distance it was asked to drive, mm */
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
+    uint8_t     avoid_side; /* MOTION_AVOID_SIDE_* of a BYPASS     */
+
+    /* line_state (line_state.h), read once per tick */
+    uint32_t line_word;     /* the word this tick                  */
+    uint32_t line_ctr;      /* its counter at the last change      */
+    uint32_t line_same;     /* ticks the counter has not moved     */
+    uint32_t line_seen_run; /* ticks in a row the line was seen    */
+    bool     b_on_hump;     /* hump_state != NONE this tick (M3)    */
+    uint32_t dark_sat_ticks; /* ticks with line dark time saturated */
+    int32_t  line_dir;      /* +1 line last left, -1 right, 0 none */
+    int32_t  lf_rem;        /* steering remainder, x 1/MOTION_LF_SCALE
+                               counts per tick, carried to the next */
+    int32_t  lf_corr;       /* applied correction, same units      */
+    int32_t  lf_hist[MOTION_LF_DAMP_TICKS]; /* recent errors, ring */
+    uint32_t lf_hist_i;     /* the oldest entry                    */
+    uint32_t lf_hard_run;   /* ticks |error| >= MOTION_LF_HARD_ERR */
+
+    /* line search: +1 pivots left (counter-clockwise), -1 right */
+    int32_t search_dir;
+    uint8_t search_phase;   /* 0 toward the line, 1 the other way  */
+    bool    b_search_over;  /* both sweeps done, no line            */
+
+    /* turning: the junction's action and how far the turn has got */
+    uint8_t turn_action;    /* barcode_action_t from nav            */
+    uint8_t turn_phase;     /* TURN_PH_*                            */
+    int32_t turn_start_l;   /* positions at the phase's start, kept */
+    int32_t turn_start_r;   /* while Braked so a resume carries on  */
+
+    /* bypass: side, offset and leg, kept like the turn's */
+    int32_t bypass_side;    /* +1 left (counter-clockwise), -1 right */
+    int32_t bypass_off_mm;  /* lateral offset from scan_task         */
+    uint8_t bypass_phase;   /* BYP_PH_*                              */
+    int32_t bypass_start_l; /* positions at the phase's start        */
+    int32_t bypass_start_r;
+    int32_t bypass_pass_mm; /* driven alongside so far               */
+    bool    b_bypass_seen;  /* a probe has seen the obstacle         */
+    bool    b_look_present; /* the last probe's answer               */
+    uint8_t look_state;     /* LOOK_*: the probe's request to scan   */
+    uint16_t look_mm;       /* scan_task's AVOID_LOOK reading        */
+    uint32_t look_ticks;    /* ticks waited for it                   */
 
     /* reporting */
     int32_t  rep_l;
@@ -274,6 +329,20 @@ typedef struct
     uint32_t rep_ticks;
     uint32_t rep_dropped;
 } motion_ctx_t;
+
+/* Every wheel speed target goes through here: capped at V_hump while
+   imu_task reports a hump (M3, motion_cfg.h). */
+static int32_t
+pid_capped (motion_ctx_t const *p_ctx, motion_pid_t *p_pid, int32_t target,
+            int32_t measured)
+{
+    if (p_ctx->b_on_hump)
+    {
+        target = motion_clamp(target, -MOTION_HUMP_MAX_CPT,
+                              MOTION_HUMP_MAX_CPT);
+    }
+    return motion_pid_step(p_pid, target, measured);
+}
 
 static motion_ctx_t g_ctx;
 
@@ -310,6 +379,8 @@ static T_CMTX const g_cmtx_ds = {
 
 static ID g_flgid;
 static ID g_mbfid;
+static ID g_nav_mbfid;   /* nav_cmd_mbf:   nav_ctrl_task -> motion */
+static ID g_avoid_mbfid; /* avoid_cmd_mbf: scan_task -> motion     */
 
 /* NFR-18 request times, one word per STOP source.  Each is written only
    by its own sender (motion_stop_stamp) and read only by motion_task. */
@@ -347,6 +418,31 @@ static T_CMBF const g_cmbf = {
     .bufsz  = sizeof(g_report_buf),
     .maxmsz = sizeof(motion_report_t),
     .bufptr = g_report_buf,
+};
+
+/* The two command buffers (design Section 4), one writer each.  Both
+   messages are 2 bytes, which the kernel stores in one word after its
+   header. */
+#define CMD_MSG_BYTES  (2u)
+#define CMD_SLOT_BYTES (MBF_HEADER_BYTES + 4u)
+#define NAV_CMD_ROOM   (4u) /* nav_cmd_mbf:   JUNCTION, FAULT_CLEAR */
+#define AVOID_CMD_ROOM (2u) /* avoid_cmd_mbf: REVERSE, BYPASS       */
+
+static UW g_nav_buf[(NAV_CMD_ROOM * CMD_SLOT_BYTES) / sizeof(UW)];
+static UW g_avoid_buf[(AVOID_CMD_ROOM * CMD_SLOT_BYTES) / sizeof(UW)];
+
+static T_CMBF const g_cmbf_nav = {
+    .mbfatr = TA_TFIFO | TA_USERBUF,
+    .bufsz  = sizeof(g_nav_buf),
+    .maxmsz = CMD_MSG_BYTES,
+    .bufptr = g_nav_buf,
+};
+
+static T_CMBF const g_cmbf_avoid = {
+    .mbfatr = TA_TFIFO | TA_USERBUF,
+    .bufsz  = sizeof(g_avoid_buf),
+    .maxmsz = CMD_MSG_BYTES,
+    .bufptr = g_avoid_buf,
 };
 
 static T_CCYC const g_ccyc = {
@@ -426,6 +522,32 @@ motor_task_flag (void)
 #endif
 
     return flgid;
+}
+
+/* The command buffers, for nav_bind() and scan_if_bind().  0 in bench
+   images, for the same reason as motor_task_flag(). */
+ID
+motor_task_nav_cmd_mbf (void)
+{
+    ID mbfid = g_nav_mbfid;
+
+#if MOTION_BENCH
+    mbfid = 0;
+#endif
+
+    return mbfid;
+}
+
+ID
+motor_task_avoid_mbf (void)
+{
+    ID mbfid = g_avoid_mbfid;
+
+#if MOTION_BENCH
+    mbfid = 0;
+#endif
+
+    return mbfid;
 }
 
 void
@@ -734,9 +856,9 @@ static void
 bench_pid (motion_ctx_t *p_ctx)
 {
     p_ctx->cmd_l =
-        motion_pid_step(&p_ctx->pid_l, MOTION_PID_TARGET, p_ctx->d_l);
+        pid_capped(p_ctx, &p_ctx->pid_l, MOTION_PID_TARGET, p_ctx->d_l);
     p_ctx->cmd_r =
-        motion_pid_step(&p_ctx->pid_r, MOTION_PID_TARGET, p_ctx->d_r);
+        pid_capped(p_ctx, &p_ctx->pid_r, MOTION_PID_TARGET, p_ctx->d_r);
     p_ctx->step_ticks++;
 
     if (p_ctx->step_ticks >= MOTION_PID_TICKS)
@@ -1247,8 +1369,58 @@ sm_send_replies (uint32_t replies)
     }
 }
 
-/* Has the manoeuvre of this state reached its target?  Only the reverse
-   is built so far. */
+/* Turning phases: straight to the crossing (or across it), then the
+   pivot, then done. */
+#define TURN_PH_FORWARD (0u)
+#define TURN_PH_PIVOT   (1u)
+#define TURN_PH_DONE    (2u)
+
+/* Bypass legs (motion_cfg.h): pivot out, out, pivot parallel, alongside,
+   pivot in, back in, pivot parallel.  The pivot direction of each leg, x
+   the side; 0 = a straight leg. */
+/* Bypass phases (motion_cfg.h, D14).  Each measures from its own start. */
+#define BYP_PH_OUT       (0u)  /* pivot SIDE_DEG toward the side      */
+#define BYP_PH_LANE_LOOK (1u)  /* braked: scan_task looks along it    */
+#define BYP_PH_LANE_BACK (2u)  /* blocked: pivot back to the heading  */
+#define BYP_PH_SWITCH    (3u)  /* braked: scan_task picks the other   */
+#define BYP_PH_SIDESTEP  (4u)  /* offset / sin SIDE_DEG               */
+#define BYP_PH_PARALLEL  (5u)  /* pivot SIDE_DEG back to the heading  */
+#define BYP_PH_STEP      (6u)  /* alongside, one step                 */
+#define BYP_PH_PROBE_IN  (7u)  /* pivot 45 toward the obstacle        */
+#define BYP_PH_LOOK      (8u)  /* braked: scan_task looks at its side */
+#define BYP_PH_PROBE_OUT (9u)  /* pivot 45 back                       */
+#define BYP_PH_CLEAR     (10u) /* past the far face                   */
+#define BYP_PH_TURN_IN   (11u) /* pivot SIDE_DEG toward the line      */
+#define BYP_PH_STEP_IN   (12u) /* until GP26/GP27 see the line        */
+#define BYP_PH_ONTO      (13u) /* axle onto the line                  */
+#define BYP_PH_ALONG     (14u) /* pivot SIDE_DEG onto the heading     */
+#define BYP_PH_DONE      (15u)
+
+/* Pivot direction of each phase, x the side (+1 = toward the bypass
+   side), and its angle; 0 = straight or braked (the looks, SWITCH, DONE). */
+static int8_t const g_byp_turn[BYP_PH_DONE] = {
+    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1
+};
+static uint8_t const g_byp_deg[BYP_PH_DONE] = {
+    MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
+    MOTION_BYPASS_SIDE_DEG, 0, 45, 0, 45, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
+    MOTION_BYPASS_SIDE_DEG
+};
+
+/* A bypass pivot's encoder target: scaled for the overshoot measured at
+   the bypass pivot speed (S7 attempt 3). */
+#define BYP_PIVOT_COUNTS(deg)                                                  \
+    ((PIVOT_COUNTS(deg) * MOTION_BYPASS_PIVOT_PCT) / 100)
+
+/* The sidestep leg and the lane it needs clear ahead (capped at the
+   largest LOOK reading, 511 = nothing in range). */
+#define BYP_LEG_MM(off) (((off) * MOTION_BYPASS_SIDE_LEG_X1000) / 1000)
+
+#define LOOK_NONE     (0u)
+#define LOOK_ASKED    (1u)
+#define LOOK_ANSWERED (2u)
+
+/* Has the manoeuvre of this state reached its target? */
 static bool
 man_done (motion_ctx_t const *p_ctx, motion_state_t state)
 {
@@ -1261,38 +1433,639 @@ man_done (motion_ctx_t const *p_ctx, motion_state_t state)
                                      p_ctx->pos_r - p_ctx->man_start_r);
         b_done   = ((-moved_mm) >= p_ctx->man_mm);
     }
+    else if (MOTION_ST_TURNING == state)
+    {
+        b_done = (TURN_PH_DONE == p_ctx->turn_phase);
+    }
+    else if (MOTION_ST_BYPASS == state)
+    {
+        b_done = (BYP_PH_DONE == p_ctx->bypass_phase);
+    }
+    else
+    {
+        /* Not a manoeuvre with a target. */
+    }
 
     return b_done;
 }
 
+/* Line Following steering state back to rest.  The error history starts
+   at the error now, so entering with the car already off centre gives no
+   damper kick. */
+static void
+lf_reset (motion_ctx_t *p_ctx)
+{
+    int32_t  err = line_state_error(p_ctx->line_word);
+    uint32_t i;
+
+    p_ctx->lf_rem      = 0;
+    p_ctx->lf_corr     = 0;
+    p_ctx->lf_hist_i   = 0u;
+    p_ctx->lf_hard_run = 0u;
+    for (i = 0u; i < MOTION_LF_DAMP_TICKS; i++)
+    {
+        p_ctx->lf_hist[i] = err;
+    }
+}
+
+/* The error Line Following steers by.  Off the line (rl 00, both sensors
+   white) the word's error is only the difference between two white
+   readings, so the car ran straight off the outside of a curve (S4
+   attempt 7: about -30 for the 1.5 s until LOST).  Instead it keeps
+   turning, at full error, to the side the line was last seen on.  Not
+   during a barcode hold, which also reads rl 00 by design. */
+static int32_t
+lf_error (const motion_ctx_t *p_ctx)
+{
+    uint32_t word = p_ctx->line_word;
+
+    if ((LINE_RL_CENTRED == line_state_rl(word))
+        && !line_state_barcode(word) && (0 != p_ctx->line_dir))
+    {
+        return p_ctx->line_dir * LINE_ST_ERR_MAX;
+    }
+    return line_state_error(word);
+}
+
+static int32_t
+lf_clamp (int32_t v, int32_t lim)
+{
+    return (v > lim) ? lim : ((v < -lim) ? -lim : v);
+}
+
+/* One tick of the Line Following correction (motion_cfg.h), x
+   MOTION_LF_SCALE counts per tick, + = turn left.  During a barcode hold
+   the error is 0 by design (line_state.h), so the history is reset rather
+   than read as a fast return to centre. */
+static int32_t
+lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
+{
+    int32_t target;
+    int32_t cap;
+    int32_t de;
+
+    if (b_hold)
+    {
+        int32_t corr = p_ctx->lf_corr;
+
+        lf_reset(p_ctx);
+        p_ctx->lf_corr = corr; /* still eases out below */
+        target         = 0;
+        cap            = MOTION_LF_SOFT_MAX;
+    }
+    else
+    {
+        de = err - p_ctx->lf_hist[p_ctx->lf_hist_i];
+        p_ctx->lf_hist[p_ctx->lf_hist_i] = err;
+        p_ctx->lf_hist_i = (p_ctx->lf_hist_i + 1u) % MOTION_LF_DAMP_TICKS;
+
+        if ((err >= MOTION_LF_HARD_ERR) || (err <= -MOTION_LF_HARD_ERR))
+        {
+            if (p_ctx->lf_hard_run < MOTION_LF_HARD_TICKS)
+            {
+                p_ctx->lf_hard_run++;
+            }
+        }
+        else
+        {
+            p_ctx->lf_hard_run = 0u;
+        }
+
+        if (p_ctx->lf_hard_run >= MOTION_LF_HARD_TICKS)
+        {
+            /* last resort: held far off for too long */
+            target = (err > 0) ? MOTION_LF_HARD_MAX : -MOTION_LF_HARD_MAX;
+            cap    = MOTION_LF_HARD_MAX;
+        }
+        else
+        {
+            target = (err * MOTION_LF_GAIN) + (de * MOTION_LF_DAMP);
+            cap    = MOTION_LF_SOFT_MAX;
+        }
+    }
+
+    target = lf_clamp(target, cap);
+    p_ctx->lf_corr += lf_clamp(target - p_ctx->lf_corr, MOTION_LF_SLEW);
+    return p_ctx->lf_corr;
+}
+
 /* A state was just entered: set up its manoeuvre. */
 static void
-man_start (motion_ctx_t *p_ctx, motion_state_t state)
+man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
 {
-    p_ctx->man_start_l = p_ctx->pos_l;
-    p_ctx->man_start_r = p_ctx->pos_r;
     motion_pid_reset(&p_ctx->pid_l);
     motion_pid_reset(&p_ctx->pid_r);
     motion_stall_reset(&p_ctx->stall_l);
     motion_stall_reset(&p_ctx->stall_r);
 
+    p_ctx->man_start_l = p_ctx->pos_l;
+    p_ctx->man_start_r = p_ctx->pos_r;
+
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->man_mm = (int32_t)p_ctx->avoid_mm;
     }
+    else if ((MOTION_ST_BYPASS == state) && !b_resumed)
+    {
+        /* A new BYPASS starts over; a resumed one carries on (as Turning). */
+        p_ctx->bypass_side    = (MOTION_AVOID_SIDE_RIGHT == p_ctx->avoid_side)
+                                    ? -1 : 1;
+        p_ctx->bypass_off_mm  = (int32_t)p_ctx->avoid_mm;
+        p_ctx->bypass_phase   = BYP_PH_OUT;
+        p_ctx->bypass_start_l = p_ctx->pos_l;
+        p_ctx->bypass_start_r = p_ctx->pos_r;
+        p_ctx->bypass_pass_mm = 0;
+        p_ctx->b_bypass_seen  = false;
+        p_ctx->b_look_present = false;
+        p_ctx->look_state     = LOOK_NONE;
+        p_ctx->look_ticks     = 0u;
+    }
+    else if ((MOTION_ST_TURNING == state) && !b_resumed)
+    {
+        /* A resumed turn carries on from its own start positions: the
+           wheels did not move while Braked (a reverse drops the turn). */
+        p_ctx->turn_phase   = TURN_PH_FORWARD;
+        p_ctx->turn_start_l = p_ctx->pos_l;
+        p_ctx->turn_start_r = p_ctx->pos_r;
+    }
+    else if (MOTION_ST_LINE_FOLLOW == state)
+    {
+        lf_reset(p_ctx);
+    }
+    else if (MOTION_ST_LINE_SEARCH == state)
+    {
+        p_ctx->search_dir    = (p_ctx->line_dir < 0) ? -1 : 1;
+        p_ctx->search_phase  = 0u;
+        p_ctx->b_search_over = false;
+    }
+    else
+    {
+        /* Nothing else to set up. */
+    }
 }
 
-/* What the wheels do this tick in the current state.  Only the reverse is
-   built; every other state brakes until its manoeuvre exists. */
+/* Read line_state (one load) and work out the statechart's line inputs.
+   The word is stale when its counter has not moved for
+   LINE_ST_STALE_TICKS ticks: ir_sense_task has stopped publishing. */
+static void
+line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
+{
+    uint32_t word = line_state_word();
+
+    if (line_state_counter(word) == p_ctx->line_ctr)
+    {
+        if (p_ctx->line_same < LINE_ST_STALE_TICKS)
+        {
+            p_ctx->line_same++;
+        }
+    }
+    else
+    {
+        p_ctx->line_ctr  = line_state_counter(word);
+        p_ctx->line_same = 0u;
+    }
+    p_ctx->line_word = word;
+    if (LINE_RL_CENTRED == line_state_rl(word))
+    {
+        /* Off the line: two white readings say nothing about the side. */
+    }
+    else if (line_state_error(word) >= MOTION_LS_DIR_MIN)
+    {
+        p_ctx->line_dir = 1;
+    }
+    else if (line_state_error(word) <= -MOTION_LS_DIR_MIN)
+    {
+        p_ctx->line_dir = -1;
+    }
+    else
+    {
+        /* Too small to say which side: keep the last. */
+    }
+
+    /* Both sensors inside the line: centred reads rl 11, off the line 00.
+       The dark time bridges the short 00 of a wobble. */
+    p_in->b_line_seen = (LINE_RL_CENTRED != line_state_rl(word))
+                        || (line_state_dark_ms(word) < MOTION_LF_SEEN_MS);
+    p_ctx->line_seen_run = p_in->b_line_seen ? (p_ctx->line_seen_run + 1u) : 0u;
+    p_in->b_line_found   = (p_ctx->line_seen_run >= MOTION_LF_FOUND_TICKS);
+    /* On a hump the line may be missing 2 x t_lost (M3, motion_cfg.h). */
+    p_ctx->b_on_hump = (0u != IMU_W_GET(imu_word_read(), HUMP));  /* 0 = none */
+    p_ctx->dark_sat_ticks
+        = (line_state_dark_ms(word)
+           >= (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS))
+              ? (p_ctx->dark_sat_ticks + 1u)
+              : 0u;
+    p_in->b_line_missing
+        = (p_ctx->b_on_hump
+               ? ((p_ctx->dark_sat_ticks * 10u)
+                  >= (MOTION_HUMP_LOST_MS
+                      - (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS)))
+               : line_state_lost(word))
+          || line_state_fault(word)
+                           || (p_ctx->line_same >= LINE_ST_STALE_TICKS);
+    p_in->b_search_over  = p_ctx->b_search_over;
+}
+
+/* Encoder counts each wheel turns for a pivot of deg degrees on the spot:
+   arc = deg/360 x pi x wheelbase, counts = arc / (pi x wheel diameter) x
+   counts per turn, so pi cancels. */
+#define PIVOT_COUNTS(deg)                                                      \
+    (((deg) * MOTION_WHEELBASE_MM * MOTION_COUNTS_PER_REV)                     \
+     / (360 * MOTION_WHEEL_DIA_MM))
+
+/* LINE_SEARCH: pivot toward the line's last side up to the sweep angle,
+   then back to the same angle the other side; then the search is over. */
+static void
+search_drive (motion_ctx_t *p_ctx)
+{
+    int32_t turned;
+    int32_t dir;
+
+    /* counter-clockwise counts per wheel since the search began, signed
+       so + is toward search_dir */
+    turned = (((p_ctx->pos_r - p_ctx->man_start_r)
+               - (p_ctx->pos_l - p_ctx->man_start_l))
+              / 2)
+             * p_ctx->search_dir;
+
+    if ((0u == p_ctx->search_phase)
+        && (turned >= PIVOT_COUNTS(MOTION_LS_SWEEP_DEG)))
+    {
+        p_ctx->search_phase = 1u;
+        motion_pid_reset(&p_ctx->pid_l);
+        motion_pid_reset(&p_ctx->pid_r);
+    }
+    else if ((1u == p_ctx->search_phase)
+             && (turned <= -PIVOT_COUNTS(MOTION_LS_SWEEP_DEG)))
+    {
+        p_ctx->b_search_over = true;
+    }
+    else
+    {
+        /* Still sweeping. */
+    }
+
+    if (p_ctx->b_search_over)
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    else
+    {
+        dir = (0u == p_ctx->search_phase) ? p_ctx->search_dir
+                                          : -p_ctx->search_dir;
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, -dir * MOTION_LS_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, dir * MOTION_LS_SPEED,
+                                       p_ctx->d_r);
+    }
+}
+
+/* TURNING (FR-08): straight until the axle is over the crossing, then a
+   pivot on the spot by encoder count: 90 deg left or right, 180 deg
+   counter-clockwise for a U-turn.  Straight on only drives across.  Each
+   phase measures from its own start, so a stop and resume keeps it. */
+static void
+turn_drive (motion_ctx_t *p_ctx)
+{
+    int32_t moved_mm;
+    int32_t turned;
+    int32_t deg;
+    int32_t dir = (BARCODE_ACT_RIGHT == p_ctx->turn_action) ? -1 : 1;
+
+    if (TURN_PH_FORWARD == p_ctx->turn_phase)
+    {
+        moved_mm = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->turn_start_l,
+                                     p_ctx->pos_r - p_ctx->turn_start_r);
+        if (moved_mm >= ((BARCODE_ACT_FORWARD == p_ctx->turn_action)
+                             ? MOTION_TURN_CROSS_MM
+                             : MOTION_TURN_FWD_MM))
+        {
+            p_ctx->turn_phase   = (BARCODE_ACT_FORWARD == p_ctx->turn_action)
+                                      ? TURN_PH_DONE
+                                      : TURN_PH_PIVOT;
+            p_ctx->turn_start_l = p_ctx->pos_l;
+            p_ctx->turn_start_r = p_ctx->pos_r;
+            motion_pid_reset(&p_ctx->pid_l);
+            motion_pid_reset(&p_ctx->pid_r);
+        }
+    }
+    else if (TURN_PH_PIVOT == p_ctx->turn_phase)
+    {
+        deg    = (BARCODE_ACT_UTURN == p_ctx->turn_action) ? 180 : 90;
+        turned = (((p_ctx->pos_r - p_ctx->turn_start_r)
+                   - (p_ctx->pos_l - p_ctx->turn_start_l))
+                  / 2)
+                 * dir;
+        if (turned >= PIVOT_COUNTS(deg))
+        {
+            p_ctx->turn_phase = TURN_PH_DONE;
+        }
+    }
+    else
+    {
+        /* Done: braked until the statechart leaves Turning. */
+    }
+
+    if (TURN_PH_FORWARD == p_ctx->turn_phase)
+    {
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_TURN_FWD_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_TURN_FWD_SPEED,
+                                       p_ctx->d_r);
+    }
+    else if (TURN_PH_PIVOT == p_ctx->turn_phase)
+    {
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, -dir * MOTION_TURN_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, dir * MOTION_TURN_SPEED,
+                                       p_ctx->d_r);
+    }
+    else
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+}
+
+/* Next bypass phase: its own start positions and a fresh PID. */
+static void
+byp_next (motion_ctx_t *p_ctx, uint32_t ph)
+{
+    p_ctx->bypass_phase   = (uint8_t)ph;
+    p_ctx->bypass_start_l = p_ctx->pos_l;
+    p_ctx->bypass_start_r = p_ctx->pos_r;
+    p_ctx->look_ticks     = 0u;
+    motion_pid_reset(&p_ctx->pid_l);
+    motion_pid_reset(&p_ctx->pid_r);
+}
+
+/* Ask scan_task to look (SCAN_FLG_LOOK or SCAN_FLG_LOOK_AHEAD); the answer
+   comes back as an AVOID_LOOK command (take_commands). */
+static void
+byp_ask (motion_ctx_t *p_ctx, UINT bit)
+{
+    ID scan_id = scan_if_flag();
+
+    p_ctx->look_state = LOOK_ASKED;
+    if (scan_id > 0)
+    {
+        (void)tk_set_flg(scan_id, bit);
+    }
+}
+
+/* A look is over when answered or timed out; a timeout counts as "something
+   there".  true when over, with *p_near set when it read below near_mm. */
+static bool
+byp_look_done (motion_ctx_t *p_ctx, int32_t near_mm, bool *p_near)
+{
+    bool b_done;
+
+    p_ctx->look_ticks++;
+    b_done = (LOOK_ANSWERED == p_ctx->look_state)
+             || (p_ctx->look_ticks >= MOTION_BYPASS_LOOK_TICKS);
+    if (b_done)
+    {
+        *p_near = (LOOK_ANSWERED != p_ctx->look_state)
+                  || ((int32_t)p_ctx->look_mm < near_mm);
+        p_ctx->look_state = LOOK_NONE;
+    }
+    return b_done;
+}
+
+/* After a probe, back on the heading: go past, give up, or another step. */
+static void
+byp_after_probe (motion_ctx_t *p_ctx)
+{
+    if (p_ctx->b_look_present)
+    {
+        p_ctx->b_bypass_seen = true;
+    }
+    if (!p_ctx->b_look_present
+        && (p_ctx->b_bypass_seen
+            || (p_ctx->bypass_pass_mm >= MOTION_BYPASS_UNSEEN_MM)))
+    {
+        byp_next(p_ctx, BYP_PH_CLEAR);
+    }
+    else if (p_ctx->bypass_pass_mm >= MOTION_BYPASS_MAX_PASS_MM)
+    {
+        /* Still beside it: no safe way back in (FR-18 "otherwise stop"). */
+        byp_next(p_ctx, BYP_PH_DONE);
+        p_ctx->line_dir = -p_ctx->bypass_side;
+    }
+    else
+    {
+        byp_next(p_ctx, BYP_PH_STEP);
+    }
+}
+
+/* BYPASS (FR-18, D14): the phases in motion_cfg.h.  It ends with the axle
+   on the line and the car on its old heading, so Line Search finds the
+   line at once. */
+static void
+bypass_drive (motion_ctx_t *p_ctx)
+{
+    uint32_t ph    = p_ctx->bypass_phase;
+    int32_t  side  = p_ctx->bypass_side;
+    int32_t  dl    = p_ctx->pos_l - p_ctx->bypass_start_l;
+    int32_t  dr    = p_ctx->pos_r - p_ctx->bypass_start_r;
+    int32_t  moved = motion_ds_dist_mm(dl, dr);
+    int32_t  leg   = BYP_LEG_MM(p_ctx->bypass_off_mm);
+    int32_t  lane  = leg + MOTION_BYPASS_LANE_MARGIN_MM;
+    int32_t  turned;
+    int32_t  dir;
+    bool     b_pivot_done;
+    bool     b_near;
+    ID       scan_id;
+
+    dir          = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
+    turned       = ((dr - dl) / 2) * dir;
+    b_pivot_done = (0 != dir)
+                   && (turned >= BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph]));
+    if (lane > (int32_t)MOTION_AVOID_DIST_MAX)
+    {
+        lane = (int32_t)MOTION_AVOID_DIST_MAX; /* 511 = nothing in range */
+    }
+
+    switch (ph)
+    {
+        case BYP_PH_OUT:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_LANE_LOOK);
+                byp_ask(p_ctx, SCAN_FLG_LOOK_AHEAD);
+            }
+            break;
+        case BYP_PH_LANE_LOOK:
+            if (byp_look_done(p_ctx, lane, &b_near))
+            {
+                byp_next(p_ctx, b_near ? BYP_PH_LANE_BACK : BYP_PH_SIDESTEP);
+            }
+            break;
+        case BYP_PH_LANE_BACK:
+            if (b_pivot_done)
+            {
+                /* Back on the heading scan_task planned in: it re-plans
+                   the other side from that profile, or Blocked. */
+                byp_next(p_ctx, BYP_PH_SWITCH);
+                scan_id = scan_if_flag();
+                if (scan_id > 0)
+                {
+                    (void)tk_set_flg(scan_id, SCAN_FLG_SIDE_BLOCKED);
+                }
+            }
+            break;
+        case BYP_PH_SWITCH:
+            /* A new BYPASS (after STOP_SCAN) starts over; none: give up. */
+            p_ctx->look_ticks++;
+            if (p_ctx->look_ticks >= MOTION_BYPASS_SWITCH_TICKS)
+            {
+                byp_next(p_ctx, BYP_PH_DONE);
+                p_ctx->line_dir = -side;
+            }
+            break;
+        case BYP_PH_SIDESTEP:
+            if (moved >= leg)
+            {
+                byp_next(p_ctx, BYP_PH_PARALLEL);
+            }
+            break;
+        case BYP_PH_PARALLEL:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_STEP);
+            }
+            break;
+        case BYP_PH_STEP:
+            if (moved >= ((0 == p_ctx->bypass_pass_mm) ? MOTION_BYPASS_FIRST_MM
+                                                       : MOTION_BYPASS_STEP_MM))
+            {
+                p_ctx->bypass_pass_mm += moved;
+                byp_next(p_ctx, BYP_PH_PROBE_IN);
+            }
+            break;
+        case BYP_PH_PROBE_IN:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_LOOK);
+                byp_ask(p_ctx, SCAN_FLG_LOOK);
+            }
+            break;
+        case BYP_PH_LOOK:
+            if (byp_look_done(p_ctx, MOTION_BYPASS_SEEN_MM, &b_near))
+            {
+                p_ctx->b_look_present = b_near;
+                byp_next(p_ctx, BYP_PH_PROBE_OUT);
+            }
+            break;
+        case BYP_PH_PROBE_OUT:
+            if (b_pivot_done)
+            {
+                byp_after_probe(p_ctx);
+            }
+            break;
+        case BYP_PH_CLEAR:
+            if (moved >= MOTION_BYPASS_CLEAR_MM)
+            {
+                byp_next(p_ctx, BYP_PH_TURN_IN);
+            }
+            break;
+        case BYP_PH_TURN_IN:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_STEP_IN);
+            }
+            break;
+        case BYP_PH_STEP_IN:
+            /* LINE_RL_CENTRED is "both white": anything else is the line. */
+            if ((LINE_RL_CENTRED != line_state_rl(p_ctx->line_word))
+                || (moved >= (leg + MOTION_BYPASS_IN_EXTRA_MM)))
+            {
+                byp_next(p_ctx, BYP_PH_ONTO);
+            }
+            break;
+        case BYP_PH_ONTO:
+            if (moved >= MOTION_LINE_SENSOR_MM)
+            {
+                byp_next(p_ctx, BYP_PH_ALONG);
+            }
+            break;
+        case BYP_PH_ALONG:
+            if (b_pivot_done)
+            {
+                byp_next(p_ctx, BYP_PH_DONE);
+                p_ctx->line_dir = -side;
+            }
+            break;
+        default:
+            /* Done: braked until the statechart leaves Bypass. */
+            break;
+    }
+
+    ph  = p_ctx->bypass_phase;
+    dir = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
+    if ((ph >= BYP_PH_DONE) || (BYP_PH_LOOK == ph)
+        || (BYP_PH_LANE_LOOK == ph) || (BYP_PH_SWITCH == ph))
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+    }
+    else if (0 != dir)
+    {
+        p_ctx->cmd_l = pid_capped(
+            p_ctx, &p_ctx->pid_l, -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(
+            p_ctx, &p_ctx->pid_r, dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
+    }
+    else
+    {
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_BYPASS_SPEED,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_BYPASS_SPEED,
+                                       p_ctx->d_r);
+    }
+}
+
+/* What the wheels do this tick in the current state. */
 static void
 man_drive (motion_ctx_t *p_ctx, motion_state_t state)
 {
+    int32_t corr;
+
     if (MOTION_ST_REVERSING == state)
     {
         p_ctx->cmd_l =
-            motion_pid_step(&p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
+            pid_capped(p_ctx, &p_ctx->pid_l, -MOTION_REV_TARGET, p_ctx->d_l);
         p_ctx->cmd_r =
-            motion_pid_step(&p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
+            pid_capped(p_ctx, &p_ctx->pid_r, -MOTION_REV_TARGET, p_ctx->d_r);
+    }
+    else if (MOTION_ST_LINE_FOLLOW == state)
+    {
+        /* correction > 0: turn left (slow the left wheel, speed up the
+           right).  With LINE_STEER_INVERT that is the left sensor darker.
+           The remainder carries to the next tick, so a correction below
+           one count still steers on average (S4: an error below 13 gave
+           no correction at all). */
+        p_ctx->lf_rem += lf_correction(p_ctx, lf_error(p_ctx),
+                                       line_state_barcode(p_ctx->line_word));
+        corr = p_ctx->lf_rem / MOTION_LF_SCALE;
+        p_ctx->lf_rem -= corr * MOTION_LF_SCALE;
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_LF_BASE - corr,
+                                       p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_LF_BASE + corr,
+                                       p_ctx->d_r);
+    }
+    else if (MOTION_ST_LINE_SEARCH == state)
+    {
+        search_drive(p_ctx);
+    }
+    else if (MOTION_ST_TURNING == state)
+    {
+        turn_drive(p_ctx);
+    }
+    else if (MOTION_ST_BYPASS == state)
+    {
+        bypass_drive(p_ctx);
     }
     else
     {
@@ -1307,14 +2080,140 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R | MOTION_FAULT_ENC_L          \
      | MOTION_FAULT_ENC_R)
 
+/* Command intake, once per tick before the statechart step: avoidance
+   first, then navigation (design Section 4).  Both receives poll, so a
+   tick takes at most one command from each buffer and a second one waits
+   a tick.  Nothing waits on CMD (every tick looks), so it is only cleared,
+   before the receives, so a command placed after it is still read.
+
+   A JUNCTION goes to the statechart with its action kept for turn_drive();
+   outside Line Following the statechart refuses it (CMD_REJECTED).
+   A BYPASS keeps its side and offset for bypass_drive(). */
+static void
+report_cmd (motion_ctx_t *p_ctx, int32_t src, uint32_t raw, int32_t res)
+{
+    motion_report_t rep;
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_CMD);
+    rep.val_l  = src;
+    rep.val_r  = (int32_t)raw;
+    rep.rate_l = res;
+    report_send(p_ctx, &rep);
+}
+
+static void
+take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
+{
+    uint16_t word = 0u;
+    UB       msg[CMD_MSG_BYTES];
+    uint8_t  op;
+    uint8_t  side;
+    uint16_t mm;
+    int32_t  res;
+
+    (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_CMD);
+
+    if ((MOTION_SM_AVOID_NONE == (motion_sm_avoid_t)p_ctx->avoid_cmd)
+        && ((INT)CMD_MSG_BYTES == tk_rcv_mbf(g_avoid_mbfid, &word, TMO_POL)))
+    {
+        res = CMD_RES_INVALID;
+        if (motion_avoid_cmd_unpack(word, &op, &side, &mm)
+            && (MOTION_AVOID_OP_LOOK == op))
+        {
+            /* A probe's answer (D14), not a manoeuvre: kept only while
+               a probe is waiting for it. */
+            res = CMD_RES_TAKEN;
+            if (LOOK_ASKED == p_ctx->look_state)
+            {
+                p_ctx->look_mm    = mm;
+                p_ctx->look_state = LOOK_ANSWERED;
+            }
+        }
+        else if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
+        {
+            res              = CMD_RES_TAKEN;
+            p_ctx->avoid_mm   = mm;
+            p_ctx->avoid_side = side;
+            p_ctx->avoid_cmd = (uint8_t)((MOTION_AVOID_OP_REVERSE == op)
+                                             ? MOTION_SM_AVOID_REVERSE
+                                             : MOTION_SM_AVOID_BYPASS);
+        }
+        report_cmd(p_ctx, CMD_SRC_AVOID, word, res);
+    }
+
+    if ((INT)CMD_MSG_BYTES == tk_rcv_mbf(g_nav_mbfid, msg, TMO_POL))
+    {
+        res = CMD_RES_TAKEN;
+        if ((NAV_CMD_FAULT_CLEAR == msg[0]) && (FAULT_CLEAR_IMU == msg[1]))
+        {
+            p_in->nav = MOTION_SM_NAV_CLEAR_IMU;
+        }
+        else if ((NAV_CMD_FAULT_CLEAR == msg[0])
+                 && (FAULT_CLEAR_MOTION == msg[1]))
+        {
+            p_in->nav = MOTION_SM_NAV_CLEAR_MOTION;
+        }
+        else if ((NAV_CMD_JUNCTION == msg[0])
+                 && (msg[1] <= (UB)BARCODE_ACT_UTURN))
+        {
+            p_in->nav          = MOTION_SM_NAV_JUNCTION;
+            p_ctx->turn_action = msg[1];
+        }
+        else
+        {
+            res = CMD_RES_INVALID;
+        }
+        report_cmd(p_ctx, CMD_SRC_NAV, ((uint32_t)msg[0] << 8) | msg[1], res);
+    }
+}
+
+/* fault_flg bits (S.faults) for motion's FR-30 faults. */
+static UINT
+fault_flg_bits (uint8_t faults)
+{
+    UINT bits = 0u;
+
+    if (0u != ((uint32_t)faults & (MOTION_FAULT_STALL_L | MOTION_FAULT_STALL_R)))
+    {
+        bits |= FAULT_MOTOR_STALL;
+    }
+    if (0u != ((uint32_t)faults & (MOTION_FAULT_ENC_L | MOTION_FAULT_ENC_R)))
+    {
+        bits |= FAULT_ENCODER;
+    }
+
+    return bits;
+}
+
+/* Counts per tick -> cm/s: d x pi x diameter mm per tick, x 100 ticks a
+   second, / 10 mm a cm; pi as 31416 / 10000. */
+#define CMS_FROM_COUNTS(d)                                                     \
+    (((d) * 31416 * MOTION_WHEEL_DIA_MM)                                       \
+     / (MOTION_COUNTS_PER_REV * 1000))
+
+/* E motion (MQTT_SCHEMA.md 5, k = 0) on every statechart change: the new
+   state, this tick's wheel speeds, the running distance and turn rate, and
+   the motion faults now.  comms_tele_send() polls, so the tick never
+   waits. */
+static void
+tele_motion (motion_ctx_t const *p_ctx)
+{
+    UB body[COMM_W_INTAKE_SIZE_MOTION];
+
+    (void)comms_tele_send(
+        body, (INT)comm_w_pack_motion(
+                  body, (uint32_t)motion_sm_state(&p_ctx->sm),
+                  CMS_FROM_COUNTS(p_ctx->d_l), CMS_FROM_COUNTS(p_ctx->d_r),
+                  (uint32_t)p_ctx->ds_mm, p_ctx->ds_turn,
+                  (uint32_t)fault_flg_bits(p_ctx->faults), 0u));
+}
+
 /* One statechart step per tick, after the stall check.  The mission state
-   comes from nav_ctrl_task (one aligned load).  Commands (step 1.7) and
-   most manoeuvres (line following, turns, bypass and search) are not
-   built yet, so those inputs stay false and those states brake; the
-   reverse is built.  The avoidance command arrives in p_ctx->avoid_cmd
-   (the command buffer, step 1.7, will fill it).  distance_state is never
-   reset: imu_task works from differences, and a jump would read as a
-   fake movement. */
+   comes from nav_ctrl_task (one aligned load), commands from
+   take_commands().  Every driving state is built: line following, the
+   line search, the turn, the reverse and the bypass.
+   distance_state is never reset: imu_task works from differences, and a
+   jump would read as a fake movement. */
 static void
 tick_statechart (motion_ctx_t *p_ctx)
 {
@@ -1324,6 +2223,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     mission_state_t mission = nav_mission_state();
     motion_report_t rep;
 
+    take_commands(p_ctx, &in);
     in.b_running     = (MS_RUNNING == mission);
     in.b_stop_scan   = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_SCAN));
     in.b_stop_imu    = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_IMU));
@@ -1331,6 +2231,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     in.avoid         = (motion_sm_avoid_t)p_ctx->avoid_cmd;
     in.b_done        = man_done(p_ctx, before);
     p_ctx->avoid_cmd = (uint8_t)MOTION_SM_AVOID_NONE; /* taken */
+    line_inputs(p_ctx, &in);
 
     motion_sm_step(&p_ctx->sm, &in, &out);
 
@@ -1340,6 +2241,7 @@ tick_statechart (motion_ctx_t *p_ctx)
         && (MOTION_ST_FAULT != motion_sm_state(&p_ctx->sm)))
     {
         p_ctx->faults = (uint8_t)((uint32_t)p_ctx->faults & ~SM_FAULTS);
+        fault_clear(FAULT_MOTOR_STALL | FAULT_ENCODER);
     }
 
     if (out.b_clear_stop_imu)
@@ -1352,10 +2254,18 @@ tick_statechart (motion_ctx_t *p_ctx)
     }
     if (out.b_changed)
     {
-        man_start(p_ctx, motion_sm_state(&p_ctx->sm));
+        man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
+    if (0u != (out.replies & MOTION_SM_REP_MOTION_FAULT))
+    {
+        fault_set(fault_flg_bits(p_ctx->faults)); /* S.faults, before nav */
+    }
     sm_send_replies(out.replies);
+    if (out.b_changed)
+    {
+        tele_motion(p_ctx);
+    }
 
     if (out.b_changed || (0u != out.replies))
     {
@@ -1895,6 +2805,53 @@ print_state (UB *p_line, motion_report_t const *p_rep)
     print_line(p_line);
 }
 
+/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken". */
+static void
+print_cmd (UB *p_line, motion_report_t const *p_rep)
+{
+    uint32_t    raw = (uint32_t)p_rep->val_r;
+    char const *what;
+    char const *res;
+    uint8_t     op;
+    uint8_t     side;
+    uint16_t    mm = 0u;
+
+    if (CMD_SRC_NAV == p_rep->val_l)
+    {
+        what = ((raw >> 8) == NAV_CMD_JUNCTION)       ? "JUNCTION"
+               : (raw == ((NAV_CMD_FAULT_CLEAR << 8) | FAULT_CLEAR_IMU))
+                   ? "FAULT_CLEAR(IMU)"
+               : (raw == ((NAV_CMD_FAULT_CLEAR << 8) | FAULT_CLEAR_MOTION))
+                   ? "FAULT_CLEAR(MOTION)"
+                   : "unknown";
+    }
+    else
+    {
+        what = "unknown";
+        if (motion_avoid_cmd_unpack((uint16_t)raw, &op, &side, &mm))
+        {
+            what = (MOTION_AVOID_OP_REVERSE == op) ? "REVERSE"
+                   : (MOTION_AVOID_OP_LOOK == op)     ? "LOOK"
+                   : (MOTION_AVOID_SIDE_LEFT == side) ? "BYPASS left"
+                                                      : "BYPASS right";
+        }
+    }
+    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken" : "dropped (invalid)";
+
+    if (CMD_SRC_NAV == p_rep->val_l)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] nav_cmd %s (raw 0x%04x): %s",
+                         what, (UINT)raw, res);
+    }
+    else
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] avoid_cmd %s %u mm (raw 0x%04x): %s",
+                         what, (UINT)mm, (UINT)raw, res);
+    }
+    print_line(p_line);
+}
+
 static char const *
 stop_name (int32_t bit)
 {
@@ -2020,6 +2977,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
 
         case EVT_STATE:
             print_state(p_line, p_rep);
+            break;
+
+        case EVT_CMD:
+            print_cmd(p_line, p_rep);
             break;
 
         case EVT_RAMP:
@@ -2189,6 +3150,32 @@ motor_task_start (void)
         else
         {
             g_mbfid = obj_id;
+        }
+    }
+
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mbf(&g_cmbf_nav);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_nav_mbfid = obj_id;
+        }
+    }
+
+    if (E_OK == ercd)
+    {
+        obj_id = tk_cre_mbf(&g_cmbf_avoid);
+        if (obj_id < E_OK)
+        {
+            ercd = obj_id;
+        }
+        else
+        {
+            g_avoid_mbfid = obj_id;
         }
     }
 

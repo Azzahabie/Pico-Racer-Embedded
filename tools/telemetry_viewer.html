@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Car Log Viewer</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1d2228;
+  --muted: #69727d; --accent: #2f6fde; --row-hover: #f0f3f7;
+  --ok: #1f8a4c; --warn: #b26a00; --bad: #c53030; --info: #6b4fd8;
+  --chip: #eef1f5; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --s26: #2f6fde; --s27: #d9730d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
+    --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
+    --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
+    --s26: #6c9cff; --s27: #f0a050;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
+  --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
+  --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
+  --s26: #6c9cff; --s27: #f0a050;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+       display: grid; grid-template-rows: auto 1fr; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
+         background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+        background: var(--chip); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill.ok::before { background: var(--ok); } .pill.warn::before { background: var(--warn); }
+.pill.bad::before { background: var(--bad); }
+.spacer { flex: 1; }
+button, .btn { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+               border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+button:hover, .btn:hover { border-color: var(--accent); }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+main { display: grid; grid-template-columns: 240px 1fr 300px; min-height: 0; }
+aside, section { min-height: 0; overflow: auto; }
+aside { border-right: 1px solid var(--line); padding: 12px; background: var(--panel); }
+#side-right { border-right: 0; border-left: 1px solid var(--line); }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
+h2:first-child { margin-top: 0; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.tag { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer;
+       user-select: none; font-family: var(--mono); font-size: 12px; }
+.tag:hover { background: var(--row-hover); }
+.tag input { margin: 0; }
+.tag .n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tag.off { opacity: .45; }
+#tags.by-filter .tag { opacity: .45; }
+.src-head { display: flex; align-items: center; justify-content: space-between; }
+.src-head a { font-size: 11px; color: var(--accent); cursor: pointer; text-transform: none; letter-spacing: 0; }
+#tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px;
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+#search { flex: 1; min-width: 160px; font: inherit; padding: 5px 10px; border-radius: 6px;
+          border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+#count { color: var(--muted); font-size: 12px; }
+main > section { display: flex; flex-direction: column; overflow: hidden; }
+#log { font-family: var(--mono); font-size: 12px; flex: 1; min-height: 0; overflow: auto; }
+.row { display: grid; grid-template-columns: 92px 64px 1fr; gap: 8px; padding: 1px 12px;
+       border-left: 3px solid transparent; white-space: pre-wrap; word-break: break-word; }
+.row:hover { background: var(--row-hover); }
+.row .t { color: var(--muted); } .row .s { color: var(--muted); }
+.row.gap { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.row.bad { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.row.warn { border-left-color: var(--warn); }
+.row.fault .x { color: var(--bad); }
+.row.ev { border-left-color: var(--info); }
+#drop { position: fixed; inset: 0; display: none; place-items: center; font-size: 20px;
+        background: color-mix(in srgb, var(--accent) 20%, transparent); border: 3px dashed var(--accent); z-index: 5; }
+#drop.show { display: grid; }
+.banner { padding: 6px 12px; background: color-mix(in srgb, var(--accent) 12%, transparent);
+          border-bottom: 1px solid var(--line); font-size: 13px; display: none; gap: 10px; align-items: center; }
+.banner.show { display: flex; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
+dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { padding: 1px 8px; border-radius: 999px; font-size: 11px; background: var(--chip); color: var(--muted); font-family: var(--mono); }
+.chip.lit { background: var(--bad); color: #fff; }
+.big { font-size: 20px; font-weight: 600; }
+.mis-3 { color: var(--ok); } .mis-6 { color: var(--bad); } .mis-4 { color: var(--warn); }
+#events { list-style: none; padding: 0; margin: 0; font-family: var(--mono); font-size: 12px; }
+#events li { padding: 2px 0; border-bottom: 1px solid var(--line); }
+#events .t { color: var(--muted); margin-right: 6px; }
+.muted { color: var(--muted); font-size: 12px; }
+.age.stale { color: var(--bad); font-weight: 600; }
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+         width: min(520px, calc(100vw - 32px)); padding: 18px; }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h3 { margin: 0 0 8px; font-size: 16px; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; padding: 8px 12px 10px;
+           display: grid; gap: 8px; }
+legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+fieldset label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 13px; }
+fieldset label.check { display: block; }
+fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5px 8px; border-radius: 6px;
+           border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
+#refresh-ports { justify-self: start; }
+.dlg-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.err { color: var(--bad); font-size: 13px; margin: 4px 0; min-height: 1em; }
+#linechart { display: none; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+#linechart.show { display: block; }
+.lc-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12px; margin-bottom: 6px; }
+.lc-head b { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.lc-val { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lc-val .k { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.lc-val .blk { font-weight: 600; }
+.lc-head select { font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px;
+                  border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+#lc-canvas { display: block; width: 100%; height: 260px; }
+#lc-hint { color: var(--warn); }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  aside { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  #side-right { border-left: 0; border-top: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Car Log Viewer</h1>
+  <span class="pill" id="st-mqtt">mqtt</span>
+  <span class="pill" id="st-serial">serial</span>
+  <span class="pill" id="st-broker">broker</span>
+  <button id="broker-toggle" title="Stop or start the built-in broker (outage tests); settings are not changed">Stop broker</button>
+  <span class="spacer"></span>
+  <button id="open-settings" title="Broker, serial port, save folder">Settings</button>
+  <label class="btn" title="Open a saved log (Attempt N.md, *.log)">Open log file
+    <input type="file" id="file" accept=".md,.log,.txt" hidden></label>
+  <button id="theme" title="Toggle light / dark">◐</button>
+</header>
+<main>
+  <aside>
+    <h2>Presets</h2>
+    <div class="presets">
+      <button data-preset="all">Show all</button>
+      <button data-preset="quiet">Hide noise</button>
+      <button data-preset="tele">Telemetry only</button>
+      <button data-preset="net">Network only</button>
+    </div>
+    <p class="muted" id="tags-note" hidden>Filter set: it alone decides what is shown, and these tags are ignored. Clear the filter to use them again.</p>
+    <div id="tags"></div>
+    <p class="muted">Click a tag to hide it. Alt+click shows only that tag. Choices are remembered.</p>
+  </aside>
+  <section>
+    <div class="banner" id="file-banner"><span id="file-name"></span>
+      <button id="back-live">Back to live</button></div>
+    <div id="tools">
+      <input id="search" placeholder="Filter text (regex ok), e.g. faults=|GAP|state=">
+      <button id="only-hl" title="Only gaps, rejects, faults, warnings and events">Highlights only</button>
+      <button id="pause">Pause</button>
+      <button id="clear">Clear</button>
+      <button id="save">Save shown</button>
+      <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
+      <span id="count"></span>
+    </div>
+    <div id="linechart">
+      <div class="lc-head">
+        <b>Line sensors</b>
+        <span class="lc-val" id="lc-26"></span>
+        <span class="lc-val" id="lc-27"></span>
+        <span class="lc-val" id="lc-lost"></span>
+        <span class="muted" id="lc-rate"></span>
+        <span class="spacer"></span>
+        <span class="muted lc-val" id="lc-hover"></span>
+        <label class="muted">Window <select id="lc-win">
+          <option value="10">10 s</option><option value="30">30 s</option><option value="60">1 min</option>
+          <option value="300">5 min</option><option value="0">all</option></select></label>
+      </div>
+      <canvas id="lc-canvas"></canvas>
+      <p class="muted" id="lc-hint"></p>
+    </div>
+    <div id="log"></div>
+  </section>
+  <aside id="side-right">
+    <h2>Send to car</h2>
+    <div class="presets" id="send-cmds">
+      <button data-cmd="snap" title="Reply: one D snapshot on …/state">Snap</button>
+      <button data-cmd="ping" title="Reply: one H on …/heartbeat">Ping</button>
+      <button data-cmd="start" title="nav: Ready → Running">Start</button>
+      <button data-cmd="pause" title="nav: Running → Paused">Pause</button>
+      <button data-cmd="resume" title="nav: Paused → Running">Resume</button>
+      <button data-cmd="reset" title="nav: Finished → Ready, Fault → Calibrating">Reset</button>
+      <button data-cmd="finish" title="nav: Running/Paused → Finished">Finish</button>
+    </div>
+    <div class="presets">
+      <input id="map-table" maxlength="26" size="26" placeholder="26 of F L R U, A first"
+             title="Action per letter A..Z: F forward, L left, R right, U U-turn">
+      <input id="map-mv" type="number" min="0" max="15" value="1" style="width:4em" title="Table version mv, 0-15">
+      <button id="send-map" title="Retained on …/map">Send map</button>
+    </div>
+    <h2>Bad input test</h2>
+    <div class="presets">
+      <select id="bad-preset" title="Fill the box with a case the car must reject">
+        <option value="">preset…</option>
+        <option value="cmd|00">cmd op 0</option>
+        <option value="cmd|09">cmd reserved bit</option>
+        <option value="cmd|01 02">cmd 2 bytes</option>
+        <option value="map|43 4e 4e 4e 4e 4e">map 6 bytes</option>
+        <option value="map|43 4e 4e 4e 4e 4e 4e 4e">map 8 bytes (radio refuses)</option>
+        <option value="cmd|">cmd empty (radio refuses)</option>
+        <option value="junk|01">unknown topic (car not subscribed)</option>
+      </select>
+      <select id="bad-topic"><option>cmd</option><option>map</option><option>junk</option></select>
+      <input id="bad-hex" size="16" placeholder="hex, e.g. 09" title="Payload bytes in hex, sent exactly as typed">
+      <button id="send-bad" title="Not retained">Send raw</button>
+    </div>
+    <p class="muted" id="send-out"></p>
+    <h2>Car state <span class="muted" id="s-age"></span></h2>
+    <div class="big" id="mission">—</div>
+    <h2>Faults</h2>
+    <div class="chips" id="faults"></div>
+    <h2>Last S record</h2>
+    <dl id="state"><dt>—</dt><dd>no S yet</dd></dl>
+    <h2>Link</h2>
+    <dl id="link"><dt>wifi</dt><dd id="l-wifi">—</dd><dt>mqtt</dt><dd id="l-mqtt">—</dd>
+      <dt>S count</dt><dd id="l-scount">0</dd><dt>gaps</dt><dd id="l-gaps">0</dd>
+      <dt>rejects</dt><dd id="l-rej">0</dd></dl>
+    <h2>Recent events</h2>
+    <ul id="events"></ul>
+  </aside>
+</main>
+<div id="drop">Drop a log file to view it</div>
+
+<dialog id="settings">
+  <form method="dialog" id="settings-form">
+    <h3>Settings</h3>
+    <p class="muted" id="first-run" hidden>First run: check these, then Save. Nothing is built in — they are kept on this PC only.</p>
+    <fieldset>
+      <legend>MQTT broker to watch</legend>
+      <label>Address <input name="broker_host" required placeholder="IP or host name of the broker PC"></label>
+      <label>Port <input name="broker_port" type="number" min="1" max="65535" required></label>
+      <label>Car client ID <input name="client_id" required placeholder="UTK_MQTT_CLIENT_ID in config/broker_config.h"></label>
+      <label class="check"><input name="run_broker" type="checkbox"> Run the broker inside this viewer
+        <span class="muted">(listens on every network interface at the port above; leave off if another broker is already running)</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Pico serial console</legend>
+      <label>Port <select name="serial"></select></label>
+      <button type="button" id="refresh-ports">Rescan ports</button>
+    </fieldset>
+    <fieldset>
+      <legend>Save logs</legend>
+      <label>Folder <input name="save_dir" placeholder="empty = do not save, e.g. C:\logs\attempt2"></label>
+    </fieldset>
+    <p class="muted">Stored in <span id="settings-file"></span>. The page port (<span id="http-port"></span>) applies on next start.</p>
+    <p class="err" id="settings-err"></p>
+    <div class="dlg-buttons">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button id="settings-save" value="default" class="on">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+const MAX_LINES = 60000, MAX_SHOWN = 2500;
+const MISSION = ["INITIALISING", "CALIBRATING", "READY", "RUNNING", "PAUSED", "FINISHED", "FAULT"];
+const FAULTS = ["motor_stall", "encoder", "imu", "scan_sensor_lost", "line_sensor", "wifi_loss"];
+const SRC_LABEL = { mqtt: "MQTT (decoder)", serial: "Serial console", broker: "Broker", viewer: "Viewer" };
+const S_FIELDS = { mot: "motion state", dst: "dist since change (cm)", lin: "line", dev: "deviation",
+  bar: "barcode", act: "action", hum: "humps", hgt: "hump height (mm)", obs: "obstacle (cm)",
+  byp: "bypass", mpv: "map version", drp: "intake drops", tlt: "tilt (deg)",
+  trn: "turn rate (deg/s)" };
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+let live = [], fileLines = null, paused = false, onlyHl = false;
+let hidden = new Set(store.get("hidden", []));
+const tagCounts = new Map();        // key -> count, for the dataset on screen
+const $ = (id) => document.getElementById(id);
+
+/* ---- classify one line ---------------------------------------------- */
+function parseFields(text) {
+  const head = text.split(/\s{2}\d+B \[/)[0];
+  const out = {};
+  for (const m of head.matchAll(/(\w+)=(\S+)/g)) out[m[1]] = m[2];
+  return out;
+}
+function classify(src, text) {
+  let tag = "other", fields = null;
+  const flags = new Set();
+  if (src === "mqtt") {
+    const m = text.match(/^(S|H|D|E \w+|REJECT)\b/);
+    tag = m ? m[1] : "decoder";
+    if (m && tag !== "REJECT") fields = parseFields(text);
+    if (/GAP: expected/.test(text)) flags.add("gap");
+    if (tag === "REJECT") flags.add("bad");
+    if (tag.startsWith("E ")) flags.add("ev");
+    if (fields && fields.faults && fields.faults !== "0") flags.add("fault");
+  } else if (src === "serial") {
+    const m = text.match(/^\[([\w.-]+)\]\s*(S|H|E \w+|intake)?/);
+    if (m) tag = "[" + m[1] + "]" + (m[1] === "comms" && m[2] ? " " + m[2] : "");
+    if (/fail|error|dropped|BACKOFF|link DOWN|FAULT|malformed|lost=[1-9]/i.test(text)) flags.add("warn");
+    if (/^\[comms\] E /.test(text)) flags.add("ev");
+  } else if (src === "broker") {
+    tag = /Connection from|connections acquired|disconnect/i.test(text) ? "connections" : "broker";
+    if (/error|warning|exception/i.test(text)) flags.add("warn");
+  } else {
+    tag = "viewer";
+  }
+  return { src, tag, key: src + "|" + tag, fields, flags };
+}
+function makeLine(src, time, text) { return Object.assign({ time, text }, classify(src, text)); }
+
+/* ---- tag list ------------------------------------------------------- */
+function rebuildCounts() {
+  tagCounts.clear();
+  for (const l of current()) tagCounts.set(l.key, (tagCounts.get(l.key) || 0) + 1);
+  renderTags();
+}
+function renderTags() {
+  const bySrc = {};
+  for (const key of tagCounts.keys()) (bySrc[key.split("|")[0]] ||= []).push(key);
+  const box = $("tags");
+  box.textContent = "";
+  for (const src of ["mqtt", "serial", "broker", "viewer"]) {
+    if (!bySrc[src]) continue;
+    const h = document.createElement("h2");
+    h.className = "src-head";
+    h.innerHTML = `<span>${SRC_LABEL[src]}</span>`;
+    const a = document.createElement("a");
+    const allOff = bySrc[src].every((k) => hidden.has(k));
+    a.textContent = allOff ? "show all" : "hide all";
+    a.onclick = () => { for (const k of bySrc[src]) allOff ? hidden.delete(k) : hidden.add(k); changed(); };
+    h.appendChild(a);
+    box.appendChild(h);
+    for (const key of bySrc[src].sort()) {
+      const row = document.createElement("label");
+      row.className = "tag" + (hidden.has(key) ? " off" : "");
+      row.title = "Alt+click: show only this tag";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = !hidden.has(key);
+      row.addEventListener("click", (e) => {
+        if (e.altKey) {
+          e.preventDefault();
+          hidden = new Set([...tagCounts.keys()].filter((k) => k !== key));
+          changed(); return;
+        }
+      });
+      cb.onchange = () => { cb.checked ? hidden.delete(key) : hidden.add(key); changed(); };
+      const name = document.createElement("span");
+      name.textContent = key.split("|")[1];
+      const n = document.createElement("span");
+      n.className = "n"; n.textContent = tagCounts.get(key);
+      n.dataset.key = key;
+      row.append(cb, name, n);
+      box.appendChild(row);
+    }
+  }
+}
+function bumpTag(l) {
+  const before = tagCounts.has(l.key);
+  tagCounts.set(l.key, (tagCounts.get(l.key) || 0) + 1);
+  if (!before) { renderTags(); return; }
+  const n = document.querySelector(`.tag .n[data-key="${CSS.escape(l.key)}"]`);
+  if (n) n.textContent = tagCounts.get(l.key);
+}
+
+/* ---- log rendering -------------------------------------------------- */
+let searchRe = null;
+function current() { return fileLines || live; }
+function visible(l) {
+  // A filter overrides the tags: a pasted filter shows exactly what it
+  // matches, whatever was hidden before.
+  if (!searchRe && hidden.has(l.key)) return false;
+  if (onlyHl && !(l.flags.size)) return false;
+  if (searchRe && !searchRe.test(l.text)) return false;
+  return true;
+}
+function rowFor(l) {
+  const d = document.createElement("div");
+  d.className = "row " + [...l.flags].join(" ");
+  const t = document.createElement("span"); t.className = "t"; t.textContent = l.time || "";
+  const s = document.createElement("span"); s.className = "s"; s.textContent = l.src;
+  const x = document.createElement("span"); x.className = "x"; x.textContent = l.text;
+  d.append(t, s, x);
+  return d;
+}
+function atBottom() {
+  const sec = $("log");
+  return sec.scrollHeight - sec.scrollTop - sec.clientHeight < 40;
+}
+function scrollEnd() { const sec = $("log"); sec.scrollTop = sec.scrollHeight; }
+function render() {
+  const lines = current().filter(visible);
+  const shown = lines.slice(-MAX_SHOWN);
+  const frag = document.createDocumentFragment();
+  for (const l of shown) frag.appendChild(rowFor(l));
+  $("log").replaceChildren(frag);
+  $("count").textContent = `${lines.length} of ${current().length} lines` +
+    (lines.length > MAX_SHOWN ? ` (last ${MAX_SHOWN} drawn)` : "");
+  scrollEnd();
+}
+function appendLive(l) {
+  if (!visible(l) || paused || fileLines) return;
+  const stick = atBottom();
+  const log = $("log");
+  log.appendChild(rowFor(l));
+  while (log.childElementCount > MAX_SHOWN) log.firstElementChild.remove();
+  if (stick) scrollEnd();
+}
+function changed() { store.set("hidden", [...hidden]); renderTags(); render(); }
+
+/* ---- car state panel ------------------------------------------------ */
+let lastSAt = 0, sCount = 0, gaps = 0, rejects = 0;
+const events = [];
+function resetState() {
+  lastSAt = 0; sCount = 0; gaps = 0; rejects = 0; events.length = 0;
+  $("mission").textContent = "—"; $("mission").className = "big";
+  $("state").innerHTML = "<dt>—</dt><dd>no S yet</dd>";
+  $("faults").textContent = ""; $("events").textContent = "";
+  $("l-wifi").textContent = "—"; $("l-mqtt").textContent = "—";
+  updateCounters(); drawFaults("0");
+}
+function drawFaults(text) {
+  const lit = new Set(text === "0" ? [] : text.split("|"));
+  $("faults").replaceChildren(...FAULTS.map((f) => {
+    const c = document.createElement("span");
+    c.className = "chip" + (lit.has(f) ? " lit" : ""); c.textContent = f; return c;
+  }));
+}
+function updateCounters() {
+  $("l-scount").textContent = sCount; $("l-gaps").textContent = gaps; $("l-rej").textContent = rejects;
+}
+function track(l, isLive) {
+  if (l.src === "mqtt") {
+    if (l.flags.has("gap")) gaps++;
+    if (l.tag === "REJECT") rejects++;
+    if (l.tag === "S" && l.fields) {
+      sCount++; if (isLive) lastSAt = Date.now();
+      const f = l.fields, mis = +f.mis;
+      $("mission").textContent = MISSION[mis] ?? `mis=${f.mis}`;
+      $("mission").className = "big mis-" + mis;
+      drawFaults(f.faults || "0");
+      const rows = [["s", f.s], ["up", (parseInt(f.up, 10) / 1000).toFixed(1) + " s"]];
+      for (const k of Object.keys(S_FIELDS)) if (k in f) rows.push([S_FIELDS[k], f[k]]);
+      $("state").replaceChildren(...rows.flatMap(([k, v]) => {
+        const dt = document.createElement("dt"); dt.textContent = k;
+        const dd = document.createElement("dd"); dd.textContent = v; return [dt, dd];
+      }));
+    }
+    if (l.tag.startsWith("E ")) {
+      const body = Object.entries(l.fields || {}).filter(([k]) => !["s", "up", "k"].includes(k))
+        .map(([k, v]) => `${k}=${v}`).join(" ");
+      events.unshift(`<span class="t">${l.time}</span>${l.tag.slice(2)} ${body}`);
+      events.length = Math.min(events.length, 12);
+      $("events").innerHTML = events.map((e) => `<li>${e}</li>`).join("");
+    }
+    updateCounters();
+  } else if (l.src === "serial") {
+    let m = l.text.match(/^\[wifi\] (?:state=(\w+)|link (UP|DOWN)|ip=(\S+))/);
+    if (m) $("l-wifi").textContent = m[1] || ("link " + m[2]) || "";
+    if (m && m[3]) $("l-wifi").textContent = "ONLINE " + m[3];
+    m = l.text.match(/^\[mqtt\] state=(\w+).*conn#=(\d+) lost=(\d+).*drop=(\d+)/);
+    if (m) $("l-mqtt").textContent = `${m[1]} conn#${m[2]} lost ${m[3]} drop ${m[4]}`;
+  }
+}
+setInterval(() => {
+  const el = $("s-age");
+  if (fileLines || !lastSAt) { el.textContent = ""; return; }
+  const age = (Date.now() - lastSAt) / 1000;
+  el.textContent = `· last S ${age.toFixed(1)} s ago`;
+  el.className = "muted age" + (age > 3 ? " stale" : "");
+}, 250);
+
+/* ---- line sensor chart ---------------------------------------------- */
+// From ir_sense_task's "[line] dbg" line: every 2 s normally, every 100 ms
+// with LINE_COMMISSIONING_MODE 1.  raw is the ADC (black high), thr is
+// rise/fall in the same units, on_line the debounced black/white call.
+const LC_RE = /^\[line\] dbg GP26 raw=(\d+) min=(\d+) max=(\d+) norm=(\d+) thr=(\d+)\/(\d+) on_line=(\d)\s*\| GP27 raw=(\d+) min=(\d+) max=(\d+) norm=(\d+) thr=(\d+)\/(\d+) on_line=(\d)\s*\| dark_ms=(\d+) lost=(\d)/;
+const LC_MAX = 20000, LC_ADC = 4096;
+let lcLive = [], lcFile = null, lcShow = store.get("lcShow", false), lcHover = null, lcQueued = false;
+function secs(time) {
+  const m = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)$/.exec(time || "");
+  return m ? (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) : NaN;
+}
+function lcSample(l) {
+  if (l.src !== "serial") return null;
+  const m = LC_RE.exec(l.text);
+  if (!m) return null;
+  const t = secs(l.time);
+  if (Number.isNaN(t)) return null;
+  const n = m.slice(1).map(Number);
+  return { t, time: l.time,
+    a: { raw: n[0], norm: n[3], rise: n[4], fall: n[5], blk: n[6] === 1 },
+    b: { raw: n[7], norm: n[10], rise: n[11], fall: n[12], blk: n[13] === 1 },
+    dark: n[14], lost: n[15] === 1 };
+}
+function lcData() { return lcFile || lcLive; }
+function lcCss(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function lcSide(id, name, color, s) {
+  $(id).innerHTML = s
+    ? `<span class="k" style="background:${color}"></span>${name} ${String(s.raw).padStart(4)} ` +
+      (s.blk ? `<span class="blk">BLACK</span>` : "white") + ` <span class="muted">norm ${s.norm}</span>`
+    : "";
+}
+function lcReadout() {
+  const d = lcData(), s = d[d.length - 1];
+  lcSide("lc-26", "GP26", lcCss("--s26"), s && s.a);
+  lcSide("lc-27", "GP27", lcCss("--s27"), s && s.b);
+  $("lc-lost").innerHTML = s ? (s.lost ? `<span style="color:var(--bad)">LOST</span>` : `dark_ms ${s.dark}`) : "";
+  let hint = "";
+  if (d.length >= 2) {
+    const dt = (d[d.length - 1].t - d[Math.max(0, d.length - 11)].t) / Math.min(10, d.length - 1);
+    $("lc-rate").textContent = dt > 0 ? `${(1 / dt).toFixed(1)} Hz` : "";
+    if (dt > 1) hint = "One sample every 2 s: build with LINE_COMMISSIONING_MODE 1 (robot_config.h) for 10 per second.";
+  } else {
+    $("lc-rate").textContent = "";
+    hint = d.length ? "" : "No [line] dbg lines yet. The car prints them every 2 s, or every 100 ms with LINE_COMMISSIONING_MODE 1.";
+  }
+  $("lc-hint").textContent = hint;
+  $("lc-hint").style.color = hint ? "" : "var(--muted)";
+  if (!hint && d.length) $("lc-hint").textContent =
+    "Dashed: goes black above (rise). Dotted: goes white below (fall). Strips: the car's own black/white call and LOST.";
+}
+function lcDraw() {
+  lcQueued = false;
+  if (!lcShow) return;
+  lcReadout();
+  const cv = $("lc-canvas"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const c26 = lcCss("--s26"), c27 = lcCss("--s27"), muted = lcCss("--muted"), grid = lcCss("--line"), bad = lcCss("--bad");
+  // plot area, then three strips under it: GP26 black, GP27 black, LOST
+  const L = 44, R = 8, T = 6, STRIP = 10, GAP = 3, B = 18 + 3 * (STRIP + GAP);
+  const PW = W - L - R, PH = H - T - B;
+  const d = lcData();
+  const win = +$("lc-win").value;
+  const tEnd = d.length ? d[d.length - 1].t : 0;
+  const tStart = win && d.length ? tEnd - win : (d.length ? d[0].t : 0);
+  const span = Math.max(tEnd - tStart, 1e-3);
+  const x = (t) => L + ((t - tStart) / span) * PW;
+  const y = (v) => T + PH - (Math.min(v, LC_ADC) / LC_ADC) * PH;
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "middle";
+  // y grid: ADC counts
+  g.strokeStyle = grid; g.fillStyle = muted; g.lineWidth = 1; g.textAlign = "right";
+  for (const v of [0, 1024, 2048, 3072, 4095]) {
+    g.beginPath(); g.moveTo(L, Math.round(y(v)) + .5); g.lineTo(L + PW, Math.round(y(v)) + .5); g.stroke();
+    g.fillText(String(v), L - 6, y(v));
+  }
+  const shown = d.filter((s) => s.t >= tStart);
+  if (shown.length) {
+    // thresholds of the newest sample: rise solid-dashed, fall dotted
+    const last = shown[shown.length - 1];
+    for (const [side, col] of [["a", c26], ["b", c27]]) {
+      g.strokeStyle = col; g.globalAlpha = .55;
+      g.setLineDash([6, 4]); g.beginPath(); g.moveTo(L, y(last[side].rise)); g.lineTo(L + PW, y(last[side].rise)); g.stroke();
+      g.setLineDash([2, 3]); g.beginPath(); g.moveTo(L, y(last[side].fall)); g.lineTo(L + PW, y(last[side].fall)); g.stroke();
+    }
+    g.setLineDash([]); g.globalAlpha = 1;
+    // raw traces
+    g.lineWidth = 2; g.lineJoin = "round";
+    for (const [side, col] of [["a", c26], ["b", c27]]) {
+      g.strokeStyle = col; g.beginPath();
+      shown.forEach((s, i) => (i ? g.lineTo(x(s.t), y(s[side].raw)) : g.moveTo(x(s.t), y(s[side].raw))));
+      g.stroke();
+      if (shown.length < 60) {        // few points: mark each sample
+        g.fillStyle = col;
+        for (const s of shown) { g.beginPath(); g.arc(x(s.t), y(s[side].raw), 2.5, 0, 7); g.fill(); }
+      }
+    }
+    // strips: a sample's state holds until the next sample
+    const strips = [["GP26", c26, (s) => s.a.blk], ["GP27", c27, (s) => s.b.blk], ["LOST", bad, (s) => s.lost]];
+    strips.forEach(([name, col, on], k) => {
+      const sy = T + PH + 18 + k * (STRIP + GAP);
+      g.fillStyle = grid; g.fillRect(L, sy, PW, STRIP);
+      g.fillStyle = col;
+      shown.forEach((s, i) => {
+        if (!on(s)) return;
+        const x0 = x(s.t), x1 = i + 1 < shown.length ? x(shown[i + 1].t) : L + PW;
+        g.fillRect(x0, sy, Math.max(x1 - x0, 1), STRIP);
+      });
+      g.fillStyle = muted; g.textAlign = "right"; g.fillText(name, L - 6, sy + STRIP / 2);
+    });
+  }
+  // x axis: seconds before the newest sample
+  g.fillStyle = muted; g.textAlign = "center";
+  const step = [1, 2, 5, 10, 30, 60, 120, 300, 600, 1800].find((s) => span / s <= 8) || 3600;
+  for (let k = 0; k * step <= span; k++) {
+    const t = tEnd - k * step;
+    g.fillText(k ? `-${k * step} s` : "now", x(t), T + PH + 9);
+  }
+  // hover: nearest sample
+  $("lc-hover").textContent = "";
+  if (lcHover !== null && shown.length) {
+    const t = tStart + ((lcHover - L) / PW) * span;
+    let best = shown[0];
+    for (const s of shown) if (Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+    g.strokeStyle = muted; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(x(best.t)) + .5, T); g.lineTo(Math.round(x(best.t)) + .5, T + PH + 18 + 3 * (STRIP + GAP)); g.stroke();
+    $("lc-hover").textContent = `${best.time}  GP26 ${best.a.raw} ${best.a.blk ? "B" : "w"}  GP27 ${best.b.raw} ${best.b.blk ? "B" : "w"}` +
+      (best.lost ? "  LOST" : "");
+  }
+}
+function lcRedraw() { if (lcShow && !lcQueued) { lcQueued = true; requestAnimationFrame(lcDraw); } }
+function lcSetShow(on) {
+  lcShow = on; store.set("lcShow", on);
+  $("linechart").classList.toggle("show", on); $("lc-toggle").classList.toggle("on", on);
+  lcRedraw();
+}
+$("lc-toggle").onclick = () => lcSetShow(!lcShow);
+$("lc-win").value = String(store.get("lcWin", 30));
+$("lc-win").onchange = () => { store.set("lcWin", +$("lc-win").value); lcRedraw(); };
+$("lc-canvas").addEventListener("mousemove", (e) => { lcHover = e.offsetX; lcRedraw(); });
+$("lc-canvas").addEventListener("mouseleave", () => { lcHover = null; lcRedraw(); });
+addEventListener("resize", lcRedraw);
+lcSetShow(lcShow);
+
+/* ---- live stream ---------------------------------------------------- */
+function setPill(id, text) {
+  const el = $(id);
+  el.textContent = id.slice(3) + ": " + text;
+  el.className = "pill " + (/^(connected|open|running)/.test(text) ? "ok"
+    : /^off$/.test(text) ? "" : /missing|busy|exited|failed/.test(text) ? "bad" : "warn");
+  if (id === "st-broker") $("broker-toggle").textContent = /^running/.test(text) ? "Stop broker" : "Start broker";
+}
+function connect() {
+  const es = new EventSource("/events");
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.kind === "status") {
+      for (const [k, v] of Object.entries(ev.status)) setPill("st-" + k, v);
+      return;
+    }
+    const l = makeLine(ev.src, ev.time, ev.text);
+    live.push(l);
+    if (live.length > MAX_LINES) live.splice(0, live.length - MAX_LINES);
+    const smp = lcSample(l);
+    if (smp) {
+      lcLive.push(smp);
+      if (lcLive.length > LC_MAX) lcLive.splice(0, lcLive.length - LC_MAX);
+      if (!fileLines && !paused) lcRedraw();
+    }
+    if (fileLines) return;
+    track(l, true);
+    bumpTag(l);
+    appendLive(l);
+  };
+  es.onerror = () => { for (const k of ["mqtt", "serial", "broker"]) setPill("st-" + k, "viewer offline"); };
+}
+if (location.protocol.startsWith("http")) {
+  connect();
+} else {
+  for (const k of ["mqtt", "serial", "broker"]) setPill("st-" + k, "off");
+}
+
+/* ---- saved logs ----------------------------------------------------- */
+function parseFile(text) {
+  const out = [];
+  let src = "serial";
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (!line.trim()) continue;
+    if (/^# (filter|hidden):/.test(line)) continue;   // "Save shown" header
+    const sec = line.match(/^#+\s*(.*)$/);
+    if (sec) {
+      const s = sec[1].toLowerCase();
+      src = s.includes("broker") ? "broker" : s.includes("decod") ? "mqtt" : s.includes("serial") ? "serial" : src;
+      continue;
+    }
+    let m = line.match(/^\[(\d\d:\d\d:\d\d(?:\.\d{1,3})?)\]\s?(.*)$/);
+    if (m) { out.push(makeLine(src, m[1], m[2])); continue; }
+    m = line.match(/^\[\d{4}-\d\d-\d\d (\d\d:\d\d:\d\d),(\d{3})\]\s*(.*)$/);  // amqtt
+    if (m) { out.push(makeLine("broker", m[1] + "." + m[2], m[3])); continue; }
+    out.push(makeLine(src, "", line));
+  }
+  // Interleave the sections by time, so broker, decoder and serial line up.
+  // A line without a time keeps its place after the line before it.
+  let last = "";
+  out.forEach((l, i) => { l.order = (l.time || last) + "#" + String(i).padStart(6, "0"); last = l.time || last; });
+  return out.sort((a, b) => (a.order < b.order ? -1 : 1));
+}
+function openFile(file) {
+  file.text().then((text) => {
+    fileLines = parseFile(text);
+    $("file-name").textContent = `Viewing ${file.name} — ${fileLines.length} lines (live stream keeps running)`;
+    $("file-banner").classList.add("show");
+    resetState();
+    for (const l of fileLines) track(l, false);
+    lcFile = fileLines.map(lcSample).filter(Boolean);
+    if (lcFile.length && !lcShow) lcSetShow(true);
+    rebuildCounts(); render(); lcRedraw();
+  });
+}
+$("file").onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
+$("back-live").onclick = () => {
+  fileLines = null; lcFile = null; $("file-banner").classList.remove("show");
+  resetState(); for (const l of live) track(l, false);
+  rebuildCounts(); render(); lcRedraw();
+};
+let dragDepth = 0;
+addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("drop").classList.add("show"); });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("show"); } });
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", (e) => {
+  e.preventDefault(); dragDepth = 0; $("drop").classList.remove("show");
+  if (e.dataTransfer.files[0]) openFile(e.dataTransfer.files[0]);
+});
+
+/* ---- toolbar -------------------------------------------------------- */
+let searchTimer;
+function applySearch() {
+  const v = $("search").value.trim();
+  try { searchRe = v ? new RegExp(v, "i") : null; $("search").style.borderColor = ""; }
+  catch { searchRe = null; $("search").style.borderColor = "var(--bad)"; }
+  store.set("search", v);
+  $("tags").classList.toggle("by-filter", !!searchRe);
+  $("tags-note").hidden = !searchRe;
+  render();
+}
+$("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); };
+$("search").value = store.get("search", "");     // the last filter, as pasted
+applySearch();
+async function sendToCar(body) {
+  const res = await fetch("/send", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  $("send-out").textContent = out.ok ? `sent ${out.sent}` : `not sent: ${out.error}`;
+}
+for (const b of document.querySelectorAll("#send-cmds button")) b.onclick = () => sendToCar({ cmd: b.dataset.cmd });
+$("send-map").onclick = () => {
+  const table = $("map-table").value.trim().toUpperCase();
+  if (!/^[FLRU]{26}$/.test(table)) { $("send-out").textContent = "a map needs 26 of F, L, R, U"; return; }
+  sendToCar({ map: { mv: Number($("map-mv").value), table } });
+};
+$("bad-preset").onchange = (e) => {
+  if (!e.target.value) return;
+  const [topic, hex] = e.target.value.split("|");
+  $("bad-topic").value = topic;
+  $("bad-hex").value = hex;
+};
+$("send-bad").onclick = () => sendToCar({ raw: { topic: $("bad-topic").value, hex: $("bad-hex").value } });
+$("broker-toggle").onclick = async (e) => {
+  const run = e.target.textContent.startsWith("Start");
+  const res = await fetch("/broker", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run }) });
+  const out = await res.json().catch(() => ({ ok: false }));
+  if (out.ok) e.target.textContent = out.running ? "Stop broker" : "Start broker";
+};
+$("only-hl").onclick = (e) => { onlyHl = !onlyHl; e.target.classList.toggle("on", onlyHl); render(); };
+$("pause").onclick = (e) => {
+  paused = !paused; e.target.classList.toggle("on", paused);
+  e.target.textContent = paused ? "Resume" : "Pause"; if (!paused) { render(); lcRedraw(); }
+};
+$("clear").onclick = () => {
+  if (fileLines) { fileLines = []; lcFile = []; } else { live = []; lcLive = []; }
+  resetState(); rebuildCounts(); render(); lcRedraw();
+};
+$("save").onclick = () => {
+  // the header says what was left out, so the reader knows what is missing
+  const head = `# filter: ${$("search").value.trim() || "(none)"}${onlyHl ? "  [highlights only]" : ""}\n`
+    + `# hidden: ${searchRe ? "(ignored: the filter decides)" : ([...hidden].join(", ") || "(none)")}\n`;
+  const text = head + current().filter(visible).map((l) => `[${l.time}] ${l.src}: ${l.text}`).join("\n") + "\n";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  a.download = `car-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.log`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+const PRESETS = {
+  all: () => new Set(),
+  quiet: (keys) => new Set(keys.filter((k) => /\|\[(imu|motion)\]$|\|\[comms\] S$|\|H$/.test(k))),
+  tele: (keys) => new Set(keys.filter((k) => !k.startsWith("mqtt|") && !/\|\[comms\] E/.test(k))),
+  net: (keys) => new Set(keys.filter((k) => !/\|\[(wifi|mqtt)\]$|^broker\||^viewer\|/.test(k))),
+};
+for (const b of document.querySelectorAll("[data-preset]")) {
+  b.onclick = () => { hidden = PRESETS[b.dataset.preset]([...tagCounts.keys()]); changed(); };
+}
+/* ---- settings (stored by the viewer, never in this page) ------------ */
+const dlg = $("settings"), form = $("settings-form");
+function fillPorts(ports, current) {
+  const sel = form.elements.serial;
+  const opts = [["auto", "auto — find the Pico"], ["none", "none — don't open a port"]];
+  for (const p of ports) opts.push([p.device, `${p.device} — ${p.desc}${p.pico ? " (Pico)" : ""}`]);
+  if (current && !opts.some(([v]) => v === current)) opts.push([current, `${current} (not connected now)`]);
+  sel.replaceChildren(...opts.map(([v, t]) => new Option(t, v)));
+  sel.value = current || "auto";
+}
+async function openSettings() {
+  $("settings-err").textContent = "";
+  try {
+    const cfg = await (await fetch("/config")).json();
+    const s = cfg.settings;
+    for (const k of ["broker_host", "broker_port", "client_id", "save_dir"]) form.elements[k].value = s[k];
+    form.elements.run_broker.checked = !!s.run_broker;
+    fillPorts(cfg.ports, s.serial);
+    $("settings-file").textContent = cfg.settings_file;
+    $("http-port").textContent = s.http_port;
+    $("first-run").hidden = !cfg.first_run;
+    dlg.showModal();
+  } catch {
+    alert("Settings need the viewer running (start TelemetryViewer.exe or telemetry_viewer.py).");
+  }
+}
+$("open-settings").onclick = openSettings;
+$("refresh-ports").onclick = async () => {
+  const cfg = await (await fetch("/config")).json();
+  fillPorts(cfg.ports, form.elements.serial.value);
+};
+form.addEventListener("submit", async (e) => {
+  if (e.submitter && e.submitter.value === "cancel") return;
+  e.preventDefault();
+  const f = form.elements;
+  const body = { broker_host: f.broker_host.value, broker_port: +f.broker_port.value,
+    client_id: f.client_id.value, serial: f.serial.value, run_broker: f.run_broker.checked,
+    save_dir: f.save_dir.value };
+  const res = await fetch("/config", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+  if (out.ok) dlg.close(); else $("settings-err").textContent = out.error;
+});
+if (location.protocol.startsWith("http")) {
+  fetch("/config").then((r) => r.json()).then((cfg) => { if (cfg.first_run) openSettings(); }).catch(() => {});
+} else {
+  $("open-settings").hidden = true;
+}
+
+$("theme").onclick = () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark"; store.set("theme", root.dataset.theme);
+  lcRedraw();
+};
+{ const t = store.get("theme", null); if (t) document.documentElement.dataset.theme = t; }
+resetState(); render();
+</script>
+</body>
+</html>

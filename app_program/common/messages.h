@@ -5,7 +5,7 @@
  * Every buddy's task depends on this file -- route changes through
  * a pull request so nobody's build breaks silently.
  *
- * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v4).
+ * MQTT records and event bodies (docs/comms/MQTT_SCHEMA.md, schema v5).
  * Packed with explicit shifts and masks, never C bit-fields, LSB-first and
  * little-endian: bit n of a record is bit (n mod 8) of byte (n div 8).  Plain
  * C with no kernel or hardware calls, so the same code runs in the PC unit
@@ -21,6 +21,14 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
+
+/* No <stddef.h>: its size_t clashes with tk/syslib.h on the target (see
+   gpio_irq.c).  NULL the same way tk/typedef.h does, so the PC test still
+   builds without the kernel headers. */
+#ifndef NULL
+#define NULL 0
+#endif
 
 /* ------------------------------------------------------------------ *
  *  motion_flg bits (Buddy 2 / Buddy 5 integration)
@@ -32,6 +40,71 @@
 #define MOTION_EVT_STOP_IMU    (1U << 3)   /* imu_task stop; motion clears
                                               it on FAULT_CLEAR(IMU)       */
 #define MOTION_EVT_STOPS       (MOTION_EVT_STOP_SCAN | MOTION_EVT_STOP_IMU)
+
+/* scan_task -> motion_task avoid command, stored in a 16-bit MBF payload.
+ * Bits 0-2 are the operation, bit 3 is the bypass side (0=left, 1=right),
+ * bits 4-12 are the distance in mm, and bits 13-15 are reserved as zero.
+ * Side is zero for reverse and look commands.
+ * LOOK (Integration Rules D14) answers motion_task's SCAN_FLG_LOOK during a
+ * bypass: the median side reading in mm, 1 = no echo (unknown),
+ * MOTION_AVOID_DIST_MAX = nothing in range. */
+#define MOTION_AVOID_OP_REVERSE    1U
+#define MOTION_AVOID_OP_BYPASS     2U
+#define MOTION_AVOID_OP_LOOK       3U
+#define MOTION_AVOID_SIDE_NONE     0U
+#define MOTION_AVOID_SIDE_LEFT     1U
+#define MOTION_AVOID_SIDE_RIGHT    2U
+#define MOTION_AVOID_DIST_MAX      511U
+
+static inline bool motion_avoid_cmd_pack(uint8_t op, uint8_t side,
+                                         uint16_t dist_mm, uint16_t *p_word)
+{
+    bool valid;
+    uint8_t side_bit = 0U;
+
+    valid = (NULL != p_word) && (0U < dist_mm) &&
+            (dist_mm <= MOTION_AVOID_DIST_MAX) &&
+            ((((MOTION_AVOID_OP_REVERSE == op) ||
+               (MOTION_AVOID_OP_LOOK == op)) &&
+              (MOTION_AVOID_SIDE_NONE == side)) ||
+             ((MOTION_AVOID_OP_BYPASS == op) &&
+              ((MOTION_AVOID_SIDE_LEFT == side) ||
+               (MOTION_AVOID_SIDE_RIGHT == side))));
+    if (valid) {
+        if (MOTION_AVOID_SIDE_RIGHT == side) {
+            side_bit = 1U;
+        }
+        *p_word = (uint16_t)(((uint16_t)op & 0x07U) |
+                             ((uint16_t)side_bit << 3) |
+                             ((dist_mm & 0x01FFU) << 4));
+    }
+    return valid;
+}
+
+static inline bool motion_avoid_cmd_unpack(uint16_t word, uint8_t *p_op,
+                                           uint8_t *p_side,
+                                           uint16_t *p_dist_mm)
+{
+    uint8_t op = (uint8_t)(word & 0x07U);
+    uint8_t side_bit = (uint8_t)((word >> 3) & 0x01U);
+    uint8_t side = MOTION_AVOID_SIDE_NONE;
+    uint16_t dist_mm = (uint16_t)((word >> 4) & 0x01FFU);
+    uint16_t check_word;
+
+    if (MOTION_AVOID_OP_BYPASS == op) {
+        side = (0U == side_bit) ? MOTION_AVOID_SIDE_LEFT
+                                : MOTION_AVOID_SIDE_RIGHT;
+    }
+    if ((NULL == p_op) || (NULL == p_side) || (NULL == p_dist_mm) ||
+        !motion_avoid_cmd_pack(op, side, dist_mm, &check_word) ||
+        (word != check_word)) {
+        return false;
+    }
+    *p_op = op;
+    *p_side = side;
+    *p_dist_mm = dist_mm;
+    return true;
+}
 
 /* ------------------------------------------------------------------ *
  *  Shared fault bitmask (schema section 4.1)
@@ -60,7 +133,7 @@
  *  Record header -- every outbound record starts with it (schema 3.6)
  * ------------------------------------------------------------------ */
 
-#define COMM_W_SCHEMA_VERSION   4U
+#define COMM_W_SCHEMA_VERSION   5U
 
 #define COMM_W_REC_S            0U   /* periodic state line, ...telemetry */
 #define COMM_W_REC_E            1U   /* edge event, ...telemetry          */
@@ -136,7 +209,7 @@ typedef struct {
                                    + COMM_W_BARCODE_ACTION_BITS)          /* 10 */
 
 /* imu (Buddy 4) */
-#define COMM_W_IMU_CLASS_BITS      3U   /* FR-27 event class, 0-4 */
+#define COMM_W_IMU_CLASS_BITS      3U   /* motion class, 0-6      */
 #define COMM_W_IMU_COUNT_BITS      4U   /* humps, 0-15            */
 #define COMM_W_IMU_HEIGHT_BITS     8U   /* mm, 0-255, clamped     */
 #define COMM_W_BODY_BITS_IMU      (COMM_W_KIND_BITS + COMM_W_IMU_CLASS_BITS \
@@ -169,8 +242,8 @@ typedef struct {
 #define COMM_W_E_SIZE_MISSION  COMM_W_BYTES(COMM_W_HDR_BITS + COMM_W_BODY_BITS_MISSION)  /* 8 */
 
 /* A wire E may not exceed the radio's outbound record limit
-   (CYW43_MQTT_RECORD_MAX, 21 B), i.e. a body of at most 115 bits. */
-#define COMM_W_E_SIZE_LIMIT    21U
+   (CYW43_MQTT_RECORD_MAX, 24 B), i.e. a body of at most 139 bits. */
+#define COMM_W_E_SIZE_LIMIT    24U
 #define COMM_W_E_SIZE_MAX      COMM_W_E_SIZE_MOTION
 
 typedef char comm_w_e_fits[(COMM_W_E_SIZE_MAX <= COMM_W_E_SIZE_LIMIT
@@ -308,7 +381,7 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 }
 
 /* ------------------------------------------------------------------ *
- *  Record S -- the periodic state line (schema section 4), 16 bytes
+ *  Record S -- the periodic state line (schema section 4), 18 bytes
  * ------------------------------------------------------------------ */
 
 #define COMM_W_S_FAULTS_BITS    FAULT_COUNT /* shared fault bitmask, 4.1  */
@@ -325,6 +398,10 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 #define COMM_W_S_MIS_BITS       3U   /* mission state                       */
 #define COMM_W_S_MPV_BITS       4U   /* barcode table version running       */
 #define COMM_W_S_DRP_BITS       4U   /* intake drops, saturating            */
+#define COMM_W_S_TLT_BITS       6U   /* tilt from level, deg; 63 = n/a      */
+#define COMM_W_S_TRN_BITS      12U   /* turn rate, deg/s +2048; 0 = n/a     */
+#define COMM_W_S_TLT_NA        63U
+#define COMM_W_S_TRN_NA         0U
 #define COMM_W_S_BITS          (COMM_W_HDR_BITS + COMM_W_S_FAULTS_BITS        \
                                 + COMM_W_S_MOT_BITS + COMM_W_S_DST_BITS       \
                                 + COMM_W_S_LIN_BITS + COMM_W_S_DEV_BITS       \
@@ -332,26 +409,25 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
                                 + COMM_W_S_HUM_BITS + COMM_W_S_HGT_BITS       \
                                 + COMM_W_S_OBS_BITS + COMM_W_S_BYP_BITS       \
                                 + COMM_W_S_MIS_BITS + COMM_W_S_MPV_BITS       \
-                                + COMM_W_S_DRP_BITS)                  /* 121 */
-#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 16 */
+                                + COMM_W_S_DRP_BITS + COMM_W_S_TLT_BITS       \
+                                + COMM_W_S_TRN_BITS)                  /* 139 */
+#define COMM_W_S_SIZE          COMM_W_BYTES(COMM_W_S_BITS)            /* 18 */
 
 /* The latest value per source, as stored on the wire (offset-encoded fields
-   keep their offset).  comms_task keeps one and folds every event into it. */
+   keep their offset).  comms_task keeps one and folds every event into it;
+   tlt and trn it reads from imu_task's tilt-state word instead (FR-29). */
 typedef struct {
-    uint8_t faults, mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, mpv, drp;
+    uint8_t faults, mot, dst, lin, dev, bar, act, hum, hgt, obs, byp, mis, mpv, drp, tlt;
+    uint16_t trn;
 } T_COMM_W_S;
 
-/* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
-   Returns the length. */
-static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
-                                     uint32_t up, const T_COMM_W_S *st)
+/* S's fields after the header; record D starts with the same ones. */
+static inline void comm_w_put_s_fields(uint8_t *out, uint32_t *p_pos,
+                                       const T_COMM_W_S *st)
 {
-    const T_COMM_W_HEADER h = { COMM_W_REC_S, COMM_W_SCHEMA_VERSION, s, up };
     uint8_t clamped = 0;
-    uint32_t pos = 0;
+    uint32_t pos = *p_pos;
 
-    comm_w_zero(out, COMM_W_S_SIZE);
-    comm_w_put_header(out, &pos, &h);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->faults, COMM_W_S_FAULTS_BITS, &clamped), COMM_W_S_FAULTS_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mot, COMM_W_S_MOT_BITS, &clamped), COMM_W_S_MOT_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->dst, COMM_W_S_DST_BITS, &clamped), COMM_W_S_DST_BITS);
@@ -366,7 +442,116 @@ static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mis, COMM_W_S_MIS_BITS, &clamped), COMM_W_S_MIS_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->mpv, COMM_W_S_MPV_BITS, &clamped), COMM_W_S_MPV_BITS);
     comm_w_put_bits(out, &pos, comm_w_clamp(st->drp, COMM_W_S_DRP_BITS, &clamped), COMM_W_S_DRP_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->tlt, COMM_W_S_TLT_BITS, &clamped), COMM_W_S_TLT_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(st->trn, COMM_W_S_TRN_BITS, &clamped), COMM_W_S_TRN_BITS);
+    *p_pos = pos;
+}
+
+/* Pack record S into out[COMM_W_S_SIZE].  Each field is clamped to its width.
+   Returns the length. */
+static inline uint32_t comm_w_pack_s(uint8_t out[COMM_W_S_SIZE], uint16_t s,
+                                     uint32_t up, const T_COMM_W_S *st)
+{
+    const T_COMM_W_HEADER h = { COMM_W_REC_S, COMM_W_SCHEMA_VERSION, s, up };
+    uint32_t pos = 0;
+
+    comm_w_zero(out, COMM_W_S_SIZE);
+    comm_w_put_header(out, &pos, &h);
+    comm_w_put_s_fields(out, &pos, st);
     return COMM_W_S_SIZE;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Record D -- the snapshot, reply to cmd snap (schema section 7), 23 bytes
+ * ------------------------------------------------------------------ */
+
+#define COMM_W_D_RSSI_BITS      7U   /* -dBm, 58 means -58 dBm               */
+#define COMM_W_D_IP_BITS       32U   /* IPv4, first octet in the low byte    */
+#define COMM_W_D_QD_BITS        3U   /* outbound queue depth                 */
+#define COMM_W_D_MQV_BITS       2U   /* 0 disconnected, 1 connecting, 2 up   */
+#define COMM_W_D_MQV_DOWN       0U
+#define COMM_W_D_MQV_CONNECTING 1U
+#define COMM_W_D_MQV_UP         2U
+#define COMM_W_D_BITS          (COMM_W_S_BITS + COMM_W_D_RSSI_BITS            \
+                                + COMM_W_D_IP_BITS + COMM_W_D_QD_BITS         \
+                                + COMM_W_D_MQV_BITS)                  /* 183 */
+#define COMM_W_D_SIZE          COMM_W_BYTES(COMM_W_D_BITS)            /* 23 */
+
+/* The diagnostics after S's fields, as on the wire. */
+typedef struct {
+    uint8_t rssi;    /* -dBm */
+    uint32_t ip;
+    uint8_t qd, mqv;
+} T_COMM_W_D_DIAG;
+
+/* Pack record D into out[COMM_W_D_SIZE]: S's fields, then the diagnostics,
+   each clamped to its width.  Returns the length. */
+static inline uint32_t comm_w_pack_d(uint8_t out[COMM_W_D_SIZE], uint16_t s,
+                                     uint32_t up, const T_COMM_W_S *st,
+                                     const T_COMM_W_D_DIAG *dg)
+{
+    const T_COMM_W_HEADER h = { COMM_W_REC_D, COMM_W_SCHEMA_VERSION, s, up };
+    uint8_t clamped = 0;
+    uint32_t pos = 0;
+
+    comm_w_zero(out, COMM_W_D_SIZE);
+    comm_w_put_header(out, &pos, &h);
+    comm_w_put_s_fields(out, &pos, st);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->rssi, COMM_W_D_RSSI_BITS, &clamped), COMM_W_D_RSSI_BITS);
+    comm_w_put_bits(out, &pos, dg->ip, COMM_W_D_IP_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->qd, COMM_W_D_QD_BITS, &clamped), COMM_W_D_QD_BITS);
+    comm_w_put_bits(out, &pos, comm_w_clamp(dg->mqv, COMM_W_D_MQV_BITS, &clamped), COMM_W_D_MQV_BITS);
+    return COMM_W_D_SIZE;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Inbound commands (schema section 8)
+ * ------------------------------------------------------------------ */
+
+/* cmd, 1 byte on .../cmd: op in bits 0-2, bits 3-7 reserved (zero). */
+#define COMM_W_CMD_SIZE         1U
+#define COMM_W_CMD_OP_BITS      3U
+#define COMM_W_CMD_SNAP         1U   /* reply: one D on .../state            */
+#define COMM_W_CMD_PING         2U   /* reply: one H on .../heartbeat        */
+#define COMM_W_CMD_START        3U   /* mission commands, op - 2 is the      */
+#define COMM_W_CMD_PAUSE        4U   /* nav_ctrl_task mission_cmd_t          */
+#define COMM_W_CMD_RESUME       5U   /* (MCMD_START 1 .. MCMD_FINISH 5;      */
+#define COMM_W_CMD_RESET        6U   /* design decision 24)                  */
+#define COMM_W_CMD_FINISH       7U
+
+/* map, 7 bytes on .../map: mv in bits 0-3, then 26 x 2-bit actions, A first. */
+#define COMM_W_MAP_SIZE         7U
+#define COMM_W_MAP_MV_BITS      4U
+#define COMM_W_MAP_ACT_BITS     2U
+#define COMM_W_MAP_LETTERS     26U
+
+/* Return the op of a valid cmd, or 0 when it is rejected: wrong length, op 0,
+   or a reserved bit set. */
+static inline uint32_t comm_w_check_cmd(const uint8_t *buf, uint32_t len)
+{
+    if((NULL == buf) || (COMM_W_CMD_SIZE != len) || (0U != (buf[0] >> COMM_W_CMD_OP_BITS))) {
+        return 0U;
+    }
+    return buf[0] & 0x07U;
+}
+
+/* Check a map and unpack it.  Every 2-bit action is valid, so only the
+   length can be wrong (schema 8.3).  Returns true and fills *p_mv and
+   act[] (0 forward, 1 left, 2 right, 3 U-turn) when the length is right. */
+static inline bool comm_w_check_map(const uint8_t *buf, uint32_t len,
+                                    uint8_t *p_mv,
+                                    uint8_t act[COMM_W_MAP_LETTERS])
+{
+    uint32_t pos = 0;
+
+    if((NULL == buf) || (COMM_W_MAP_SIZE != len) || (NULL == p_mv) || (NULL == act)) {
+        return false;
+    }
+    *p_mv = (uint8_t)comm_w_get_bits(buf, &pos, COMM_W_MAP_MV_BITS);
+    for(uint32_t i = 0; i < COMM_W_MAP_LETTERS; i++) {
+        act[i] = (uint8_t)comm_w_get_bits(buf, &pos, COMM_W_MAP_ACT_BITS);
+    }
+    return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -471,7 +656,9 @@ static inline uint32_t comm_w_pack_barcode(uint8_t out[COMM_W_INTAKE_SIZE_BARCOD
     return COMM_W_INTAKE_SIZE_BARCODE;
 }
 
-/* event_class 0-4 (FR-27); hump_count 0-15; hump height in mm. */
+/* event_class 0-6: 0 still, 1 turning, 2 climbing, 3 descending, 4 impact,
+   5 accelerating, 6 moving (FR-27 and more; 7 reserved); hump_count 0-15;
+   hump height in mm. */
 static inline uint32_t comm_w_pack_imu(uint8_t out[COMM_W_INTAKE_SIZE_IMU],
                                        uint32_t event_class, uint32_t hump_count,
                                        uint32_t hump_height_mm)

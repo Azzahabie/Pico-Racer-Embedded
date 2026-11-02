@@ -46,4 +46,24 @@
 #define UTK_MQTT_CLIENT_ID        "pico-racer-01"
 #define UTK_MQTT_KEEPALIVE_S      60U
 
+/*
+ * 1: find the broker instead of trusting the address above.  Each connect
+ * attempt tries UTK_MQTT_BROKER_ADDRESS first, then the last broker that
+ * accepted the car, then every host .1-.254 on the car's own /24, on
+ * UTK_MQTT_BROKER_PORT -- so pick a port nothing else on the LAN uses, and
+ * open it in the broker PC's firewall.  "0.0.0.0" as the address means scan
+ * only.  A full scan takes up to ~22 s.  It sends a TCP connect to every
+ * address on the network, so ask before using it on a network you don't own
+ * (demo day: set the given broker address and leave this 0).
+ */
+#define UTK_MQTT_BROKER_DISCOVER  0
+
+/*
+ * Optional, debug images only (make ... WIFI_NETLOG=1): where the wireless
+ * console goes.  By default the broker's host, on UDP 31884 (the viewer's
+ * --netlog port).  Uncomment to send it somewhere else.
+ */
+/* #define UTK_NETLOG_ADDRESS        "192.168.1.100" */
+/* #define UTK_NETLOG_PORT           31884U */
+
 #endif

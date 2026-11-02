@@ -145,17 +145,33 @@ endif
 
 # Phase-9 gate: an MQTT client over the TCP transport.  The broker endpoint is
 # local configuration because the demo-day broker is supplied by the
-# instructor rather than chosen by us.
+# instructor rather than chosen by us.  It needs the TCP stack, not the
+# Phase-6/7 echo tests: lwipopts.h enables LWIP_TCP for either gate, so the car
+# build leaves WIFI_UDP and WIFI_TCP off and sends no echo traffic.
 WIFI_MQTT ?= 0
 ifneq ($(filter $(WIFI_MQTT),0 1),$(WIFI_MQTT))
 $(error Unknown WIFI_MQTT '$(WIFI_MQTT)'; use 0 or 1)
 endif
 ifeq ($(WIFI_MQTT),1)
-ifneq ($(WIFI_TCP),1)
-$(error WIFI_MQTT=1 requires WIFI_TCP=1)
+ifneq ($(WIFI_DNS),1)
+$(error WIFI_MQTT=1 requires WIFI_DNS=1)
 endif
 ifeq ($(wildcard ../config/broker_config.h),)
 $(error WIFI_MQTT=1 needs config/broker_config.h; copy it from config/broker_config.example.h and set the broker address)
+endif
+endif
+
+# Wireless console (development only, never the demo build): every console
+# line is also sent over UDP to the viewer's host, so the car can be debugged
+# with no cable.  Needs the MQTT car build (the target defaults to the broker's
+# host).  The image name carries _netlog so it can't be flashed by mistake.
+WIFI_NETLOG ?= 0
+ifneq ($(filter $(WIFI_NETLOG),0 1),$(WIFI_NETLOG))
+$(error Unknown WIFI_NETLOG '$(WIFI_NETLOG)'; use 0 or 1)
+endif
+ifeq ($(WIFI_NETLOG),1)
+ifneq ($(WIFI_MQTT),1)
+$(error WIFI_NETLOG=1 requires WIFI_MQTT=1)
 endif
 endif
 
@@ -201,6 +217,9 @@ WIFI_SUFFIX := _wifi_tcpbulk
 endif
 ifeq ($(WIFI_MQTT),1)
 WIFI_SUFFIX := _wifi_mqtt
+endif
+ifeq ($(WIFI_NETLOG),1)
+WIFI_SUFFIX := $(WIFI_SUFFIX)_netlog
 endif
 endif
 
@@ -287,7 +306,7 @@ endif
 # before any recipe executes.
 ################################################################################
 
-PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-join$(WIFI_JOIN)-netif$(WIFI_NETIF)-static$(WIFI_STATIC)-dhcp$(WIFI_DHCP)-dns$(WIFI_DNS)-udp$(WIFI_UDP)-tcp$(WIFI_TCP)-bulk$(WIFI_TCPBULK)-mqtt$(WIFI_MQTT)
+PROFILE_ID := smp$(SMP)-$(CONSOLE)-wifi$(WIFI)-join$(WIFI_JOIN)-netif$(WIFI_NETIF)-static$(WIFI_STATIC)-dhcp$(WIFI_DHCP)-dns$(WIFI_DNS)-udp$(WIFI_UDP)-tcp$(WIFI_TCP)-bulk$(WIFI_TCPBULK)-mqtt$(WIFI_MQTT)-netlog$(WIFI_NETLOG)
 PROFILE_FILE := .build_profile
 
 ifneq ($(strip $(shell cat $(PROFILE_FILE) 2>/dev/null)),$(PROFILE_ID))
@@ -435,6 +454,9 @@ endif
 ifeq ($(WIFI_MQTT),1)
 LWIP_PORT_OBJS += ./mtkernel_3/lib/libnet/lwip/lwip_utk_mqtt.o
 endif
+ifeq ($(WIFI_NETLOG),1)
+LWIP_PORT_OBJS += ./mtkernel_3/lib/libnet/lwip/lwip_utk_netlog.o
+endif
 endif
 
 WIFI_INCLUDES := -I"$(WIFIDIR)" \
@@ -475,7 +497,7 @@ CFLAGS += -DTM_WIFI_CYW43=1 -DTM_WIFI_JOIN=$(WIFI_JOIN) \
           -DTM_WIFI_STATIC=$(WIFI_STATIC) -DTM_WIFI_DHCP=$(WIFI_DHCP) \
           -DTM_WIFI_DNS=$(WIFI_DNS) -DTM_WIFI_UDP=$(WIFI_UDP) \
           -DTM_WIFI_TCP=$(WIFI_TCP) -DTM_WIFI_TCPBULK=$(WIFI_TCPBULK) \
-          -DTM_WIFI_MQTT=$(WIFI_MQTT) \
+          -DTM_WIFI_MQTT=$(WIFI_MQTT) -DTM_WIFI_NETLOG=$(WIFI_NETLOG) \
           -DCYW43_ENABLE_BLUETOOTH=0 \
           -DCYW43_USE_OTP_MAC=1 -DPICO_CYW43_LOGGING_ENABLED=0 \
           -DPICO_RP2040=1 -DPICO_32BIT=1 -DPICO_ON_DEVICE=1 -DPICO_BUILD=1 \

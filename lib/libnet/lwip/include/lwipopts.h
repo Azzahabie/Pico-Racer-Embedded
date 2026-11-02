@@ -22,7 +22,10 @@
 #define LWIP_ICMP                       (TM_WIFI_STATIC || TM_WIFI_DHCP)
 #define LWIP_RAW                        (TM_WIFI_STATIC || TM_WIFI_DHCP)
 #define LWIP_UDP                        TM_WIFI_DHCP
-#define LWIP_TCP                        TM_WIFI_TCP
+/* The TCP stack serves both the raw-TCP echo phases and MQTT.  MQTT no longer
+ * pulls in the echo tests: without LWIP_TCP its client compiles to an empty
+ * object (mqtt.c guards on LWIP_TCP) and the link fails. */
+#define LWIP_TCP                        (TM_WIFI_TCP || TM_WIFI_MQTT)
 /* The altcp shim is required by lwIP's bundled MQTT client -- and by anything
  * else written against that API.  It follows the MQTT gate rather than being
  * enabled speculatively, because it swaps the TCP dispatch path underneath the
@@ -42,7 +45,7 @@
 #define LWIP_NETIF_EXT_STATUS_CALLBACK  0
 
 #define MEM_ALIGNMENT                   4
-#if TM_WIFI_TCP
+#if TM_WIFI_TCP || TM_WIFI_MQTT
 #define MEM_SIZE                        (12 * 1024)
 #else
 #define MEM_SIZE                        (8 * 1024)
@@ -63,12 +66,21 @@
 /* Phase 7 opens exactly one outbound connection and never listens.  The
  * send window stays small on purpose: the gate is stop-and-wait, so a large
  * window would only cost RAM the kernel qualification also needs. */
-#if TM_WIFI_TCP
+#if TM_WIFI_TCP || TM_WIFI_MQTT
 /* Each finished connection lingers in TIME_WAIT for 2MSL while still holding
  * a pool entry, and the cumulative image now opens two connections in
  * sequence (Phase 7, then Phase 8).  Two entries would force lwIP to
  * start reaping to make room. */
+#if TM_WIFI_MQTT
+/* MQTT builds may scan for the broker (UTK_MQTT_BROKER_DISCOVER in
+ * broker_config.h): 8 probe connections at once, plus the MQTT pcb and any
+ * left in TIME_WAIT.  Each probe also needs an ARP entry while it resolves,
+ * on top of the gateway and the broker.  About 1 KB of RAM in all. */
+#define MEMP_NUM_TCP_PCB                12
+#define ARP_TABLE_SIZE                  16
+#else
 #define MEMP_NUM_TCP_PCB                6
+#endif
 #define MEMP_NUM_TCP_PCB_LISTEN         1
 #define MEMP_NUM_TCP_SEG                16
 #define TCP_MSS                         1460

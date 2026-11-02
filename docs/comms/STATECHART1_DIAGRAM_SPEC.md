@@ -176,6 +176,9 @@ tasks, not one:
    doc's name). **Confirm with Buddy 3** and make the diagram, the §6.1 prose and
    the task table agree on one name — if you want the diagram to match your own
    design docs, it should read `line_task`.
+   *Settled 2026-10-29:* `barcode_task`, through Buddy 3's `map_mbf` (the
+   submitted Tribunal report and Buddy 3's `app_main.c` code); the design docs
+   now say so.
 3. **Wi-Fi-lost-from-anywhere was under-drawn.** Add the explicit transitions
    from CONNECTING, SUBSCRIBING and STREAMING to WAITING FOR WI-FI (§4).
 4. **Task ownership was only in NOTES.** Now drawn as lanes (§6).

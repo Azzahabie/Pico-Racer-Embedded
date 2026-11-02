@@ -14,11 +14,12 @@
 
 #include "scan_if.h"
 #include "../motor_task/motor_task.h"
+#include "../nav_task/nav_ctrl.h"	/* fault_set / fault_clear */
+#include "../comms_task/comms_task.h"	/* comms_tele_send */
 
 LOCAL scan_if_bind_t	g_bind;			/* all 0 / NULL = standalone */
 LOCAL ID		g_scan_flgid = 0;
 LOCAL ID		g_tick_cycid = 0;
-LOCAL UW		g_tele_drops = 0U;
 
 /* 60 ms cyclic handler: runs outside any task, only sets a bit (Section 4) */
 LOCAL void scan_tick_cyc(void *p_exinf)
@@ -63,13 +64,9 @@ EXPORT ER scan_if_init(void)
 	g_tick_cycid = objid;
 
 	if(scan_if_standalone()) {
-		if(0 < g_bind.motion_flgid) {
-			tm_printf((UB *)"[scan_if] STOP_ONLY: motion stop is bound; "
-				  "avoid commands/replies are simulated\n");
-		} else {
-			tm_printf((UB *)"[scan_if] STANDALONE: motion stop is not bound; "
-				  "avoid commands/replies are simulated\n");
-		}
+		tm_printf((UB *)"[scan_if] INCOMPLETE BINDING: motion_flg=%d "
+			  "avoid_mbf=%d; avoid commands fail closed\n",
+			  (INT)g_bind.motion_flgid, (INT)g_bind.avoid_mbfid);
 	}
 	return E_OK;
 }
@@ -140,29 +137,27 @@ EXPORT void scan_if_stop_clear(void)
 /* Place the command, then set CMD (Section 4 order). Never blocks. */
 EXPORT bool scan_if_send_cmd(const avoid_cmd_t *p_cmd)
 {
-	bool	sent = true;
+	bool	sent = false;
 	ER	ercd;
+	uint16_t packed_cmd;
 
-	if(scan_if_standalone()) {
-		tm_printf((UB *)"[scan_if] -> avoid_cmd_mbf: %s side=%s dist=%d mm, CMD set\n",
-			  (AVOID_REVERSE == p_cmd->type) ? "REVERSE" : "BYPASS",
-			  (AVOID_SIDE_LEFT == p_cmd->side) ? "LEFT" :
-			  ((AVOID_SIDE_RIGHT == p_cmd->side) ? "RIGHT" : "-"),
-			  (INT)p_cmd->dist_mm);
-		/* simulated motion_task reply */
-		if(AVOID_REVERSE == p_cmd->type) {
-			tm_printf((UB *)"[sim] motion_task: reversed -> REVERSE_DONE\n");
-			(void)tk_set_flg(g_scan_flgid, SCAN_FLG_REVERSE_DONE);
-		} else {
-			tm_printf((UB *)"[sim] motion_task: bypassed, line found -> LINE_FOUND\n");
-			(void)tk_set_flg(g_scan_flgid, SCAN_FLG_LINE_FOUND);
+	if((NULL != p_cmd) && !scan_if_standalone()) {
+		if(!motion_avoid_cmd_pack(p_cmd->type, p_cmd->side, p_cmd->dist_mm,
+					  &packed_cmd)) {
+			tm_printf((UB *)"[scan_if] invalid avoid command rejected\n");
+			return false;
 		}
-	} else {
-		ercd = tk_snd_mbf(g_bind.avoid_mbfid, p_cmd, (INT)sizeof(*p_cmd), TMO_POL);
+		ercd = tk_snd_mbf(g_bind.avoid_mbfid, &packed_cmd,
+				  (INT)sizeof(packed_cmd), TMO_POL);
 		if(E_OK != ercd) {
 			sent = false;			/* full: caller retries next tick */
 		} else {
-			(void)tk_set_flg(g_bind.motion_flgid, MOTION_EVT_CMD);
+			sent = true;
+			ercd = tk_set_flg(g_bind.motion_flgid, MOTION_EVT_CMD);
+			if(E_OK != ercd) {
+				tm_printf((UB *)"[scan_if] command queued but motion wake "
+					  "failed, er=%d\n", (INT)ercd);
+			}
 		}
 	}
 	return sent;
@@ -177,30 +172,23 @@ EXPORT void scan_if_set_blocked(void)
 	}
 }
 
-EXPORT void scan_if_send_tele(const scan_tele_t *p_rec)
+/* 13-bit body, 2 bytes on tele_mbf. Never waits: a full queue is a
+ * dropped record, counted by comms_tele_send(). */
+EXPORT void scan_if_send_profile(uint32_t width_mm, uint32_t bypass)
 {
-	ER ercd;
+	UB	body[COMM_W_INTAKE_SIZE_OBSTACLE];
 
-	if(0 < g_bind.tele_mbfid) {
-		ercd = tk_snd_mbf(g_bind.tele_mbfid, p_rec, (INT)sizeof(*p_rec), TMO_POL);
-		if(E_OK != ercd) {
-			g_tele_drops++;			/* never wait on telemetry */
-		}
-	} else if(TELE_SCAN_FAULT == p_rec->type) {
-		tm_printf((UB *)"[scan_if] -> telemetry: SENSOR FAULT record\n");
-	} else {
-		tm_printf((UB *)"[scan_if] -> telemetry: profile d_c=%d @%d W=%d "
-			  "x=%d..%d clr L=%d R=%d act=%d\n",
-			  (INT)p_rec->d_close_mm, (INT)p_rec->close_deg,
-			  (INT)p_rec->width_mm, (INT)p_rec->x_left_mm,
-			  (INT)p_rec->x_right_mm, (INT)p_rec->clear_left_mm,
-			  (INT)p_rec->clear_right_mm, (INT)p_rec->action);
-	}
+	(void)comms_tele_send(body, (INT)comm_w_pack_obstacle(body,
+				(width_mm + 5U) / 10U, bypass));
 }
 
-EXPORT UW scan_if_tele_drops(void)
+EXPORT void scan_if_sensor_lost(bool lost)
 {
-	return g_tele_drops;
+	if(lost) {
+		fault_set(FAULT_SCAN_SENSOR_LOST);
+	} else {
+		fault_clear(FAULT_SCAN_SENSOR_LOST);
+	}
 }
 
 /* ---- shared state, read through the owner's callbacks ---- */

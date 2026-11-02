@@ -25,6 +25,12 @@ IMPORT INT		tm_usb_diag_level(void);/* bring-up level, 0..8 */
 IMPORT UW		tm_usb_pending(void);	/* bytes still queued   */
 IMPORT volatile UW	tm_usb_dropped;		/* bytes lost to overrun*/
 Inline UW tm_usb_dropped_bytes(void)	{ return tm_usb_dropped; }
+#if defined(TM_WIFI_NETLOG) && TM_WIFI_NETLOG
+/* Wireless console profile: the tasks' "wait up to 20 s for a USB host
+   before printing" loops would stall every boot on battery.  The network
+   ring keeps what is printed, so report the console as ready at once. */
+#define tm_usb_state()	(3U)
+#endif
 #else
 /* UART build: tm_printf writes straight to the UART from the calling context.
    There is no ring, so it is always "up", never pending and never drops. */

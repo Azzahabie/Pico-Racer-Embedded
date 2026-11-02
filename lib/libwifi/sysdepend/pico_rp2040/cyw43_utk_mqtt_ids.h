@@ -22,13 +22,24 @@
 #define CYW43_MQTT_CONNECTED    2
 #define CYW43_MQTT_BACKOFF      3
 #define CYW43_MQTT_FAILED       4
+#define CYW43_MQTT_SCANNING     5   /* broker discovery */
 
 /* Outbound record queue (cyw43_utk_kernel.c).  Packed records only: the
-   largest is the 21-byte D snapshot (docs/comms/MQTT_SCHEMA.md section 7).
-   The buffer is sized for QUEUE_DEPTH records of that largest size (112 B);
+   largest is the 23-byte D snapshot (docs/comms/MQTT_SCHEMA.md section 7);
+   24 leaves room for one more byte.  The buffer is sized for QUEUE_DEPTH
+   records of RECORD_MAX (128 B);
    smaller records take less, so more of them fit -- 9 H records, measured
    on hardware 2026-10-21. */
-#define CYW43_MQTT_RECORD_MAX   21
+#define CYW43_MQTT_RECORD_MAX   24
 #define CYW43_MQTT_QUEUE_DEPTH  4
+
+/* Inbound mailbox (tele_rx_mbfid, cyw43_utk_kernel.c): radio task ->
+   comms_task.  Mirrors LWIP_UTK_MQTT_IN_*.  The largest command is the
+   7-byte map (MQTT_SCHEMA.md section 8.3).  Commands are rare (design
+   decision 21), so a few slots are plenty. */
+#define CYW43_MQTT_IN_CMD       0
+#define CYW43_MQTT_IN_MAP       1
+#define CYW43_MQTT_IN_MAX       7
+#define CYW43_MQTT_IN_DEPTH     4
 
 #endif

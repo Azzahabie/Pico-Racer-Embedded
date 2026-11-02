@@ -55,7 +55,8 @@ it, enforced by hard errors in `build_make/pico_rp2040.mk`:
 
 ```
 SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1
-      WIFI_UDP=1 WIFI_TCP=1 [WIFI_TCPBULK=1] [WIFI_MQTT=1]
+      ├─ WIFI_MQTT=1                                  (the car build)
+      └─ WIFI_UDP=1 WIFI_TCP=1 [WIFI_TCPBULK=1]       (echo tests, bring-up only)
 ```
 
 | Switch | What it turns on | Needs a config file? |
@@ -72,8 +73,18 @@ SMP=1 WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 WIFI_DHCP=1 WIFI_DNS=1
 | `WIFI_MQTT=1` | **MQTT client** (this project's goal) | **`config/broker_config.h`** |
 
 `WIFI_DHCP=1` and `WIFI_STATIC=1` are mutually exclusive. `WIFI_MQTT=1` requires
-`WIFI_TCP=1`, which requires `WIFI_UDP`, `WIFI_DNS`, `WIFI_DHCP`, `WIFI_NETIF`,
-`WIFI_JOIN` and `WIFI=cyw43` — so an MQTT build contains the whole stack.
+`WIFI_DNS=1` (and so `WIFI_DHCP`, `WIFI_NETIF`, `WIFI_JOIN`, `WIFI=cyw43`), **not**
+the echo tests: `lwipopts.h` turns the TCP stack on for either `WIFI_TCP` or
+`WIFI_MQTT` (changed 2026-10-25). The car build is therefore:
+
+```sh
+make SMP=1 CONSOLE=usb_cdc WIFI=cyw43 WIFI_JOIN=1 WIFI_NETIF=1 \
+     WIFI_DHCP=1 WIFI_DNS=1 WIFI_MQTT=1 -j8
+```
+
+Adding `WIFI_UDP=1 WIFI_TCP=1` to it still builds and brings the echo tests back,
+for bring-up only. Without them the image is 3.4 KB smaller in flash and 1.9 KB
+smaller in initialised RAM, and sends no echo traffic.
 
 ### Build command (always through Docker)
 
@@ -158,17 +169,20 @@ Two rules, both enforced by the repo:
 
 | Tool | Detail |
 |---|---|
-| Broker | **`amqtt` 0.12.1**, installed into the global Python 3.13; start it with `py tools\run_broker.py` |
-| Client / listener | **`paho-mqtt` 2.1.0**; `python tools\telemetry_decode.py` decodes the packed records |
+| Broker | **`amqtt` 0.12.1**, installed into the global Python 3.13; run it inside the viewer: `py tools\telemetry_viewer.py --run-broker` (or the Settings dialog) |
+| Client / listener | **`paho-mqtt` 2.1.0**; `tools\telemetry_viewer.py` (or `TelemetryViewer.exe`, built by `tools\build_viewer.bat`) decodes the packed records with `tools\telemetry_decode.py` and shows the serial console beside them |
 | Echo server (UDP/TCP tests) | `python tools\linux_echo.py` (pure stdlib) |
 
 ⚠ **Run the broker via `python.exe`, never `amqtt.exe`.** The Windows firewall
 inbound allow-rule is bound to `python.exe` (TCP + UDP, any port, Private +
 Public) and this Wi-Fi is classified `Public`. `amqtt.exe` is a different
 executable and would be **silently blocked over the LAN**. `python -m amqtt` is
-unsupported (no `__main__`), so a small launcher shim is used:
-`tools/run_broker.py` (moved there from an untracked scratch folder on
-2026-10-21; the M6 log in §8 shows its old path).
+unsupported (no `__main__`), so the broker runs inside a Python program:
+`py tools\telemetry_viewer.py --run-broker` is `python.exe`, so the existing
+rule covers it. **`TelemetryViewer.exe` is another executable** and needs its
+own inbound allow-rule before its built-in broker is reachable over the LAN.
+(Until 2026-10-28 a launcher shim, `tools/run_broker.py`, did this job; the M6
+log in §8 shows it at its old path.)
 
 ---
 
@@ -187,6 +201,79 @@ unsupported (no `__main__`), so a small launcher shim is used:
 **M2–M5 changed no source code at all** — the Wi-Fi stack already existed; those
 milestones were "run the ladder and verify it". Configuration and build output
 are gitignored, so `git status` was legitimately empty.
+
+### 5.1 Recovery — the car reconnects on its own (Week 6 feedback F1)
+
+The radio task replaces the one-shot join and the DHCP latch with a state
+machine (`SCANNING → JOINING → WAIT_LEASE → ONLINE`, any failure → `BACKOFF`
+3 s → rejoin; join timeout 15 s, lease timeout 20 s), in
+`lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c`. Each failure is logged
+with its reason, and each rejoin also resets lwIP's DHCP back-off, which would
+otherwise grow to 60 s between attempts.
+
+Tested on hardware, 19–25 Oct 2026 (F1.5; the raw logs are in Buddy 1's
+private notes repo). Times come from the Pico's own `t=` stamps: `[wifi]`
+console lines can print up to 3 s late.
+
+| Test | What was done | Result |
+|---|---|---|
+| T1 AP off at boot | router off, Pico powered, router on later | ✅ 18 `join-failed(NONET)` retries, one every ~4 s; joined with no reset. Router on → ONLINE 24.5–25 s, of which the router's own boot was ~11–15 s; first beacon → ONLINE 10–13 s |
+| T2 AP drop while online | router or hotspot switched off, then on | ✅ 5 / 5. Link loss noticed after ≈ 8 s (hotspot) / ≈ 14–15 s (router); rejoined with no reset; first beacon → ONLINE 10–13 s |
+| T3 DHCP refused | router's DHCP server off, then back on | ✅ `lease-timeout` every 20.0 s, rejoin every 26.2 s, no crash. DHCP back on → ONLINE in the lease attempt already running (≈ 2 s after the hand-noted switch-on); MQTT connected 0.2 s later |
+| T4 wrong password | image built with a bad password | ✅ 15 / 15 joins `join-failed(BADAUTH)`, one every 10.2 s (rejected ≈ 7.1 s in, then 3 s back-off), no drift, no crash |
+| T5 soak | left online, MQTT build | ✅ 24 min 49 s (planned 30): no link loss, one MQTT session for the whole run (broker log), no gap in `s` |
+| T6 hotspot power cycles | 8 back-to-back boots on a phone hotspot | ✅ every boot reached `ip=` (before the fix: 6 / 11). One `join-failed(FAIL)` per boot: the phone rejects the stale session first |
+
+**Throughout every test, the rest of the system kept running:** `comms_task`'s
+`H`/`S` line kept its 1 s period with no step missed (T3–T5; 1501 heartbeats
+exactly 1000 ms apart in T5), with the radio retrying on the same core.
+
+**What it means for NFR-09 (recover within 15 s):**
+- Met when measured from the AP being available again: first beacon → ONLINE
+  is 10–13 s (join ≈ 3 s, lease 7–9 s).
+- Not met end to end in every case: noticing a vanished AP takes 8–15 s, a
+  router reboot adds its own boot time, and if DHCP returns with < ~8 s left in
+  a lease attempt the car waits for the next rejoin (worst case ≈ 34 s,
+  derived from the timings, not measured).
+- Levers, deferred to the optimisation pass: disable DHCP address-conflict
+  detection (≈ 5–6 s off every lease), shorten the lease timeout, and the
+  radio's link-loss timeout (not yet checked for the CYW43439).
+
+**Short AP outage (2026-10-29).** The AP's SSID was switched off for 20–30 s
+with the Wi-Fi toggle in the router's web interface (ASUS); after toggle-on
+the SSID takes ~18 s to answer joins. Twice the outage did **not** take the
+link down: no `link DOWN`, the MQTT session stayed `CONNECTED`, and records
+simply stopped leaving. Left alone, the stalled session moved again 28 s after
+toggle-on in one test, and in the other waited out the MQTT keep-alive timeout
+(1.5 × `UTK_MQTT_KEEPALIVE_S` 60 = 90 s), 64 s after toggle-on. **Fix:** `comms_task`'s stall rule (`S` refused on 2 ticks in a row
+while `CONNECTED`, `MQTT_SCHEMA.md` §4.1) calls `cyw43_utk_mqtt_restart()`. That
+only sets a flag; the radio task's next poll drops the session and reconnects
+through the normal back-off (2 s, 5 s connect timeout, then 4 s and 5 s;
+15 s at the time of these tests, capped at 5 s since 2026-11-01, D7).
+Tested twice (2026-10-29):
+
+| Run | Link reported lost? | Stall seen | Reconnected |
+|---|---|---|---|
+| SSID off ~30 s | yes, 4 s after the stall | ~6 s after off; session dropped 0.9 s after the request | 21.6 s after toggle-on, ~3 s after the SSID answered joins |
+| SSID off 40 s | **no** (silent stall) | 7.1 s after off | **31.8 s after toggle-on** (64 s without the restart), ~14 s after the SSID was back (inferred from the ~18 s SSID start-up) |
+
+The same toggle gives either case, so neither can be chosen in a test. What
+set recovery here was the 15 s back-off cap: an attempt just before the SSID
+returns fails, and the next waits the full step. **Since 2026-11-01 the cap
+is 5 s** (the design's fixed 2-5 s, Integration Rules D7), so that step
+costs at most 5 s plus the 5 s connect timeout. Not re-measured yet.
+
+*Observed 2026-10-29 (M8a test), not changed:* after an AP outage MQTT
+reconnected about 10 s before `[wifi] state=ONLINE`, while the radio still
+showed "waiting for lease". lwIP keeps the previous address on the netif and
+the MQTT client's address guard accepts it. Harmless while DHCP hands back the
+same address; logged for the optimisation pass.
+
+**Telemetry while offline:** every record produced before the first connect or
+during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
+`H` + `S`), and the ~6 records that fit are delivered late on reconnect. These
+drops show on the console (`[mqtt] … drop=N`), not in `S.drp`
+(`MQTT_SCHEMA.md` §3, §12 item 20).
 
 ---
 
@@ -430,10 +517,9 @@ Suggested message for the implementation commit:
 
 ## 11. Open items (protocol side)
 
-1. **Echo tests run alongside MQTT.** Because `WIFI_MQTT` requires `WIFI_TCP`,
-   every MQTT build also runs the UDP/TCP echo tests (noisy, and `result=-3` when
-   no echo server is up). For M7/demo the ladder should be relaxed so
-   `WIFI_MQTT` depends on DHCP rather than the echo phases.
+1. ~~**Echo tests run alongside MQTT.**~~ *Closed 2026-10-25:* `WIFI_MQTT` now
+   requires `WIFI_DNS`, not `WIFI_TCP`, so the car build has no echo tests (§2).
+   Before this, the F1.5 soak ran 257 UDP echo sessions, all `result=-3`.
 2. **Single-shot publish.** The client stays connected, but only one message is
    sent; a real cadence belongs to the telemetry framework (see `APPLICATION.md`).
 3. **No authentication.** The broker allows anonymous clients. If demo day needs

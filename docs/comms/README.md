@@ -4,6 +4,12 @@ The one page to read for Buddy 1's subsystem: what it does, what other tasks
 need from it, and where the contracts live. Every other document in this folder
 is *detail behind a link* — open one only when you need it.
 
+> **Integrated car:** [`../INTEGRATION.md`](../INTEGRATION.md) is the current
+> baseline (1 Nov 2026). Comms changes made during integration (broker
+> discovery, the 5 s back-off cap, the wireless console, the SCANNING state)
+> are listed there; this folder stays the reference for the Wi-Fi and MQTT
+> contracts.
+
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Last updated:** 2026-10-21 — working notes, test logs and reports moved out
   of the repo; this folder now holds only the reference and interface docs
@@ -54,8 +60,8 @@ you'd build for any shared, non-reentrant resource with many producers.
 |---|---|---|---|
 | Radio / transport | **M0–M6** | ✅ **proven on hardware** | [`NETWORKING.md`](NETWORKING.md) §5 |
 | Wi-Fi reliability (Week 6 feedback F1) | — | 🟡 in progress — auto-rejoin, re-lease and state-change logging done; recovery tests T1, T2 passed 20 Oct; DHCP conflict-detection (ACD) tuning deferred to the end, ACD stays on | — |
-| Application: telemetry framework | **M7** | 🔜 **next after F1** | [`APPLICATION.md`](APPLICATION.md) §4 |
-| Application: command channel | M8 | ⏳ not started | [`APPLICATION.md`](APPLICATION.md) §4 |
+| Application: telemetry framework | **M7** | ✅ **built and hardware-tested**: `H`, `S` (schema v5), per-kind `E`, the shared fault bits including Wi-Fi loss (2026-10-29) | [`APPLICATION.md`](APPLICATION.md) §4 |
+| Application: command channel | **M8** | 🟡 **M8a built and hardware-tested 2026-10-29** (subscribe, `snap` → `D`, `ping`, mission commands, `map` checked); M8b `map` apply built 2026-10-30 on `integration`, hardware test in stage 3 | [`APPLICATION.md`](APPLICATION.md) §4 |
 | Application: robustness | M9 | ⏳ not started | [`APPLICATION.md`](APPLICATION.md) §4 |
 | Application: documentation | M10 | 🟡 schema is binary v2; field widths still proposed (§12) | [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) |
 
@@ -151,8 +157,8 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 | Path | What |
 |---|---|
-| `app_program/comms_task/` | The application task (**stub** — M7 onwards). |
-| `app_program/common/messages.h` | The shared integration contract (**empty** — fill with the packed records, fault-bit names and pack/unpack helpers). |
+| `app_program/comms_task/` | The application task: intake → `E`, `H`/`S` every second, Wi-Fi-loss bit, inbound commands. |
+| `app_program/common/messages.h` | The shared integration contract: packed records (`H`, `S`, `E`, `D`), the command checks, fault-bit names. |
 | `app_program/race_test/` | Tribunal 1 two-core packed-word race test (off unless `TM_RACE_TEST` is 1). |
 | `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` | The radio driver (exists). |
 | `lib/libnet/lwip/` | lwIP + the MQTT client (**single-threaded** — only the radio task may touch it). |

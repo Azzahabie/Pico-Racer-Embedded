@@ -400,6 +400,7 @@ make $B -j8                                  # associate, get an address, resolv
 make $B WIFI_UDP=1 -j8                       # UDP echo against a host listener
 make $B WIFI_UDP=1 WIFI_TCP=1 -j8            # TCP echo
 make $B WIFI_UDP=1 WIFI_TCP=1 WIFI_TCPBULK=1 -j8
+make $B WIFI_MQTT=1 -j8                      # the car build: MQTT, no echo tests
 ```
 
 > [!WARNING]

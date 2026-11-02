@@ -30,7 +30,7 @@ document no longer repeats it. Look a term up here.
 | **Seqlock** | A lock-free way to copy a struct one task writes while another reads: check a version counter before and after, retry if it changed. |
 | **Latch** | A flag set once and never cleared — e.g. `dhcp_complete`, which is why the MQTT poll runs forever after DHCP succeeds. |
 | **RTOS** | Real-Time Operating System — a small OS that schedules tasks with predictable timing. Here, µT-Kernel 3.0. |
-| **Mailbox** (`cmd_mbx`) | A kernel object that passes messages between tasks by pointer, in order. `cmd_mbx` carries inbound MQTT commands from `cyw43_utk_task` to `comms_task`. |
+| **Inbound mailbox** (`tele_rx_mbfid`) | The queue that carries inbound MQTT commands from `cyw43_utk_task` to `comms_task`. Despite the name it is a **message buffer**, which copies each message, not a µT-Kernel mailbox (`_mbx`), which passes a pointer: lwIP's data pointers are invalid once its callback returns, so the bytes must be copied (`WIFI_SUBSYSTEM_DESIGN.md` §9.3). Older notes call it `cmd_mbx` or `rx_mbf`; all three are this one queue. |
 | **`tele_mbfid` / `tele_pub_mbfid`** | The two outgoing telemetry message buffers: sensing tasks → `comms_task`, then `comms_task` → `cyw43_utk_task`. |
 | **`nav_flg`** | `nav_ctrl_task`'s event flag. Buttons, faults, motion replies and the Wi-Fi connection state (CONN) all set bits on it. |
 | **CONN** | The connection-state bit `cyw43_utk_task` reports to `comms_task` and `nav_ctrl_task`. |
@@ -85,7 +85,7 @@ document no longer repeats it. Look a term up here.
 | **`H` / `D` record** | Heartbeat record (on `…/heartbeat`, every 1 s and in reply to `ping`) and Diagnostic snapshot (on `…/state`, in reply to `snap`). |
 | **`mv`** | The map version the laptop sends with a new barcode table. The car compares it with `mpv`. |
 | **`mpv`** | The letter→action table version the car is currently running (reported so the laptop can confirm the remap took). |
-| **`drp`** | Count of telemetry records dropped because the queue was full. 4 bits, saturates at 15 (Tribunal 1). |
+| **`drp`** | Count of telemetry records dropped because the **intake** queue (`tele_mbf`) was full. 4 bits, saturates at 15 (Tribunal 1). Drops at the outbound queue while disconnected are not counted; they show only on the console (`MQTT_SCHEMA.md` §3). |
 | **Schema v1 / v2** | The value of `v` on the wire: v1 = JSON (2026-09-28), **v2 = packed binary (2026-10-19, Tribunal 1)**. |
 | **Decoder** | The laptop script that turns a binary record back into named fields. Required since Tribunal 1, because a generic MQTT client shows binary as hex. |
 | **`snap`** | Laptop command: "send me the current state now" → reply on `…/state`. |
