@@ -96,6 +96,14 @@ Crossings 1-2 done on 1 Nov: 9.7 mm, 9.6 mm.
   (mean 9.6, worst -0.8 mm): all within the ±2 mm target
 - [ ] Save the viewer logs for all 5 crossings
 
+**Prof's email (3 Nov): the demo ramp is about the height of the smaller
+practice ramp, slightly lower or higher; the higher ramp can be
+disregarded** (clearance and scraping). So the 23 mm passes below are extra
+evidence, not required. 23 mm self-driven, 3 Nov: 27.8 (on the bend), 25.6,
+26.2, 26.0 mm: target 3/4, limit 4/4. A third run (02:38) caught on the
+ramp: slewed 100° left, reared to 20°, tipped 32° nose up → tilt fault
+(correct). Steepest seen on it: 20°, only 5° under T.
+
 ### NFR-05: height accuracy (`IMU_CSV 1` build)
 
 Target ±2 mm or 20 %, limit ±5 mm.

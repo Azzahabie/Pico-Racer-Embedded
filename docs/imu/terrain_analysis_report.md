@@ -268,26 +268,39 @@ Every crossing counted the hump **once** and raised **no IMU fault**.
 | 8 | 3 Nov 01:40:15 | 8.9 | −1.1 | 7° | 120 mm rule | ✅ | ✅ |
 | 9 | 3 Nov 01:51:30 (obstacle on the hump) | 10.1 | +0.1 | 7° | stopped on top, then reversed off | ✅ | ✅ |
 | 10 | 3 Nov 02:01:55 | 10.7 | +0.7 | 7° | 120 mm rule | ✅ | ✅ |
+| 11 | 3 Nov 02:27:35 (`E imu` build) | 11.3 | +1.3 | 7° | 120 mm rule | ✅ | ✅ |
+| 12 | 3 Nov 02:29:16 | 10.5 | +0.5 | 7° | 120 mm rule | ✅ | ✅ |
+| 13 | 3 Nov 02:41:38 (two humps in one run) | 9.6 | −0.4 | 8° | 120 mm rule | ✅ | ✅ |
+| 14 | 3 Nov 02:41:47, ~19 cm after #13 | 9.6 | −0.4 | 6° | 120 mm rule | ✅ | ✅ |
 
-**Target 10/10, limit 10/10.** Mean 9.84 mm (−0.16 mm), range 8.9–10.7 mm. "Closed"
+**Target 14/14, limit 14/14.** Mean 9.96 mm (−0.04 mm), range 8.9–11.3 mm. "Closed"
 distances are from the log times at ~48 mm/s. None of the hand-push wheel skid
 (§4.1) showed under motor power.
 
-**Higher hump: 23 mm (ruler); target ±4.6 mm (20 %), limit ±5 mm**
+**Higher hump: 23 mm (ruler); target ±4.6 mm (20 %), limit ±5 mm.** *Not required
+for the demo:* on 3 Nov the prof set the final ramp to about the height of the
+smaller practice ramp and said the higher one can be disregarded (clearance and
+scraping). Kept as evidence that the method scales.
 
 | # | Date / log | Reported (mm) | Error | Steepest | Notes | Target | Limit |
 |---|---|---|---|---|---|---|---|
 | 1 | 3 Nov 00:58:36 | 27.8 | +4.8 mm (+21 %) | 15° | on the right bend, climbed at an angle; closed by the end-of-line pause | ❌ | ✅ |
 | 2 | 3 Nov 01:05:15 | 25.6 | +2.6 mm (+11 %) | 16° | on the straight | ✅ | ✅ |
+| 3 | 3 Nov 02:37:14 | 26.2 | +3.2 mm (+14 %) | 20° | 1.5 g bump on the climb | ✅ | ✅ |
+| 4 | 3 Nov 02:37:44 | 26.0 | +3.0 mm (+13 %) | 15° | closed by the end-of-line pause | ✅ | ✅ |
+| — | 3 Nov 02:38:01 | — | — | 23° | caught on the ramp: 1.8 g and 2.0 g bumps, slewed ~100° left, reared up, tipped 32° nose up → tilt fault in 21.2 ms, hump discarded | — | — |
 
-**Target 1/2, limit 2/2** — 3 more passes are needed for NFR-05's 5. Both read high,
-as the clean hand pushes on the 23.5 mm ramp did (mean +2.0 mm, §4.2). On the bend the
-car climbed at an angle (`nose DOWN 8°, leaning LEFT 12°`), and the tilt magnitude ×
+**Target 3/4, limit 4/4.** All read high, as the clean hand pushes on the 23.5 mm
+ramp did (mean +2.0 mm, §4.2); square on, +2.6 to +3.2 mm. On the bend the car
+climbed at an angle (`nose DOWN 8°, leaning LEFT 12°`), and the tilt magnitude ×
 distance counts the sideways slope as rise, so a hump crossed at an angle reads high
-(§6). Square on, the error halved.
+(§6). The last run shows the mechanical problem the prof named, and the steepest
+slope reached 20°, only 5° under T: the higher ramp leaves FR-28 no margin, the
+demo ramp (~7°) leaves 18°.
 
 **Two humps in one mission (FR-10, FR-12):** 10 mm then 23 mm, 30+ cm apart: `HUMP 1:
 10.5 mm`, `HUMP 2: 27.8 mm`, `humps: 2 (highest 28 mm)`.
+Two 10 mm humps ~19 cm apart (3 Nov 02:41): `HUMP 1: 9.6 mm`, then `HUMP 2: 9.6 mm`4 s later, no merge; `E imu` `hump_count=1`, then `2`, and `S.hum=2 S.hgt=10`.
 
 **Obstacle while on the hump (3 Nov 01:51):** a hand in front stopped the car on the
 hump; it counted `HUMP 1: 10.1 mm` ("stopped on top"), reversed ~150 mm back down at
@@ -306,7 +319,7 @@ passes would push clean passes over the limit. The method is used uncorrected;
 every clean traversal recorded is within the NFR-05 target.
 
 The self-driven passes (§4.5) confirm it: on the demo hump the mean error is
-−0.16 mm with no factor, so a factor would only add error there. The 23 mm hump
+−0.04 mm with no factor, so a factor would only add error there. The 23 mm hump
 still reads high (+2.6 mm square on), as the 23.5 mm ramp did by hand (+2.0 mm), but
 two passes are too few to fit anything to, and the demo uses only the 10 mm hump.
 
@@ -353,7 +366,7 @@ in RUNNING, jerky ones included, gave no fault; a hand tilt in RUNNING faulted a
 | **Integrated car, 2–3 Nov:** tilt by hand in a mission → `STOPPING: car tipped over` + STOP_IMU + IMU_FAULT | 23:50:22 "26.5 deg to the LEFT", 23:55:22 "29.7 deg nose UP", 00:03:00 "30.0 deg nose UP", 00:36:22 "27.0 deg to the RIGHT"; **20.8–20.9 ms** each | ✅ |
 | Recover: GP20 recalibration → FAULT cleared → a new mission drives | 23:53:02 `cal ok`, 23:53:47 mission start, car at 48 mm/s (FAULT_CLEAR(IMU) now reaches motion_task) | ✅ (was limitation 8) |
 | Read failures, then re-init | 00:03:22 `reads failing: setting the IMU up again` (20 read errors, 0 missed samples) after rough handling, car already in FAULT; not seen again | ✅ recovered; check GP16/GP17 wiring |
-| Hump driven during a mission: no false IMU fault | all 12 self-driven crossings (§4.5), steepest 16° | ✅ |
+| Hump driven during a mission: no false IMU fault | all 18 self-driven crossings (14 demo hump, 4 at 23 mm, §4.5), steepest 20° | ✅ |
 | **Picked up in a mission** → IMU fault (added 3 Nov at the prof's request): in hand 1.2 s (`EV_LIFT_FAULT_MS`) in Running or Paused; not in Ready, where the car is lifted onto the start | 02:34:15 paused, `picked up` → 02:34:16 `STOPPING: car picked up (in hand 1.2 s)`, brake + FAULT; lifted while driving (02:33:47) it tipped 26° on the way up, so the tilt fault came first (21.2 ms) | ✅ |
 
 Brake time is motion_task's own stamp (`motion_stop_stamp`), so NFR-18 is met by a
@@ -390,7 +403,7 @@ Motion shows the same jitter (Buddy 2).
    stalls, and high when one spins (12 mm pass 3). Pushed by hand with
    braked motors this is likely worse than under motor power. Reported to Buddy 2,
    along with `missed R` counts rising to 20. **Self-driven (§4.5) no pass showed
-   it:** 10/10 within ±1.1 mm on the demo hump.
+   it:** 14/14 within ±1.3 mm on the demo hump.
 2. **No gyroscope.** Tilt is from the accelerometer only, so acceleration reads as
    tilt. Non-STEADY windows are gated (§3.2), and jolts are excluded from the fault
    check, but hard pushes still disturb the estimate (23.5 mm pass 4).
@@ -414,9 +427,9 @@ Motion shows the same jitter (Buddy 2).
    is bound to motion_task, and a GP20 recalibration clears the fault; a new
    mission drove on 2–3 Nov (§5).
 9. **Self-driven runs: done for the demo hump, not finished elsewhere.** NFR-05 on
-   the demo hump and flat-floor runs are done driving (§4.5). Still from hand pushes
-   or too few: the 23 mm hump (2 of 5 passes), the "still" threshold, and impact
-   A = 1.5 g, which normal driving reaches (§4.7).
+   the demo hump and flat-floor runs are done driving (§4.5); the higher ramp is
+   out of the demo (prof, 3 Nov). Still from hand pushes or too few: the "still"
+   threshold, and impact A = 1.5 g, which normal driving reaches (§4.7).
 10. **The pick-up detector needs the wheels still.** Lifted while driving, the
    wheels spin in the air and it reads as driving; the fault comes once the car
    loses the line and stops (~2 s after the wheels stop), unless the lift tilts
@@ -441,13 +454,13 @@ Motion shows the same jitter (Buddy 2).
 | ID | Status |
 |---|---|
 | FR-02 | ✅ nav waits for CAL_OK_IMU; CAL_FAIL → FAULT |
-| FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested); self-driven: 12 crossings, two humps in one mission, an obstacle stop on the hump with reversing off it, three flat runs with 0 humps (§4.5) |
+| FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested); self-driven: 18 crossings, two humps in one mission (twice: 10 + 23 mm, and two 10 mm humps ~19 cm apart, each counted once), an obstacle stop on the hump with reversing off it, three flat runs with 0 humps (§4.5) |
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
 | FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count and height in `E imu` and `S.hum` / `S.hgt` |
 | FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
 | FR-27 | 🟡 classifier running on the car under motor power: moving, turning, climbing, stopped as expected; impact A = 1.5 g is reached by normal driving (§4.7) |
-| FR-28 | ✅ T = 25°, N = 3; humps up to 16° self-driven do not trip; knocks filtered (one residual false fault, §6) |
-| NFR-05 | ✅ demo hump (10 mm), self-driven: **10/10 within target**, mean −0.16 mm, range 8.9–10.7 mm (§4.5). 🟡 23 mm hump: 2 of 5 passes, 1/2 within target, 2/2 within the limit. Hand pushes: every clean pass within target |
+| FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6) |
+| NFR-05 | ✅ demo hump (10 mm), self-driven: **14/14 within target**, mean −0.04 mm, range 8.9–11.3 mm (§4.5). The final ramp is about this height (prof, 3 Nov). 23 mm hump, no longer required: target 3/4, limit 4/4. Hand pushes: every clean pass within target |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |
 | NFR-18 | ✅ brake 47–61 µs after STOP_IMU (limit 20 ms) |
 | NFR-19 | ✅ 20.5–20.9 ms over 10 trials, 4 on the integrated car (limit 40 ms) |
