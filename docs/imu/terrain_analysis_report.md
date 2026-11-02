@@ -300,7 +300,7 @@ demo ramp (~7°) leaves 18°.
 
 **Two humps in one mission (FR-10, FR-12):** 10 mm then 23 mm, 30+ cm apart: `HUMP 1:
 10.5 mm`, `HUMP 2: 27.8 mm`, `humps: 2 (highest 28 mm)`.
-Two 10 mm humps ~19 cm apart (3 Nov 02:41): `HUMP 1: 9.6 mm`, then `HUMP 2: 9.6 mm`4 s later, no merge; `E imu` `hump_count=1`, then `2`, and `S.hum=2 S.hgt=10`.
+Two 10 mm humps ~19 cm apart (3 Nov 02:41): `HUMP 1: 9.6 mm`, then `HUMP 2: 9.6 mm` 4 s later, no merge; `E imu` `hump_count=1`, then `2`, and `S.hum=2 S.hgt=10`.
 
 **Obstacle while on the hump (3 Nov 01:51):** a hand in front stopped the car on the
 hump; it counted `HUMP 1: 10.1 mm` ("stopped on top"), reversed ~150 mm back down at
