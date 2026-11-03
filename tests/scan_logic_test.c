@@ -353,6 +353,22 @@ int main(void)
 		      SL_BLOCKED == sl_other_side(&both, SL_BYPASS_LEFT));
 	}
 
+	/* 19. sidestep lane must hold leg + D_stop (D14, car 4 Nov) */
+	printf("Test 19: sidestep lane long enough for leg + D_stop + slack\n");
+	{
+		/* offset 262 -> leg 278, need 278 + 250 + 50 = 578 */
+		check("4 Nov run: lane 559 mm for offset 262 -> short",
+		      !sl_lane_clear(559U, 262));
+		check("lane 578 mm for offset 262 -> clear (boundary)",
+		      sl_lane_clear(578U, 262));
+		check("lane 577 mm for offset 262 -> short (boundary)",
+		      !sl_lane_clear(577U, 262));
+		check("nothing in range -> clear", sl_lane_clear(SL_FAR, 343));
+		check("no echo -> not clear", !sl_lane_clear(SL_NOT_MEASURED, 343));
+		check("far wall at 1300 mm, max offset -> clear",
+		      sl_lane_clear(1300U, SL_MAX_OFFSET_MM));
+	}
+
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
 	return g_fails ? 1 : 0;

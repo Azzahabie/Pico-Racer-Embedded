@@ -14,10 +14,12 @@
  *	  Idle        mission not Running: servo centred, STOP_SCAN clear.
  *	  Monitoring  ping ahead every 60 ms (TICK). 2 readings in a row below
  *	              D_stop (4 on a hump) -> set STOP_SCAN -> Coarse Scan.
- *	  Coarse Scan 5 angles. Nothing within D_obs -> false alarm: clear
+ *	  Coarse Scan 5 angles, each a dwell (settle + median of 3 pings).
+ *	              Nothing within D_obs -> false alarm: clear
  *	              STOP_SCAN -> Monitoring. Else -> Fine Scan.
- *	  Fine Scan   5 deg steps out from each coarse edge, median of 3 at the
- *	              edge angles, capped to keep the scan inside 5.5 s (NFR-07).
+ *	  Fine Scan   10 deg steps out from each coarse edge, then one 5 deg
+ *	              check at the edge; every angle a dwell. Capped at
+ *	              SCAN_BUDGET_MS.
  *	              Profile -> telemetry -> Planning.
  *	  Planning    continue / bypass / reverse / blocked (FR-17). Bypass:
  *	              clear replies, place command, set CMD, clear STOP_SCAN ->
@@ -59,6 +61,7 @@
 #include "scan_if.h"
 #include "../common/messages.h"
 #include "../motor_task/motion_ds.h"	/* distance_state: Avoiding stop distance */
+#include "../motor_task/motion_cfg.h"	/* sidestep leg factor, checked below */
 
 #define OBSTACLE_TEST_MODE	4
 
@@ -67,13 +70,23 @@
 #define NO_HIT			127	/* "no coarse hit yet" marker angle:
 					   outside -45..+45, fits int8_t */
 
-#define SCAN_BUDGET_MS		5500	/* leaves ramp time inside NFR-07's 7 s budget */
-#define FINE_MAX_STEPS		5	/* new angles per edge: the coarse miss is
-					   6 fine steps away and already measured */
-#define LOOK_EST_MS		200	/* settle 150 + one ping (budget check)  */
-#define MEDIAN_EST_MS		360	/* settle 150 + 3 pings 60 ms apart       */
+#define SCAN_BUDGET_MS		7000	/* was 5.5 s: dwells cost ~0.13 s more per angle;
+					   NFR-07 is out of reach anyway (bypass 20-30 s),
+					   so accuracy wins over scan time */
+/* Dwell scan (prof's feedback, 3 Nov): fewer angles, each measured more
+ * carefully. At every scan angle the servo settles, then 3 pings are taken
+ * and the median kept (look_dwell), instead of one ping at every 5 deg.
+ * The fine scan steps FINE_STEP_DEG out from the coarse hits and then
+ * checks the one 5 deg slot between the last hit and the miss. */
+#define FINE_STEP_DEG		10	/* fine scan step; a multiple of SL_STEP_DEG */
+#define FINE_MAX_STEPS		5	/* new outward angles per edge            */
+#define DWELL_EST_MS		360	/* settle 150 + 3 pings 60 ms apart       */
+
+_Static_assert((FINE_STEP_DEG % SL_STEP_DEG) == 0,
+	       "fine step must land on the 5 deg scan grid");
 #define T_BLOCK_MS		10000	/* [t_block] proposed                     */
 #define REVERSE_TIMEOUT_MS	5000	/* no REVERSE_DONE by then: Blocked [TBD] */
+#define SWITCH_SETTLE_MS	30	/* 3 motion ticks: Bypass -> Braked on STOP_SCAN */
 
 _Static_assert(SL_MAX_OFFSET_MM <= MOTION_AVOID_DIST_MAX,
 	       "bypass offset exceeds the packed avoid-command distance");
@@ -81,6 +94,8 @@ _Static_assert(SL_LOOK_FAR_MM == MOTION_AVOID_DIST_MAX,
 	       "a side look's \"nothing in range\" is the largest LOOK distance");
 _Static_assert(SL_REV_DIST_MM <= MOTION_AVOID_DIST_MAX,
 	       "reverse distance exceeds the packed avoid-command distance");
+_Static_assert(SL_SIDE_LEG_X1000 == MOTION_BYPASS_SIDE_LEG_X1000,
+	       "scan_task's lane check must use motion_task's sidestep leg");
 
 LOCAL const INT g_coarse_deg[NUM_COARSE] = { -45, -25, 0, 25, 45 };
 
@@ -215,6 +230,8 @@ typedef struct {
 	int8_t		left_hit;	/* fine-scan start edges          */
 	int8_t		right_hit;
 	int8_t		look_deg;	/* angle the servo was last sent to */
+	uint8_t		bypass_plans;	/* BYPASS commands this avoidance,
+					   0..SL_MAX_BYPASS_PLANS        */
 	uint32_t	ds_prev;	/* Avoiding: distance_state at the last ping */
 } scan_ctx_t;
 
@@ -342,6 +359,7 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 		scan_if_stop_clear();		/* no stale stop survives */
 		ctx_set_flag(p_ctx, CTX_REVERSE_TRIED | CTX_AFTER_REVERSE |
 			     CTX_SIDE_SWITCHED, false);
+		p_ctx->bypass_plans = 0U;
 		servo_centre();
 		break;
 	case ST_SENSOR_LOST:
@@ -440,7 +458,7 @@ LOCAL uint16_t look(scan_ctx_t *p_ctx, INT deg)
 	return scan_ping(p_ctx);
 }
 
-/* Median of 3 pings: only at the edge angles (NFR-07). */
+/* Median of 3 pings at the current servo angle. */
 LOCAL uint16_t median3(scan_ctx_t *p_ctx)
 {
 	uint16_t ping_lo = scan_ping(p_ctx);
@@ -467,12 +485,30 @@ LOCAL uint16_t median3(scan_ctx_t *p_ctx)
 	return ping_mid;
 }
 
+/* One scan angle with a dwell: move, settle, median of 3 pings. Three
+ * no-echo pings here still count toward Sensor Lost (a dead sensor). */
+LOCAL uint16_t look_dwell(scan_ctx_t *p_ctx, INT deg)
+{
+	p_ctx->look_deg = deg;
+	servo_move_to(deg);
+	tk_dly_tsk(SERVO_SETTLE_MS);	/* >= 60 ms since the last ping too */
+	return median3(p_ctx);
+}
+
 /* Bypass looks (D14), motion_task braked. b_ahead: along the sidestep it
  * is about to drive (SCAN_FLG_LOOK_AHEAD, servo 0). Otherwise motion has
  * pivoted 45 deg toward the obstacle and the servo turns 45 deg further
  * the same way, square-on to its side (SCAN_FLG_LOOK; the obstacle is on
  * the far side from the bypass, negative = left). Median of 3,
  * re-centre, and answer with an AVOID_LOOK. */
+/* The lateral offset of the bypass motion_task is driving now. */
+LOCAL int32_t lane_offset_mm(const scan_ctx_t *p_ctx)
+{
+	return (SL_BYPASS_LEFT == (sl_action_t)p_ctx->action)
+	       ? (int32_t)p_ctx->prof.offset_left_mm
+	       : (int32_t)p_ctx->prof.offset_right_mm;
+}
+
 LOCAL void side_look(scan_ctx_t *p_ctx, bool b_ahead)
 {
 	INT		deg = b_ahead ? 0
@@ -480,7 +516,8 @@ LOCAL void side_look(scan_ctx_t *p_ctx, bool b_ahead)
 				 ? -SL_LIMIT_DEG : SL_LIMIT_DEG);
 	uint16_t	grid_mm;
 	avoid_cmd_t	cmd;
-	UB		line[96];
+	bool		short_lane;
+	UB		line[112];
 
 	scan_if_clear(SCAN_FLG_LOOK | SCAN_FLG_LOOK_AHEAD);
 	(void)look(p_ctx, deg);			/* moves the servo, one ping */
@@ -497,9 +534,16 @@ LOCAL void side_look(scan_ctx_t *p_ctx, bool b_ahead)
 	cmd.type = (uint8_t)AVOID_LOOK;
 	cmd.side = (uint8_t)AVOID_SIDE_NONE;
 	cmd.dist_mm = sl_look_reply_mm(grid_mm);
-	(void)tm_sprintf(line, (UB *)"[scan] %s look %d deg: %d mm (sent %d)%s\n",
+	short_lane = b_ahead && !sl_lane_clear(grid_mm, lane_offset_mm(p_ctx));
+	if(short_lane) {
+		/* motion_task reads 1 (unknown) as blocked: it pivots back and
+		 * raises SIDE_BLOCKED, so switch_side() tries the other side */
+		cmd.dist_mm = (uint16_t)SL_LOOK_UNKNOWN_MM;
+	}
+	(void)tm_sprintf(line, (UB *)"[scan] %s look %d deg: %d mm (sent %d)%s%s\n",
 			 b_ahead ? "lane" : "side", deg, (INT)((SL_NOT_MEASURED == grid_mm) ? -1 : (INT)grid_mm),
 			 (INT)cmd.dist_mm,
+			 short_lane ? " short for leg + D_stop" : "",
 			 scan_if_send_cmd(&cmd) ? "" : "  NOT SENT");
 	tm_printf(line);
 }
@@ -524,7 +568,7 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 
 	for(idx = 0; (idx < NUM_COARSE) && scan_ok(p_ctx); idx++) {
 		deg = g_coarse_deg[idx];
-		dist_mm = look(p_ctx, deg);
+		dist_mm = look_dwell(p_ctx, deg);
 		p_ctx->grid[SL_IDX(deg)] = dist_mm;
 		if(is_hit(p_ctx, dist_mm)) {
 			if(NO_HIT == p_ctx->left_hit) {
@@ -544,85 +588,72 @@ LOCAL void coarse_scan(scan_ctx_t *p_ctx)
 	}
 }
 
-/* Room left in the 4.2 s scan budget for one more look, keeping time for
- * the median(s) still to come. */
-LOCAL bool fits_budget(const scan_ctx_t *p_ctx, INT medians_left)
+/* Room left in the scan budget for one more dwell angle. */
+LOCAL bool fits_budget(const scan_ctx_t *p_ctx)
 {
-	return (ms_since(p_ctx->scan_us) + LOOK_EST_MS +
-		((UW)medians_left * MEDIAN_EST_MS)) <= SCAN_BUDGET_MS;
+	return (ms_since(p_ctx->scan_us) + DWELL_EST_MS) <= SCAN_BUDGET_MS;
 }
 
-/* Step from start_deg outward (dir = -1 left, +1 right) in 5 deg steps
- * until the first miss or depth jump (another object), the scan limit,
- * FINE_MAX_STEPS or the budget. Re-measure the last hit angle with a
- * median of 3. If the median says the edge is not there after all (the
- * edge sits at the rim of the beam, so 2 of 3 pings can miss), step back
- * inward until a ping hits again: otherwise the slots between it and the
- * centre stay unmeasured and the edge collapses inward, shrinking the
- * width and the bypass offset (bench, 29 Oct: 200 mm box read as 15 mm,
- * offset 98 mm where ~200 mm was needed). */
-LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir, INT medians_left)
+/* Measure one grid slot with a dwell unless it already holds a reading
+ * (coarse-scanned, or measured by the other edge). */
+LOCAL uint16_t slot_dwell(scan_ctx_t *p_ctx, INT deg, INT *p_steps)
 {
-	INT		deg = start_deg + (dir * SL_STEP_DEG);
+	uint16_t dist_mm = p_ctx->grid[SL_IDX(deg)];
+
+	if(SL_NOT_MEASURED == dist_mm) {
+		dist_mm = look_dwell(p_ctx, deg);
+		p_ctx->grid[SL_IDX(deg)] = dist_mm;
+		*p_steps += 1;
+	}
+	return dist_mm;
+}
+
+/* Step from start_deg outward (dir = -1 left, +1 right) in FINE_STEP_DEG
+ * steps until the first miss or depth jump (another object), the scan
+ * limit, FINE_MAX_STEPS or the budget. Every angle is a median of 3 after
+ * the servo settles, so one stray echo at the rim of the beam no longer
+ * moves the edge (bench, 29 Oct: a single-ping edge read a 200 mm box as
+ * 15 mm). Then check the one 5 deg slot just outside the last hit: if it
+ * is still the same object, that is the edge. */
+LOCAL void fine_edge(scan_ctx_t *p_ctx, INT start_deg, INT dir)
+{
+	INT		deg = start_deg + (dir * FINE_STEP_DEG);
 	INT		last_hit = start_deg;
 	INT		steps = 0;
+	INT		mid_deg;
 	bool		edge_found = false;
 	uint16_t	dist_mm;
 	uint16_t	prev_mm = p_ctx->grid[SL_IDX(start_deg)];
 
 	while(!edge_found && scan_ok(p_ctx) && (steps < FINE_MAX_STEPS) &&
 	      (deg >= -SL_LIMIT_DEG) && (deg <= SL_LIMIT_DEG) &&
-	      fits_budget(p_ctx, medians_left)) {
-		dist_mm = p_ctx->grid[SL_IDX(deg)];
-		if(SL_NOT_MEASURED == dist_mm) {	/* else: coarse-scanned */
-			dist_mm = look(p_ctx, deg);
-			p_ctx->grid[SL_IDX(deg)] = dist_mm;
-			steps++;
-		}
-
+	      fits_budget(p_ctx)) {
+		dist_mm = slot_dwell(p_ctx, deg, &steps);
 		if(sl_same_object(prev_mm, dist_mm, d_obs_mm(p_ctx))) {
 			last_hit = deg;
 			prev_mm = dist_mm;
-			deg += dir * SL_STEP_DEG;
+			deg += dir * FINE_STEP_DEG;
 		} else if(SL_NOT_MEASURED == dist_mm) {
-			deg += dir * SL_STEP_DEG;	/* no echo here: keep going */
+			deg += dir * FINE_STEP_DEG;	/* no echo here: keep going */
 		} else {
 			edge_found = true;		/* miss, or a different object */
 		}
 	}
 
-	if(scan_ok(p_ctx)) {
-		p_ctx->look_deg = last_hit;
-		servo_move_to(last_hit);
-		tk_dly_tsk(SERVO_SETTLE_MS);
-		p_ctx->grid[SL_IDX(last_hit)] = median3(p_ctx);
-	}
-
-	steps = 0;
-	deg = last_hit - (dir * SL_STEP_DEG);
-	while(scan_ok(p_ctx) && !is_hit(p_ctx, p_ctx->grid[SL_IDX(last_hit)]) &&
-	      (steps < FINE_MAX_STEPS) &&
-	      (deg >= -SL_LIMIT_DEG) && (deg <= SL_LIMIT_DEG) &&
-	      fits_budget(p_ctx, medians_left - 1)) {
-		dist_mm = p_ctx->grid[SL_IDX(deg)];
-		if(SL_NOT_MEASURED == dist_mm) {
-			dist_mm = look(p_ctx, deg);
-			p_ctx->grid[SL_IDX(deg)] = dist_mm;
-			steps++;
-		}
-		if(is_hit(p_ctx, dist_mm)) {
-			last_hit = deg;			/* the edge, one step in */
-		} else {
-			deg -= dir * SL_STEP_DEG;
-		}
+	/* refine to 5 deg between the last hit and the next angle out */
+	mid_deg = last_hit + (dir * SL_STEP_DEG);
+	if(scan_ok(p_ctx) && (FINE_STEP_DEG > SL_STEP_DEG) &&
+	   (mid_deg >= -SL_LIMIT_DEG) && (mid_deg <= SL_LIMIT_DEG) &&
+	   fits_budget(p_ctx)) {
+		(void)slot_dwell(p_ctx, mid_deg, &steps);
 	}
 }
 
 LOCAL void fine_scan(scan_ctx_t *p_ctx)
 {
-	/* left edge first (2 medians still to come), then the right edge */
-	fine_edge(p_ctx, p_ctx->left_hit, -1, 2);
-	fine_edge(p_ctx, p_ctx->right_hit, +1, 1);
+	/* left edge first, then the right edge (shorter servo travel) */
+	fine_edge(p_ctx, p_ctx->left_hit, -1);
+	fine_edge(p_ctx, p_ctx->right_hit, +1);
 }
 
 LOCAL void print_scan(const scan_ctx_t *p_ctx, UW scan_ms)
@@ -739,6 +770,11 @@ LOCAL void switch_side(scan_ctx_t *p_ctx)
 
 	scan_if_clear(SCAN_FLG_SIDE_BLOCKED);
 	scan_if_stop_set();				/* motion brakes */
+	/* motion_task takes a BYPASS only in Braked, and it is still in Bypass
+	 * (the switch phase) here. Give its 10 ms tick time to see STOP_SCAN
+	 * and enter Braked before the command, or the command is dropped and
+	 * the switch phase gives up after 5 s (car, 4 Nov). */
+	tk_dly_tsk(SWITCH_SETTLE_MS);
 	if(!ctx_flag(p_ctx, CTX_SIDE_SWITCHED) && (SL_BLOCKED != other)) {
 		(void)tm_sprintf(line, (UB *)"[scan] %s lane blocked: trying %s\n",
 				 sl_action_name((sl_action_t)p_ctx->action),
@@ -783,6 +819,18 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 
 	case SL_BYPASS_LEFT:
 	case SL_BYPASS_RIGHT:
+		if(p_ctx->bypass_plans >= SL_MAX_BYPASS_PLANS) {
+			/* boxed in: stop rather than re-plan forever (FR-18).
+			 * STOP_SCAN is still set from the scan; nav_ctrl_task
+			 * pauses the mission, and Idle resets the count. */
+			tm_printf((UB *)"[scan] bypass planned %d times in one avoidance: Blocked\n",
+				  (INT)p_ctx->bypass_plans);
+			enter(p_ctx, ST_BLOCKED);
+			scan_if_set_blocked();
+			ctx_set_flag(p_ctx, CTX_BLOCKED_SENT, true);
+			break;
+		}
+		p_ctx->bypass_plans++;
 		offset_mm = (SL_BYPASS_LEFT == p_ctx->action) ?
 			    p_prof->offset_left_mm : p_prof->offset_right_mm;
 		cmd.type = (uint8_t)AVOID_BYPASS;
@@ -921,6 +969,7 @@ LOCAL void scan_task_run(void)
 			if(0U != (bits & SCAN_FLG_LINE_FOUND)) {
 				/* this avoidance is over */
 				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED, false);
+				ctx.bypass_plans = 0U;
 				enter(&ctx, ST_MONITORING);
 			} else if(0U != (bits & SCAN_FLG_LINE_LOST)) {
 				enter(&ctx, ST_IDLE);		/* nav_ctrl_task decides */
