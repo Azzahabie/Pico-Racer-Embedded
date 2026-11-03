@@ -38,8 +38,8 @@ Pass = the `ACTION` line matches. Run each layout 3 times.
 | 8 | Box ahead, walls 150 mm right and 190 mm left | BYPASS LEFT, offset L >= 120 mm + half the box | | | | |
 
 Also check on each bypass that the chosen side's `offset` is at least
-(distance from centre to that edge of the box) + 120 mm. A shorter offset
-would hit the box even if the side is right.
+(distance from centre to that edge of the box) + C_pass (218 mm since D12;
+it was 120). A shorter offset would hit the box even if the side is right.
 
 ## 2. Width accuracy (NFR-20)
 
@@ -49,13 +49,19 @@ of the true width in at least 4 of 5 scans.
 | True width (mm) | Distance (mm) | Scan 1 | Scan 2 | Scan 3 | Scan 4 | Scan 5 | Within 30 % | Pass (>= 4/5) |
 |---|---|---|---|---|---|---|---|---|
 | 50 | 200 | | | | | | /5 | |
+| 90 (demo box) | 200 | 162 | 150 | 161 | 150 | 150 | 0/5 | **FAIL** (+67 to +80 %) |
 | 100 | 200 | | | | | | /5 | |
 | 150 | 200 | | | | | | /5 | |
-| 200 | 200 | | | | | | /5 | |
+| 200 | 200 | 199 | 167 | 168 | 168 | 146 | 5/5 | **PASS** (-0.5 to -27 %) |
+| 90 (demo box) | 250 | 287 | 257 | 256 | 256 | 289 | 0/5 | **FAIL** (+184 to +221 %) |
 | 100 | 300 | | | | | | /5 | |
 
+Filled rows: 3 Nov 2026, mode 3, dwell scan (median of 3 per angle, 10 deg
+fine steps), k = 0.080. Logs: `logs/dwell_*_k080.txt`. Details and the
+reason (no single k fits both boxes) under "Results 3-4 Nov" below.
+
 Estimates all low or all high by a similar amount point at the beam
-correction `SL_BEAM_CORR_PER_1000` (132 now) in `scan_logic.h`; note it
+correction `SL_BEAM_CORR_PER_1000` (80 now) in `scan_logic.h`; note it
 here rather than changing it mid-test.
 
 ## 3. Detection range (NFR-06)
@@ -73,9 +79,12 @@ at least 19 of 20 valid readings at each distance.
 
 ## 4. Scan time (NFR-07 budget)
 
-From the `scan took ... ms` part of each `ACTION` line. Budget 5500 ms.
+From the `scan took ... ms` part of each `ACTION` line. Budget 7000 ms
+(`SCAN_BUDGET_MS`, raised from 5500 for the dwell scan, 3 Nov).
 
-Longest seen: ______ ms   Any `OVER`: yes / no
+Longest seen: **6541 ms** (mission, rescan after a reverse, 4 Nov); mode 3
+bench 5606-6140 ms; mission first scans 4164-5726 ms.   Any `OVER`: **no**
+(3-4 Nov, dwell build).
 
 ## Turning a real scan into a PC test
 
@@ -171,3 +180,79 @@ Layouts 2-8, sensor-lost (unplug ECHO), Blocked -> cleared, ramp with a
 clear path (no STOP_SCAN, N_hump = 4), pause mid-scan, nav_ctrl state
 checks, timing with Wi-Fi streaming, and everything that needs Buddy 2's
 avoid_cmd_mbf (bypass drive, full buffer, back-to-back avoidances, NFR-07).
+*(3-4 Nov: the bypass drive now runs on the car, see below.)*
+
+---
+
+## Results 3-4 Nov 2026 (dwell scan build, k = 0.080)
+
+Car on the bench (mode 3) and on the floor (mode 4, USB console, read
+through `tools/telemetry_viewer.py`). Logs in `logs/`.
+
+### Width (NFR-20): table in section 2
+- 200 mm box passes (5/5); the 90 mm demo box fails at 200 mm (0/5) and at
+  250 mm (0/5). It reads far too wide because the HC-SR04's ~+-15 deg cone
+  still hears the box corner at +-25 deg (200 mm) and +-30-35 deg (250 mm).
+- **No single k passes both boxes** (recomputed from the 10 logged scans):
+  k 0.08 -> 0/5 and 5/5; 0.16 -> 3/5 and 1/5; 0.18-0.20 -> 5/5 and 1/5.
+  Both boxes' edges land within about one 5-degree step of each other.
+- **Decision: keep k = 0.080 ("option 1").** Over-reading is safe: the
+  bypass swings wider (demo box: offset 261-306 mm vs 263 needed). A larger
+  k would under-read wide boxes and shorten the offset (contact, as in S7).
+  Cost: the reported width (`E obstacle`, `S.obs`) is 15-29 cm for a 9 cm box.
+- Margin to `SL_MAX_OFFSET_MM` (400) shrinks with distance: ~95 mm at
+  200 mm, 34-67 mm at 250 mm; a cluttered run at 334 mm went over (421).
+
+### Stop distance (NFR-08), mission runs, demo box on the line
+`angle 0` / closest at the first scan: **230, 231, 233, 243, 246 mm**, all
+below D_stop 250 (so the scan happens at or inside the tested 200-250 mm
+range). Rest position not yet tape-measured.
+
+### Bypass drive (FR-17, FR-18, FR-19, FR-20)
+- Full bypass and rejoin on the car: `logs/fr20_bypass_rejoin_2026-11-04.txt`
+  (STOP_SCAN 243 mm -> BYPASS RIGHT 265 -> probe saw the box -> clear ->
+  turn in -> LINE_FOUND -> Monitoring only after LINE_FOUND: FR-20).
+- A second object ~50 cm left of the line made the car loop (bypass left,
+  braked mid-sidestep, re-plan right, lane blocked, repeat). Two fixes in
+  `obstacle_task.c` / `scan_logic.c` (PC Test 19), **not yet re-run on the car**:
+  - the sidestep lane look must hold leg + D_stop + 50 mm (`sl_lane_clear`),
+    else LOOK 1 -> motion pivots back -> other side;
+  - after `SL_MAX_BYPASS_PLANS` (3) bypass plans in one avoidance: Blocked.
+- Side look read 79 mm on the 265 mm bypass: the car passed ~30 mm closer
+  than planned. Cause found below.
+
+### Right encoder gives 0.63x counts per turn (all motion, Buddy 2)
+Hand push, hand turns and the bench open-loop test all show the right
+encoder at ~1590 counts per wheel turn vs 2535 on the left (not wiring:
+steady ratio, `missed` ~0.6 %). Distances read ~20 % short and the right
+wheel ran ~1.6x fast off the line. Scaled to left-wheel units in
+`motor_task.c` (`MOTION_COUNTS_PER_REV_R`); see
+`docs/motion/right_encoder_scaling.md`. Re-check pivots and the bypass
+margin after Buddy 2 re-checks motion.
+
+### Counted bypass trials (FR-18, FR-19, NFR-07, NFR-08)
+| Batch | Image | Bypasses rejoined | Contact | STOP_SCAN -> line found | Stop distance | Log |
+|---|---|---|---|---|---|---|
+| 1 (10 trials) | 03:32 (IMU heading, 1.5 s line average) | 6 of 8 (2 runs never reached a bypass) | 4/10, on the turn back in (7, 8, 9, 10) | 27.9-29.1 s | 223-248 mm | `logs/trials_batch1_2026-11-04.txt` |
+| 2 (partial) | 04:32 (line direction over 400 mm, 80 mm margin) | 3 of 3 (box seen at the first look every time, 151-261 mm) | 0/3 | 28.2-33.4 s | 245-252 mm | `logs/trials_batch2_2026-11-04.txt` |
+
+Batch 1 trials 9-10 never saw the box and lost the line: the line direction
+was averaged over 1.5 s (~7 cm at line-following speed) while line following
+wandered up to 28 deg, so the bypass ran ~20 deg off. Fixed at 04:32. To
+finish: one full 10-trial batch on the 04:32 image, with contact recorded.
+
+### IMU
+Intermittent: calibration sometimes reads x = y = z = 5987 mg with false
+BUMP / tilt faults; passes after re-seating and a reboot. Wiring (I2C) to check.
+
+### Logs
+| File | What |
+|---|---|
+| `dwell_200mm_90mmbox_k080.txt` | NFR-20, demo box at 200 mm, 5 scans |
+| `dwell_200mm_200mmbox_k080.txt` | NFR-20, 200 mm box at 200 mm, 5 scans |
+| `dwell_250mm_90mmbox_k080.txt` | NFR-20, demo box at 250 mm, 5 scans |
+| `dwell_334mm_90mmbox_k080_cluttered.txt` | invalid setup (clutter), kept: offset over 400 |
+| `fr20_bypass_rejoin_2026-11-04.txt` | FR-18/19/20, full bypass and line rejoin |
+| `imu_bypass_left_right_2026-11-04.txt` | First IMU-heading bypasses that rejoined (left and right) |
+| `trials_batch1_2026-11-04.txt` | Counted trials batch 1 (10 trials, 03:32 image) with the tester's contact answers |
+| `trials_batch2_2026-11-04.txt` | Bypass runs on the 04:32 image (3 real bypasses) |

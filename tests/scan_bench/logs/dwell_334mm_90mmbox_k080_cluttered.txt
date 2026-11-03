@@ -1,0 +1,68 @@
+# INVALID SETUP: meant 250 mm, sensor read 334 mm at 0 deg; echoes to -40 deg suggest clutter. Kept as evidence.
+# 2026-11-03, demo box ~90 mm, k = 0.080. Widths 355-361 mm; offset L 421 mm (> SL_MAX_OFFSET_MM 400), R 370-376 mm
+
+23:17:36.305 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:17:36.305 [scan] angle -45: 718 mm
+23:17:36.305 [scan] angle -40: 360 mm  <- obstacle
+23:17:36.305 [scan] angle -35: 351 mm  <- obstacle
+23:17:36.305 [scan] angle -25: 338 mm  <- obstacle
+23:17:36.305 [scan] angle 0: 334 mm  <- obstacle
+23:17:36.305 [scan] angle 25: 348 mm  <- obstacle
+23:17:36.305 [scan] angle 30: 369 mm  <- obstacle
+23:17:36.305 [scan] angle 35: 1752 mm
+23:17:36.305 [scan] angle 45: 1432 mm
+23:17:36.305 [scan] profile: closest 334 mm @ 0 deg, edges -40..30 deg, x -203..155 mm, width 358 mm, IN the path
+23:17:36.305 [scan] clearance L 9999 R 9999 mm (need 218), offset L 421 R 373 mm
+23:17:36.305 [scan] ACTION: BYPASS RIGHT   (scan took 5583 ms, budget 7000 ms)
+23:17:45.399 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:17:45.399 [scan] angle -45: 2060 mm
+23:17:45.399 [scan] angle -40: 360 mm  <- obstacle
+23:17:45.399 [scan] angle -35: 351 mm  <- obstacle
+23:17:45.399 [scan] angle -25: 338 mm  <- obstacle
+23:17:45.399 [scan] angle 0: 334 mm  <- obstacle
+23:17:45.399 [scan] angle 25: 348 mm  <- obstacle
+23:17:45.399 [scan] angle 30: 365 mm  <- obstacle
+23:17:45.399 [scan] angle 35: 1755 mm
+23:17:45.399 [scan] angle 45: 1440 mm
+23:17:45.399 [scan] profile: closest 334 mm @ 0 deg, edges -40..30 deg, x -203..153 mm, width 356 mm, IN the path
+23:17:45.400 [scan] clearance L 9999 R 9999 mm (need 218), offset L 421 R 371 mm
+23:17:45.400 [scan] ACTION: BYPASS RIGHT   (scan took 5646 ms, budget 7000 ms)
+23:17:54.452 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:17:54.452 [scan] angle -45: 2052 mm
+23:17:54.452 [scan] angle -40: 360 mm  <- obstacle
+23:17:54.452 [scan] angle -35: 351 mm  <- obstacle
+23:17:54.452 [scan] angle -25: 338 mm  <- obstacle
+23:17:54.452 [scan] angle 0: 334 mm  <- obstacle
+23:17:54.452 [scan] angle 25: 349 mm  <- obstacle
+23:17:54.452 [scan] angle 30: 374 mm  <- obstacle
+23:17:54.452 [scan] angle 35: 1761 mm
+23:17:54.452 [scan] angle 45: 1416 mm
+23:17:54.452 [scan] profile: closest 334 mm @ 0 deg, edges -40..30 deg, x -203..158 mm, width 361 mm, IN the path
+23:17:54.452 [scan] clearance L 9999 R 9999 mm (need 218), offset L 421 R 376 mm
+23:17:54.452 [scan] ACTION: BYPASS RIGHT   (scan took 5606 ms, budget 7000 ms)
+23:18:03.493 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:18:03.493 [scan] angle -45: 1503 mm
+23:18:03.493 [scan] angle -40: 360 mm  <- obstacle
+23:18:03.493 [scan] angle -35: 351 mm  <- obstacle
+23:18:03.493 [scan] angle -25: 342 mm  <- obstacle
+23:18:03.493 [scan] angle 0: 334 mm  <- obstacle
+23:18:03.493 [scan] angle 25: 348 mm  <- obstacle
+23:18:03.493 [scan] angle 30: 361 mm  <- obstacle
+23:18:03.493 [scan] angle 35: 1812 mm
+23:18:03.493 [scan] angle 45: 1424 mm
+23:18:03.493 [scan] profile: closest 334 mm @ 0 deg, edges -40..30 deg, x -203..152 mm, width 355 mm, IN the path
+23:18:03.493 [scan] clearance L 9999 R 9999 mm (need 218), offset L 421 R 370 mm
+23:18:03.493 [scan] ACTION: BYPASS RIGHT   (scan took 5598 ms, budget 7000 ms)
+23:18:12.557 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:18:12.557 [scan] angle -45: 2056 mm
+23:18:12.557 [scan] angle -40: 360 mm  <- obstacle
+23:18:12.557 [scan] angle -35: 351 mm  <- obstacle
+23:18:12.558 [scan] angle -25: 338 mm  <- obstacle
+23:18:12.558 [scan] angle 0: 334 mm  <- obstacle
+23:18:12.558 [scan] angle 25: 348 mm  <- obstacle
+23:18:12.558 [scan] angle 30: 361 mm  <- obstacle
+23:18:12.558 [scan] angle 35: 1760 mm
+23:18:12.558 [scan] angle 45: 1411 mm
+23:18:12.558 [scan] profile: closest 334 mm @ 0 deg, edges -40..30 deg, x -203..152 mm, width 355 mm, IN the path
+23:18:12.558 [scan] clearance L 9999 R 9999 mm (need 218), offset L 421 R 370 mm
+23:18:12.558 [scan] ACTION: BYPASS RIGHT   (scan took 5614 ms, budget 7000 ms)

@@ -1,0 +1,69 @@
+# NFR-20 width, mode 3, dwell scan (median of 3 per angle, 10 deg fine steps)
+# 2026-11-03, box 200 mm wide, centred, 200 mm from sensor face, k = 0.080 (SL_BEAM_CORR_PER_1000 80)
+# Result: widths 199 167 168 168 146 mm -> 5/5 within 30 %; scan 5.6-5.8 s (budget 7.0 s)
+
+23:09:31.961 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:09:31.961 [scan] angle -45: far
+23:09:31.961 [scan] angle -35: 1388 mm
+23:09:31.961 [scan] angle -30: 234 mm  <- obstacle
+23:09:31.961 [scan] angle -25: 209 mm  <- obstacle
+23:09:31.961 [scan] angle 0: 194 mm  <- obstacle
+23:09:31.961 [scan] angle 25: 213 mm  <- obstacle
+23:09:31.961 [scan] angle 30: 239 mm  <- obstacle
+23:09:31.961 [scan] angle 35: 1735 mm
+23:09:31.961 [scan] angle 45: 1407 mm
+23:09:31.961 [scan] profile: closest 194 mm @ 0 deg, edges -30..30 deg, x -99..100 mm, width 199 mm, IN the path
+23:09:31.961 [scan] clearance L 9999 R 9999 mm (need 218), offset L 317 R 318 mm
+23:09:31.961 [scan] ACTION: BYPASS LEFT   (scan took 5674 ms, budget 7000 ms)
+23:09:41.016 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:09:41.017 [scan] angle -45: 1305 mm
+23:09:41.017 [scan] angle -35: 1497 mm
+23:09:41.017 [scan] angle -30: 213 mm  <- obstacle
+23:09:41.017 [scan] angle -25: 204 mm  <- obstacle
+23:09:41.017 [scan] angle 0: 195 mm  <- obstacle
+23:09:41.017 [scan] angle 25: 228 mm  <- obstacle
+23:09:41.017 [scan] angle 30: 1410 mm
+23:09:41.017 [scan] angle 35: 1444 mm
+23:09:41.017 [scan] angle 45: 1724 mm
+23:09:41.017 [scan] profile: closest 195 mm @ 0 deg, edges -30..25 deg, x -89..78 mm, width 167 mm, IN the path
+23:09:41.017 [scan] clearance L 9999 R 9999 mm (need 218), offset L 307 R 296 mm
+23:09:41.017 [scan] ACTION: BYPASS RIGHT   (scan took 5606 ms, budget 7000 ms)
+23:09:50.257 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:09:50.257 [scan] angle -45: far
+23:09:50.257 [scan] angle -35: far
+23:09:50.257 [scan] angle -30: 213 mm  <- obstacle
+23:09:50.257 [scan] angle -25: 204 mm  <- obstacle
+23:09:50.257 [scan] angle 0: 196 mm  <- obstacle
+23:09:50.257 [scan] angle 25: 231 mm  <- obstacle
+23:09:50.257 [scan] angle 30: 1800 mm
+23:09:50.257 [scan] angle 35: 1790 mm
+23:09:50.257 [scan] angle 45: 1423 mm
+23:09:50.257 [scan] profile: closest 196 mm @ 0 deg, edges -30..25 deg, x -89..79 mm, width 168 mm, IN the path
+23:09:50.257 [scan] clearance L 9999 R 9999 mm (need 218), offset L 307 R 297 mm
+23:09:50.257 [scan] ACTION: BYPASS RIGHT   (scan took 5789 ms, budget 7000 ms)
+23:09:59.407 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:09:59.407 [scan] angle -45: 1318 mm
+23:09:59.407 [scan] angle -35: far
+23:09:59.407 [scan] angle -30: 213 mm  <- obstacle
+23:09:59.407 [scan] angle -25: 208 mm  <- obstacle
+23:09:59.407 [scan] angle 0: 195 mm  <- obstacle
+23:09:59.407 [scan] angle 25: 230 mm  <- obstacle
+23:09:59.407 [scan] angle 30: 1839 mm
+23:09:59.407 [scan] angle 35: 1761 mm
+23:09:59.407 [scan] angle 45: 1725 mm
+23:09:59.407 [scan] profile: closest 195 mm @ 0 deg, edges -30..25 deg, x -89..79 mm, width 168 mm, IN the path
+23:09:59.407 [scan] clearance L 9999 R 9999 mm (need 218), offset L 307 R 297 mm
+23:09:59.407 [scan] ACTION: BYPASS RIGHT   (scan took 5704 ms, budget 7000 ms)
+23:10:08.626 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:10:08.626 [scan] angle -45: far
+23:10:08.626 [scan] angle -35: 1306 mm
+23:10:08.626 [scan] angle -30: 1504 mm
+23:10:08.626 [scan] angle -25: 204 mm  <- obstacle
+23:10:08.626 [scan] angle 0: 199 mm  <- obstacle
+23:10:08.626 [scan] angle 25: 222 mm  <- obstacle
+23:10:08.626 [scan] angle 30: 1813 mm
+23:10:08.626 [scan] angle 35: 1769 mm
+23:10:08.626 [scan] angle 45: 1524 mm
+23:10:08.626 [scan] profile: closest 199 mm @ 0 deg, edges -25..25 deg, x -70..76 mm, width 146 mm, IN the path
+23:10:08.626 [scan] clearance L 9999 R 9999 mm (need 218), offset L 288 R 294 mm
+23:10:08.626 [scan] ACTION: BYPASS LEFT   (scan took 5763 ms, budget 7000 ms)
