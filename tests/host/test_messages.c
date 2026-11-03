@@ -377,6 +377,44 @@ static void test_avoid_command(void)
     ok(!motion_avoid_cmd_unpack((uint16_t)(0x12CAU | 0x8000U),
                                 &op, &side, &dist_mm),
        "reserved high bits must be zero", "avoid command");
+
+    /* LOOK (op 3, D14): scan_task's reply to a bypass probe or the
+     * sidestep lane look.  Expected words are the raw values motion_task
+     * logged on the car, 4 Nov 2026 ("avoid_cmd LOOK ... (raw 0x....)"). */
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                             MOTION_AVOID_SIDE_NONE,
+                             MOTION_AVOID_DIST_MAX, &word) &&
+       (word == 0x1FF3U),
+       "LOOK 511 (nothing in range) matches the car's raw 0x1ff3",
+       "avoid command");
+    ok(motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_LOOK) &&
+       (side == MOTION_AVOID_SIDE_NONE) &&
+       (dist_mm == MOTION_AVOID_DIST_MAX),
+       "LOOK 511 round-trips", "avoid command");
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                             MOTION_AVOID_SIDE_NONE, 79U, &word) &&
+       (word == 0x04F3U),
+       "LOOK 79 mm (box beside the car) matches the car's raw 0x04f3",
+       "avoid command");
+    ok(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                             MOTION_AVOID_SIDE_NONE, 1U, &word) &&
+       (word == 0x0013U) &&
+       motion_avoid_cmd_unpack(word, &op, &side, &dist_mm) &&
+       (op == MOTION_AVOID_OP_LOOK) && (dist_mm == 1U),
+       "LOOK 1 (no echo / lane too short: counts as blocked) round-trips",
+       "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                              MOTION_AVOID_SIDE_LEFT, 200U, &word),
+       "LOOK rejects a side", "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                              MOTION_AVOID_SIDE_NONE, 0U, &word),
+       "LOOK rejects distance 0 (why no echo is sent as 1)",
+       "avoid command");
+    ok(!motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
+                              MOTION_AVOID_SIDE_NONE,
+                              MOTION_AVOID_DIST_MAX + 1U, &word),
+       "LOOK rejects a distance over 511", "avoid command");
 }
 
 /* Record D: S's fields from the section 10 example, then the diagnostics. */

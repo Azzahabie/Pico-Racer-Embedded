@@ -24,5 +24,7 @@ line/test_ir_cal
 line/test_line_track
 line/test_barcode_pipeline
 line/test_line_state
+scan_logic_test
+host/test_messages
 # macOS clang debug folders, if the tests are run outside Docker
 *.dSYM/

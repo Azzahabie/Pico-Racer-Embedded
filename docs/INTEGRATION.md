@@ -286,9 +286,8 @@ Commit hashes are on `integration`; see section 11 for the full list.
    - the 5 s MQTT back-off (NFR-09 to re-measure);
    - the wireless console;
    - the turning code (S5).
-9. **Tests:** `tests/scan_logic_test.c` and `tests/host/test_messages.c` are not in
-   `tests/Makefile`. Run the first by hand (see its header). The second does not
-   cover the LOOK op.
+9. **Tests:** `tests/scan_logic_test.c` and `tests/host/test_messages.c` run in
+   `make -C tests` (4 Nov 2026); the second now covers the LOOK op.
 
 ## 9. Tools: the viewer
 
