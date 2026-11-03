@@ -387,6 +387,22 @@ uint16_t sl_look_reply_mm(uint16_t grid_mm)
 	return reply;
 }
 
+bool sl_lane_clear(uint16_t grid_mm, int32_t offset_mm)
+{
+	int32_t	need_mm = ((offset_mm * SL_SIDE_LEG_X1000) / 1000) +
+			  SL_D_STOP_MM + SL_LANE_SLACK_MM;
+	bool	clear;
+
+	if(SL_FAR == grid_mm) {
+		clear = true;			/* nothing in range */
+	} else if(SL_NOT_MEASURED == grid_mm) {
+		clear = false;			/* no echo: unknown */
+	} else {
+		clear = ((int32_t)grid_mm >= need_mm);
+	}
+	return clear;
+}
+
 /* Field positions in sl_runs_t.packed (see scan_logic.h). */
 #define RUN_CLOSE_SHIFT		0U
 #define RUN_CLOSE_MAX		7U

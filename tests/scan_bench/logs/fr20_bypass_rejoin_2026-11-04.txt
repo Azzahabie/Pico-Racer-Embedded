@@ -1,0 +1,150 @@
+# FR-18/FR-19/FR-20 evidence: full bypass and line rejoin, mission mode 4, USB build, car on the floor
+# 2026-11-04 00:56:52-00:57:25, demo box ~90 mm, k = 0.080, lane check + retry limit in. Before the right-encoder scaling.
+# Shows: STOP_SCAN at 243 mm -> BYPASS RIGHT 265 -> lane look clear -> probe saw box (79 mm) -> clear -> turn in -> LINE_FOUND -> AVOIDING -> MONITORING (FR-20: Monitoring only after LINE_FOUND).
+# Note: side look 79 mm = the car passed closer than planned (right encoder later found to give 0.63x counts per turn).
+
+00:56:52.532 [nav] button GP20
+00:56:52.533 [nav] mission READY -> RUNNING
+00:56:52.533 [motion] state IDLE -> LINE_FOLLOW
+00:56:52.543 [imu] mission start: turns, humps, bumps and heading reset
+00:56:52.543 [scan] IDLE -> MONITORING
+00:56:52.732 [line] RL=00 err=35
+00:56:52.732 [line] RL=01 err=66
+00:56:52.765 [imu] >>> turning RIGHT
+00:56:52.809 [line] RL=00 err=28
+00:56:52.911 [scan] MONITORING -> COARSE_SCAN
+00:56:52.911 [motion] STOP_SCAN set: brake written 34 us after the request.
+00:56:52.922 [motion] state LINE_FOLLOW -> BRAKED
+00:56:53.099 [imu] motion: stopped
+00:56:53.517 [imu] <<< wiggle RIGHT 4 deg, not counted as a turn
+00:56:54.300 [line] LOST: RL=00 for 1500 ms
+00:56:55.687 [scan] COARSE_SCAN -> FINE_SCAN
+00:56:58.621 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+00:56:58.622 [scan] angle -45: 1332 mm
+00:56:58.622 [scan] angle -40: 1419 mm
+00:56:58.622 [scan] angle -35: 274 mm  <- obstacle
+00:56:58.622 [scan] angle -25: 252 mm  <- obstacle
+00:56:58.622 [scan] angle 0: 243 mm  <- obstacle
+00:56:58.622 [scan] angle 10: 252 mm  <- obstacle
+00:56:58.622 [scan] angle 15: 261 mm  <- obstacle
+00:56:58.622 [scan] angle 20: 1397 mm
+00:56:58.622 [scan] angle 25: 1370 mm
+00:56:58.622 [scan] angle 45: 991 mm
+00:56:58.622 [scan] profile: closest 243 mm @ 0 deg, edges -35..15 deg, x -136..47 mm, width 183 mm, IN the path
+00:56:58.622 [scan] clearance L 9999 R 9999 mm (need 218), offset L 354 R 265 mm
+00:56:58.622 [scan] ACTION: BYPASS RIGHT   (scan took 5702 ms, budget 7000 ms)
+00:56:58.622 [scan] FINE_SCAN -> PLANNING
+00:56:58.622 [scan] PLANNING -> AVOIDING
+00:56:58.622 [motion] every STOP bit clear, 5708 ms after the first one was seen.
+00:56:58.622 [motion] avoid_cmd BYPASS right 265 mm (raw 0x109a): taken
+00:56:58.622 [motion] state BRAKED -> BYPASS
+00:56:58.874 [imu] >>> turning RIGHT
+00:56:58.987 [nav] junction, no barcode command: straight on
+00:56:58.988 [line] junction (GP7 black 80 ms) -> nav
+00:56:59.377 [line] line found (LOST_MS 1500)
+00:56:59.377 [barcode] REJECTED: malformed (bad_length)
+00:56:59.377 [barcode]   1 widths (1 letter = 29)
+00:56:59.377 [barcode]    0: B94
+00:56:59.490 [imu] turning RIGHT 70 deg/s, 2 mm/s, level | turns: 0 left, 0 right, facing 52 deg RIGHT of start | humps: none yet
+00:56:59.965 [imu] motion: stopped
+00:57:00.185 [scan] lane look 0 deg: 1042 mm (sent 511)
+00:57:00.185 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken
+00:57:00.317 [imu] motion: speeding up
+00:57:00.485 [imu] speeding up, 13 mm/s, level | turns: 0 left, 0 right, facing 71 deg RIGHT of start | humps: none yet
+00:57:00.871 [imu] motion: moving
+00:57:01.180 [line] LOST: RL=00 for 1500 ms
+00:57:01.268 [imu] <<< turned RIGHT 69 deg in 2.5 s  (turns so far: 0 left, 1 right)
+00:57:03.599 [imu] >>> turning LEFT
+00:57:04.477 [imu] turning RIGHT 4 deg/s, -1 mm/s, level | turns: 0 left, 1 right, facing 9 deg RIGHT of start | humps: none yet
+00:57:05.044 [imu] motion: moving
+00:57:05.475 [nav] junction, no barcode command: straight on
+00:57:05.475 [line] junction (GP7 black 80 ms) -> nav
+00:57:05.587 [imu] <<< turned LEFT 59 deg in 2.2 s  (turns so far: 1 left, 1 right)
+00:57:06.475 [line] line found (LOST_MS 1500)
+00:57:06.475 [barcode] REJECTED: malformed (bad_length)
+00:57:06.475 [barcode]   1 widths (1 letter = 29)
+00:57:06.475 [barcode]    0: B216
+00:57:07.387 [imu] >>> turning LEFT
+00:57:07.488 [imu] turning LEFT 48 deg/s, 68 mm/s, level | turns: 1 left, 1 right, facing 6 deg RIGHT of start | humps: none yet
+00:57:07.522 [nav] junction, no barcode command: straight on
+00:57:07.522 [line] junction (GP7 black 80 ms) -> nav
+00:57:07.910 [barcode] REJECTED: malformed (bad_length)
+00:57:07.910 [barcode]   1 widths (1 letter = 29)
+00:57:07.910 [barcode]    0: B94
+00:57:08.166 [imu] motion: stopped
+00:57:08.894 [imu] <<< turned LEFT 42 deg in 0.8 s  (turns so far: 2 left, 1 right)
+00:57:09.433 [scan] side look -45 deg: 79 mm (sent 79)
+00:57:09.443 [motion] avoid_cmd LOOK 79 mm (raw 0x04f3): taken
+00:57:09.644 [imu] >>> turning RIGHT
+00:57:09.700 [line] LOST: RL=00 for 1500 ms
+00:57:09.876 [line] RL=10 err=-90
+00:57:09.877 [line] line found (LOST_MS 1500)
+00:57:09.899 [line] RL=01 err=77
+00:57:09.932 [line] RL=00 err=6
+00:57:10.244 [nav] junction, no barcode command: straight on
+00:57:10.244 [line] junction (GP7 black 80 ms) -> nav
+00:57:10.488 [imu] turning RIGHT 12 deg/s, 15 mm/s, level | turns: 2 left, 1 right, facing 14 deg RIGHT of start | humps: none yet
+00:57:10.665 [nav] junction, no barcode command: straight on
+00:57:10.665 [line] junction (GP7 black 80 ms) -> nav
+00:57:10.931 [imu] motion: moving
+00:57:11.354 [barcode] REJECTED: malformed (bad_length)
+00:57:11.354 [barcode]   3 widths (1 letter = 29)
+00:57:11.354 [barcode]    0: B93 w337 B388
+00:57:11.364 [imu] <<< turned RIGHT 43 deg in 1.8 s  (turns so far: 2 left, 2 right)
+00:57:11.609 [imu] >>> turning LEFT
+00:57:11.664 [line] RL=10 err=-76
+00:57:11.731 [line] RL=00 err=-3
+00:57:12.441 [imu] motion: stopped
+00:57:13.136 [imu] <<< turned LEFT 42 deg in 0.8 s  (turns so far: 3 left, 2 right)
+00:57:13.237 [line] LOST: RL=00 for 1500 ms
+00:57:13.632 [scan] side look -45 deg: 1084 mm (sent 511)
+00:57:13.633 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken
+00:57:13.798 [imu] >>> turning RIGHT
+00:57:14.321 [line] RL=10 err=-98
+00:57:14.321 [line] line found (LOST_MS 1500)
+00:57:14.354 [line] RL=00 err=-37
+00:57:14.365 [line] RL=10 err=-96
+00:57:14.376 [line] RL=00 err=21
+00:57:14.387 [line] RL=01 err=95
+00:57:14.419 [line] RL=00 err=18
+00:57:14.489 [imu] turning RIGHT 15 deg/s, 3 mm/s, level | turns: 3 left, 2 right, facing 15 deg RIGHT of start | humps: none yet
+00:57:14.544 [line] RL=01 err=99
+00:57:14.632 [line] RL=00 err=-3
+00:57:14.643 [line] RL=10 err=-91
+00:57:14.676 [line] RL=00 err=-11
+00:57:14.700 [line] RL=10 err=-99
+00:57:14.777 [line] RL=00 err=-7
+00:57:15.176 [imu] motion: moving
+00:57:15.577 [imu] <<< turned RIGHT 44 deg in 1.8 s  (turns so far: 3 left, 3 right)
+00:57:16.041 [imu] >>> turning LEFT
+00:57:16.274 [line] LOST: RL=00 for 1500 ms
+00:57:16.488 [imu] turning LEFT 61 deg/s, 28 mm/s, level | turns: 3 left, 3 right, facing 10 deg LEFT of start | humps: none yet
+00:57:17.488 [imu] turning RIGHT 6 deg/s, 33 mm/s, level | turns: 3 left, 3 right, facing 40 deg LEFT of start | humps: none yet
+00:57:17.899 [imu] motion: moving
+00:57:18.320 [imu] <<< turned LEFT 55 deg in 2.4 s  (turns so far: 4 left, 3 right)
+00:57:19.853 [nav] junction, no barcode command: straight on
+00:57:19.853 [line] junction (GP7 black 80 ms) -> nav
+00:57:20.598 [line] line found (LOST_MS 1500)
+00:57:20.598 [barcode] REJECTED: malformed (bad_length)
+00:57:20.598 [barcode]   1 widths (1 letter = 29)
+00:57:20.598 [barcode]    0: B164
+00:57:22.387 [line] LOST: RL=00 for 1500 ms
+00:57:23.031 [nav] junction, no barcode command: straight on
+00:57:23.031 [line] junction (GP7 black 80 ms) -> nav
+00:57:23.331 [imu] >>> turning RIGHT
+00:57:23.488 [imu] turning RIGHT 59 deg/s, 65 mm/s, level | turns: 4 left, 3 right, facing 27 deg LEFT of start | humps: none yet
+00:57:24.209 [motion] state BYPASS -> LINE_SEARCH
+00:57:24.219 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND
+00:57:24.220 [scan] AVOIDING -> MONITORING
+00:57:24.489 [imu] turning  0 deg/s, 5 mm/s, level | turns: 4 left, 3 right, facing 25 deg RIGHT of start | humps: none yet
+00:57:24.743 [imu] motion: moving
+00:57:24.811 [line] line found (LOST_MS 1500)
+00:57:24.811 [barcode] REJECTED: malformed (bad_length)
+00:57:24.811 [barcode]   1 widths (1 letter = 29)
+00:57:24.811 [barcode]    0: B372
+00:57:25.164 [line] RL=01 err=74
+00:57:25.198 [imu] <<< turned RIGHT 64 deg in 2.0 s  (turns so far: 4 left, 4 right)
+00:57:25.241 [line] RL=00 err=1
+00:57:25.263 [line] RL=10 err=-86
+00:57:25.342 [line] RL=00 err=-12
+00:57:25.742 [imu] >>> turning RIGHT

@@ -1,0 +1,3052 @@
+# Counted bypass trials, batch 1 - FR-18, FR-19, NFR-07, NFR-08
+# 2026-11-04 04:07-04:21, demo box (90 x 200 x 130 mm) on a straight line, image built 03:32
+# (right-encoder scaling 1590, C_pass 248, lane check, retry limit, IMU heading with a 1.5 s line average).
+# Contact: answered by the tester after each trial. Everything else from the console below.
+#
+# Trial  Contact  Side  Sidestep  Side looks (mm)      Bypass end        Result             STOP_SCAN->line found
+#  1     no       L     ~336      241, 1214            27 mm, -4 deg     line found         -
+#  2     no       L     273       189, 1218            13 mm, -4 deg     line found         28.0 s
+#  3     no       L     273       191, 1213            14 mm, -4 deg     line found         27.9 s
+#  4     no       -     -         -                    -                 no bypass: IMU "tipped over" after 11 s
+#  5     no       L     320       233, 1212            30 mm, -4 deg     line found         29.0 s
+#  6     no       L     313       247, 1223            0 mm, -4 deg      line found (search) -
+#  7     YES      L     314       187, 1206            26 mm, -4 deg     line found         29.1 s
+#  8     YES      -     -         -                    -                 no scan, no stop: lost the line after 11 s (contact without detection?)
+#  9     YES      R     315       1978, 2009, 1393     2 mm, -4 deg      LINE LOST (box never seen)
+# 10     YES      L     298       far, 1365, 1337      0 mm, -4 deg      LINE LOST (box never seen)
+#
+# Contact was always on the turn back in. Box not moved.
+# Stop distance at the first scan (NFR-08): 223-248 mm in every bypass.
+# Cause of 9-10 (and likely 7): the line direction was a 1.5 s heading average = ~7 cm of travel at
+# line-following speed; line following wandered 2 R -> 28 L over 8 s, so "parallel" was ~20 deg off:
+# probes missed the box, the car turned in onto it and its estimate of the line was wrong.
+# Fixed 04:32: average over 400 mm of travel (MOTION_HD_LINE_MM) + 80 mm margin past the estimate.
+# Batch 1 is NOT the final evidence: re-run 10 trials with the 04:32 image.
+
+04:07:58.695 [motion] bypass PARALLEL: 315 mm out, heading +70 deg to the line, IMU"}
+04:07:58.895 [imu] >>> turning RIGHT"}
+04:07:59.176 [imu] turning RIGHT 66 deg/s, 49 mm/s, level | turns: 2 left, 0 right, facing 67 deg LEFT of start | humps: none yet"}
+04:07:59.815 [motion] bypass STEP: 314 mm out, heading +4 deg to the line, IMU"}
+04:08:00.177 [imu] turning LEFT 5 deg/s, 22 mm/s, level | turns: 2 left, 0 right, facing 22 deg LEFT of start | humps: none yet"}
+04:08:00.537 [imu] motion: moving"}
+04:08:00.924 [imu] <<< turned RIGHT 64 deg in 2.2 s  (turns so far: 2 left, 1 right)"}
+04:08:02.584 [motion] bypass PROBE_IN: 339 mm out, heading +8 deg to the line, IMU"}
+04:08:02.862 [imu] >>> turning RIGHT"}
+04:08:03.177 [imu] turning RIGHT 71 deg/s, 35 mm/s, level | turns: 2 left, 1 right | humps: none yet"}
+04:08:03.541 [motion] bypass LOOK: 341 mm out, heading -41 deg to the line, IMU"}
+04:08:03.818 [imu] motion: stopped"}
+04:08:04.435 [imu] <<< turned RIGHT 50 deg in 1.0 s  (turns so far: 2 left, 2 right)"}
+04:08:04.976 [scan] side look 45 deg: 241 mm (sent 241)"}
+04:08:04.988 [motion] avoid_cmd LOOK 241 mm (raw 0x0f13): taken"}
+04:08:04.988 [motion] bypass PROBE_OUT: 341 mm out, heading -43 deg to the line, IMU"}
+04:08:05.045 [scan] side look 45 deg: 241 mm (sent 241)"}
+04:08:05.045 [motion] avoid_cmd LOOK 241 mm (raw 0x0f13): taken"}
+04:08:05.045 [motion] bypass PROBE_OUT: 341 mm out, heading -43 deg to the line, IMU"}
+04:08:05.153 [imu] >>> turning LEFT"}
+04:08:05.717 [motion] bypass STEP: 341 mm out, heading -4 deg to the line, IMU"}
+04:08:06.174 [imu] motion: moving"}
+04:08:06.574 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 3 left, 2 right)"}
+04:08:06.894 [motion] bypass PROBE_IN: 337 mm out, heading -2 deg to the line, IMU"}
+04:08:07.052 [imu] >>> turning RIGHT"}
+04:08:07.175 [imu] turning RIGHT 53 deg/s, 68 mm/s, level | turns: 3 left, 2 right, facing 7 deg LEFT of start | humps: none yet"}
+04:08:07.238 [motion] bypass STEP: 341 mm out, heading -4 deg to the line, IMU"}
+04:08:07.621 [imu] motion: moving"}
+04:08:07.626 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 3 left, 2 right)"}
+04:08:07.638 [motion] bypass PROBE_IN: 337 mm out, heading -2 deg to the line, IMU"}
+04:08:07.640 [motion] bypass LOOK: 338 mm out, heading -41 deg to the line, IMU"}
+04:08:07.836 [imu] motion: stopped"}
+04:08:08.567 [imu] <<< turned RIGHT 43 deg in 0.7 s  (turns so far: 3 left, 3 right)"}
+04:08:09.084 [scan] side look 45 deg: 1214 mm (sent 511)"}
+04:08:09.086 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:08:09.086 [motion] bypass PROBE_OUT: 339 mm out, heading -45 deg to the line, IMU"}
+04:08:09.339 [imu] >>> turning LEFT"}
+04:08:09.840 [motion] bypass CLEAR: 338 mm out, heading -4 deg to the line, IMU"}
+04:08:10.174 [imu] turning RIGHT 2 deg/s, 21 mm/s, level | turns: 3 left, 3 right, facing 17 deg LEFT of start | humps: none yet"}
+04:08:10.307 [imu] motion: moving"}
+04:08:10.962 [imu] <<< turned LEFT 44 deg in 1.8 s  (turns so far: 4 left, 3 right)"}
+04:08:11.232 [motion] bypass TURN_IN: 336 mm out, heading -1 deg to the line, IMU"}
+04:08:11.377 [imu] >>> turning RIGHT"}
+04:08:12.175 [imu] turning RIGHT 74 deg/s, 3 mm/s, level | turns: 4 left, 3 right, facing 37 deg RIGHT of start | humps: none yet"}
+04:08:12.327 [motion] bypass STEP_IN: 336 mm out, heading -66 deg to the line, IMU"}
+04:08:12.862 [imu] motion: moving"}
+04:08:13.256 [imu] <<< turned RIGHT 64 deg in 1.9 s  (turns so far: 4 left, 4 right)"}
+04:08:14.682 [motion] bypass ONTO: 142 mm out, heading -67 deg to the line, IMU"}
+04:08:14.763 [line] junction (GP7 black 80 ms) -> nav"}
+04:08:14.763 [nav] junction, no barcode command: straight on"}
+04:08:15.506 [imu] !! BUMP 2.7 g (car keeps going)"}
+04:08:16.147 [motion] bypass ALONG: 28 mm out, heading -67 deg to the line, IMU"}
+04:08:16.174 [imu] BUMP, 94 mm/s, level | turns: 4 left, 4 right, facing 49 deg RIGHT of start | humps: none yet"}
+04:08:16.351 [line] line found (LOST_MS 1500)"}
+04:08:16.351 [barcode] REJECTED: malformed (bad_length)"}
+04:08:16.351 [barcode]   1 widths (1 letter = 29)"}
+04:08:16.351 [barcode]    0: B334"}
+04:08:16.358 [imu] >>> turning LEFT"}
+04:08:16.974 [nav] junction, no barcode command: straight on"}
+04:08:16.974 [line] junction (GP7 black 80 ms) -> nav"}
+04:08:17.176 [imu] turning LEFT 72 deg/s, -2 mm/s, level | turns: 4 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:08:17.232 [motion] bypass DONE: 27 mm out, heading -4 deg to the line, IMU"}
+04:08:17.244 [motion] state BYPASS -> LINE_SEARCH"}
+04:08:17.256 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:08:17.267 [scan] AVOIDING -> MONITORING"}
+04:08:17.422 [imu] motion: moving"}
+04:08:17.467 [barcode] REJECTED: malformed (bad_length)"}
+04:08:17.467 [barcode]   1 widths (1 letter = 29)"}
+04:08:17.467 [barcode]    0: B116"}
+04:08:18.093 [line] RL=10 err=-96"}
+04:08:18.147 [line] RL=11 err=-13"}
+04:08:18.174 [line] RL=01 err=67"}
+04:08:18.174 [imu] turning RIGHT 35 deg/s, 36 mm/s, level | turns: 4 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:08:18.240 [line] RL=00 err=12"}
+04:08:18.749 [line] RL=01 err=74"}
+04:08:18.792 [line] RL=11 err=16"}
+04:08:18.859 [line] RL=10 err=-89"}
+04:08:18.894 [line] RL=00 err=-11"}
+04:08:19.175 [imu] turning RIGHT 27 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:08:19.276 [line] RL=10 err=-75"}
+04:08:19.328 [line] RL=11 err=0"}
+04:08:19.342 [line] RL=01 err=46"}
+04:08:19.398 [line] RL=00 err=8"}
+04:08:19.907 [line] RL=01 err=85"}
+04:08:19.962 [line] RL=10 err=-82"}
+04:08:20.024 [line] RL=00 err=-8"}
+04:08:20.175 [imu] turning LEFT 23 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 25 deg LEFT of start | humps: none yet"}
+04:08:20.461 [line] RL=10 err=-93"}
+04:08:20.506 [line] RL=11 err=0"}
+04:08:20.539 [line] RL=01 err=87"}
+04:08:20.574 [line] RL=00 err=10"}
+04:08:21.058 [line] RL=01 err=74"}
+04:08:21.106 [line] RL=11 err=24"}
+04:08:21.127 [line] RL=10 err=-82"}
+04:08:21.175 [imu] turning LEFT 43 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 24 deg LEFT of start | humps: none yet"}
+04:08:21.186 [line] RL=00 err=-15"}
+04:08:21.552 [line] RL=10 err=-94"}
+04:08:21.619 [line] RL=11 err=-21"}
+04:08:21.685 [line] RL=00 err=17"}
+04:08:22.073 [line] RL=01 err=71"}
+04:08:22.150 [line] RL=10 err=-79"}
+04:08:22.175 [imu] turning LEFT 33 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 25 deg LEFT of start | humps: none yet"}
+04:08:22.219 [line] RL=00 err=-23"}
+04:08:22.547 [line] RL=10 err=-90"}
+04:08:22.585 [line] RL=00 err=-9"}
+04:08:22.629 [line] RL=01 err=50"}
+04:08:22.640 [line] RL=00 err=17"}
+04:08:23.105 [line] RL=01 err=80"}
+04:08:23.157 [line] RL=10 err=-60"}
+04:08:23.175 [imu] turning LEFT 46 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 28 deg LEFT of start | humps: none yet"}
+04:08:23.214 [line] RL=00 err=-17"}
+04:08:23.652 [line] RL=10 err=-80"}
+04:08:23.696 [line] RL=00 err=41"}
+04:08:23.706 [line] RL=01 err=82"}
+04:08:23.751 [line] RL=00 err=17"}
+04:08:24.175 [imu] turning LEFT 39 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 27 deg LEFT of start | humps: none yet"}
+04:08:24.193 [line] RL=01 err=77"}
+04:08:24.251 [line] RL=10 err=-76"}
+04:08:24.298 [line] RL=00 err=-18"}
+04:08:24.629 [line] RL=10 err=-77"}
+04:08:24.684 [line] RL=01 err=62"}
+04:08:24.739 [line] RL=00 err=13"}
+04:08:25.175 [imu] turning LEFT 39 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 28 deg LEFT of start | humps: none yet"}
+04:08:25.219 [line] RL=01 err=65"}
+04:08:25.272 [line] RL=10 err=-58"}
+04:08:25.342 [line] RL=00 err=-13"}
+04:08:25.674 [line] RL=10 err=-96"}
+04:08:25.716 [line] RL=01 err=81"}
+04:08:25.775 [line] RL=00 err=15"}
+04:08:26.175 [imu] turning LEFT 46 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 31 deg LEFT of start | humps: none yet"}
+04:08:26.197 [line] RL=01 err=85"}
+04:08:26.252 [line] RL=10 err=-87"}
+04:08:26.296 [line] RL=00 err=-16"}
+04:08:26.728 [line] RL=10 err=-83"}
+04:08:26.773 [line] RL=01 err=57"}
+04:08:26.829 [line] RL=00 err=8"}
+04:08:27.174 [imu] turning LEFT 35 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 30 deg LEFT of start | humps: none yet"}
+04:08:27.252 [line] RL=01 err=82"}
+04:08:27.306 [line] RL=10 err=-61"}
+04:08:27.351 [line] RL=00 err=-20"}
+04:08:27.750 [line] RL=10 err=-100"}
+04:08:27.805 [line] RL=11 err=29"}
+04:08:27.817 [line] RL=01 err=84"}
+04:08:27.872 [line] RL=00 err=12"}
+04:08:28.175 [imu] turning LEFT 20 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 32 deg LEFT of start | humps: none yet"}
+04:08:28.274 [line] RL=01 err=72"}
+04:08:28.329 [line] RL=10 err=-54"}
+04:08:28.385 [line] RL=00 err=-13"}
+04:08:28.796 [line] RL=10 err=-62"}
+04:08:28.807 [line] RL=00 err=-42"}
+04:08:28.818 [line] RL=10 err=-90"}
+04:08:28.841 [line] RL=00 err=35"}
+04:08:28.852 [line] RL=01 err=89"}
+04:08:28.907 [line] RL=00 err=13"}
+04:08:29.174 [imu] turning LEFT 27 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 34 deg LEFT of start | humps: none yet"}
+04:08:29.242 [line] RL=01 err=64"}
+04:08:29.308 [line] RL=11 err=21"}
+04:08:29.317 [line] RL=10 err=-63"}
+04:08:29.429 [line] RL=00 err=-16"}
+04:08:29.585 [line] RL=10 err=-75"}
+04:08:29.695 [line] RL=11 err=-4"}
+04:08:29.706 [line] RL=01 err=81"}
+04:08:29.782 [line] RL=00 err=22"}
+04:08:30.024 [line] RL=01 err=64"}
+04:08:30.092 [line] RL=11 err=-15"}
+04:08:30.105 [line] RL=10 err=-85"}
+04:08:30.174 [line] RL=00 err=-19"}
+04:08:30.174 [imu] turning LEFT 30 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 43 deg LEFT of start | humps: none yet"}
+04:08:30.561 [line] RL=10 err=-78"}
+04:08:30.606 [line] RL=01 err=89"}
+04:08:30.650 [line] RL=00 err=10"}
+04:08:31.174 [imu] turning LEFT 54 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 44 deg LEFT of start | humps: none yet"}
+04:08:31.652 [motion] STOP_SCAN set: brake written 37 us after the request."}
+04:08:31.652 [scan] MONITORING -> COARSE_SCAN"}
+04:08:31.663 [motion] state LINE_FOLLOW -> BRAKED"}
+04:08:31.862 [imu] motion: stopped"}
+04:08:32.151 [line] LOST: RL=00 for 1500 ms"}
+04:08:32.525 [imu] <<< turned LEFT 119 deg in 15.5 s  (turns so far: 5 left, 4 right)"}
+04:08:34.499 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:08:37.330 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:08:37.330 [scan] angle -45: far"}
+04:08:37.330 [scan] angle -35: far"}
+04:08:37.330 [scan] angle -30: 320 mm  <- obstacle"}
+04:08:37.330 [scan] angle -25: 315 mm  <- obstacle"}
+04:08:37.331 [scan] angle 0: 223 mm  <- obstacle"}
+04:08:37.332 [scan] angle 25: 334 mm  <- obstacle"}
+04:08:37.339 [scan] angle 30: 434 mm"}
+04:08:37.341 [scan] angle 35: 432 mm"}
+04:08:37.341 [scan] angle 45: 430 mm"}
+04:08:37.341 [scan] profile: closest 223 mm @ 0 deg, edges -30..25 deg, x -135..115 mm, width 250 mm, IN the path"}
+04:08:37.341 [scan] clearance L 9999 R 9999 mm (need 248), offset L 383 R 363 mm"}
+04:08:37.341 [scan] ACTION: BYPASS RIGHT   (scan took 5678 ms, budget 7000 ms)"}
+04:08:37.341 [scan] FINE_SCAN -> PLANNING"}
+04:08:37.341 [scan] PLANNING -> AVOIDING"}
+04:08:37.346 [motion] every STOP bit clear, 5688 ms after the first one was seen."}
+04:08:37.346 [motion] avoid_cmd BYPASS right 363 mm (raw 0x16ba): taken"}
+04:08:37.353 [motion] bypass OUT: 0 mm out, heading -27 deg to the line, IMU"}
+04:08:37.353 [motion] state BRAKED -> BYPASS"}
+04:08:37.512 [imu] >>> turning RIGHT"}
+04:08:38.179 [imu] turning RIGHT 72 deg/s, -1 mm/s, level | turns: 5 left, 4 right, facing 24 deg LEFT of start | humps: none yet"}
+04:08:38.281 [nav] button GP21"}
+04:08:38.281 [nav] mission RUNNING -> PAUSED"}
+04:08:38.284 [motion] state BYPASS -> IDLE"}
+04:08:38.316 [scan] AVOIDING -> IDLE"}
+04:08:38.472 [imu] motion: stopped"}
+04:08:39.210 [imu] <<< turned RIGHT 55 deg in 0.9 s  (turns so far: 5 left, 5 right)"}
+04:08:41.678 [imu] >>> picked up (hands on)"}
+04:08:41.932 [nav] junction while PAUSED: ignored"}
+04:08:41.932 [line] junction (GP7 black 80 ms) -> nav"}
+04:08:42.779 [imu] !!! STOPPING: car picked up (in hand 1.2 s) !!!"}
+04:08:42.780 [nav] IMU fault"}
+04:08:42.780 [imu]     caught 1100.2 ms after the first lift; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:08:42.780 [nav] mission PAUSED -> FAULT"}
+04:08:42.780 [line] line found (LOST_MS 1500)"}
+04:08:42.780 [barcode] REJECTED: aborted (cancelled)"}
+04:08:42.780 [nav] buzzer: 1 x 800 ms"}
+04:08:42.783 [imu] mission over (FAULT): turns: 10 (5 left, 5 right), humps: 0 (highest 0 mm), bumps: 1"}
+04:08:42.793 [motion] STOP_IMU set: brake written 78 us after the request."}
+04:08:43.075 [line] RL=11 err=0"}
+04:08:47.006 [line] RL=10 err=-25"}
+04:08:47.366 [line] RL=00 err=-28"}
+04:08:48.674 [imu] <<< put down (hands off)"}
+04:08:48.686 [imu] motion: moving"}
+04:08:48.783 [imu] motion: stopped"}
+04:08:48.863 [line] LOST: RL=00 for 1500 ms"}
+04:08:49.062 [imu] motion: stopped"}
+04:08:50.220 [nav] button GP20"}
+04:08:50.220 [nav] mission FAULT -> CALIBRATING"}
+04:08:51.222 [line] calibration OK: GP26 ok (white 180, black 980, rise 660) GP27 ok (white 307, black 1107, rise 787)"}
+04:08:51.222 [imu] cal ok: offsets x=28 y=-11 z=65 mg, spread 48 mg"}
+04:08:51.222 [imu] -> nav: CAL_OK_IMU"}
+04:08:51.234 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:08:51.235 [nav] mission CALIBRATING -> READY"}
+04:08:51.235 [nav] buzzer: 1 x 100 ms"}
+04:08:51.235 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:08:51.246 [motion] every STOP bit clear, 8466 ms after the first one was seen."}
+04:08:51.246 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:08:51.840 [line] RL=10 err=-60"}
+04:08:51.840 [line] line found (LOST_MS 1500)"}
+04:08:52.668 [line] RL=00 err=-20"}
+04:08:52.909 [line] RL=10 err=-76"}
+04:08:52.988 [line] RL=11 err=25"}
+04:08:53.001 [line] RL=01 err=65"}
+04:08:53.077 [line] RL=11 err=35"}
+04:08:53.227 [line] RL=01 err=76"}
+04:08:53.275 [imu] >>> picked up (hands on)"}
+04:08:54.476 [imu] <<< put down (hands off)"}
+04:08:54.925 [nav] button GP20"}
+04:08:54.926 [nav] mission READY -> RUNNING"}
+04:08:54.928 [imu] mission start: turns, humps, bumps and heading reset"}
+04:08:54.930 [scan] IDLE -> MONITORING"}
+04:08:54.937 [motion] state IDLE -> LINE_FOLLOW"}
+04:08:55.108 [line] RL=10 err=-64"}
+04:08:55.176 [line] RL=00 err=-12"}
+04:08:55.517 [line] RL=10 err=-74"}
+04:08:55.527 [imu] >>> turning RIGHT"}
+04:08:55.575 [line] RL=01 err=77"}
+04:08:55.640 [line] RL=00 err=16"}
+04:08:56.050 [line] RL=01 err=68"}
+04:08:56.116 [line] RL=10 err=-78"}
+04:08:56.175 [imu] turning LEFT 26 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 3 deg LEFT of start | humps: none yet"}
+04:08:56.195 [line] RL=00 err=-6"}
+04:08:56.472 [line] RL=10 err=-68"}
+04:08:56.538 [line] RL=01 err=55"}
+04:08:56.594 [line] RL=00 err=24"}
+04:08:56.904 [line] RL=01 err=72"}
+04:08:56.994 [line] RL=10 err=-75"}
+04:08:57.066 [line] RL=00 err=-9"}
+04:08:57.174 [imu] turning LEFT 7 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 6 deg LEFT of start | humps: none yet"}
+04:08:57.358 [line] RL=10 err=-79"}
+04:08:57.416 [line] RL=11 err=15"}
+04:08:57.432 [line] RL=01 err=22"}
+04:08:57.492 [line] RL=00 err=11"}
+04:08:57.826 [line] RL=01 err=100"}
+04:08:57.873 [line] RL=00 err=-14"}
+04:08:57.882 [line] RL=11 err=22"}
+04:08:57.903 [line] RL=10 err=-87"}
+04:08:57.949 [line] RL=00 err=-13"}
+04:08:58.175 [imu] turning RIGHT 18 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 8 deg LEFT of start | humps: none yet"}
+04:08:58.375 [line] RL=10 err=-75"}
+04:08:58.424 [line] RL=01 err=88"}
+04:08:58.473 [line] RL=00 err=10"}
+04:08:58.985 [line] RL=01 err=82"}
+04:08:59.003 [line] RL=01 err=82"}
+04:08:59.029 [line] RL=10 err=-64"}
+04:08:59.084 [line] RL=00 err=-9"}
+04:08:59.175 [imu] turning LEFT 29 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 10 deg LEFT of start | humps: none yet"}
+04:08:59.527 [line] RL=10 err=-59"}
+04:08:59.549 [line] RL=10 err=-87"}
+04:08:59.584 [line] RL=11 err=13"}
+04:08:59.606 [line] RL=01 err=95"}
+04:08:59.644 [line] RL=00 err=7"}
+04:09:00.116 [line] RL=01 err=96"}
+04:09:00.160 [line] RL=11 err=-32"}
+04:09:00.176 [line] RL=10 err=-82"}
+04:09:00.176 [imu] turning LEFT 50 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 7 deg LEFT of start | humps: none yet"}
+04:09:00.238 [line] RL=00 err=-3"}
+04:09:00.717 [line] RL=10 err=-73"}
+04:09:00.796 [line] RL=01 err=76"}
+04:09:00.840 [line] RL=00 err=13"}
+04:09:01.174 [imu] turning LEFT 26 deg/s, 47 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:09:01.339 [line] RL=01 err=77"}
+04:09:01.394 [line] RL=10 err=-56"}
+04:09:01.439 [line] RL=00 err=-12"}
+04:09:01.904 [line] RL=10 err=-90"}
+04:09:01.959 [line] RL=11 err=36"}
+04:09:01.967 [line] RL=01 err=89"}
+04:09:02.011 [line] RL=00 err=13"}
+04:09:02.175 [imu] turning RIGHT 11 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 1 deg RIGHT of start | humps: none yet"}
+04:09:02.527 [line] RL=01 err=90"}
+04:09:02.574 [line] RL=10 err=-53"}
+04:09:02.650 [line] RL=00 err=-6"}
+04:09:03.107 [line] RL=10 err=-93"}
+04:09:03.152 [line] RL=11 err=48"}
+04:09:03.163 [line] RL=01 err=86"}
+04:09:03.176 [imu] turning RIGHT 43 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 7 deg LEFT of start | humps: none yet"}
+04:09:03.206 [line] RL=00 err=14"}
+04:09:03.774 [line] RL=10 err=-64"}
+04:09:03.828 [line] RL=00 err=-10"}
+04:09:04.175 [imu] turning RIGHT 24 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 17 deg LEFT of start | humps: none yet"}
+04:09:04.323 [line] RL=10 err=-66"}
+04:09:04.362 [line] RL=00 err=14"}
+04:09:04.374 [line] RL=01 err=61"}
+04:09:04.407 [line] RL=00 err=24"}
+04:09:04.802 [line] RL=01 err=77"}
+04:09:04.870 [line] RL=10 err=-63"}
+04:09:04.927 [line] RL=00 err=-25"}
+04:09:05.174 [imu] turning RIGHT 17 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 18 deg LEFT of start | humps: none yet"}
+04:09:05.339 [line] RL=10 err=-75"}
+04:09:05.391 [line] RL=00 err=46"}
+04:09:05.395 [line] RL=01 err=66"}
+04:09:05.439 [line] RL=00 err=14"}
+04:09:05.891 [line] RL=01 err=74"}
+04:09:05.948 [line] RL=10 err=-63"}
+04:09:06.001 [line] RL=00 err=-11"}
+04:09:06.032 [scan] MONITORING -> COARSE_SCAN"}
+04:09:06.032 [motion] STOP_SCAN set: brake written 36 us after the request."}
+04:09:06.051 [motion] state LINE_FOLLOW -> BRAKED"}
+04:09:06.176 [imu] turning  0 deg/s, 42 mm/s, level | turns: 0 left, 0 right, facing 18 deg LEFT of start | humps: none yet"}
+04:09:06.238 [imu] motion: stopped"}
+04:09:06.824 [imu] <<< turned LEFT 15 deg in 10.6 s  (turns so far: 1 left, 0 right)"}
+04:09:07.507 [line] LOST: RL=00 for 1500 ms"}
+04:09:08.818 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:09:11.507 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:09:11.507 [scan] angle -45: 1226 mm"}
+04:09:11.507 [scan] angle -25: 1500 mm"}
+04:09:11.513 [scan] angle -20: 1220 mm"}
+04:09:11.513 [scan] angle -15: 1506 mm"}
+04:09:11.513 [scan] angle -10: 262 mm  <- obstacle"}
+04:09:11.513 [scan] angle 0: 245 mm  <- obstacle"}
+04:09:11.513 [scan] angle 25: 249 mm  <- obstacle"}
+04:09:11.513 [scan] angle 35: 267 mm  <- obstacle"}
+04:09:11.513 [scan] angle 40: 1113 mm"}
+04:09:11.513 [scan] angle 45: 1406 mm"}
+04:09:11.513 [scan] profile: closest 245 mm @ 0 deg, edges -10..35 deg, x -25..132 mm, width 157 mm, IN the path"}
+04:09:11.514 [scan] clearance L 9999 R 9999 mm (need 248), offset L 273 R 380 mm"}
+04:09:11.516 [scan] ACTION: BYPASS LEFT   (scan took 5473 ms, budget 7000 ms)"}
+04:09:11.516 [scan] FINE_SCAN -> PLANNING"}
+04:09:11.516 [scan] PLANNING -> AVOIDING"}
+04:09:11.525 [motion] every STOP bit clear, 5488 ms after the first one was seen."}
+04:09:11.525 [motion] avoid_cmd BYPASS left 273 mm (raw 0x1112): taken"}
+04:09:11.528 [motion] bypass OUT: 0 mm out, heading +9 deg to the line, IMU"}
+04:09:11.528 [motion] state BRAKED -> BYPASS"}
+04:09:11.688 [imu] >>> turning LEFT"}
+04:09:12.175 [imu] turning LEFT 71 deg/s, 1 mm/s, level | turns: 1 left, 0 right, facing 52 deg LEFT of start | humps: none yet"}
+04:09:12.502 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:09:12.691 [imu] motion: stopped"}
+04:09:13.034 [scan] lane look 0 deg: 2407 mm (sent 511)"}
+04:09:13.040 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:09:13.045 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:09:13.468 [imu] motion: moving"}
+04:09:13.565 [imu] <<< turned LEFT 60 deg in 1.9 s  (turns so far: 2 left, 0 right)"}
+04:09:16.259 [motion] bypass PARALLEL: 274 mm out, heading +69 deg to the line, IMU"}
+04:09:16.403 [imu] >>> turning RIGHT"}
+04:09:17.176 [imu] turning RIGHT 73 deg/s, 5 mm/s, level | turns: 2 left, 0 right, facing 23 deg LEFT of start | humps: none yet"}
+04:09:17.326 [motion] bypass STEP: 272 mm out, heading +4 deg to the line, IMU"}
+04:09:17.702 [imu] motion: moving"}
+04:09:18.115 [imu] <<< turned RIGHT 65 deg in 1.8 s  (turns so far: 2 left, 1 right)"}
+04:09:20.072 [motion] bypass PROBE_IN: 285 mm out, heading +3 deg to the line, IMU"}
+04:09:20.263 [imu] >>> turning RIGHT"}
+04:09:20.861 [motion] bypass LOOK: 285 mm out, heading -41 deg to the line, IMU"}
+04:09:21.061 [imu] motion: stopped"}
+04:09:21.788 [imu] <<< turned RIGHT 48 deg in 0.8 s  (turns so far: 2 left, 2 right)"}
+04:09:22.317 [scan] side look 45 deg: 189 mm (sent 189)"}
+04:09:22.330 [motion] avoid_cmd LOOK 189 mm (raw 0x0bd3): taken"}
+04:09:22.330 [motion] bypass PROBE_OUT: 285 mm out, heading -44 deg to the line, IMU"}
+04:09:22.528 [imu] >>> turning LEFT"}
+04:09:23.083 [motion] bypass STEP: 284 mm out, heading -4 deg to the line, IMU"}
+04:09:23.173 [imu] turning LEFT 16 deg/s, 4 mm/s, level | turns: 2 left, 2 right, facing 8 deg LEFT of start | humps: none yet"}
+04:09:23.573 [imu] motion: moving"}
+04:09:23.972 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 3 left, 2 right)"}
+04:09:24.262 [motion] bypass PROBE_IN: 279 mm out, heading -3 deg to the line, IMU"}
+04:09:24.406 [imu] >>> turning RIGHT"}
+04:09:24.977 [motion] bypass LOOK: 280 mm out, heading -41 deg to the line, IMU"}
+04:09:25.167 [imu] motion: stopped"}
+04:09:25.911 [imu] <<< turned RIGHT 42 deg in 0.7 s  (turns so far: 3 left, 3 right)"}
+04:09:26.421 [scan] side look 45 deg: 1218 mm (sent 511)"}
+04:09:26.422 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:09:26.422 [motion] bypass PROBE_OUT: 280 mm out, heading -45 deg to the line, IMU"}
+04:09:26.596 [imu] >>> turning LEFT"}
+04:09:27.184 [motion] bypass CLEAR: 280 mm out, heading -4 deg to the line, IMU"}
+04:09:27.623 [imu] motion: moving"}
+04:09:28.016 [imu] <<< turned LEFT 42 deg in 1.5 s  (turns so far: 4 left, 3 right)"}
+04:09:28.573 [motion] bypass TURN_IN: 274 mm out, heading -3 deg to the line, IMU"}
+04:09:28.717 [imu] >>> turning RIGHT"}
+04:09:29.174 [imu] turning RIGHT 74 deg/s, 35 mm/s, level | turns: 4 left, 3 right, facing 25 deg RIGHT of start | humps: none yet"}
+04:09:29.632 [motion] bypass STEP_IN: 275 mm out, heading -66 deg to the line, IMU"}
+04:09:30.174 [imu] turning  0 deg/s, 40 mm/s, level | turns: 4 left, 3 right, facing 58 deg RIGHT of start | humps: none yet"}
+04:09:30.208 [imu] motion: moving"}
+04:09:30.595 [imu] <<< turned RIGHT 64 deg in 1.9 s  (turns so far: 4 left, 4 right)"}
+04:09:31.428 [motion] bypass ONTO: 129 mm out, heading -67 deg to the line, IMU"}
+04:09:31.506 [line] junction (GP7 black 80 ms) -> nav"}
+04:09:31.506 [nav] junction, no barcode command: straight on"}
+04:09:32.883 [motion] bypass ALONG: 13 mm out, heading -67 deg to the line, IMU"}
+04:09:32.973 [line] line found (LOST_MS 1500)"}
+04:09:32.973 [barcode] REJECTED: malformed (bad_length)"}
+04:09:32.973 [barcode]   1 widths (1 letter = 29)"}
+04:09:32.973 [barcode]    0: B309"}
+04:09:33.063 [imu] >>> turning LEFT"}
+04:09:33.174 [imu] turning LEFT 50 deg/s, 68 mm/s, level | turns: 4 left, 4 right, facing 48 deg RIGHT of start | humps: none yet"}
+04:09:33.683 [line] junction (GP7 black 80 ms) -> nav"}
+04:09:33.683 [nav] junction, no barcode command: straight on"}
+04:09:33.972 [motion] bypass DONE: 13 mm out, heading -4 deg to the line, IMU"}
+04:09:33.984 [motion] state BYPASS -> LINE_SEARCH"}
+04:09:33.998 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:09:33.998 [scan] AVOIDING -> MONITORING"}
+04:09:34.034 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:09:34.034 [scan] AVOIDING -> MONITORING"}
+04:09:34.108 [barcode] REJECTED: malformed (bad_length)"}
+04:09:34.109 [barcode]   1 widths (1 letter = 29)"}
+04:09:34.120 [barcode]    0: B102"}
+04:09:34.175 [imu] motion: moving"}
+04:09:34.811 [line] RL=10 err=-75"}
+04:09:34.867 [line] RL=11 err=-13"}
+04:09:34.897 [line] RL=01 err=72"}
+04:09:34.966 [line] RL=00 err=20"}
+04:09:35.176 [imu] turning LEFT 5 deg/s, 44 mm/s, level | turns: 4 left, 4 right, facing 7 deg RIGHT of start | humps: none yet"}
+04:09:35.313 [line] RL=01 err=95"}
+04:09:35.347 [line] RL=00 err=37"}
+04:09:35.347 [line] RL=01 err=90"}
+04:09:35.393 [line] RL=11 err=11"}
+04:09:35.438 [line] RL=10 err=-82"}
+04:09:35.492 [line] RL=00 err=-12"}
+04:09:35.714 [line] RL=10 err=-61"}
+04:09:35.805 [line] RL=11 err=-30"}
+04:09:35.827 [line] RL=01 err=83"}
+04:09:35.937 [line] RL=00 err=27"}
+04:09:36.173 [line] RL=01 err=89"}
+04:09:36.173 [imu] turning LEFT 19 deg/s, 48 mm/s, level | turns: 4 left, 4 right | humps: none yet"}
+04:09:36.261 [line] RL=11 err=16"}
+04:09:36.323 [line] RL=10 err=-88"}
+04:09:36.382 [line] RL=00 err=-14"}
+04:09:36.615 [line] RL=10 err=-76"}
+04:09:36.730 [line] RL=11 err=-6"}
+04:09:36.748 [line] RL=01 err=73"}
+04:09:36.812 [line] RL=00 err=8"}
+04:09:37.172 [imu] turning LEFT 31 deg/s, 48 mm/s, level | turns: 4 left, 4 right | humps: none yet"}
+04:09:37.256 [line] RL=01 err=71"}
+04:09:37.293 [line] RL=11 err=-12"}
+04:09:37.312 [line] RL=10 err=-68"}
+04:09:37.366 [line] RL=00 err=-12"}
+04:09:37.757 [line] RL=10 err=-79"}
+04:09:37.804 [line] RL=11 err=-13"}
+04:09:37.815 [line] RL=01 err=83"}
+04:09:37.867 [line] RL=00 err=11"}
+04:09:38.173 [imu] turning LEFT 16 deg/s, 47 mm/s, level | turns: 4 left, 4 right | humps: none yet"}
+04:09:38.318 [line] RL=01 err=95"}
+04:09:38.369 [line] RL=11 err=-4"}
+04:09:38.379 [line] RL=10 err=-88"}
+04:09:38.427 [line] RL=00 err=-27"}
+04:09:38.827 [line] RL=10 err=-95"}
+04:09:38.879 [line] RL=11 err=2"}
+04:09:38.887 [line] RL=01 err=65"}
+04:09:38.947 [line] RL=00 err=13"}
+04:09:39.173 [imu] turning LEFT 16 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 2 deg LEFT of start | humps: none yet"}
+04:09:39.372 [line] RL=01 err=93"}
+04:09:39.427 [line] RL=11 err=-44"}
+04:09:39.427 [line] RL=10 err=-82"}
+04:09:39.482 [line] RL=00 err=-14"}
+04:09:39.915 [line] RL=10 err=-89"}
+04:09:39.960 [line] RL=11 err=-1"}
+04:09:39.971 [line] RL=01 err=65"}
+04:09:40.017 [line] RL=00 err=20"}
+04:09:40.174 [imu] turning RIGHT 11 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 3 deg LEFT of start | humps: none yet"}
+04:09:40.473 [line] RL=01 err=86"}
+04:09:40.516 [line] RL=11 err=3"}
+04:09:40.527 [line] RL=00 err=-36"}
+04:09:40.533 [line] RL=10 err=-75"}
+04:09:40.574 [line] RL=00 err=-14"}
+04:09:40.992 [line] RL=10 err=-82"}
+04:09:41.038 [line] RL=00 err=33"}
+04:09:41.048 [line] RL=01 err=69"}
+04:09:41.089 [line] RL=00 err=12"}
+04:09:41.173 [imu] turning RIGHT 18 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:09:41.515 [line] RL=01 err=96"}
+04:09:41.582 [line] RL=10 err=-70"}
+04:09:41.626 [line] RL=00 err=-12"}
+04:09:42.049 [line] RL=10 err=-74"}
+04:09:42.104 [line] RL=01 err=70"}
+04:09:42.159 [line] RL=00 err=13"}
+04:09:42.173 [imu] turning RIGHT 36 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:09:42.537 [line] RL=01 err=76"}
+04:09:42.594 [line] RL=10 err=-60"}
+04:09:42.650 [line] RL=00 err=-11"}
+04:09:43.057 [line] RL=10 err=-78"}
+04:09:43.115 [line] RL=01 err=36"}
+04:09:43.126 [line] RL=11 err=-9"}
+04:09:43.142 [line] RL=01 err=80"}
+04:09:43.174 [imu] turning RIGHT 41 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 11 deg LEFT of start | humps: none yet"}
+04:09:43.184 [line] RL=00 err=7"}
+04:09:43.594 [line] RL=01 err=64"}
+04:09:43.649 [line] RL=10 err=-67"}
+04:09:43.711 [line] RL=00 err=-11"}
+04:09:44.004 [line] RL=10 err=-65"}
+04:09:44.066 [line] RL=00 err=33"}
+04:09:44.071 [line] RL=01 err=57"}
+04:09:44.147 [line] RL=00 err=18"}
+04:09:44.173 [imu] turning RIGHT 18 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 12 deg LEFT of start | humps: none yet"}
+04:09:44.474 [line] RL=01 err=88"}
+04:09:44.548 [line] RL=10 err=-60"}
+04:09:44.593 [line] RL=00 err=-17"}
+04:09:44.983 [line] RL=10 err=-79"}
+04:09:45.037 [line] RL=00 err=6"}
+04:09:45.048 [line] RL=01 err=93"}
+04:09:45.079 [line] RL=00 err=21"}
+04:09:45.172 [imu] turning RIGHT 19 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:09:45.493 [line] RL=01 err=98"}
+04:09:45.537 [line] RL=00 err=30"}
+04:09:45.545 [line] RL=01 err=83"}
+04:09:45.549 [line] RL=11 err=-32"}
+04:09:45.559 [line] RL=10 err=-82"}
+04:09:45.626 [line] RL=00 err=-10"}
+04:09:45.984 [line] RL=10 err=-74"}
+04:09:46.005 [line] RL=10 err=-74"}
+04:09:46.040 [line] RL=11 err=5"}
+04:09:46.040 [line] RL=01 err=90"}
+04:09:46.104 [line] RL=00 err=11"}
+04:09:46.173 [imu] turning RIGHT 35 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 11 deg LEFT of start | humps: none yet"}
+04:09:46.550 [line] RL=01 err=74"}
+04:09:46.617 [line] RL=10 err=-67"}
+04:09:46.672 [line] RL=00 err=-12"}
+04:09:47.138 [line] RL=10 err=-62"}
+04:09:47.173 [imu] turning RIGHT 41 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 18 deg LEFT of start | humps: none yet"}
+04:09:47.206 [line] RL=01 err=63"}
+04:09:47.260 [line] RL=00 err=15"}
+04:09:47.599 [line] RL=01 err=97"}
+04:09:47.660 [line] RL=10 err=-87"}
+04:09:47.704 [line] RL=00 err=-17"}
+04:09:48.088 [line] RL=10 err=-70"}
+04:09:48.173 [line] RL=11 err=8"}
+04:09:48.173 [imu] turning RIGHT 34 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 17 deg LEFT of start | humps: none yet"}
+04:09:48.181 [line] RL=01 err=90"}
+04:09:48.241 [line] RL=00 err=10"}
+04:09:49.173 [scan] MONITORING -> COARSE_SCAN"}
+04:09:49.173 [imu] turning LEFT 39 deg/s, 49 mm/s, level | turns: 4 left, 4 right, facing 42 deg LEFT of start | humps: none yet"}
+04:09:49.181 [motion] STOP_SCAN set: brake written 41 us after the request."}
+04:09:49.184 [motion] state LINE_FOLLOW -> BRAKED"}
+04:09:49.417 [imu] motion: stopped"}
+04:09:49.735 [line] LOST: RL=00 for 1500 ms"}
+04:09:50.043 [imu] <<< turned LEFT 103 deg in 16.3 s  (turns so far: 5 left, 4 right)"}
+04:09:52.073 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:09:54.597 [nav] button GP21"}
+04:09:54.597 [nav] mission RUNNING -> PAUSED"}
+04:09:54.605 [motion] state BRAKED -> IDLE"}
+04:09:54.784 [scan] FINE_SCAN -> IDLE"}
+04:09:54.795 [motion] every STOP bit clear, 5618 ms after the first one was seen."}
+04:09:57.305 [line] RL=10 err=-65"}
+04:09:57.305 [line] line found (LOST_MS 1500)"}
+04:09:57.371 [imu] >>> picked up (hands on)"}
+04:09:57.392 [nav] junction while PAUSED: ignored"}
+04:09:57.392 [line] junction (GP7 black 80 ms) -> nav"}
+04:09:58.477 [motion] STOP_IMU set: brake written 73 us after the request."}
+04:09:58.477 [imu] !!! STOPPING: car picked up (in hand 1.2 s) !!!"}
+04:09:58.477 [nav] IMU fault"}
+04:09:58.477 [imu]     caught 1100.2 ms after the first lift; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:09:58.477 [nav] mission PAUSED -> FAULT"}
+04:09:58.477 [line] RL=00 err=0"}
+04:09:58.477 [barcode] REJECTED: aborted (cancelled)"}
+04:09:58.477 [nav] buzzer: 1 x 800 ms"}
+04:09:58.489 [imu] mission over (FAULT): turns: 9 (5 left, 4 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:09:58.775 [line] RL=11 err=0"}
+04:10:02.480 [imu] <<< put down (hands off)"}
+04:10:02.542 [imu] motion: moving"}
+04:10:02.646 [imu] motion: stopped"}
+04:10:02.670 [imu] >>> nose DOWN 22 deg"}
+04:10:03.179 [imu] >>> picked up (hands on)"}
+04:10:03.377 [line] RL=01 err=21"}
+04:10:03.445 [line] RL=00 err=34"}
+04:10:04.676 [imu] <<< put down (hands off)"}
+04:10:04.755 [imu] motion: moving"}
+04:10:04.774 [imu] <<< level front to back again"}
+04:10:04.854 [imu] motion: stopped"}
+04:10:04.943 [line] LOST: RL=00 for 1500 ms"}
+04:10:05.077 [imu] motion: moving"}
+04:10:05.178 [imu] motion: stopped"}
+04:10:07.678 [nav] button GP20"}
+04:10:07.678 [nav] mission FAULT -> CALIBRATING"}
+04:10:08.678 [line] calibration FAILED: GP26 ok (white 243, black 2846, rise 1804) GP27 low_contrast (white 249, black 2339, rise 1503)"}
+04:10:08.678 [nav] calibration FAILED"}
+04:10:08.680 [nav] mission CALIBRATING -> FAULT"}
+04:10:08.680 [nav] buzzer: 1 x 800 ms"}
+04:10:08.685 [imu] cal ok: offsets x=30 y=-12 z=62 mg, spread 67 mg"}
+04:10:08.685 [imu] -> nav: CAL_OK_IMU"}
+04:10:09.663 [imu] motion: moving"}
+04:10:09.865 [imu] motion: stopped"}
+04:10:10.651 [imu] motion: moving"}
+04:10:10.750 [imu] motion: stopped"}
+04:10:11.906 [imu] motion: moving"}
+04:10:12.072 [imu] motion: stopped"}
+04:10:15.573 [nav] button GP20"}
+04:10:15.573 [nav] mission FAULT -> CALIBRATING"}
+04:10:16.569 [line] calibration OK: GP26 ok (white 292, black 1092, rise 772) GP27 ok (white 186, black 986, rise 666)"}
+04:10:16.574 [imu] cal 1/5: not still, spread 128 mg (max 80)"}
+04:10:17.059 [line] RL=01 err=60"}
+04:10:17.059 [line] line found (LOST_MS 1500)"}
+04:10:17.842 [line] RL=00 err=14"}
+04:10:18.044 [line] RL=01 err=66"}
+04:10:18.063 [imu] cal 2/5: not still, spread 425 mg (max 80)"}
+04:10:18.187 [line] RL=00 err=6"}
+04:10:18.969 [line] RL=01 err=56"}
+04:10:19.112 [line] RL=00 err=22"}
+04:10:19.551 [imu] cal 3/5: car moving"}
+04:10:20.611 [line] LOST: RL=00 for 1500 ms"}
+04:10:21.040 [imu] cal ok: offsets x=25 y=-10 z=62 mg, spread 71 mg"}
+04:10:21.040 [imu] -> nav: CAL_OK_IMU"}
+04:10:21.049 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:10:21.049 [nav] mission CALIBRATING -> READY"}
+04:10:21.050 [nav] buzzer: 1 x 100 ms"}
+04:10:21.053 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:10:21.064 [motion] every STOP bit clear, 22586 ms after the first one was seen."}
+04:10:21.064 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:10:23.120 [line] RL=01 err=58"}
+04:10:23.120 [line] line found (LOST_MS 1500)"}
+04:10:23.301 [line] RL=10 err=-37"}
+04:10:23.511 [line] RL=00 err=-26"}
+04:10:24.141 [line] RL=10 err=-75"}
+04:10:24.229 [line] RL=11 err=-22"}
+04:10:24.251 [imu] motion: moving"}
+04:10:24.295 [line] RL=01 err=75"}
+04:10:24.402 [line] RL=00 err=21"}
+04:10:24.696 [imu] motion: stopped"}
+04:10:24.786 [line] RL=01 err=59"}
+04:10:24.921 [line] RL=11 err=-26"}
+04:10:24.929 [line] RL=10 err=-62"}
+04:10:25.455 [line] RL=11 err=3"}
+04:10:25.822 [line] RL=10 err=-57"}
+04:10:27.253 [nav] button GP20"}
+04:10:27.253 [nav] mission READY -> RUNNING"}
+04:10:27.264 [motion] state IDLE -> LINE_FOLLOW"}
+04:10:27.264 [imu] mission start: turns, humps, bumps and heading reset"}
+04:10:27.275 [scan] IDLE -> MONITORING"}
+04:10:27.444 [line] RL=11 err=21"}
+04:10:27.466 [line] RL=01 err=68"}
+04:10:27.554 [line] RL=00 err=18"}
+04:10:27.800 [line] RL=01 err=79"}
+04:10:27.898 [line] RL=00 err=-44"}
+04:10:27.909 [line] RL=10 err=-77"}
+04:10:27.932 [imu] >>> turning LEFT"}
+04:10:27.992 [line] RL=00 err=-27"}
+04:10:28.333 [line] RL=10 err=-74"}
+04:10:28.390 [line] RL=00 err=28"}
+04:10:28.398 [line] RL=01 err=66"}
+04:10:28.443 [line] RL=00 err=16"}
+04:10:28.646 [imu] turning LEFT 20 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 3 deg RIGHT of start | humps: none yet"}
+04:10:28.812 [line] RL=01 err=71"}
+04:10:28.879 [line] RL=10 err=-77"}
+04:10:28.923 [line] RL=00 err=-17"}
+04:10:29.290 [line] RL=10 err=-75"}
+04:10:29.346 [line] RL=00 err=41"}
+04:10:29.357 [line] RL=01 err=68"}
+04:10:29.405 [line] RL=00 err=13"}
+04:10:29.644 [imu] turning LEFT 21 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:10:29.785 [line] RL=01 err=62"}
+04:10:29.826 [line] RL=11 err=-14"}
+04:10:29.837 [line] RL=10 err=-83"}
+04:10:29.889 [line] RL=00 err=-13"}
+04:10:30.280 [line] RL=10 err=-71"}
+04:10:30.324 [line] RL=00 err=8"}
+04:10:30.335 [line] RL=01 err=55"}
+04:10:30.391 [line] RL=00 err=9"}
+04:10:30.644 [imu] turning LEFT 20 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 5 deg RIGHT of start | humps: none yet"}
+04:10:30.814 [line] RL=01 err=85"}
+04:10:30.858 [line] RL=11 err=-3"}
+04:10:30.874 [line] RL=10 err=-48"}
+04:10:30.919 [line] RL=00 err=-8"}
+04:10:31.345 [line] RL=10 err=-90"}
+04:10:31.402 [line] RL=11 err=-17"}
+04:10:31.416 [line] RL=01 err=76"}
+04:10:31.460 [line] RL=00 err=10"}
+04:10:31.650 [imu] turning RIGHT 1 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:10:31.859 [line] RL=01 err=84"}
+04:10:31.908 [line] RL=10 err=-61"}
+04:10:31.958 [line] RL=00 err=-10"}
+04:10:32.424 [line] RL=10 err=-99"}
+04:10:32.479 [line] RL=01 err=66"}
+04:10:32.512 [line] RL=00 err=15"}
+04:10:32.645 [imu] turning RIGHT 25 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:10:32.983 [line] RL=01 err=98"}
+04:10:33.001 [line] RL=01 err=98"}
+04:10:33.003 [line] RL=10 err=-84"}
+04:10:33.043 [line] RL=00 err=-12"}
+04:10:33.481 [line] RL=10 err=-77"}
+04:10:33.536 [line] RL=01 err=68"}
+04:10:33.568 [line] RL=00 err=14"}
+04:10:33.648 [imu] turning RIGHT 28 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 1 deg RIGHT of start | humps: none yet"}
+04:10:33.983 [line] RL=01 err=99"}
+04:10:34.047 [line] RL=11 err=-13"}
+04:10:34.050 [line] RL=10 err=-85"}
+04:10:34.093 [line] RL=00 err=-20"}
+04:10:34.524 [line] RL=10 err=-67"}
+04:10:34.570 [line] RL=01 err=81"}
+04:10:34.636 [line] RL=00 err=11"}
+04:10:34.644 [imu] turning RIGHT 40 deg/s, 48 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:10:35.125 [line] RL=01 err=97"}
+04:10:35.162 [line] RL=11 err=0"}
+04:10:35.181 [line] RL=10 err=-87"}
+04:10:35.220 [line] RL=00 err=-10"}
+04:10:35.648 [imu] turning RIGHT 31 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 7 deg LEFT of start | humps: none yet"}
+04:10:35.674 [line] RL=10 err=-97"}
+04:10:35.720 [line] RL=11 err=4"}
+04:10:35.731 [line] RL=01 err=87"}
+04:10:35.774 [line] RL=00 err=11"}
+04:10:36.188 [line] RL=01 err=95"}
+04:10:36.258 [line] RL=10 err=-67"}
+04:10:36.313 [line] RL=00 err=-10"}
+04:10:36.646 [imu] turning RIGHT 36 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 10 deg LEFT of start | humps: none yet"}
+04:10:36.735 [line] RL=10 err=-78"}
+04:10:36.792 [line] RL=00 err=38"}
+04:10:36.797 [line] RL=01 err=72"}
+04:10:36.836 [line] RL=00 err=12"}
+04:10:37.280 [line] RL=01 err=64"}
+04:10:37.312 [line] RL=11 err=-34"}
+04:10:37.324 [line] RL=10 err=-77"}
+04:10:37.387 [line] RL=00 err=-15"}
+04:10:37.642 [imu] turning RIGHT 15 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 13 deg LEFT of start | humps: none yet"}
+04:10:37.792 [line] RL=10 err=-67"}
+04:10:37.836 [line] RL=00 err=19"}
+04:10:37.847 [line] RL=01 err=63"}
+04:10:37.878 [line] RL=00 err=20"}
+04:10:38.286 [line] RL=01 err=79"}
+04:10:38.336 [line] RL=00 err=-41"}
+04:10:38.347 [line] RL=10 err=-52"}
+04:10:38.392 [line] RL=00 err=-24"}
+04:10:38.647 [imu] turning RIGHT 9 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 14 deg LEFT of start | humps: none yet"}
+04:10:38.792 [line] RL=10 err=-82"}
+04:10:38.867 [line] RL=01 err=65"}
+04:10:38.913 [line] RL=00 err=14"}
+04:10:39.309 [line] RL=01 err=87"}
+04:10:39.379 [line] RL=10 err=-71"}
+04:10:39.426 [line] RL=00 err=-13"}
+04:10:39.571 [scan] MONITORING -> COARSE_SCAN"}
+04:10:39.577 [motion] STOP_SCAN set: brake written 42 us after the request."}
+04:10:39.582 [motion] state LINE_FOLLOW -> BRAKED"}
+04:10:39.642 [imu] turning LEFT 3 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 15 deg LEFT of start | humps: none yet"}
+04:10:39.795 [imu] motion: stopped"}
+04:10:40.322 [imu] <<< turned LEFT 17 deg in 11.8 s  (turns so far: 1 left, 0 right)"}
+04:10:40.927 [line] LOST: RL=00 for 1500 ms"}
+04:10:42.359 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:10:45.030 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:10:45.030 [scan] angle -45: 1277 mm"}
+04:10:45.030 [scan] angle -25: 1379 mm"}
+04:10:45.030 [scan] angle -20: 1222 mm"}
+04:10:45.030 [scan] angle -15: 1520 mm"}
+04:10:45.030 [scan] angle -10: 259 mm  <- obstacle"}
+04:10:45.030 [scan] angle 0: 243 mm  <- obstacle"}
+04:10:45.030 [scan] angle 25: 248 mm  <- obstacle"}
+04:10:45.030 [scan] angle 35: 252 mm  <- obstacle"}
+04:10:45.030 [scan] angle 40: 257 mm  <- obstacle"}
+04:10:45.030 [scan] angle 45: 1424 mm"}
+04:10:45.030 [scan] profile: closest 243 mm @ 0 deg, edges -10..40 deg, x -25..145 mm, width 170 mm, IN the path"}
+04:10:45.030 [scan] clearance L 9999 R 9999 mm (need 248), offset L 273 R 393 mm"}
+04:10:45.030 [scan] ACTION: BYPASS LEFT   (scan took 5456 ms, budget 7000 ms)"}
+04:10:45.036 [scan] FINE_SCAN -> PLANNING"}
+04:10:45.036 [scan] PLANNING -> AVOIDING"}
+04:10:45.041 [motion] every STOP bit clear, 5468 ms after the first one was seen."}
+04:10:45.043 [motion] avoid_cmd BYPASS left 273 mm (raw 0x1112): taken"}
+04:10:45.043 [motion] bypass OUT: 0 mm out, heading +8 deg to the line, IMU"}
+04:10:45.044 [motion] state BRAKED -> BYPASS"}
+04:10:45.222 [imu] >>> turning LEFT"}
+04:10:45.643 [imu] turning LEFT 62 deg/s, 1 mm/s, level | turns: 1 left, 0 right, facing 46 deg LEFT of start | humps: none yet"}
+04:10:46.022 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:10:46.221 [imu] motion: stopped"}
+04:10:46.556 [scan] lane look 0 deg: 2400 mm (sent 511)"}
+04:10:46.561 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:10:46.561 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:10:46.949 [imu] <<< turned LEFT 60 deg in 1.8 s  (turns so far: 2 left, 0 right)"}
+04:10:47.103 [imu] motion: moving"}
+04:10:49.772 [motion] bypass PARALLEL: 273 mm out, heading +68 deg to the line, IMU"}
+04:10:49.922 [imu] >>> turning RIGHT"}
+04:10:50.645 [imu] turning RIGHT 77 deg/s, 11 mm/s, level | turns: 2 left, 0 right, facing 24 deg LEFT of start | humps: none yet"}
+04:10:50.831 [motion] bypass STEP: 271 mm out, heading +4 deg to the line, IMU"}
+04:10:51.291 [imu] motion: moving"}
+04:10:51.682 [imu] <<< turned RIGHT 65 deg in 1.8 s  (turns so far: 2 left, 1 right)"}
+04:10:53.589 [motion] bypass PROBE_IN: 284 mm out, heading +3 deg to the line, IMU"}
+04:10:53.737 [imu] >>> turning RIGHT"}
+04:10:54.370 [motion] bypass LOOK: 284 mm out, heading -41 deg to the line, IMU"}
+04:10:54.547 [imu] motion: stopped"}
+04:10:55.293 [imu] <<< turned RIGHT 47 deg in 0.8 s  (turns so far: 2 left, 2 right)"}
+04:10:55.793 [scan] side look 45 deg: 191 mm (sent 191)"}
+04:10:55.799 [motion] avoid_cmd LOOK 191 mm (raw 0x0bf3): taken"}
+04:10:55.799 [motion] bypass PROBE_OUT: 284 mm out, heading -44 deg to the line, IMU"}
+04:10:56.003 [imu] >>> turning LEFT"}
+04:10:56.557 [motion] bypass STEP: 284 mm out, heading -4 deg to the line, IMU"}
+04:10:56.647 [imu] turning RIGHT 2 deg/s, 3 mm/s, level | turns: 2 left, 2 right, facing 6 deg LEFT of start | humps: none yet"}
+04:10:57.146 [imu] motion: moving"}
+04:10:57.536 [imu] <<< turned LEFT 41 deg in 1.6 s  (turns so far: 3 left, 2 right)"}
+04:10:57.737 [motion] bypass PROBE_IN: 279 mm out, heading -3 deg to the line, IMU"}
+04:10:57.881 [imu] >>> turning RIGHT"}
+04:10:58.448 [motion] bypass LOOK: 279 mm out, heading -41 deg to the line, IMU"}
+04:10:58.623 [imu] motion: stopped"}
+04:10:59.374 [imu] <<< turned RIGHT 42 deg in 0.7 s  (turns so far: 3 left, 3 right)"}
+04:10:59.889 [scan] side look 45 deg: 1213 mm (sent 511)"}
+04:10:59.891 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:10:59.891 [motion] bypass PROBE_OUT: 279 mm out, heading -45 deg to the line, IMU"}
+04:11:00.117 [imu] >>> turning LEFT"}
+04:11:00.658 [motion] bypass CLEAR: 279 mm out, heading -4 deg to the line, IMU"}
+04:11:01.157 [imu] motion: moving"}
+04:11:01.549 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 4 left, 3 right)"}
+04:11:02.060 [motion] bypass TURN_IN: 273 mm out, heading -3 deg to the line, IMU"}
+04:11:02.204 [imu] >>> turning RIGHT"}
+04:11:02.644 [imu] turning RIGHT 63 deg/s, 37 mm/s, level | turns: 4 left, 3 right, facing 25 deg RIGHT of start | humps: none yet"}
+04:11:03.131 [motion] bypass STEP_IN: 273 mm out, heading -66 deg to the line, IMU"}
+04:11:03.583 [imu] motion: moving"}
+04:11:03.971 [imu] <<< turned RIGHT 65 deg in 1.8 s  (turns so far: 4 left, 4 right)"}
+04:11:04.913 [motion] bypass ONTO: 129 mm out, heading -67 deg to the line, IMU"}
+04:11:04.988 [nav] junction, no barcode command: straight on"}
+04:11:04.988 [line] junction (GP7 black 80 ms) -> nav"}
+04:11:06.357 [motion] bypass ALONG: 14 mm out, heading -67 deg to the line, IMU"}
+04:11:06.424 [line] line found (LOST_MS 1500)"}
+04:11:06.424 [barcode] REJECTED: malformed (bad_length)"}
+04:11:06.424 [barcode]   1 widths (1 letter = 29)"}
+04:11:06.424 [barcode]    0: B303"}
+04:11:06.547 [imu] >>> turning LEFT"}
+04:11:06.644 [imu] turning LEFT 47 deg/s, 68 mm/s, level | turns: 4 left, 4 right, facing 51 deg RIGHT of start | humps: none yet"}
+04:11:07.182 [nav] junction, no barcode command: straight on"}
+04:11:07.182 [line] junction (GP7 black 80 ms) -> nav"}
+04:11:07.459 [motion] bypass DONE: 14 mm out, heading -4 deg to the line, IMU"}
+04:11:07.472 [motion] state BYPASS -> LINE_SEARCH"}
+04:11:07.482 [scan] AVOIDING -> MONITORING"}
+04:11:07.482 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:11:07.627 [barcode] REJECTED: malformed (bad_length)"}
+04:11:07.627 [barcode]   1 widths (1 letter = 29)"}
+04:11:07.627 [barcode]    0: B105"}
+04:11:07.649 [imu] turning RIGHT 3 deg/s, 3 mm/s, level | turns: 4 left, 4 right, facing 6 deg LEFT of start | humps: none yet"}
+04:11:07.661 [imu] motion: moving"}
+04:11:08.283 [line] RL=10 err=-87"}
+04:11:08.326 [line] RL=11 err=-26"}
+04:11:08.381 [line] RL=01 err=79"}
+04:11:08.435 [line] RL=00 err=13"}
+04:11:08.643 [imu] turning LEFT 22 deg/s, 43 mm/s, level | turns: 4 left, 4 right, facing 9 deg RIGHT of start | humps: none yet"}
+04:11:08.848 [line] RL=01 err=73"}
+04:11:08.914 [line] RL=11 err=8"}
+04:11:08.947 [line] RL=10 err=-76"}
+04:11:09.026 [line] RL=00 err=-32"}
+04:11:09.037 [line] RL=10 err=-73"}
+04:11:09.080 [line] RL=00 err=-25"}
+04:11:09.247 [line] RL=10 err=-63"}
+04:11:09.370 [line] RL=11 err=-20"}
+04:11:09.387 [line] RL=01 err=72"}
+04:11:09.493 [line] RL=00 err=31"}
+04:11:09.649 [imu] turning LEFT 11 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 1 deg RIGHT of start | humps: none yet"}
+04:11:09.681 [line] RL=01 err=57"}
+04:11:09.781 [line] RL=11 err=23"}
+04:11:09.903 [line] RL=10 err=-81"}
+04:11:10.103 [line] RL=11 err=-38"}
+04:11:10.269 [line] RL=01 err=71"}
+04:11:10.424 [line] RL=11 err=35"}
+04:11:10.490 [line] RL=10 err=-70"}
+04:11:10.579 [line] RL=11 err=1"}
+04:11:10.643 [imu] turning RIGHT 4 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 4 deg LEFT of start | humps: none yet"}
+04:11:10.750 [line] RL=10 err=-50"}
+04:11:10.813 [line] RL=11 err=-33"}
+04:11:10.888 [line] RL=01 err=39"}
+04:11:10.944 [line] RL=11 err=-32"}
+04:11:11.022 [line] RL=10 err=-20"}
+04:11:11.036 [line] RL=00 err=-3"}
+04:11:11.090 [line] RL=10 err=-9"}
+04:11:11.134 [line] RL=01 err=31"}
+04:11:11.363 [line] RL=10 err=-53"}
+04:11:11.603 [line] RL=11 err=-4"}
+04:11:11.636 [line] RL=01 err=32"}
+04:11:11.644 [imu] turning RIGHT 9 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 5 deg LEFT of start | humps: none yet"}
+04:11:11.858 [line] RL=11 err=7"}
+04:11:11.891 [line] RL=10 err=-56"}
+04:11:12.057 [line] RL=11 err=-8"}
+04:11:12.081 [line] RL=01 err=83"}
+04:11:12.370 [line] RL=11 err=-25"}
+04:11:12.404 [line] RL=10 err=-87"}
+04:11:12.481 [line] RL=00 err=-14"}
+04:11:12.642 [imu] turning RIGHT 1 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 13 deg LEFT of start | humps: none yet"}
+04:11:12.825 [line] RL=10 err=-100"}
+04:11:12.869 [line] RL=11 err=-41"}
+04:11:12.891 [line] RL=01 err=90"}
+04:11:12.935 [line] RL=00 err=15"}
+04:11:13.392 [line] RL=01 err=83"}
+04:11:13.444 [line] RL=10 err=-90"}
+04:11:13.489 [line] RL=00 err=-16"}
+04:11:13.649 [imu] turning LEFT 1 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 17 deg LEFT of start | humps: none yet"}
+04:11:13.908 [line] RL=10 err=-100"}
+04:11:13.966 [line] RL=00 err=32"}
+04:11:13.972 [line] RL=01 err=86"}
+04:11:14.017 [line] RL=00 err=12"}
+04:11:14.431 [line] RL=01 err=79"}
+04:11:14.491 [line] RL=10 err=-62"}
+04:11:14.536 [line] RL=00 err=-12"}
+04:11:14.644 [imu] turning LEFT 17 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 17 deg LEFT of start | humps: none yet"}
+04:11:14.945 [line] RL=10 err=-72"}
+04:11:14.981 [line] RL=00 err=27"}
+04:11:14.990 [line] RL=01 err=90"}
+04:11:15.034 [line] RL=00 err=10"}
+04:11:15.481 [line] RL=01 err=76"}
+04:11:15.536 [line] RL=00 err=-38"}
+04:11:15.544 [line] RL=10 err=-69"}
+04:11:15.593 [line] RL=00 err=-17"}
+04:11:15.645 [imu] turning LEFT 36 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 17 deg LEFT of start | humps: none yet"}
+04:11:15.971 [line] RL=10 err=-91"}
+04:11:16.019 [line] RL=01 err=64"}
+04:11:16.068 [line] RL=00 err=10"}
+04:11:16.501 [line] RL=01 err=62"}
+04:11:16.556 [line] RL=10 err=-48"}
+04:11:16.602 [line] RL=00 err=-11"}
+04:11:16.646 [imu] turning LEFT 36 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:11:17.002 [line] RL=10 err=-99"}
+04:11:17.045 [line] RL=11 err=30"}
+04:11:17.058 [line] RL=01 err=52"}
+04:11:17.112 [line] RL=00 err=14"}
+04:11:17.535 [line] RL=01 err=71"}
+04:11:17.578 [line] RL=00 err=-37"}
+04:11:17.591 [line] RL=10 err=-63"}
+04:11:17.635 [line] RL=00 err=-11"}
+04:11:17.647 [imu] turning LEFT 39 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:11:18.038 [line] RL=10 err=-55"}
+04:11:18.081 [line] RL=01 err=68"}
+04:11:18.136 [line] RL=00 err=15"}
+04:11:18.490 [line] RL=01 err=74"}
+04:11:18.556 [line] RL=10 err=-60"}
+04:11:18.620 [line] RL=00 err=-7"}
+04:11:18.649 [imu] turning LEFT 38 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 20 deg LEFT of start | humps: none yet"}
+04:11:19.015 [line] RL=10 err=-96"}
+04:11:19.058 [line] RL=00 err=32"}
+04:11:19.080 [line] RL=01 err=49"}
+04:11:19.110 [line] RL=00 err=13"}
+04:11:19.547 [line] RL=01 err=77"}
+04:11:19.600 [line] RL=10 err=-61"}
+04:11:19.644 [imu] turning LEFT 42 deg/s, 49 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:11:19.649 [line] RL=00 err=-13"}
+04:11:20.015 [line] RL=10 err=-58"}
+04:11:20.071 [line] RL=01 err=57"}
+04:11:20.136 [line] RL=00 err=12"}
+04:11:20.479 [line] RL=01 err=76"}
+04:11:20.535 [line] RL=11 err=22"}
+04:11:20.546 [line] RL=10 err=-65"}
+04:11:20.613 [line] RL=00 err=-7"}
+04:11:20.642 [imu] turning LEFT 36 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:11:21.002 [line] RL=10 err=-90"}
+04:11:21.046 [line] RL=11 err=39"}
+04:11:21.056 [line] RL=01 err=90"}
+04:11:21.099 [line] RL=00 err=14"}
+04:11:21.558 [line] RL=01 err=86"}
+04:11:21.603 [line] RL=10 err=-54"}
+04:11:21.643 [imu] turning LEFT 37 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:11:21.647 [line] RL=00 err=-17"}
+04:11:22.085 [line] RL=10 err=-100"}
+04:11:22.149 [line] RL=00 err=-8"}
+04:11:22.647 [imu] turning RIGHT 44 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:11:23.644 [imu] turning RIGHT 42 deg/s, 52 mm/s, level | turns: 4 left, 4 right, facing 48 deg RIGHT of start | humps: none yet"}
+04:11:23.645 [line] LOST: RL=00 for 1500 ms"}
+04:11:23.651 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:11:25.649 [motion] STOP_SCAN set: brake written 32 us after the request."}
+04:11:25.649 [scan] MONITORING -> COARSE_SCAN"}
+04:11:25.660 [motion] state LINE_SEARCH -> BRAKED"}
+04:11:25.825 [imu] motion: stopped"}
+04:11:26.476 [imu] <<< wiggle RIGHT 13 deg, not counted as a turn"}
+04:11:28.416 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:11:29.992 [nav] button GP21"}
+04:11:29.993 [nav] mission RUNNING -> PAUSED"}
+04:11:30.000 [motion] state BRAKED -> IDLE"}
+04:11:30.047 [scan] FINE_SCAN -> IDLE"}
+04:11:30.048 [motion] every STOP bit clear, 4398 ms after the first one was seen."}
+04:11:32.693 [nav] junction while PAUSED: ignored"}
+04:11:32.693 [line] junction (GP7 black 80 ms) -> nav"}
+04:11:32.738 [imu] >>> picked up (hands on)"}
+04:11:33.792 [nav] IMU fault"}
+04:11:33.793 [imu] !!! STOPPING: car tipped over (27.3 deg nose DOWN) !!!"}
+04:11:33.793 [nav] mission PAUSED -> FAULT"}
+04:11:33.795 [imu]     caught 21.3 ms after the first bad sample; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:11:33.796 [nav] buzzer: 1 x 800 ms"}
+04:11:33.796 [line] line found (LOST_MS 1500)"}
+04:11:33.796 [barcode] REJECTED: aborted (cancelled)"}
+04:11:33.803 [motion] STOP_IMU set: brake written 80 us after the request."}
+04:11:33.803 [imu] mission over (FAULT): turns: 8 (4 left, 4 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:11:34.095 [line] RL=11 err=0"}
+04:11:37.479 [line] RL=10 err=-35"}
+04:11:37.990 [line] RL=00 err=-21"}
+04:11:38.034 [line] RL=00 err=-21"}
+04:11:39.445 [imu] <<< put down (hands off)"}
+04:11:39.487 [line] LOST: RL=00 for 1500 ms"}
+04:11:41.473 [line] RL=01 err=57"}
+04:11:41.473 [line] line found (LOST_MS 1500)"}
+04:11:41.503 [imu] motion: moving"}
+04:11:41.724 [line] RL=00 err=-11"}
+04:11:42.103 [imu] motion: stopped"}
+04:11:43.230 [line] LOST: RL=00 for 1500 ms"}
+04:11:44.343 [imu] >>> picked up (hands on)"}
+04:11:51.338 [imu] <<< put down (hands off)"}
+04:11:51.744 [nav] button GP20"}
+04:11:51.744 [nav] mission FAULT -> CALIBRATING"}
+04:11:52.750 [line] calibration OK: GP26 ok (white 228, black 1028, rise 708) GP27 ok (white 297, black 1191, rise 833)"}
+04:11:52.750 [line] RL=10 err=-96"}
+04:11:52.750 [line] line found (LOST_MS 1500)"}
+04:11:52.750 [imu] cal 1/5: not still, spread 117 mg (max 80)"}
+04:11:53.651 [line] RL=11 err=20"}
+04:11:53.665 [line] RL=01 err=39"}
+04:11:54.241 [imu] cal 2/5: car moving"}
+04:11:55.728 [imu] cal 3/5: not still, spread 109 mg (max 80)"}
+04:11:56.608 [line] RL=11 err=-18"}
+04:11:56.619 [line] RL=10 err=-37"}
+04:11:57.223 [imu] cal 4/5: car moving"}
+04:11:58.711 [imu] cal ok: offsets x=30 y=-10 z=65 mg, spread 60 mg"}
+04:11:58.712 [imu] -> nav: CAL_OK_IMU"}
+04:11:58.712 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:11:58.712 [nav] mission CALIBRATING -> READY"}
+04:11:58.716 [nav] buzzer: 1 x 100 ms"}
+04:11:58.718 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:11:58.729 [motion] every STOP bit clear, 24936 ms after the first one was seen."}
+04:11:58.729 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:11:59.497 [line] RL=00 err=-6"}
+04:12:00.995 [line] LOST: RL=00 for 1500 ms"}
+04:12:01.001 [line] LOST: RL=00 for 1500 ms"}
+04:12:02.938 [line] RL=10 err=-61"}
+04:12:02.938 [line] line found (LOST_MS 1500)"}
+04:12:03.986 [nav] button GP20"}
+04:12:03.986 [nav] mission READY -> RUNNING"}
+04:12:03.986 [scan] IDLE -> MONITORING"}
+04:12:03.988 [imu] mission start: turns, humps, bumps and heading reset"}
+04:12:03.994 [motion] state IDLE -> LINE_FOLLOW"}
+04:12:04.192 [line] RL=11 err=22"}
+04:12:04.210 [line] RL=01 err=78"}
+04:12:04.301 [line] RL=00 err=29"}
+04:12:04.518 [line] RL=01 err=70"}
+04:12:04.650 [line] RL=00 err=-36"}
+04:12:04.654 [line] RL=10 err=-70"}
+04:12:04.747 [line] RL=00 err=-27"}
+04:12:05.020 [line] RL=10 err=-71"}
+04:12:05.089 [line] RL=11 err=34"}
+04:12:05.089 [line] RL=01 err=52"}
+04:12:05.145 [imu] >>> turning RIGHT"}
+04:12:05.155 [line] RL=00 err=21"}
+04:12:05.489 [line] RL=01 err=69"}
+04:12:05.544 [line] RL=10 err=-49"}
+04:12:05.603 [imu] turning LEFT 27 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 1 deg LEFT of start | humps: none yet"}
+04:12:05.613 [line] RL=00 err=-12"}
+04:12:05.907 [line] RL=10 err=-100"}
+04:12:05.968 [line] RL=11 err=17"}
+04:12:05.981 [line] RL=01 err=24"}
+04:12:06.029 [line] RL=00 err=13"}
+04:12:06.419 [line] RL=01 err=83"}
+04:12:06.489 [line] RL=11 err=-23"}
+04:12:06.496 [line] RL=10 err=-51"}
+04:12:06.530 [line] RL=00 err=-11"}
+04:12:06.603 [imu] turning LEFT 31 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 6 deg LEFT of start | humps: none yet"}
+04:12:06.981 [line] RL=10 err=-99"}
+04:12:07.000 [line] RL=10 err=-99"}
+04:12:07.012 [line] RL=11 err=39"}
+04:12:07.027 [line] RL=01 err=82"}
+04:12:07.070 [line] RL=00 err=9"}
+04:12:07.590 [line] RL=01 err=87"}
+04:12:07.602 [imu] turning LEFT 48 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 1 deg LEFT of start | humps: none yet"}
+04:12:07.630 [line] RL=11 err=-2"}
+04:12:07.642 [line] RL=10 err=-46"}
+04:12:07.683 [line] RL=00 err=-9"}
+04:12:08.170 [line] RL=10 err=-83"}
+04:12:08.214 [line] RL=01 err=76"}
+04:12:08.256 [line] RL=00 err=13"}
+04:12:08.602 [imu] turning LEFT 34 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 3 deg RIGHT of start | humps: none yet"}
+04:12:08.769 [line] RL=01 err=98"}
+04:12:08.803 [line] RL=11 err=-36"}
+04:12:08.824 [line] RL=10 err=-86"}
+04:12:08.869 [line] RL=00 err=-6"}
+04:12:09.368 [line] RL=10 err=-74"}
+04:12:09.421 [line] RL=11 err=18"}
+04:12:09.434 [line] RL=01 err=86"}
+04:12:09.467 [line] RL=00 err=11"}
+04:12:09.602 [imu] turning RIGHT 11 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:12:09.919 [line] RL=01 err=100"}
+04:12:09.977 [line] RL=10 err=-78"}
+04:12:09.998 [line] RL=00 err=-24"}
+04:12:10.002 [line] RL=00 err=-24"}
+04:12:10.012 [line] RL=10 err=-69"}
+04:12:10.034 [line] RL=00 err=-10"}
+04:12:10.485 [line] RL=10 err=-59"}
+04:12:10.500 [line] RL=00 err=-18"}
+04:12:10.511 [line] RL=10 err=-86"}
+04:12:10.555 [line] RL=11 err=-15"}
+04:12:10.579 [line] RL=01 err=82"}
+04:12:10.602 [imu] turning RIGHT 34 deg/s, 48 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:12:10.635 [line] RL=00 err=23"}
+04:12:10.991 [line] RL=01 err=77"}
+04:12:11.008 [line] RL=01 err=77"}
+04:12:11.063 [line] RL=00 err=-27"}
+04:12:11.090 [line] RL=10 err=-90"}
+04:12:11.135 [line] RL=00 err=-38"}
+04:12:11.401 [line] RL=10 err=-76"}
+04:12:11.511 [line] RL=01 err=55"}
+04:12:11.602 [imu] turning RIGHT 21 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 1 deg LEFT of start | humps: none yet"}
+04:12:11.634 [line] RL=00 err=32"}
+04:12:11.834 [line] RL=01 err=65"}
+04:12:11.935 [line] RL=11 err=14"}
+04:12:11.958 [line] RL=10 err=-74"}
+04:12:12.101 [line] RL=00 err=-27"}
+04:12:12.174 [line] RL=10 err=-72"}
+04:12:12.322 [line] RL=11 err=-1"}
+04:12:12.344 [line] RL=01 err=56"}
+04:12:12.596 [line] RL=11 err=-3"}
+04:12:12.602 [imu] turning LEFT 9 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 4 deg LEFT of start | humps: none yet"}
+04:12:12.636 [line] RL=10 err=-71"}
+04:12:12.890 [line] RL=11 err=-13"}
+04:12:12.947 [line] RL=01 err=81"}
+04:12:13.094 [line] RL=11 err=-31"}
+04:12:13.105 [line] RL=10 err=-65"}
+04:12:13.252 [line] RL=11 err=-20"}
+04:12:13.271 [line] RL=01 err=46"}
+04:12:13.314 [line] RL=10 err=-21"}
+04:12:13.322 [line] RL=11 err=14"}
+04:12:13.337 [line] RL=01 err=69"}
+04:12:13.501 [line] RL=00 err=17"}
+04:12:13.602 [imu] turning LEFT 16 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 6 deg LEFT of start | humps: none yet"}
+04:12:13.623 [line] RL=10 err=-64"}
+04:12:13.747 [line] RL=00 err=-23"}
+04:12:14.014 [line] RL=10 err=-82"}
+04:12:14.091 [line] RL=01 err=63"}
+04:12:14.146 [line] RL=00 err=4"}
+04:12:14.602 [imu] turning LEFT 39 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 7 deg LEFT of start | humps: none yet"}
+04:12:14.602 [line] RL=01 err=67"}
+04:12:14.627 [line] RL=00 err=-14"}
+04:12:14.657 [line] RL=10 err=-59"}
+04:12:14.688 [line] RL=00 err=-2"}
+04:12:15.100 [line] RL=10 err=-91"}
+04:12:15.156 [line] RL=01 err=71"}
+04:12:15.201 [line] RL=00 err=8"}
+04:12:15.226 [imu] !!! STOPPING: car tipped over (39.9 deg nose DOWN) !!!"}
+04:12:15.226 [nav] IMU fault"}
+04:12:15.227 [imu]     caught 61.3 ms after the first bad sample; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:12:15.227 [nav] mission RUNNING -> FAULT"}
+04:12:15.227 [nav] buzzer: 1 x 800 ms"}
+04:12:15.227 [motion] STOP_IMU set: brake written 70 us after the request."}
+04:12:15.234 [imu] mission over (FAULT): turns: 0 (0 left, 0 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:12:15.234 [motion] state LINE_FOLLOW -> IDLE"}
+04:12:15.271 [scan] MONITORING -> IDLE"}
+04:12:15.437 [imu] motion: stopped"}
+04:12:16.021 [imu] <<< wiggle LEFT 3 deg, not counted as a turn"}
+04:12:16.701 [line] LOST: RL=00 for 1500 ms"}
+04:12:20.858 [nav] button GP20"}
+04:12:20.859 [nav] mission FAULT -> CALIBRATING"}
+04:12:21.855 [line] calibration OK: GP26 ok (white 171, black 971, rise 651) GP27 ok (white 151, black 951, rise 631)"}
+04:12:21.861 [imu] cal ok: offsets x=43 y=-10 z=70 mg, spread 69 mg"}
+04:12:21.861 [imu] -> nav: CAL_OK_IMU"}
+04:12:21.861 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:12:21.861 [nav] mission CALIBRATING -> READY"}
+04:12:21.873 [nav] buzzer: 1 x 100 ms"}
+04:12:21.873 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:12:21.881 [motion] every STOP bit clear, 6656 ms after the first one was seen."}
+04:12:21.881 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:12:23.791 === uT-Kernel 3.0 / RP2040 car ==="}
+04:12:23.791 [netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)"}
+04:12:23.791 SMP build: 2 processors"}
+04:12:23.989 [wifi] link DOWN"}
+04:12:23.989 [mqtt] state=WAIT_ADDR  0.0.0.0:0  conn#=0 lost=0  pub=0 err=0 drop=0  last=0/0"}
+04:12:24.299 [line] calibration OK: GP26 ok (white 176, black 976, rise 656) GP27 ok (white 149, black 949, rise 629)"}
+04:12:24.497 [imu] cal 1/5: car moving"}
+04:12:25.986 [imu] cal ok: offsets x=43 y=-10 z=70 mg, spread 37 mg"}
+04:12:25.986 [imu] -> nav: CAL_OK_IMU"}
+04:12:25.986 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:12:25.986 [nav] mission CALIBRATING -> READY"}
+04:12:25.986 [nav] buzzer: 1 x 100 ms"}
+04:12:26.195 [nav] GP20 = start/resume/reset, GP21 = pause"}
+04:12:29.585 === uT-Kernel 3.0 / RP2040 car ==="}
+04:12:29.585 [netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)"}
+04:12:29.585 SMP build: 2 processors"}
+04:12:29.784 [wifi] link DOWN"}
+04:12:29.784 [mqtt] state=WAIT_ADDR  0.0.0.0:0  conn#=0 lost=0  pub=0 err=0 drop=0  last=0/0"}
+04:12:30.082 [line] calibration OK: GP26 ok (white 179, black 979, rise 659) GP27 ok (white 152, black 952, rise 632)"}
+04:12:30.291 [imu] cal 1/5: not still, spread 96 mg (max 80)"}
+04:12:31.774 [imu] cal ok: offsets x=43 y=-9 z=71 mg, spread 47 mg"}
+04:12:31.774 [imu] -> nav: CAL_OK_IMU"}
+04:12:31.774 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:12:31.774 [nav] mission CALIBRATING -> READY"}
+04:12:31.785 [nav] buzzer: 1 x 100 ms"}
+04:12:31.983 [nav] GP20 = start/resume/reset, GP21 = pause"}
+04:12:32.446 [nav] button GP20"}
+04:12:32.446 [nav] mission READY -> RUNNING"}
+04:12:32.446 [imu] mission start: turns, humps, bumps and heading reset"}
+04:12:32.457 [motion] state IDLE -> LINE_FOLLOW"}
+04:12:32.468 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:12:32.501 [scan] IDLE -> MONITORING"}
+04:12:32.789 [wifi] state=JOINING join#=1 lease#=0 lost=0 t=1695ms"}
+04:12:32.845 [line] RL=01 err=67"}
+04:12:32.845 [line] line found (LOST_MS 1500)"}
+04:12:32.878 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:12:32.890 [line] RL=10 err=-69"}
+04:12:33.066 [imu] motion: moving"}
+04:12:33.077 [line] RL=01 err=49"}
+04:12:33.169 [line] RL=00 err=23"}
+04:12:33.346 [line] RL=01 err=61"}
+04:12:33.456 [line] RL=00 err=-15"}
+04:12:33.467 [line] RL=10 err=-55"}
+04:12:33.701 [line] RL=00 err=35"}
+04:12:33.712 [line] RL=01 err=47"}
+04:12:33.978 [line] RL=10 err=-48"}
+04:12:34.066 [scan] MONITORING -> COARSE_SCAN"}
+04:12:34.066 [motion] STOP_SCAN set: brake written 34 us after the request."}
+04:12:34.078 [motion] state LINE_FOLLOW -> BRAKED"}
+04:12:34.257 [imu] motion: stopped"}
+04:12:35.791 [wifi] state=WAIT_LEASE join#=1 lease#=1 lost=0 t=4624ms"}
+04:12:35.792 [wifi] waiting for lease: state=8 tries=0 t=2213ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=1933 stage=7 rd=0"}
+04:12:36.849 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:12:38.786 [wifi] waiting for lease: state=8 tries=0 t=5215ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=2933 stage=7 rd=0"}
+04:12:39.725 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:12:39.725 [scan] angle -45: 1296 mm"}
+04:12:39.726 [scan] angle -30: 1215 mm"}
+04:12:39.726 [scan] angle -25: 1891 mm"}
+04:12:39.726 [scan] angle -20: 273 mm  <- obstacle"}
+04:12:39.726 [scan] angle -10: 251 mm  <- obstacle"}
+04:12:39.726 [scan] angle 0: 243 mm  <- obstacle"}
+04:12:39.727 [scan] angle 25: 252 mm  <- obstacle"}
+04:12:39.742 [scan] angle 30: 261 mm  <- obstacle"}
+04:12:39.742 [scan] angle 35: 1114 mm"}
+04:12:39.742 [scan] angle 45: 1126 mm"}
+04:12:39.743 [scan] profile: closest 243 mm @ 0 deg, edges -20..30 deg, x -72..110 mm, width 182 mm, IN the path"}
+04:12:39.743 [scan] clearance L 9999 R 9999 mm (need 248), offset L 320 R 358 mm"}
+04:12:39.743 [scan] ACTION: BYPASS LEFT   (scan took 5663 ms, budget 7000 ms)"}
+04:12:39.743 [scan] FINE_SCAN -> PLANNING"}
+04:12:39.743 [scan] PLANNING -> AVOIDING"}
+04:12:39.755 [motion] every STOP bit clear, 5678 ms after the first one was seen."}
+04:12:39.755 [motion] avoid_cmd BYPASS left 320 mm (raw 0x1402): taken"}
+04:12:39.755 [motion] bypass OUT: 0 mm out, heading +5 deg to the line, IMU"}
+04:12:39.755 [motion] state BRAKED -> BYPASS"}
+04:12:39.864 [line] RL=00 err=-16"}
+04:12:39.920 [imu] >>> turning LEFT"}
+04:12:40.444 [wifi] waiting for lease: state=8 tries=0 t=5215ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=2933 stage=7 rd=0"}
+04:12:40.448 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:12:40.448 [scan] angle -45: 1296 mm"}
+04:12:40.448 [scan] angle -30: 1215 mm"}
+04:12:40.448 [scan] angle -25: 1891 mm"}
+04:12:40.448 [scan] angle -20: 273 mm  <- obstacle"}
+04:12:40.448 [scan] angle -10: 251 mm  <- obstacle"}
+04:12:40.448 [scan] angle 0: 243 mm  <- obstacle"}
+04:12:40.448 [scan] angle 25: 252 mm  <- obstacle"}
+04:12:40.448 [scan] angle 30: 261 mm  <- obstacle"}
+04:12:40.448 [scan] angle 35: 1114 mm"}
+04:12:40.448 [scan] angle 45: 1126 mm"}
+04:12:40.448 [scan] profile: closest 243 mm @ 0 deg, edges -20..30 deg, x -72..110 mm, width 182 mm, IN the path"}
+04:12:40.448 [scan] clearance L 9999 R 9999 mm (need 248), offset L 320 R 358 mm"}
+04:12:40.448 [scan] ACTION: BYPASS LEFT   (scan took 5663 ms, budget 7000 ms)"}
+04:12:40.448 [scan] FINE_SCAN -> PLANNING"}
+04:12:40.448 [scan] PLANNING -> AVOIDING"}
+04:12:40.449 [motion] every STOP bit clear, 5678 ms after the first one was seen."}
+04:12:40.449 [motion] avoid_cmd BYPASS left 320 mm (raw 0x1402): taken"}
+04:12:40.449 [motion] bypass OUT: 0 mm out, heading +5 deg to the line, IMU"}
+04:12:40.449 [motion] state BRAKED -> BYPASS"}
+04:12:40.449 [line] RL=00 err=-16"}
+04:12:40.449 [imu] >>> turning LEFT"}
+04:12:40.773 [imu] turning LEFT 73 deg/s, 1 mm/s, level | turns: 0 left, 0 right, facing 68 deg LEFT of start | humps: none yet"}
+04:12:40.784 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:12:40.965 [imu] motion: stopped"}
+04:12:41.339 [scan] lane look 0 deg: 2413 mm (sent 511)"}
+04:12:41.344 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:12:41.344 [motion] bypass SIDESTEP: 0 mm out, heading +70 deg to the line, IMU"}
+04:12:41.362 [line] LOST: RL=00 for 1500 ms"}
+04:12:41.717 [imu] <<< turned LEFT 64 deg in 1.9 s  (turns so far: 1 left, 0 right)"}
+04:12:41.789 [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=11388ms"}
+04:12:41.995 [imu] motion: moving"}
+04:12:45.070 [motion] bypass PARALLEL: 321 mm out, heading +69 deg to the line, IMU"}
+04:12:45.225 [imu] >>> turning RIGHT"}
+04:12:45.777 [imu] turning RIGHT 77 deg/s, 26 mm/s, level | turns: 1 left, 0 right, facing 32 deg LEFT of start | humps: none yet"}
+04:12:46.150 [motion] bypass STEP: 319 mm out, heading +4 deg to the line, IMU"}
+04:12:46.780 [imu] turning LEFT 2 deg/s, 48 mm/s, level | turns: 1 left, 0 right, facing 4 deg LEFT of start | humps: none yet"}
+04:12:46.918 [imu] motion: moving"}
+04:12:47.309 [imu] <<< turned RIGHT 66 deg in 2.1 s  (turns so far: 1 left, 1 right)"}
+04:12:48.905 [motion] bypass PROBE_IN: 328 mm out, heading +3 deg to the line, IMU"}
+04:12:49.114 [imu] >>> turning RIGHT"}
+04:12:49.703 [motion] bypass LOOK: 329 mm out, heading -41 deg to the line, IMU"}
+04:12:49.783 [imu] turning RIGHT 10 deg/s, 12 mm/s, level | turns: 1 left, 1 right, facing 43 deg RIGHT of start | humps: none yet"}
+04:12:49.894 [imu] motion: stopped"}
+04:12:50.632 [imu] <<< turned RIGHT 48 deg in 0.8 s  (turns so far: 1 left, 2 right)"}
+04:12:51.129 [scan] side look 45 deg: 233 mm (sent 233)"}
+04:12:51.140 [motion] avoid_cmd LOOK 233 mm (raw 0x0e93): taken"}
+04:12:51.140 [motion] bypass PROBE_OUT: 329 mm out, heading -45 deg to the line, IMU"}
+04:12:51.317 [imu] >>> turning LEFT"}
+04:12:51.777 [imu] turning LEFT 69 deg/s, 1 mm/s, level | turns: 1 left, 2 right, facing 9 deg RIGHT of start | humps: none yet"}
+04:12:51.883 [motion] bypass STEP: 328 mm out, heading -4 deg to the line, IMU"}
+04:12:52.364 [imu] motion: moving"}
+04:12:52.760 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 2 left, 2 right)"}
+04:12:53.070 [motion] bypass PROBE_IN: 324 mm out, heading -3 deg to the line, IMU"}
+04:12:53.217 [imu] >>> turning RIGHT"}
+04:12:53.760 [motion] bypass LOOK: 324 mm out, heading -41 deg to the line, IMU"}
+04:12:53.782 [imu] turning RIGHT 67 deg/s, 25 mm/s, level | turns: 2 left, 2 right, facing 40 deg RIGHT of start | humps: none yet"}
+04:12:53.958 [imu] motion: stopped"}
+04:12:54.686 [imu] <<< turned RIGHT 41 deg in 0.7 s  (turns so far: 2 left, 3 right)"}
+04:12:55.229 [scan] side look 45 deg: 1212 mm (sent 511)"}
+04:12:55.235 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:12:55.235 [motion] bypass PROBE_OUT: 324 mm out, heading -44 deg to the line, IMU"}
+04:12:55.375 [imu] >>> turning LEFT"}
+04:12:55.773 [imu] turning LEFT 66 deg/s, 1 mm/s, level | turns: 2 left, 3 right, facing 16 deg RIGHT of start | humps: none yet"}
+04:12:55.973 [motion] bypass CLEAR: 324 mm out, heading -4 deg to the line, IMU"}
+04:12:56.439 [imu] motion: moving"}
+04:12:56.825 [imu] <<< turned LEFT 41 deg in 1.5 s  (turns so far: 3 left, 3 right)"}
+04:12:57.362 [motion] bypass TURN_IN: 318 mm out, heading -3 deg to the line, IMU"}
+04:12:57.507 [imu] >>> turning RIGHT"}
+04:12:57.783 [imu] turning RIGHT 67 deg/s, 56 mm/s, level | turns: 3 left, 3 right, facing 20 deg RIGHT of start | humps: none yet"}
+04:12:58.414 [motion] bypass STEP_IN: 318 mm out, heading -66 deg to the line, IMU"}
+04:12:58.778 [imu] turning LEFT 7 deg/s, 22 mm/s, level | turns: 3 left, 3 right, facing 65 deg RIGHT of start | humps: none yet"}
+04:12:58.826 [imu] motion: moving"}
+04:12:59.219 [imu] <<< turned RIGHT 63 deg in 1.8 s  (turns so far: 3 left, 4 right)"}
+04:13:00.515 [motion] bypass ONTO: 145 mm out, heading -67 deg to the line, IMU"}
+04:13:00.591 [nav] junction, no barcode command: straight on"}
+04:13:00.591 [line] junction (GP7 black 80 ms) -> nav"}
+04:13:01.939 [line] line found (LOST_MS 1500)"}
+04:13:01.939 [barcode] REJECTED: malformed (bad_length)"}
+04:13:01.939 [barcode]   1 widths (1 letter = 29)"}
+04:13:01.940 [barcode]    0: B286"}
+04:13:01.962 [motion] bypass ALONG: 30 mm out, heading -67 deg to the line, IMU"}
+04:13:02.140 [imu] >>> turning LEFT"}
+04:13:02.777 [imu] turning LEFT 61 deg/s, 18 mm/s, level | turns: 3 left, 4 right, facing 21 deg RIGHT of start | humps: none yet"}
+04:13:02.815 [nav] junction, no barcode command: straight on"}
+04:13:02.815 [line] junction (GP7 black 80 ms) -> nav"}
+04:13:03.061 [motion] bypass DONE: 30 mm out, heading -4 deg to the line, IMU"}
+04:13:03.070 [motion] state BYPASS -> LINE_SEARCH"}
+04:13:03.073 [scan] AVOIDING -> MONITORING"}
+04:13:03.073 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:13:03.219 [barcode] REJECTED: malformed (bad_length)"}
+04:13:03.219 [barcode]   1 widths (1 letter = 29)"}
+04:13:03.219 [barcode]    0: B97"}
+04:13:03.252 [imu] motion: moving"}
+04:13:03.840 [line] RL=10 err=-75"}
+04:13:03.895 [line] RL=11 err=-19"}
+04:13:03.918 [line] RL=01 err=79"}
+04:13:03.939 [line] RL=11 err=31"}
+04:13:03.941 [line] RL=01 err=85"}
+04:13:03.986 [line] RL=00 err=12"}
+04:13:04.404 [line] RL=01 err=89"}
+04:13:04.453 [line] RL=11 err=8"}
+04:13:04.489 [line] RL=10 err=-81"}
+04:13:04.556 [line] RL=00 err=-16"}
+04:13:04.776 [imu] turning RIGHT 17 deg/s, 47 mm/s, level | turns: 3 left, 4 right | humps: none yet"}
+04:13:04.820 [line] RL=10 err=-79"}
+04:13:04.916 [line] RL=01 err=75"}
+04:13:04.975 [line] RL=00 err=19"}
+04:13:05.378 [line] RL=01 err=74"}
+04:13:05.434 [line] RL=11 err=3"}
+04:13:05.490 [line] RL=10 err=-89"}
+04:13:05.534 [line] RL=00 err=-12"}
+04:13:05.779 [imu] turning RIGHT 11 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 6 deg LEFT of start | humps: none yet"}
+04:13:05.934 [line] RL=10 err=-94"}
+04:13:05.986 [line] RL=11 err=0"}
+04:13:06.000 [line] RL=01 err=79"}
+04:13:06.066 [line] RL=00 err=8"}
+04:13:06.538 [line] RL=01 err=86"}
+04:13:06.589 [line] RL=11 err=-42"}
+04:13:06.589 [line] RL=10 err=-78"}
+04:13:06.644 [line] RL=00 err=-15"}
+04:13:06.776 [imu] turning LEFT 25 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 9 deg LEFT of start | humps: none yet"}
+04:13:07.079 [line] RL=10 err=-93"}
+04:13:07.137 [line] RL=11 err=3"}
+04:13:07.148 [line] RL=01 err=81"}
+04:13:07.193 [line] RL=00 err=11"}
+04:13:07.669 [line] RL=01 err=72"}
+04:13:07.723 [line] RL=11 err=-47"}
+04:13:07.727 [line] RL=10 err=-73"}
+04:13:07.778 [imu] turning LEFT 46 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 6 deg LEFT of start | humps: none yet"}
+04:13:07.783 [line] RL=00 err=-10"}
+04:13:08.192 [line] RL=10 err=-96"}
+04:13:08.235 [line] RL=11 err=-2"}
+04:13:08.259 [line] RL=01 err=88"}
+04:13:08.293 [line] RL=00 err=12"}
+04:13:08.738 [line] RL=01 err=62"}
+04:13:08.772 [imu] turning LEFT 39 deg/s, 49 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:13:08.794 [line] RL=10 err=-78"}
+04:13:08.838 [line] RL=00 err=-20"}
+04:13:09.249 [line] RL=10 err=-98"}
+04:13:09.315 [line] RL=01 err=89"}
+04:13:09.350 [line] RL=00 err=11"}
+04:13:09.777 [imu] turning LEFT 37 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:13:09.783 [line] RL=01 err=86"}
+04:13:09.836 [line] RL=10 err=-60"}
+04:13:09.884 [line] RL=00 err=-14"}
+04:13:10.311 [line] RL=10 err=-73"}
+04:13:10.372 [line] RL=01 err=92"}
+04:13:10.410 [line] RL=00 err=12"}
+04:13:10.783 [line] RL=01 err=67"}
+04:13:10.783 [imu] turning LEFT 36 deg/s, 46 mm/s, level | turns: 3 left, 4 right, facing 8 deg LEFT of start | humps: none yet"}
+04:13:10.830 [line] RL=10 err=-87"}
+04:13:10.884 [line] RL=00 err=-14"}
+04:13:11.250 [line] RL=10 err=-68"}
+04:13:11.305 [line] RL=01 err=73"}
+04:13:11.361 [line] RL=00 err=14"}
+04:13:11.727 [line] RL=01 err=85"}
+04:13:11.777 [imu] turning LEFT 40 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 11 deg LEFT of start | humps: none yet"}
+04:13:11.791 [line] RL=11 err=-20"}
+04:13:11.804 [line] RL=10 err=-76"}
+04:13:11.848 [line] RL=00 err=-11"}
+04:13:12.243 [line] RL=10 err=-96"}
+04:13:12.283 [line] RL=01 err=79"}
+04:13:12.338 [line] RL=00 err=30"}
+04:13:12.782 [imu] turning LEFT 39 deg/s, 49 mm/s, level | turns: 3 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:13:12.826 [line] RL=01 err=84"}
+04:13:12.871 [line] RL=00 err=-32"}
+04:13:12.883 [line] RL=10 err=-73"}
+04:13:12.926 [line] RL=00 err=-8"}
+04:13:13.366 [line] RL=10 err=-60"}
+04:13:13.414 [line] RL=01 err=82"}
+04:13:13.466 [line] RL=00 err=11"}
+04:13:13.776 [imu] turning LEFT 22 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 9 deg LEFT of start | humps: none yet"}
+04:13:13.881 [line] RL=01 err=71"}
+04:13:13.926 [line] RL=10 err=-70"}
+04:13:13.982 [line] RL=00 err=-8"}
+04:13:14.415 [line] RL=10 err=-84"}
+04:13:14.471 [line] RL=11 err=-8"}
+04:13:14.483 [line] RL=01 err=85"}
+04:13:14.526 [line] RL=00 err=11"}
+04:13:14.782 [imu] turning LEFT 12 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:13:14.964 [line] RL=01 err=81"}
+04:13:15.015 [line] RL=10 err=-74"}
+04:13:15.059 [line] RL=00 err=-14"}
+04:13:15.493 [line] RL=10 err=-77"}
+04:13:15.548 [line] RL=01 err=79"}
+04:13:15.603 [line] RL=00 err=13"}
+04:13:15.775 [imu] turning RIGHT 6 deg/s, 46 mm/s, level | turns: 3 left, 4 right, facing 9 deg LEFT of start | humps: none yet"}
+04:13:15.960 [line] RL=01 err=83"}
+04:13:16.031 [line] RL=10 err=-71"}
+04:13:16.094 [line] RL=00 err=-14"}
+04:13:16.516 [line] RL=10 err=-97"}
+04:13:16.561 [line] RL=11 err=-22"}
+04:13:16.572 [line] RL=01 err=62"}
+04:13:16.616 [line] RL=00 err=15"}
+04:13:16.772 [imu] turning  0 deg/s, 49 mm/s, level | turns: 3 left, 4 right, facing 9 deg LEFT of start | humps: none yet"}
+04:13:17.066 [line] RL=01 err=89"}
+04:13:17.115 [line] RL=11 err=-41"}
+04:13:17.128 [line] RL=10 err=-81"}
+04:13:17.169 [line] RL=00 err=-12"}
+04:13:17.778 [imu] turning RIGHT 44 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 12 deg LEFT of start | humps: none yet"}
+04:13:18.672 [line] LOST: RL=00 for 1500 ms"}
+04:13:18.684 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:13:18.783 [imu] turning RIGHT 4 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 32 deg RIGHT of start | humps: none yet"}
+04:13:19.319 [nav] button GP21"}
+04:13:19.319 [nav] mission RUNNING -> PAUSED"}
+04:13:19.330 [motion] state LINE_SEARCH -> IDLE"}
+04:13:19.373 [scan] MONITORING -> IDLE"}
+04:13:19.485 [imu] motion: stopped"}
+04:13:20.145 [imu] <<< turned LEFT 15 deg in 17.3 s  (turns so far: 4 left, 4 right)"}
+04:13:21.176 [imu] >>> leaning RIGHT 5 deg (left side up)"}
+04:13:21.311 [line] junction (GP7 black 80 ms) -> nav"}
+04:13:21.311 [nav] junction while PAUSED: ignored"}
+04:13:21.459 [imu] motion: moving"}
+04:13:21.476 [imu] >>> nose UP 14 deg"}
+04:13:21.541 [motion] STOP_IMU set: brake written 59 us after the request."}
+04:13:21.541 [imu] !!! STOPPING: car tipped over (35.4 deg to the RIGHT, left side up) !!!"}
+04:13:21.542 [nav] IMU fault"}
+04:13:21.542 [imu]     caught 21.5 ms after the first bad sample; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:13:21.542 [nav] mission PAUSED -> FAULT"}
+04:13:21.542 [line] line found (LOST_MS 1500)"}
+04:13:21.542 [barcode] REJECTED: aborted (cancelled)"}
+04:13:21.542 [nav] buzzer: 1 x 800 ms"}
+04:13:21.542 [imu] mission over (FAULT): turns: 8 (4 left, 4 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:13:21.631 [imu] motion: stopped"}
+04:13:21.675 [imu] >>> nose DOWN 13 deg"}
+04:13:21.975 [imu] >>> leaning LEFT 29 deg (right side up)"}
+04:13:22.172 [imu] >>> picked up (hands on)"}
+04:13:22.442 [nav] junction while FAULT: ignored"}
+04:13:23.723 [barcode] REJECTED: aborted (width_too_long)"}
+04:13:24.021 [line] RL=11 err=0"}
+04:13:27.982 [line] RL=10 err=-33"}
+04:13:28.354 [line] RL=11 err=-7"}
+04:13:28.409 [line] RL=01 err=18"}
+04:13:28.584 [line] RL=11 err=0"}
+04:13:28.898 [line] RL=01 err=26"}
+04:13:28.964 [line] RL=00 err=32"}
+04:13:53.771 [line] RL=10 err=-75"}
+04:13:53.771 [line] RL=00 err=41"}
+04:13:53.771 [line] RL=01 err=59"}
+04:13:53.771 [imu] turning RIGHT 42 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 2 deg LEFT of start | humps: none yet"}
+04:13:53.771 [line] RL=00 err=23"}
+04:13:53.771 [line] RL=01 err=74"}
+04:13:53.771 [line] RL=10 err=-82"}
+04:13:53.772 [wifi] state=JOINING join#=3 lease#=0 lost=0 t=11384ms"}
+04:13:53.772 [line] RL=00 err=-15"}
+04:13:53.772 [line] RL=10 err=-79"}
+04:13:53.772 [line] RL=01 err=71"}
+04:13:53.772 [line] RL=00 err=12"}
+04:13:53.772 [imu] turning RIGHT 40 deg/s, 47 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:13:53.772 [line] RL=01 err=68"}
+04:13:53.772 [line] RL=10 err=-69"}
+04:13:53.772 [line] RL=00 err=-11"}
+04:13:55.354 [wifi] state=ONLINE join#=3 lease#=1 lost=0 t=23187ms"}
+04:13:57.016 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:13:57.016 [scan] angle -45: 1224 mm"}
+04:13:57.016 [scan] angle -30: 1865 mm"}
+04:13:57.016 [scan] angle -25: 1522 mm"}
+04:13:57.016 [scan] angle -20: 252 mm  <- obstacle"}
+04:13:57.016 [scan] angle -10: 239 mm  <- obstacle"}
+04:13:57.016 [scan] angle 0: 235 mm  <- obstacle"}
+04:13:57.016 [scan] angle 25: 240 mm  <- obstacle"}
+04:13:57.016 [scan] angle 30: 248 mm  <- obstacle"}
+04:13:57.016 [scan] angle 35: 1430 mm"}
+04:13:57.016 [scan] angle 45: 1365 mm"}
+04:13:57.016 [scan] profile: closest 235 mm @ 0 deg, edges -20..30 deg, x -66..105 mm, width 171 mm, IN the path"}
+04:13:57.016 [scan] clearance L 9999 R 9999 mm (need 248), offset L 314 R 353 mm"}
+04:13:57.036 [scan] ACTION: BYPASS LEFT   (scan took 5670 ms, budget 7000 ms)"}
+04:13:57.036 [scan] FINE_SCAN -> PLANNING"}
+04:13:57.036 [scan] PLANNING -> AVOIDING"}
+04:13:57.036 [motion] every STOP bit clear, 5688 ms after the first one was seen."}
+04:13:57.036 [motion] avoid_cmd BYPASS left 314 mm (raw 0x13a2): taken"}
+04:13:57.036 [motion] bypass OUT: 0 mm out, heading +3 deg to the line, IMU"}
+04:13:57.036 [motion] state BRAKED -> BYPASS"}
+04:13:57.152 [line] RL=00 err=-16"}
+04:13:57.290 [imu] >>> turning LEFT"}
+04:13:57.847 [imu] turning LEFT 75 deg/s, 1 mm/s, level | turns: 0 left, 0 right, facing 57 deg LEFT of start | humps: none yet"}
+04:13:58.104 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:13:58.308 [imu] motion: stopped"}
+04:13:58.646 [scan] lane look 0 deg: 2400 mm (sent 511)"}
+04:13:58.653 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:13:58.653 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:13:58.653 [line] LOST: RL=00 for 1500 ms"}
+04:13:59.031 [imu] <<< turned LEFT 65 deg in 1.9 s  (turns so far: 1 left, 0 right)"}
+04:13:59.141 [imu] motion: moving"}
+04:14:02.321 [motion] bypass PARALLEL: 314 mm out, heading +69 deg to the line, IMU"}
+04:14:02.463 [imu] >>> turning RIGHT"}
+04:14:02.879 [imu] turning RIGHT 69 deg/s, 44 mm/s, level | turns: 1 left, 0 right, facing 52 deg LEFT of start | humps: none yet"}
+04:14:03.390 [motion] bypass STEP: 313 mm out, heading +4 deg to the line, IMU"}
+04:14:03.844 [imu] turning LEFT 5 deg/s, 30 mm/s, level | turns: 1 left, 0 right, facing 11 deg LEFT of start | humps: none yet"}
+04:14:03.863 [imu] motion: moving"}
+04:14:04.251 [imu] <<< turned RIGHT 66 deg in 1.8 s  (turns so far: 1 left, 1 right)"}
+04:14:06.151 [motion] bypass PROBE_IN: 324 mm out, heading +2 deg to the line, IMU"}
+04:14:06.295 [imu] >>> turning RIGHT"}
+04:14:06.850 [imu] turning RIGHT 68 deg/s, 27 mm/s, level | turns: 1 left, 1 right, facing 26 deg RIGHT of start | humps: none yet"}
+04:14:06.939 [motion] bypass LOOK: 325 mm out, heading -41 deg to the line, IMU"}
+04:14:07.856 [imu] <<< turned RIGHT 47 deg in 0.8 s  (turns so far: 1 left, 2 right)"}
+04:14:08.345 [scan] side look 45 deg: 247 mm (sent 247)"}
+04:14:08.349 [motion] avoid_cmd LOOK 247 mm (raw 0x0f73): taken"}
+04:14:08.349 [motion] bypass PROBE_OUT: 325 mm out, heading -44 deg to the line, IMU"}
+04:14:08.583 [imu] >>> turning LEFT"}
+04:14:08.856 [imu] turning LEFT 69 deg/s, 1 mm/s, level | turns: 1 left, 2 right, facing 12 deg RIGHT of start | humps: none yet"}
+04:14:09.114 [motion] bypass STEP: 324 mm out, heading -4 deg to the line, IMU"}
+04:14:09.579 [imu] motion: moving"}
+04:14:09.952 [imu] <<< turned LEFT 42 deg in 1.5 s  (turns so far: 2 left, 2 right)"}
+04:14:10.290 [motion] bypass PROBE_IN: 320 mm out, heading -3 deg to the line, IMU"}
+04:14:10.444 [imu] >>> turning RIGHT"}
+04:14:10.854 [imu] turning RIGHT 64 deg/s, 42 mm/s, level | turns: 2 left, 2 right, facing 21 deg RIGHT of start | humps: none yet"}
+04:14:11.006 [motion] bypass LOOK: 321 mm out, heading -41 deg to the line, IMU"}
+04:14:11.181 [imu] motion: stopped"}
+04:14:11.924 [imu] <<< turned RIGHT 42 deg in 0.7 s  (turns so far: 2 left, 3 right)"}
+04:14:12.446 [scan] side look 45 deg: 1223 mm (sent 511)"}
+04:14:12.448 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:14:12.448 [motion] bypass PROBE_OUT: 321 mm out, heading -44 deg to the line, IMU"}
+04:14:12.713 [imu] >>> turning LEFT"}
+04:14:13.199 [motion] bypass CLEAR: 320 mm out, heading -4 deg to the line, IMU"}
+04:14:13.669 [imu] motion: moving"}
+04:14:14.053 [imu] <<< turned LEFT 40 deg in 1.5 s  (turns so far: 3 left, 3 right)"}
+04:14:14.593 [motion] bypass TURN_IN: 313 mm out, heading -4 deg to the line, IMU"}
+04:14:14.796 [imu] >>> turning RIGHT"}
+04:14:14.844 [imu] turning RIGHT 47 deg/s, 71 mm/s, level | turns: 3 left, 3 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:14:15.648 [motion] bypass STEP_IN: 313 mm out, heading -66 deg to the line, IMU"}
+04:14:15.844 [imu] turning LEFT 11 deg/s, 8 mm/s, level | turns: 3 left, 3 right, facing 59 deg RIGHT of start | humps: none yet"}
+04:14:16.093 [imu] motion: moving"}
+04:14:16.672 [imu] <<< turned RIGHT 64 deg in 2.0 s  (turns so far: 3 left, 4 right)"}
+04:14:18.028 [motion] bypass ONTO: 115 mm out, heading -67 deg to the line, IMU"}
+04:14:18.137 [nav] junction, no barcode command: straight on"}
+04:14:18.137 [line] junction (GP7 black 80 ms) -> nav"}
+04:14:19.505 [motion] bypass ALONG: 0 mm out, heading -68 deg to the line, IMU"}
+04:14:19.554 [line] line found (LOST_MS 1500)"}
+04:14:19.555 [barcode] REJECTED: malformed (bad_length)"}
+04:14:19.555 [barcode]   1 widths (1 letter = 29)"}
+04:14:19.555 [barcode]    0: B301"}
+04:14:19.656 [imu] >>> turning LEFT"}
+04:14:19.847 [imu] turning LEFT 62 deg/s, 61 mm/s, level | turns: 3 left, 4 right, facing 46 deg RIGHT of start | humps: none yet"}
+04:14:20.323 [nav] junction, no barcode command: straight on"}
+04:14:20.323 [line] junction (GP7 black 80 ms) -> nav"}
+04:14:20.598 [motion] bypass DONE: 0 mm out, heading -4 deg to the line, IMU"}
+04:14:20.637 [motion] state BYPASS -> LINE_SEARCH"}
+04:14:20.638 [scan] AVOIDING -> MONITORING"}
+04:14:20.638 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:14:20.734 [barcode] REJECTED: malformed (bad_length)"}
+04:14:20.734 [barcode]   1 widths (1 letter = 29)"}
+04:14:20.734 [barcode]    0: B96"}
+04:14:20.847 [imu] motion: moving"}
+04:14:21.475 [line] RL=10 err=-93"}
+04:14:21.518 [line] RL=11 err=21"}
+04:14:21.553 [line] RL=01 err=75"}
+04:14:21.601 [line] RL=00 err=11"}
+04:14:21.884 [imu] turning LEFT 16 deg/s, 46 mm/s, level | turns: 3 left, 4 right, facing 10 deg RIGHT of start | humps: none yet"}
+04:14:22.123 [line] RL=01 err=61"}
+04:14:22.170 [line] RL=11 err=-56"}
+04:14:22.174 [line] RL=10 err=-75"}
+04:14:22.278 [line] RL=00 err=-14"}
+04:14:22.424 [line] RL=10 err=-64"}
+04:14:22.535 [line] RL=11 err=-15"}
+04:14:22.707 [line] RL=01 err=55"}
+04:14:22.847 [imu] turning LEFT 25 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 1 deg LEFT of start | humps: none yet"}
+04:14:22.885 [line] RL=11 err=23"}
+04:14:23.057 [line] RL=01 err=81"}
+04:14:23.434 [line] RL=11 err=-19"}
+04:14:23.495 [line] RL=10 err=-64"}
+04:14:23.715 [line] RL=11 err=-23"}
+04:14:23.736 [line] RL=01 err=64"}
+04:14:23.844 [imu] turning RIGHT 4 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 2 deg LEFT of start | humps: none yet"}
+04:14:24.177 [line] RL=11 err=21"}
+04:14:24.217 [line] RL=10 err=-83"}
+04:14:24.473 [line] RL=11 err=-28"}
+04:14:24.524 [line] RL=01 err=77"}
+04:14:24.724 [line] RL=11 err=23"}
+04:14:24.792 [line] RL=10 err=-64"}
+04:14:24.853 [imu] turning RIGHT 11 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:14:24.854 [line] RL=11 err=-17"}
+04:14:24.933 [line] RL=01 err=67"}
+04:14:25.076 [line] RL=11 err=41"}
+04:14:25.134 [line] RL=10 err=-65"}
+04:14:25.342 [line] RL=11 err=-26"}
+04:14:25.365 [line] RL=10 err=-73"}
+04:14:25.412 [line] RL=01 err=59"}
+04:14:25.651 [line] RL=11 err=-19"}
+04:14:25.652 [line] RL=10 err=-49"}
+04:14:25.852 [imu] turning RIGHT 17 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:14:25.880 [line] RL=00 err=42"}
+04:14:25.889 [line] RL=01 err=53"}
+04:14:25.907 [line] RL=11 err=-11"}
+04:14:25.955 [line] RL=01 err=86"}
+04:14:26.112 [line] RL=00 err=39"}
+04:14:26.194 [line] RL=01 err=76"}
+04:14:26.289 [line] RL=11 err=30"}
+04:14:26.312 [line] RL=01 err=49"}
+04:14:26.323 [line] RL=00 err=4"}
+04:14:26.361 [line] RL=10 err=-81"}
+04:14:26.437 [line] RL=00 err=-23"}
+04:14:26.580 [line] RL=10 err=-68"}
+04:14:26.699 [line] RL=00 err=34"}
+04:14:26.700 [line] RL=01 err=59"}
+04:14:26.825 [line] RL=00 err=28"}
+04:14:26.843 [imu] turning RIGHT 9 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 8 deg LEFT of start | humps: none yet"}
+04:14:27.044 [line] RL=01 err=63"}
+04:14:27.139 [line] RL=00 err=8"}
+04:14:27.187 [line] RL=10 err=-63"}
+04:14:27.308 [line] RL=00 err=-14"}
+04:14:27.524 [line] RL=10 err=-88"}
+04:14:27.623 [line] RL=11 err=-35"}
+04:14:27.637 [line] RL=00 err=20"}
+04:14:27.656 [line] RL=01 err=100"}
+04:14:27.700 [line] RL=00 err=9"}
+04:14:27.866 [imu] turning RIGHT 9 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:14:28.065 [line] RL=01 err=100"}
+04:14:28.112 [line] RL=00 err=-15"}
+04:14:28.126 [line] RL=10 err=-82"}
+04:14:28.165 [line] RL=00 err=-12"}
+04:14:28.567 [line] RL=10 err=-72"}
+04:14:28.619 [line] RL=01 err=61"}
+04:14:28.672 [line] RL=00 err=10"}
+04:14:28.848 [imu] turning RIGHT 12 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 7 deg LEFT of start | humps: none yet"}
+04:14:29.082 [line] RL=01 err=82"}
+04:14:29.130 [line] RL=11 err=-16"}
+04:14:29.139 [line] RL=10 err=-79"}
+04:14:29.188 [line] RL=00 err=-9"}
+04:14:29.582 [line] RL=10 err=-75"}
+04:14:29.639 [line] RL=01 err=61"}
+04:14:29.685 [line] RL=00 err=10"}
+04:14:29.853 [imu] turning LEFT 7 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 8 deg LEFT of start | humps: none yet"}
+04:14:30.067 [line] RL=01 err=92"}
+04:14:30.115 [line] RL=10 err=-68"}
+04:14:30.166 [line] RL=00 err=-10"}
+04:14:30.604 [line] RL=10 err=-98"}
+04:14:30.670 [line] RL=01 err=63"}
+04:14:30.700 [line] RL=00 err=12"}
+04:14:30.845 [imu] turning RIGHT 10 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 8 deg LEFT of start | humps: none yet"}
+04:14:31.184 [line] RL=01 err=89"}
+04:14:31.187 [line] RL=11 err=-40"}
+04:14:31.189 [line] RL=10 err=-87"}
+04:14:31.249 [line] RL=00 err=-5"}
+04:14:31.758 [line] RL=10 err=-81"}
+04:14:31.791 [line] RL=01 err=82"}
+04:14:31.814 [line] RL=00 err=20"}
+04:14:31.844 [imu] turning RIGHT 42 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 11 deg LEFT of start | humps: none yet"}
+04:14:32.305 [line] RL=01 err=91"}
+04:14:32.363 [line] RL=11 err=-59"}
+04:14:32.363 [line] RL=10 err=-73"}
+04:14:32.406 [line] RL=00 err=-14"}
+04:14:32.844 [imu] turning RIGHT 33 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 18 deg LEFT of start | humps: none yet"}
+04:14:32.873 [line] RL=10 err=-62"}
+04:14:32.919 [line] RL=01 err=75"}
+04:14:32.944 [line] RL=00 err=24"}
+04:14:32.953 [line] RL=01 err=68"}
+04:14:32.969 [line] RL=00 err=11"}
+04:14:33.429 [line] RL=01 err=58"}
+04:14:33.466 [line] RL=11 err=-28"}
+04:14:33.485 [line] RL=10 err=-80"}
+04:14:33.534 [line] RL=00 err=-10"}
+04:14:33.873 [imu] turning RIGHT 17 deg/s, 47 mm/s, level | turns: 3 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:14:33.957 [line] RL=00 err=1"}
+04:14:33.966 [line] RL=01 err=68"}
+04:14:34.014 [line] RL=00 err=15"}
+04:14:34.405 [line] RL=01 err=91"}
+04:14:34.453 [line] RL=11 err=25"}
+04:14:34.478 [line] RL=10 err=-83"}
+04:14:34.513 [line] RL=00 err=-11"}
+04:14:34.871 [imu] turning RIGHT 24 deg/s, 48 mm/s, level | turns: 3 left, 4 right, facing 24 deg LEFT of start | humps: none yet"}
+04:14:35.648 [nav] button GP21"}
+04:14:35.648 [nav] mission RUNNING -> PAUSED"}
+04:14:35.648 [motion] state LINE_FOLLOW -> IDLE"}
+04:14:35.689 [scan] MONITORING -> IDLE"}
+04:14:35.837 [imu] motion: stopped"}
+04:14:36.018 [line] LOST: RL=00 for 1500 ms"}
+04:14:36.526 [imu] <<< turned LEFT 47 deg in 16.1 s  (turns so far: 4 left, 4 right)"}
+04:14:37.643 [imu] >>> picked up (hands on)"}
+04:14:37.987 [line] RL=10 err=-78"}
+04:14:37.988 [line] line found (LOST_MS 1500)"}
+04:14:38.064 [line] junction (GP7 black 80 ms) -> nav"}
+04:14:38.064 [nav] junction while PAUSED: ignored"}
+04:14:38.757 [motion] STOP_IMU set: brake written 262 us after the request."}
+04:14:38.758 [imu] !!! STOPPING: car picked up (in hand 1.2 s) !!!"}
+04:14:38.758 [nav] IMU fault"}
+04:14:38.758 [imu]     caught 1099.1 ms after the first lift; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:14:38.758 [nav] mission PAUSED -> FAULT"}
+04:14:38.758 [line] RL=00 err=0"}
+04:14:38.758 [barcode] REJECTED: aborted (cancelled)"}
+04:14:38.758 [nav] buzzer: 1 x 800 ms"}
+04:14:38.758 [imu] mission over (FAULT): turns: 8 (4 left, 4 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:14:39.063 [line] RL=11 err=0"}
+04:14:42.486 [line] RL=10 err=-31"}
+04:14:42.549 [line] RL=00 err=-5"}
+04:14:42.644 [line] RL=10 err=-54"}
+04:14:42.859 [line] RL=11 err=-3"}
+04:14:42.907 [line] RL=01 err=16"}
+04:14:42.955 [line] RL=00 err=35"}
+04:14:44.445 [line] LOST: RL=00 for 1500 ms"}
+04:14:45.264 [imu] <<< put down (hands off)"}
+04:14:45.336 [imu] motion: moving"}
+04:14:45.436 [imu] motion: stopped"}
+04:14:52.812 [nav] button GP20"}
+04:14:52.812 [nav] mission FAULT -> CALIBRATING"}
+04:14:53.829 [line] calibration OK: GP26 ok (white 172, black 972, rise 652) GP27 ok (white 225, black 1025, rise 705)"}
+04:14:53.829 [imu] cal 1/5: not still, spread 87 mg (max 80)"}
+04:14:54.141 [line] RL=10 err=-76"}
+04:14:54.141 [line] line found (LOST_MS 1500)"}
+04:14:54.215 [line] RL=01 err=24"}
+04:14:55.140 [line] RL=00 err=9"}
+04:14:55.302 [imu] cal 2/5: car moving"}
+04:14:56.634 [line] LOST: RL=00 for 1500 ms"}
+04:14:56.700 [line] RL=10 err=-73"}
+04:14:56.700 [line] line found (LOST_MS 1500)"}
+04:14:56.742 [line] RL=00 err=0"}
+04:14:56.793 [imu] cal 3/5: car moving"}
+04:14:58.249 [line] LOST: RL=00 for 1500 ms"}
+04:14:58.280 [imu] cal 4/5: car moving"}
+04:14:58.421 [line] RL=10 err=-77"}
+04:14:58.422 [line] line found (LOST_MS 1500)"}
+04:14:58.492 [line] RL=01 err=66"}
+04:14:58.623 [line] RL=00 err=22"}
+04:14:59.448 [line] RL=01 err=60"}
+04:14:59.745 [line] RL=11 err=8"}
+04:14:59.749 [line] RL=10 err=-44"}
+04:14:59.772 [imu] cal 5/5: car moving"}
+04:14:59.889 [line] RL=11 err=15"}
+04:14:59.909 [line] RL=01 err=66"}
+04:15:00.121 [line] RL=00 err=12"}
+04:15:00.276 [imu] cal FAILED after 5 tries (offsets kept: x=32 y=-11 z=67 mg)"}
+04:15:00.276 [imu] -> nav: CAL_FAIL"}
+04:15:00.276 [nav] calibration FAILED"}
+04:15:00.276 [nav] mission CALIBRATING -> FAULT"}
+04:15:00.276 [nav] buzzer: 1 x 800 ms"}
+04:15:00.362 [line] RL=01 err=73"}
+04:15:00.632 [line] RL=00 err=-30"}
+04:15:00.670 [line] RL=10 err=-57"}
+04:15:01.076 [line] RL=00 err=-36"}
+04:15:01.465 [imu] >>> turning LEFT"}
+04:15:01.699 [imu] motion: stopped"}
+04:15:01.852 [imu] motion: moving"}
+04:15:01.972 [line] RL=10 err=-77"}
+04:15:02.114 [line] RL=11 err=-8"}
+04:15:02.114 [line] RL=01 err=73"}
+04:15:02.423 [imu] motion: stopped"}
+04:15:02.923 [imu] <<< wiggle RIGHT 1 deg, not counted as a turn"}
+04:15:03.674 [nav] button GP20"}
+04:15:03.674 [nav] mission FAULT -> CALIBRATING"}
+04:15:04.465 [line] RL=11 err=-3"}
+04:15:04.630 [line] RL=01 err=26"}
+04:15:04.668 [line] calibration OK: GP26 ok (white 565, black 967, rise 806) GP27 ok (white 235, black 820, rise 585)"}
+04:15:04.670 [imu] cal 1/5: not still, spread 233 mg (max 80)"}
+04:15:05.144 [line] RL=11 err=31"}
+04:15:05.182 [line] RL=01 err=70"}
+04:15:05.331 [line] RL=00 err=17"}
+04:15:06.161 [imu] cal 2/5: car moving"}
+04:15:06.827 [line] LOST: RL=00 for 1500 ms"}
+04:15:07.651 [imu] cal 3/5: not still, spread 198 mg (max 80)"}
+04:15:09.140 [imu] cal 4/5: not still, spread 90 mg (max 80)"}
+04:15:10.637 [imu] cal ok: offsets x=27 y=-11 z=65 mg, spread 20 mg"}
+04:15:10.637 [imu] -> nav: CAL_OK_IMU"}
+04:15:10.638 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:15:10.638 [nav] mission CALIBRATING -> READY"}
+04:15:10.638 [nav] buzzer: 1 x 100 ms"}
+04:15:10.641 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:15:12.968 [nav] button GP20"}
+04:15:12.968 [nav] mission READY -> RUNNING"}
+04:15:12.971 [imu] mission start: turns, humps, bumps and heading reset"}
+04:15:13.001 [motion] state IDLE -> LINE_FOLLOW"}
+04:15:13.010 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:15:13.010 [scan] IDLE -> MONITORING"}
+04:15:13.284 [line] RL=01 err=55"}
+04:15:13.284 [line] line found (LOST_MS 1500)"}
+04:15:13.300 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:15:13.441 [imu] motion: moving"}
+04:15:13.497 [line] RL=10 err=-37"}
+04:15:13.604 [line] RL=00 err=-29"}
+04:15:13.801 [line] RL=10 err=-85"}
+04:15:13.902 [line] RL=11 err=-13"}
+04:15:13.916 [line] RL=01 err=82"}
+04:15:13.995 [line] RL=00 err=10"}
+04:15:14.286 [line] RL=01 err=95"}
+04:15:14.332 [line] RL=11 err=-39"}
+04:15:14.338 [line] RL=10 err=-78"}
+04:15:14.363 [imu] >>> turning LEFT"}
+04:15:14.399 [line] RL=00 err=-14"}
+04:15:14.797 [line] RL=10 err=-91"}
+04:15:14.851 [line] RL=11 err=-12"}
+04:15:14.860 [line] RL=01 err=82"}
+04:15:14.903 [line] RL=00 err=6"}
+04:15:15.253 [imu] turning LEFT 31 deg/s, 47 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:15:15.367 [line] RL=01 err=72"}
+04:15:15.419 [line] RL=10 err=-75"}
+04:15:15.481 [line] RL=00 err=-5"}
+04:15:15.942 [line] RL=10 err=-100"}
+04:15:15.981 [line] RL=11 err=54"}
+04:15:15.996 [line] RL=01 err=79"}
+04:15:16.026 [line] RL=00 err=40"}
+04:15:16.032 [line] RL=01 err=56"}
+04:15:16.041 [line] RL=00 err=8"}
+04:15:16.251 [imu] turning RIGHT 9 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:15:16.545 [line] RL=01 err=83"}
+04:15:16.588 [line] RL=10 err=-85"}
+04:15:16.647 [line] RL=00 err=-12"}
+04:15:17.111 [line] RL=10 err=-87"}
+04:15:17.168 [line] RL=01 err=91"}
+04:15:17.210 [line] RL=00 err=6"}
+04:15:17.259 [imu] turning RIGHT 36 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 1 deg LEFT of start | humps: none yet"}
+04:15:17.671 [line] RL=01 err=85"}
+04:15:17.702 [line] RL=10 err=-77"}
+04:15:17.776 [line] RL=00 err=-8"}
+04:15:18.204 [line] RL=10 err=-100"}
+04:15:18.290 [line] RL=11 err=-6"}
+04:15:18.290 [imu] turning RIGHT 42 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 6 deg LEFT of start | humps: none yet"}
+04:15:18.290 [line] RL=01 err=74"}
+04:15:18.355 [line] RL=00 err=11"}
+04:15:18.793 [line] RL=01 err=67"}
+04:15:18.836 [line] RL=10 err=-74"}
+04:15:18.894 [line] RL=00 err=-12"}
+04:15:19.252 [imu] turning RIGHT 38 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 14 deg LEFT of start | humps: none yet"}
+04:15:19.375 [line] RL=10 err=-95"}
+04:15:19.417 [line] RL=11 err=-18"}
+04:15:19.443 [line] RL=01 err=89"}
+04:15:19.476 [line] RL=00 err=10"}
+04:15:19.975 [line] RL=01 err=77"}
+04:15:20.021 [line] RL=11 err=-18"}
+04:15:20.029 [line] RL=10 err=-68"}
+04:15:20.092 [line] RL=00 err=-13"}
+04:15:20.278 [imu] turning RIGHT 11 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 17 deg LEFT of start | humps: none yet"}
+04:15:20.507 [line] RL=10 err=-91"}
+04:15:20.570 [line] RL=01 err=62"}
+04:15:20.604 [line] RL=00 err=10"}
+04:15:21.085 [line] RL=01 err=72"}
+04:15:21.122 [line] RL=10 err=-87"}
+04:15:21.189 [line] RL=00 err=-9"}
+04:15:21.256 [imu] turning LEFT 36 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 17 deg LEFT of start | humps: none yet"}
+04:15:21.616 [line] RL=10 err=-99"}
+04:15:21.677 [line] RL=01 err=80"}
+04:15:21.715 [line] RL=00 err=9"}
+04:15:22.250 [imu] turning LEFT 49 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 13 deg LEFT of start | humps: none yet"}
+04:15:22.277 [line] RL=01 err=62"}
+04:15:22.280 [line] RL=00 err=8"}
+04:15:22.286 [line] RL=01 err=24"}
+04:15:22.296 [line] RL=10 err=-70"}
+04:15:22.335 [line] RL=00 err=-11"}
+04:15:22.736 [line] RL=10 err=-90"}
+04:15:22.785 [line] RL=01 err=67"}
+04:15:22.825 [line] RL=00 err=10"}
+04:15:23.250 [imu] turning LEFT 43 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 14 deg LEFT of start | humps: none yet"}
+04:15:23.259 [line] RL=01 err=69"}
+04:15:23.311 [line] RL=10 err=-70"}
+04:15:23.352 [line] RL=00 err=-13"}
+04:15:23.619 [scan] MONITORING -> COARSE_SCAN"}
+04:15:23.619 [motion] STOP_SCAN set: brake written 35 us after the request."}
+04:15:23.636 [motion] state LINE_FOLLOW -> BRAKED"}
+04:15:23.757 [imu] motion: moving"}
+04:15:23.855 [imu] motion: stopped"}
+04:15:24.143 [imu] <<< turned LEFT 16 deg in 9.4 s  (turns so far: 1 left, 0 right)"}
+04:15:24.859 [line] LOST: RL=00 for 1500 ms"}
+04:15:26.400 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:15:29.252 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:15:29.252 [scan] angle -45: 1213 mm"}
+04:15:29.252 [scan] angle -30: 1214 mm"}
+04:15:29.252 [scan] angle -25: 1228 mm"}
+04:15:29.252 [scan] angle -20: 261 mm  <- obstacle"}
+04:15:29.258 [scan] angle -10: 242 mm  <- obstacle"}
+04:15:29.259 [scan] angle 0: 243 mm  <- obstacle"}
+04:15:29.259 [scan] angle 25: 244 mm  <- obstacle"}
+04:15:29.259 [scan] angle 35: 258 mm  <- obstacle"}
+04:15:29.259 [scan] angle 40: 266 mm  <- obstacle"}
+04:15:29.259 [scan] angle 45: 1384 mm"}
+04:15:29.259 [scan] profile: closest 242 mm @ -10 deg, edges -20..40 deg, x -69..150 mm, width 219 mm, IN the path"}
+04:15:29.259 [scan] clearance L 9999 R 9999 mm (need 248), offset L 317 R 398 mm"}
+04:15:29.262 [scan] ACTION: BYPASS LEFT   (scan took 5629 ms, budget 7000 ms)"}
+04:15:29.264 [scan] FINE_SCAN -> PLANNING"}
+04:15:29.265 [scan] PLANNING -> AVOIDING"}
+04:15:29.272 [motion] every STOP bit clear, 5648 ms after the first one was seen."}
+04:15:29.272 [motion] avoid_cmd BYPASS left 317 mm (raw 0x13d2): taken"}
+04:15:29.272 [motion] bypass OUT: 0 mm out, heading +6 deg to the line, IMU"}
+04:15:29.273 [motion] state BRAKED -> BYPASS"}
+04:15:29.520 [imu] >>> turning LEFT"}
+04:15:30.268 [imu] turning LEFT 74 deg/s, 1 mm/s, level | turns: 1 left, 0 right, facing 76 deg LEFT of start | humps: none yet"}
+04:15:30.297 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:15:30.503 [imu] motion: stopped"}
+04:15:30.829 [scan] lane look 0 deg: 1580 mm (sent 511)"}
+04:15:30.830 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:15:30.831 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:15:31.227 [imu] <<< turned LEFT 62 deg in 1.9 s  (turns so far: 2 left, 0 right)"}
+04:15:31.313 [imu] motion: moving"}
+04:15:34.539 [motion] bypass PARALLEL: 318 mm out, heading +69 deg to the line, IMU"}
+04:15:34.681 [imu] >>> turning RIGHT"}
+04:15:35.250 [imu] turning RIGHT 67 deg/s, 26 mm/s, level | turns: 2 left, 0 right, facing 43 deg LEFT of start | humps: none yet"}
+04:15:35.619 [motion] bypass STEP: 316 mm out, heading +4 deg to the line, IMU"}
+04:15:36.062 [imu] motion: moving"}
+04:15:36.455 [imu] <<< turned RIGHT 66 deg in 1.8 s  (turns so far: 2 left, 1 right)"}
+04:15:38.378 [motion] bypass PROBE_IN: 326 mm out, heading +2 deg to the line, IMU"}
+04:15:38.523 [imu] >>> turning RIGHT"}
+04:15:39.172 [motion] bypass LOOK: 327 mm out, heading -41 deg to the line, IMU"}
+04:15:39.271 [imu] turning  0 deg/s, 11 mm/s, level | turns: 2 left, 1 right, facing 31 deg RIGHT of start | humps: none yet"}
+04:15:39.329 [imu] motion: stopped"}
+04:15:40.100 [imu] <<< turned RIGHT 47 deg in 0.8 s  (turns so far: 2 left, 2 right)"}
+04:15:40.621 [scan] side look 45 deg: 187 mm (sent 187)"}
+04:15:40.628 [motion] avoid_cmd LOOK 187 mm (raw 0x0bb3): taken"}
+04:15:40.629 [motion] bypass PROBE_OUT: 326 mm out, heading -44 deg to the line, IMU"}
+04:15:40.810 [imu] >>> turning LEFT"}
+04:15:41.253 [imu] turning LEFT 74 deg/s, 1 mm/s, level | turns: 2 left, 2 right | humps: none yet"}
+04:15:41.380 [motion] bypass STEP: 326 mm out, heading -4 deg to the line, IMU"}
+04:15:41.938 [imu] motion: moving"}
+04:15:42.323 [imu] <<< turned LEFT 40 deg in 1.6 s  (turns so far: 3 left, 2 right)"}
+04:15:42.589 [motion] bypass PROBE_IN: 320 mm out, heading -4 deg to the line, IMU"}
+04:15:42.714 [imu] >>> turning RIGHT"}
+04:15:43.269 [imu] turning RIGHT 61 deg/s, 29 mm/s, level | turns: 3 left, 2 right, facing 27 deg RIGHT of start | humps: none yet"}
+04:15:43.269 [motion] bypass LOOK: 320 mm out, heading -41 deg to the line, IMU"}
+04:15:43.428 [imu] motion: stopped"}
+04:15:44.192 [imu] <<< turned RIGHT 41 deg in 0.7 s  (turns so far: 3 left, 3 right)"}
+04:15:44.726 [scan] side look 45 deg: 1206 mm (sent 511)"}
+04:15:44.729 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:15:44.729 [motion] bypass PROBE_OUT: 320 mm out, heading -45 deg to the line, IMU"}
+04:15:44.903 [imu] >>> turning LEFT"}
+04:15:45.496 [motion] bypass CLEAR: 320 mm out, heading -4 deg to the line, IMU"}
+04:15:46.036 [imu] motion: moving"}
+04:15:46.443 [imu] <<< turned LEFT 42 deg in 1.6 s  (turns so far: 4 left, 3 right)"}
+04:15:46.904 [motion] bypass TURN_IN: 314 mm out, heading -3 deg to the line, IMU"}
+04:15:47.059 [imu] >>> turning RIGHT"}
+04:15:47.268 [imu] turning RIGHT 62 deg/s, 61 mm/s, level | turns: 4 left, 3 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:15:47.981 [motion] bypass STEP_IN: 315 mm out, heading -66 deg to the line, IMU"}
+04:15:48.249 [imu] turning LEFT 4 deg/s, 16 mm/s, level | turns: 4 left, 3 right, facing 55 deg RIGHT of start | humps: none yet"}
+04:15:48.816 [imu] motion: moving"}
+04:15:49.209 [imu] <<< turned RIGHT 65 deg in 2.2 s  (turns so far: 4 left, 4 right)"}
+04:15:50.094 [motion] bypass ONTO: 141 mm out, heading -68 deg to the line, IMU"}
+04:15:50.152 [line] junction (GP7 black 80 ms) -> nav"}
+04:15:50.152 [nav] junction, no barcode command: straight on"}
+04:15:51.526 [line] line found (LOST_MS 1500)"}
+04:15:51.526 [barcode] REJECTED: malformed (bad_length)"}
+04:15:51.526 [barcode]   1 widths (1 letter = 29)"}
+04:15:51.526 [barcode]    0: B292"}
+04:15:51.531 [motion] bypass ALONG: 25 mm out, heading -68 deg to the line, IMU"}
+04:15:51.690 [imu] >>> turning LEFT"}
+04:15:52.249 [imu] turning LEFT 74 deg/s, 27 mm/s, level | turns: 4 left, 4 right, facing 17 deg RIGHT of start | humps: none yet"}
+04:15:52.383 [nav] junction, no barcode command: straight on"}
+04:15:52.383 [line] junction (GP7 black 80 ms) -> nav"}
+04:15:52.649 [motion] bypass DONE: 26 mm out, heading -4 deg to the line, IMU"}
+04:15:52.663 [motion] state BYPASS -> LINE_SEARCH"}
+04:15:52.687 [scan] AVOIDING -> MONITORING"}
+04:15:52.689 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:15:52.834 [imu] motion: moving"}
+04:15:52.855 [barcode] REJECTED: malformed (bad_length)"}
+04:15:52.855 [barcode]   1 widths (1 letter = 29)"}
+04:15:52.855 [barcode]    0: B111"}
+04:15:53.510 [line] RL=10 err=-94"}
+04:15:53.549 [line] RL=11 err=-5"}
+04:15:53.586 [line] RL=01 err=78"}
+04:15:53.634 [line] RL=00 err=8"}
+04:15:54.043 [line] RL=01 err=85"}
+04:15:54.061 [line] RL=00 err=16"}
+04:15:54.194 [line] RL=11 err=3"}
+04:15:54.194 [line] RL=10 err=-85"}
+04:15:54.199 [line] RL=00 err=-10"}
+04:15:54.249 [imu] turning LEFT 23 deg/s, 49 mm/s, level | turns: 4 left, 4 right, facing 10 deg LEFT of start | humps: none yet"}
+04:15:54.483 [line] RL=10 err=-70"}
+04:15:54.558 [line] RL=11 err=-32"}
+04:15:54.582 [line] RL=01 err=62"}
+04:15:54.666 [line] RL=00 err=27"}
+04:15:54.967 [line] RL=01 err=71"}
+04:15:55.042 [line] RL=11 err=25"}
+04:15:55.145 [line] RL=10 err=-89"}
+04:15:55.184 [line] RL=00 err=-16"}
+04:15:55.254 [imu] turning LEFT 18 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 15 deg LEFT of start | humps: none yet"}
+04:15:55.388 [line] RL=10 err=-67"}
+04:15:55.515 [line] RL=11 err=-12"}
+04:15:55.559 [line] RL=01 err=69"}
+04:15:55.620 [line] RL=00 err=17"}
+04:15:55.819 [line] RL=01 err=64"}
+04:15:55.964 [line] RL=10 err=-45"}
+04:15:56.111 [line] RL=00 err=-27"}
+04:15:56.180 [line] RL=10 err=-62"}
+04:15:56.268 [imu] turning RIGHT 4 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 14 deg LEFT of start | humps: none yet"}
+04:15:56.321 [line] RL=11 err=-14"}
+04:15:56.343 [line] RL=01 err=74"}
+04:15:56.501 [line] RL=00 err=39"}
+04:15:56.556 [line] RL=01 err=60"}
+04:15:56.692 [line] RL=11 err=-12"}
+04:15:56.716 [line] RL=10 err=-76"}
+04:15:56.922 [line] RL=11 err=-22"}
+04:15:57.224 [line] RL=11 err=24"}
+04:15:57.246 [line] RL=10 err=-66"}
+04:15:57.249 [imu] turning LEFT 16 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 15 deg LEFT of start | humps: none yet"}
+04:15:57.509 [line] RL=11 err=-17"}
+04:15:57.536 [line] RL=01 err=65"}
+04:15:57.704 [line] RL=00 err=31"}
+04:15:57.728 [line] RL=01 err=72"}
+04:15:57.761 [line] RL=00 err=26"}
+04:15:57.913 [line] RL=01 err=75"}
+04:15:57.980 [line] RL=11 err=-42"}
+04:15:58.024 [line] RL=10 err=-41"}
+04:15:58.269 [imu] turning LEFT 5 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:15:58.363 [line] RL=01 err=58"}
+04:15:58.735 [line] RL=11 err=-24"}
+04:15:58.770 [line] RL=10 err=-87"}
+04:15:58.937 [line] RL=00 err=-12"}
+04:15:58.946 [line] RL=10 err=-82"}
+04:15:59.049 [line] RL=00 err=6"}
+04:15:59.070 [line] RL=01 err=57"}
+04:15:59.148 [line] RL=00 err=17"}
+04:15:59.262 [imu] turning RIGHT 6 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 15 deg LEFT of start | humps: none yet"}
+04:15:59.512 [line] RL=01 err=76"}
+04:15:59.575 [line] RL=10 err=-67"}
+04:15:59.650 [line] RL=00 err=-37"}
+04:15:59.904 [line] RL=10 err=-86"}
+04:15:59.983 [line] RL=01 err=42"}
+04:16:00.082 [line] RL=00 err=22"}
+04:16:00.264 [imu] turning LEFT 19 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 17 deg LEFT of start | humps: none yet"}
+04:16:00.366 [line] RL=01 err=81"}
+04:16:00.437 [line] RL=10 err=-94"}
+04:16:00.496 [line] RL=00 err=-14"}
+04:16:00.899 [line] RL=10 err=-80"}
+04:16:01.007 [line] RL=00 err=8"}
+04:16:01.252 [imu] turning RIGHT 1 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 15 deg LEFT of start | humps: none yet"}
+04:16:01.447 [line] RL=01 err=78"}
+04:16:01.503 [line] RL=10 err=-83"}
+04:16:01.560 [line] RL=00 err=-5"}
+04:16:01.915 [line] RL=10 err=-65"}
+04:16:01.952 [line] RL=00 err=-36"}
+04:16:01.955 [line] RL=10 err=5"}
+04:16:01.965 [line] RL=01 err=70"}
+04:16:02.015 [line] RL=00 err=11"}
+04:16:02.263 [imu] turning LEFT 20 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 16 deg LEFT of start | humps: none yet"}
+04:16:02.485 [line] RL=01 err=78"}
+04:16:02.521 [line] RL=10 err=-85"}
+04:16:02.589 [line] RL=00 err=-6"}
+04:16:03.029 [line] RL=10 err=-71"}
+04:16:03.091 [line] RL=01 err=66"}
+04:16:03.131 [line] RL=00 err=13"}
+04:16:03.255 [imu] turning RIGHT 14 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 18 deg LEFT of start | humps: none yet"}
+04:16:03.505 [line] RL=01 err=83"}
+04:16:03.551 [line] RL=11 err=-28"}
+04:16:03.557 [line] RL=10 err=-74"}
+04:16:03.646 [line] RL=00 err=-10"}
+04:16:04.024 [line] RL=10 err=-96"}
+04:16:04.062 [line] RL=11 err=2"}
+04:16:04.149 [line] RL=00 err=12"}
+04:16:04.266 [imu] turning RIGHT 11 deg/s, 49 mm/s, level | turns: 4 left, 4 right, facing 19 deg LEFT of start | humps: none yet"}
+04:16:04.581 [line] RL=01 err=74"}
+04:16:04.664 [line] RL=10 err=-66"}
+04:16:04.696 [line] RL=00 err=-8"}
+04:16:05.111 [line] RL=10 err=-64"}
+04:16:05.178 [line] RL=01 err=80"}
+04:16:05.217 [line] RL=00 err=16"}
+04:16:05.249 [imu] turning RIGHT 19 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:16:05.545 [line] RL=01 err=75"}
+04:16:05.614 [line] RL=10 err=-79"}
+04:16:05.700 [line] RL=00 err=-12"}
+04:16:05.932 [line] RL=10 err=-67"}
+04:16:05.997 [line] RL=11 err=-20"}
+04:16:06.014 [line] RL=01 err=85"}
+04:16:06.109 [line] RL=00 err=17"}
+04:16:06.253 [imu] turning LEFT 1 deg/s, 47 mm/s, level | turns: 4 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:16:06.433 [line] RL=01 err=68"}
+04:16:06.464 [line] RL=11 err=7"}
+04:16:06.521 [line] RL=10 err=-78"}
+04:16:06.568 [line] RL=00 err=-23"}
+04:16:06.821 [line] RL=10 err=-76"}
+04:16:06.924 [line] RL=01 err=58"}
+04:16:06.975 [line] RL=00 err=14"}
+04:16:07.252 [imu] turning LEFT 11 deg/s, 48 mm/s, level | turns: 4 left, 4 right, facing 24 deg LEFT of start | humps: none yet"}
+04:16:07.898 [motion] STOP_SCAN set: brake written 36 us after the request."}
+04:16:07.898 [scan] MONITORING -> COARSE_SCAN"}
+04:16:07.908 [motion] state LINE_FOLLOW -> BRAKED"}
+04:16:09.303 [line] RL=10 err=-64"}
+04:16:09.303 [line] line found (LOST_MS 1500)"}
+04:16:09.761 [imu] !!! STOPPING: car picked up (in hand 1.2 s) !!!"}
+04:16:09.761 [nav] IMU fault"}
+04:16:09.761 [imu]     caught 1099.6 ms after the first lift; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:16:09.761 [nav] mission RUNNING -> FAULT"}
+04:16:09.761 [nav] buzzer: 1 x 800 ms"}
+04:16:09.761 [line] RL=00 err=0"}
+04:16:09.762 [barcode] REJECTED: aborted (cancelled)"}
+04:16:09.762 [motion] STOP_IMU set: seen 68 us after the request (already braked)."}
+04:16:09.762 [motion] state BRAKED -> IDLE"}
+04:16:09.768 [imu] mission over (FAULT): turns: 9 (5 left, 4 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:16:10.203 [scan] COARSE_SCAN -> IDLE"}
+04:16:10.617 [line] RL=10 err=-67"}
+04:16:10.633 [line] RL=00 err=-8"}
+04:16:12.163 [line] LOST: RL=00 for 1500 ms"}
+04:16:13.433 [line] junction (GP7 black 80 ms) -> nav"}
+04:16:13.434 [nav] junction while FAULT: ignored"}
+04:16:15.314 [line] line found (LOST_MS 1500)"}
+04:16:15.314 [barcode] REJECTED: aborted (width_too_long)"}
+04:16:15.595 [line] RL=11 err=0"}
+04:16:22.506 [line] RL=10 err=-13"}
+04:16:22.553 [line] RL=00 err=-8"}
+04:16:22.654 [line] RL=11 err=-3"}
+04:16:22.900 [line] RL=01 err=6"}
+04:16:22.901 [line] RL=00 err=12"}
+04:16:24.391 [line] LOST: RL=00 for 1500 ms"}
+04:16:24.455 [imu] <<< put down (hands off)"}
+04:16:25.970 [nav] button GP20"}
+04:16:25.970 [nav] mission FAULT -> CALIBRATING"}
+04:16:26.950 [line] calibration FAILED: GP26 low_contrast (white 557, black 3317, rise 2213) GP27 ok (white 325, black 3356, rise 2143)"}
+04:16:26.950 [nav] calibration FAILED"}
+04:16:26.950 [nav] mission CALIBRATING -> FAULT"}
+04:16:26.950 [nav] buzzer: 1 x 800 ms"}
+04:16:26.954 [imu] cal ok: offsets x=28 y=-8 z=72 mg, spread 80 mg"}
+04:16:26.954 [imu] -> nav: CAL_OK_IMU"}
+04:16:42.316 [imu] >>> picked up (hands on)"}
+04:16:42.316 [line] RL=10 err=-47"}
+04:16:42.352 [line] RL=00 err=-22"}
+04:16:42.409 [line] RL=01 err=35"}
+04:16:42.632 [line] RL=00 err=-5"}
+04:16:42.659 [line] RL=10 err=-53"}
+04:16:42.718 [line] RL=00 err=-8"}
+04:16:42.999 [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=12094ms"}
+04:16:43.117 [line] RL=10 err=-49"}
+04:16:43.223 [line] RL=00 err=-11"}
+04:16:43.245 [line] RL=01 err=39"}
+04:16:43.280 [line] RL=00 err=14"}
+04:16:43.531 [line] RL=01 err=38"}
+04:16:43.686 [line] RL=10 err=-60"}
+04:16:43.749 [line] RL=00 err=-10"}
+04:16:43.936 [line] RL=10 err=-46"}
+04:16:45.735 [imu] <<< put down (hands off)"}
+04:16:45.887 [nav] button GP20"}
+04:16:45.888 [nav] mission FAULT -> CALIBRATING"}
+04:16:46.886 [line] calibration OK: GP26 ok (white 241, black 1041, rise 721) GP27 ok (white 390, black 1560, rise 1092)"}
+04:16:46.893 [imu] cal 1/5: not still, spread 103 mg (max 80)"}
+04:16:48.399 [imu] cal ok: offsets x=27 y=-11 z=68 mg, spread 41 mg"}
+04:16:48.399 [imu] -> nav: CAL_OK_IMU"}
+04:16:48.399 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:16:48.399 [nav] mission CALIBRATING -> READY"}
+04:16:48.399 [nav] buzzer: 1 x 100 ms"}
+04:16:48.399 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:16:48.401 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:16:50.122 [line] calibration OK: GP26 ok (white 239, black 1039, rise 719) GP27 ok (white 402, black 1610, rise 1126)"}
+04:16:50.321 [imu] cal ok: offsets x=27 y=-11 z=68 mg, spread 64 mg"}
+04:16:50.321 [imu] -> nav: CAL_OK_IMU"}
+04:16:50.321 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:16:50.321 [nav] mission CALIBRATING -> READY"}
+04:16:50.321 [nav] buzzer: 1 x 100 ms"}
+04:16:50.519 [nav] GP20 = start/resume/reset, GP21 = pause"}
+04:16:51.392 [nav] button GP20"}
+04:16:51.392 [nav] mission READY -> RUNNING"}
+04:16:51.392 [scan] IDLE -> MONITORING"}
+04:16:51.404 [motion] state IDLE -> LINE_FOLLOW"}
+04:16:51.404 [imu] mission start: turns, humps, bumps and heading reset"}
+04:16:51.559 [line] RL=00 err=-9"}
+04:16:51.580 [line] RL=01 err=68"}
+04:16:51.636 [imu] motion: moving"}
+04:16:51.791 [line] RL=00 err=34"}
+04:16:51.947 [line] RL=01 err=70"}
+04:16:52.058 [line] RL=00 err=-41"}
+04:16:52.068 [line] RL=10 err=-55"}
+04:16:52.101 [line] RL=00 err=-40"}
+04:16:52.203 [line] RL=10 err=-60"}
+04:16:52.326 [line] RL=00 err=-35"}
+04:16:52.360 [line] RL=10 err=-59"}
+04:16:52.404 [line] RL=00 err=-2"}
+04:16:52.425 [line] RL=01 err=62"}
+04:16:52.515 [line] RL=00 err=29"}
+04:16:52.814 [wifi] state=JOINING join#=1 lease#=0 lost=0 t=1702ms"}
+04:16:52.835 [line] RL=01 err=82"}
+04:16:52.880 [line] RL=11 err=-16"}
+04:16:52.892 [line] RL=10 err=-92"}
+04:16:52.915 [imu] >>> turning LEFT"}
+04:16:52.926 [line] RL=00 err=-5"}
+04:16:53.317 [imu] turning RIGHT 36 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 2 deg LEFT of start | humps: none yet"}
+04:16:53.350 [line] RL=10 err=-64"}
+04:16:53.372 [line] RL=00 err=41"}
+04:16:53.372 [line] RL=01 err=87"}
+04:16:53.415 [line] RL=00 err=11"}
+04:16:53.868 [line] RL=01 err=100"}
+04:16:53.925 [line] RL=00 err=-49"}
+04:16:53.936 [line] RL=10 err=-66"}
+04:16:53.980 [line] RL=00 err=-6"}
+04:16:54.316 [imu] turning RIGHT 39 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 7 deg LEFT of start | humps: none yet"}
+04:16:54.493 [line] RL=10 err=-61"}
+04:16:54.526 [line] RL=01 err=91"}
+04:16:54.570 [line] RL=00 err=15"}
+04:16:55.080 [line] RL=01 err=94"}
+04:16:55.138 [line] RL=00 err=-46"}
+04:16:55.150 [line] RL=10 err=-62"}
+04:16:55.173 [line] RL=00 err=-8"}
+04:16:55.317 [imu] turning LEFT 13 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 10 deg LEFT of start | humps: none yet"}
+04:16:55.680 [line] RL=10 err=-73"}
+04:16:55.715 [line] RL=11 err=6"}
+04:16:55.725 [line] RL=01 err=95"}
+04:16:55.770 [line] RL=00 err=10"}
+04:16:55.816 [wifi] state=WAIT_LEASE join#=1 lease#=1 lost=0 t=4657ms"}
+04:16:55.816 [wifi] waiting for lease: state=8 tries=0 t=2179ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=1923 stage=7 rd=0"}
+04:16:56.316 [line] RL=01 err=91"}
+04:16:56.316 [imu] turning LEFT 43 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 3 deg LEFT of start | humps: none yet"}
+04:16:56.360 [line] RL=00 err=-33"}
+04:16:56.370 [line] RL=10 err=-58"}
+04:16:56.404 [line] RL=00 err=-6"}
+04:16:56.890 [line] RL=10 err=-56"}
+04:16:56.925 [line] RL=00 err=30"}
+04:16:56.936 [line] RL=01 err=68"}
+04:16:56.970 [line] RL=00 err=15"}
+04:16:57.316 [imu] turning LEFT 30 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 1 deg LEFT of start | humps: none yet"}
+04:16:57.425 [line] RL=01 err=62"}
+04:16:57.447 [line] RL=00 err=20"}
+04:16:58.316 [imu] turning LEFT 44 deg/s, 50 mm/s, level | turns: 0 left, 0 right, facing 44 deg LEFT of start | humps: none yet"}
+04:16:58.825 [wifi] waiting for lease: state=8 tries=0 t=5185ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=2916 stage=7 rd=0"}
+04:16:58.948 [line] LOST: RL=00 for 1500 ms"}
+04:16:58.959 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:16:59.129 [imu] motion: moving"}
+04:16:59.317 [imu] turning LEFT 28 deg/s, 33 mm/s, level | turns: 0 left, 0 right, facing 82 deg LEFT of start | humps: none yet"}
+04:17:00.791 [imu] motion: moving"}
+04:17:00.791 [imu] turning LEFT 28 deg/s, 33 mm/s, level | turns: 0 left, 0 right, facing 82 deg LEFT of start | humps: none yet"}
+04:17:01.317 [imu] turning RIGHT 47 deg/s, -1 mm/s, level | turns: 0 left, 0 right, facing 81 deg LEFT of start | humps: none yet"}
+04:17:01.825 [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=11588ms"}
+04:17:02.492 [nav] line lost: pausing the mission"}
+04:17:02.492 [nav] mission RUNNING -> PAUSED"}
+04:17:02.492 [nav] buzzer: 3 x 100 ms"}
+04:17:02.499 [motion] state LINE_SEARCH -> LINE_LOST, sent LINE_LOST"}
+04:17:02.505 [scan] MONITORING -> IDLE"}
+04:17:02.505 [motion] state LINE_LOST -> IDLE"}
+04:17:02.637 [imu] motion: stopped"}
+04:17:03.334 [imu] <<< turned LEFT 32 deg in 9.7 s  (turns so far: 1 left, 0 right)"}
+04:17:07.716 [imu] >>> picked up (hands on)"}
+04:17:08.820 [motion] STOP_IMU set: brake written 239 us after the request."}
+04:17:08.820 [imu] !!! STOPPING: car picked up (in hand 1.2 s) !!!"}
+04:17:08.820 [nav] IMU fault"}
+04:17:08.821 [imu]     caught 1100.0 ms after the first lift; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:17:08.821 [nav] mission PAUSED -> FAULT"}
+04:17:08.827 [nav] buzzer: 1 x 800 ms"}
+04:17:08.827 [imu] mission over (FAULT): turns: 1 (1 left, 0 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:17:09.645 [line] RL=10 err=-62"}
+04:17:09.645 [line] line found (LOST_MS 1500)"}
+04:17:09.941 [line] RL=00 err=-9"}
+04:17:10.282 [line] RL=10 err=-69"}
+04:17:10.316 [line] RL=00 err=-17"}
+04:17:10.337 [line] RL=10 err=-74"}
+04:17:10.425 [line] RL=11 err=7"}
+04:17:10.458 [line] RL=01 err=60"}
+04:17:10.491 [line] RL=00 err=-16"}
+04:17:10.502 [line] RL=10 err=-44"}
+04:17:10.723 [imu] <<< put down (hands off)"}
+04:17:10.756 [imu] motion: moving"}
+04:17:10.833 [line] RL=00 err=-18"}
+04:17:10.856 [imu] motion: stopped"}
+04:17:11.009 [line] RL=10 err=-52"}
+04:17:12.841 [nav] button GP20"}
+04:17:12.842 [nav] mission FAULT -> CALIBRATING"}
+04:17:13.844 [line] calibration FAILED: GP26 ok (white 272, black 1011, rise 714) GP27 low_contrast (white 212, black 1031, rise 702)"}
+04:17:13.844 [nav] calibration FAILED"}
+04:17:13.844 [nav] mission CALIBRATING -> FAULT"}
+04:17:13.844 [nav] buzzer: 1 x 800 ms"}
+04:17:13.846 [imu] cal 1/5: not still, spread 89 mg (max 80)"}
+04:17:15.336 [imu] cal 2/5: car moving"}
+04:17:15.547 [line] RL=01 err=24"}
+04:17:15.797 [line] RL=00 err=20"}
+04:17:16.223 [line] RL=01 err=63"}
+04:17:16.611 [line] RL=00 err=41"}
+04:17:16.644 [line] RL=01 err=66"}
+04:17:16.826 [imu] cal 3/5: car moving"}
+04:17:16.844 [line] RL=11 err=19"}
+04:17:16.932 [line] RL=10 err=-63"}
+04:17:17.075 [line] RL=00 err=-16"}
+04:17:17.167 [line] RL=10 err=-73"}
+04:17:17.377 [line] RL=00 err=-18"}
+04:17:17.398 [line] RL=10 err=-36"}
+04:17:17.426 [line] RL=00 err=36"}
+04:17:17.443 [line] RL=01 err=62"}
+04:17:17.532 [line] RL=00 err=16"}
+04:17:18.319 [imu] cal 4/5: car moving"}
+04:17:19.034 [line] LOST: RL=00 for 1500 ms"}
+04:17:19.554 [nav] button GP20"}
+04:17:19.555 [nav] mission FAULT -> CALIBRATING"}
+04:17:19.807 [imu] cal 5/5: not still, spread 149 mg (max 80)"}
+04:17:20.310 [imu] cal FAILED after 5 tries (offsets kept: x=27 y=-11 z=68 mg)"}
+04:17:20.310 [imu] -> nav: CAL_FAIL"}
+04:17:20.310 [nav] calibration FAILED"}
+04:17:20.310 [nav] mission CALIBRATING -> FAULT"}
+04:17:20.310 [nav] buzzer: 1 x 800 ms"}
+04:17:20.547 [line] calibration OK: GP26 ok (white 146, black 946, rise 626) GP27 ok (white 149, black 949, rise 629)"}
+04:17:21.311 [imu] cal 1/5: car moving"}
+04:17:22.703 [nav] button GP20"}
+04:17:22.703 [nav] mission FAULT -> CALIBRATING"}
+04:17:22.800 [imu] cal 2/5: car moving"}
+04:17:23.706 [line] calibration OK: GP26 ok (white 158, black 958, rise 638) GP27 ok (white 144, black 944, rise 624)"}
+04:17:23.860 [line] RL=01 err=59"}
+04:17:23.860 [line] line found (LOST_MS 1500)"}
+04:17:24.070 [line] RL=00 err=21"}
+04:17:24.288 [imu] cal 3/5: car moving"}
+04:17:25.575 [line] LOST: RL=00 for 1500 ms"}
+04:17:25.777 [imu] cal 4/5: not still, spread 106 mg (max 80)"}
+04:17:27.271 [imu] cal 5/5: not still, spread 87 mg (max 80)"}
+04:17:27.767 [imu] cal FAILED after 5 tries (offsets kept: x=27 y=-11 z=68 mg)"}
+04:17:27.767 [imu] -> nav: CAL_FAIL"}
+04:17:27.767 [nav] calibration FAILED"}
+04:17:27.767 [nav] mission CALIBRATING -> FAULT"}
+04:17:27.767 [nav] buzzer: 1 x 800 ms"}
+04:17:28.741 [line] RL=01 err=55"}
+04:17:28.741 [line] line found (LOST_MS 1500)"}
+04:17:28.772 [imu] cal 1/5: car moving"}
+04:17:29.273 [line] RL=00 err=-21"}
+04:17:29.288 [line] RL=10 err=-42"}
+04:17:29.935 [line] RL=11 err=-13"}
+04:17:29.957 [line] RL=01 err=76"}
+04:17:30.067 [line] RL=00 err=39"}
+04:17:30.100 [line] RL=01 err=59"}
+04:17:30.207 [line] RL=11 err=17"}
+04:17:30.256 [imu] cal 2/5: car moving"}
+04:17:30.429 [line] RL=01 err=72"}
+04:17:31.128 [line] RL=00 err=34"}
+04:17:31.515 [line] RL=01 err=66"}
+04:17:31.625 [line] RL=00 err=-7"}
+04:17:31.677 [line] RL=01 err=40"}
+04:17:31.747 [imu] cal 3/5: car moving"}
+04:17:31.945 [line] RL=00 err=-18"}
+04:17:31.956 [line] RL=10 err=-55"}
+04:17:32.126 [line] RL=00 err=-38"}
+04:17:32.354 [line] RL=10 err=-72"}
+04:17:33.066 [line] RL=01 err=49"}
+04:17:33.236 [imu] cal 4/5: car moving"}
+04:17:34.723 [imu] cal 5/5: not still, spread 111 mg (max 80)"}
+04:17:35.231 [imu] cal FAILED after 5 tries (offsets kept: x=27 y=-11 z=68 mg)"}
+04:17:35.231 [imu] -> nav: CAL_FAIL"}
+04:17:40.695 [line] RL=00 err=19"}
+04:17:40.917 [imu] motion: moving"}
+04:17:41.050 [imu] motion: stopped"}
+04:17:41.425 [line] RL=01 err=89"}
+04:17:41.814 [line] RL=00 err=-31"}
+04:17:41.825 [line] RL=10 err=-54"}
+04:17:42.080 [imu] motion: moving"}
+04:17:42.136 [line] RL=00 err=-30"}
+04:17:42.178 [imu] motion: stopped"}
+04:17:42.368 [line] RL=10 err=-71"}
+04:17:42.503 [line] RL=00 err=3"}
+04:17:42.525 [line] RL=01 err=40"}
+04:17:43.046 [imu] motion: stopped"}
+04:17:43.500 [line] RL=10 err=-81"}
+04:17:43.796 [line] RL=00 err=29"}
+04:17:43.808 [line] RL=01 err=62"}
+04:17:44.039 [line] RL=00 err=37"}
+04:17:44.144 [imu] motion: moving"}
+04:17:44.354 [imu] motion: stopped"}
+04:17:44.639 [line] RL=01 err=77"}
+04:17:45.048 [line] RL=00 err=14"}
+04:17:45.351 [line] RL=01 err=76"}
+04:17:45.914 [line] RL=00 err=-4"}
+04:17:46.046 [imu] motion: moving"}
+04:17:46.147 [imu] motion: stopped"}
+04:17:46.276 [line] RL=01 err=43"}
+04:17:48.275 [nav] button GP20"}
+04:17:48.275 [nav] mission FAULT -> CALIBRATING"}
+04:17:49.282 [line] calibration FAILED: GP26 low_contrast (white 304, black 891, rise 655) GP27 ok (white 266, black 922, rise 659)"}
+04:17:49.282 [nav] calibration FAILED"}
+04:17:49.283 [nav] mission CALIBRATING -> FAULT"}
+04:17:49.283 [nav] buzzer: 1 x 800 ms"}
+04:17:49.283 [imu] cal 1/5: not still, spread 82 mg (max 80)"}
+04:17:49.459 [line] RL=00 err=3"}
+04:17:49.942 [line] RL=01 err=66"}
+04:17:50.065 [line] RL=00 err=-23"}
+04:17:50.076 [line] RL=10 err=-72"}
+04:17:50.642 [line] RL=00 err=27"}
+04:17:50.652 [line] RL=01 err=40"}
+04:17:50.774 [imu] cal 2/5: car moving"}
+04:17:51.016 [line] RL=10 err=-26"}
+04:17:51.173 [line] RL=00 err=-34"}
+04:17:51.350 [line] RL=10 err=-62"}
+04:17:51.572 [line] RL=01 err=20"}
+04:17:51.782 [line] RL=10 err=-25"}
+04:17:51.969 [line] RL=00 err=-16"}
+04:17:52.003 [line] RL=00 err=-16"}
+04:17:52.234 [line] RL=10 err=-79"}
+04:17:52.267 [imu] cal 3/5: car moving"}
+04:17:52.708 [line] RL=11 err=15"}
+04:17:52.742 [line] RL=10 err=-38"}
+04:17:53.670 [nav] button GP20"}
+04:17:53.670 [nav] mission FAULT -> CALIBRATING"}
+04:17:53.757 [imu] cal 4/5: not still, spread 697 mg (max 80)"}
+04:17:54.674 [line] calibration FAILED: GP26 ok (white 305, black 835, rise 623) GP27 low_contrast (white 317, black 920, rise 678)"}
+04:17:54.674 [nav] calibration FAILED"}
+04:17:54.674 [nav] mission CALIBRATING -> FAULT"}
+04:17:54.674 [nav] buzzer: 1 x 800 ms"}
+04:17:54.949 [line] RL=11 err=21"}
+04:17:54.949 [line] RL=01 err=26"}
+04:17:55.247 [imu] cal 5/5: not still, spread 117 mg (max 80)"}
+04:17:55.335 [line] RL=10 err=-28"}
+04:17:55.555 [line] RL=01 err=25"}
+04:17:55.754 [imu] cal FAILED after 5 tries (offsets kept: x=27 y=-11 z=68 mg)"}
+04:17:55.754 [imu] -> nav: CAL_FAIL"}
+04:17:55.775 [line] RL=00 err=42"}
+04:17:55.863 [line] RL=01 err=63"}
+04:17:55.986 [line] RL=11 err=12"}
+04:17:56.029 [line] RL=10 err=-43"}
+04:17:56.329 [line] RL=00 err=-9"}
+04:17:56.749 [imu] cal 1/5: car moving"}
+04:17:57.057 [line] RL=10 err=-81"}
+04:17:57.203 [line] RL=01 err=53"}
+04:17:57.402 [line] RL=00 err=31"}
+04:17:58.236 [imu] cal 2/5: car moving"}
+04:17:58.901 [line] LOST: RL=00 for 1500 ms"}
+04:17:59.464 [nav] button GP20"}
+04:17:59.464 [nav] mission FAULT -> CALIBRATING"}
+04:17:59.730 [imu] cal 3/5: car moving"}
+04:18:00.468 [line] calibration OK: GP26 ok (white 396, black 1196, rise 876) GP27 ok (white 181, black 981, rise 661)"}
+04:18:01.218 [imu] cal ok: offsets x=32 y=-11 z=70 mg, spread 19 mg"}
+04:18:01.220 [imu] -> nav: CAL_OK_IMU"}
+04:18:01.220 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:18:01.220 [nav] mission CALIBRATING -> READY"}
+04:18:01.220 [nav] buzzer: 1 x 100 ms"}
+04:18:01.224 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:18:01.231 [motion] every STOP bit clear, 52415 ms after the first one was seen."}
+04:18:01.231 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:18:02.222 [imu] cal ok: offsets x=32 y=-10 z=69 mg, spread 15 mg"}
+04:18:02.227 [imu] -> nav: CAL_OK_IMU"}
+04:18:05.323 [imu] motion: moving"}
+04:18:05.433 [imu] motion: stopped"}
+04:18:07.135 [nav] button GP20"}
+04:18:07.135 [nav] mission READY -> RUNNING"}
+04:18:07.135 [motion] state IDLE -> LINE_FOLLOW"}
+04:18:07.135 [imu] mission start: turns, humps, bumps and heading reset"}
+04:18:07.146 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:18:07.168 [scan] IDLE -> MONITORING"}
+04:18:07.455 [line] RL=01 err=73"}
+04:18:07.455 [line] line found (LOST_MS 1500)"}
+04:18:07.467 [imu] >>> turning LEFT"}
+04:18:07.477 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:18:07.498 [line] RL=10 err=-65"}
+04:18:07.590 [imu] turning RIGHT 17 deg/s, 1 mm/s, level | turns: 0 left, 0 right, facing 4 deg LEFT of start | humps: none yet"}
+04:18:07.652 [line] RL=00 err=22"}
+04:18:07.664 [line] RL=01 err=49"}
+04:18:07.811 [line] RL=00 err=33"}
+04:18:07.935 [line] RL=01 err=56"}
+04:18:08.056 [line] RL=00 err=-8"}
+04:18:08.100 [line] RL=10 err=-55"}
+04:18:08.335 [line] RL=00 err=13"}
+04:18:08.346 [line] RL=01 err=43"}
+04:18:08.586 [imu] turning LEFT 2 deg/s, 42 mm/s, level | turns: 0 left, 0 right, facing 5 deg LEFT of start | humps: none yet"}
+04:18:08.713 [line] RL=11 err=26"}
+04:18:08.790 [line] RL=01 err=55"}
+04:18:08.822 [line] RL=00 err=-27"}
+04:18:08.849 [line] RL=10 err=-64"}
+04:18:09.081 [line] RL=00 err=29"}
+04:18:09.089 [line] RL=01 err=51"}
+04:18:09.193 [line] RL=00 err=34"}
+04:18:09.436 [line] RL=01 err=69"}
+04:18:09.469 [line] RL=00 err=19"}
+04:18:09.491 [line] RL=01 err=83"}
+04:18:09.545 [line] RL=00 err=-9"}
+04:18:09.556 [line] RL=10 err=-91"}
+04:18:09.588 [imu] turning LEFT 23 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 10 deg LEFT of start | humps: none yet"}
+04:18:09.681 [line] RL=00 err=-19"}
+04:18:09.847 [line] RL=10 err=-76"}
+04:18:09.965 [line] RL=01 err=49"}
+04:18:10.034 [line] RL=00 err=4"}
+04:18:10.401 [line] RL=01 err=95"}
+04:18:10.466 [line] RL=11 err=-34"}
+04:18:10.471 [line] RL=10 err=-91"}
+04:18:10.531 [line] RL=00 err=-17"}
+04:18:10.586 [imu] turning LEFT 23 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 15 deg LEFT of start | humps: none yet"}
+04:18:10.879 [line] RL=10 err=-100"}
+04:18:10.931 [line] RL=11 err=11"}
+04:18:10.951 [line] RL=01 err=81"}
+04:18:11.012 [line] RL=00 err=13"}
+04:18:11.424 [line] RL=01 err=87"}
+04:18:11.468 [line] RL=10 err=-89"}
+04:18:11.535 [line] RL=00 err=-11"}
+04:18:11.592 [imu] turning LEFT 35 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 17 deg LEFT of start | humps: none yet"}
+04:18:11.936 [line] RL=10 err=-92"}
+04:18:11.991 [line] RL=01 err=56"}
+04:18:12.024 [line] RL=00 err=9"}
+04:18:12.546 [line] RL=01 err=74"}
+04:18:12.585 [imu] turning LEFT 46 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 16 deg LEFT of start | humps: none yet"}
+04:18:12.591 [line] RL=10 err=-68"}
+04:18:12.656 [line] RL=00 err=-5"}
+04:18:13.112 [line] RL=10 err=-86"}
+04:18:13.170 [line] RL=11 err=6"}
+04:18:13.181 [line] RL=01 err=53"}
+04:18:13.225 [line] RL=00 err=16"}
+04:18:13.585 [imu] turning LEFT 33 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 11 deg LEFT of start | humps: none yet"}
+04:18:13.724 [line] RL=01 err=69"}
+04:18:13.779 [line] RL=10 err=-67"}
+04:18:13.845 [line] RL=00 err=-12"}
+04:18:14.280 [line] RL=10 err=-87"}
+04:18:14.336 [line] RL=11 err=4"}
+04:18:14.347 [line] RL=01 err=68"}
+04:18:14.391 [line] RL=00 err=13"}
+04:18:14.585 [imu] turning  0 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 12 deg LEFT of start | humps: none yet"}
+04:18:14.812 [line] RL=01 err=69"}
+04:18:14.867 [line] RL=10 err=-49"}
+04:18:14.927 [line] RL=00 err=-17"}
+04:18:15.301 [line] RL=10 err=-79"}
+04:18:15.347 [line] RL=11 err=-2"}
+04:18:15.368 [line] RL=01 err=87"}
+04:18:15.402 [line] RL=00 err=8"}
+04:18:15.587 [imu] turning RIGHT 1 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 13 deg LEFT of start | humps: none yet"}
+04:18:15.924 [line] RL=01 err=64"}
+04:18:15.964 [line] RL=10 err=-65"}
+04:18:16.024 [line] RL=00 err=-10"}
+04:18:16.445 [line] RL=10 err=-87"}
+04:18:16.474 [line] RL=00 err=-33"}
+04:18:16.479 [line] RL=10 err=-34"}
+04:18:16.501 [line] RL=00 err=11"}
+04:18:16.590 [imu] turning RIGHT 41 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 19 deg LEFT of start | humps: none yet"}
+04:18:16.835 [nav] junction, no barcode command: straight on"}
+04:18:16.835 [line] junction (GP7 black 80 ms) -> nav"}
+04:18:17.369 [barcode] REJECTED: malformed (bad_length)"}
+04:18:17.369 [barcode]   1 widths (1 letter = 29)"}
+04:18:17.369 [barcode]    0: B124"}
+04:18:17.586 [imu] turning LEFT 1 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 5 deg LEFT of start | humps: none yet"}
+04:18:18.590 [imu] turning RIGHT 49 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 27 deg RIGHT of start | humps: none yet"}
+04:18:19.171 [line] LOST: RL=00 for 1500 ms"}
+04:18:19.176 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:18:19.587 [imu] turning RIGHT 32 deg/s, 31 mm/s, level | turns: 0 left, 0 right, facing 65 deg RIGHT of start | humps: none yet"}
+04:18:20.592 [imu] turning LEFT 22 deg/s, -1 mm/s, level | turns: 0 left, 0 right, facing 98 deg RIGHT of start | humps: none yet"}
+04:18:45.398 [line] RL=10 err=-32"}
+04:18:45.398 [line] RL=00 err=-40"}
+04:18:45.398 [wifi] state=WAIT_LEASE join#=3 lease#=1 lost=0 t=16858ms"}
+04:18:45.398 [wifi] waiting for lease: state=8 tries=0 t=1982ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=5888 stage=7 rd=0"}
+04:18:45.398 [imu] cal 3/5: car moving"}
+04:18:45.399 [line] LOST: RL=00 for 1500 ms"}
+04:18:46.320 [wifi] state=ONLINE join#=3 lease#=1 lost=0 t=23788ms"}
+04:18:50.553 [nav] button GP20"}
+04:18:50.553 [nav] mission READY -> RUNNING"}
+04:18:50.553 [imu] mission start: turns, humps, bumps and heading reset"}
+04:18:50.560 [motion] state IDLE -> LINE_FOLLOW"}
+04:18:50.567 [motion] state LINE_FOLLOW -> LINE_SEARCH"}
+04:18:50.588 [scan] IDLE -> MONITORING"}
+04:18:50.826 [line] RL=10 err=-76"}
+04:18:50.826 [line] line found (LOST_MS 1500)"}
+04:18:50.882 [motion] state LINE_SEARCH -> LINE_FOLLOW, sent LINE_FOUND"}
+04:18:50.998 [line] RL=00 err=17"}
+04:18:51.031 [line] RL=01 err=65"}
+04:18:51.262 [imu] motion: moving"}
+04:18:51.325 [line] RL=00 err=37"}
+04:18:51.396 [line] RL=01 err=62"}
+04:18:51.512 [line] RL=11 err=-27"}
+04:18:51.512 [line] RL=10 err=-46"}
+04:18:51.787 [line] RL=11 err=-2"}
+04:18:51.788 [line] RL=01 err=77"}
+04:18:52.014 [line] RL=00 err=22"}
+04:18:52.031 [line] RL=01 err=78"}
+04:18:52.144 [line] RL=11 err=-7"}
+04:18:52.161 [line] RL=10 err=-80"}
+04:18:52.451 [line] RL=11 err=15"}
+04:18:52.460 [line] RL=01 err=85"}
+04:18:52.547 [line] RL=00 err=15"}
+04:18:52.562 [imu] >>> turning RIGHT"}
+04:18:52.733 [imu] turning LEFT 16 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:18:52.866 [line] RL=01 err=97"}
+04:18:52.924 [line] RL=11 err=-24"}
+04:18:52.943 [line] RL=10 err=-85"}
+04:18:53.011 [line] RL=00 err=-5"}
+04:18:53.355 [line] RL=10 err=-100"}
+04:18:53.429 [line] RL=01 err=60"}
+04:18:53.465 [line] RL=00 err=9"}
+04:18:53.732 [imu] turning LEFT 9 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 3 deg RIGHT of start | humps: none yet"}
+04:18:53.936 [line] RL=01 err=100"}
+04:18:53.972 [line] RL=10 err=-82"}
+04:18:54.046 [line] RL=00 err=-10"}
+04:18:54.456 [line] RL=10 err=-73"}
+04:18:54.525 [line] RL=01 err=77"}
+04:18:54.577 [line] RL=00 err=17"}
+04:18:54.767 [imu] turning LEFT 16 deg/s, 49 mm/s, level | turns: 0 left, 0 right | humps: none yet"}
+04:18:54.928 [line] RL=01 err=71"}
+04:18:54.974 [line] RL=11 err=-1"}
+04:18:55.007 [line] RL=10 err=-79"}
+04:18:55.092 [line] RL=00 err=-22"}
+04:18:55.323 [line] RL=10 err=-69"}
+04:18:55.385 [line] RL=11 err=0"}
+04:18:55.434 [line] RL=01 err=90"}
+04:18:55.497 [line] RL=00 err=23"}
+04:18:55.736 [imu] turning LEFT 12 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 3 deg LEFT of start | humps: none yet"}
+04:18:55.850 [line] RL=01 err=73"}
+04:18:55.921 [line] RL=11 err=2"}
+04:18:55.929 [line] RL=10 err=-88"}
+04:18:55.991 [line] RL=00 err=-15"}
+04:18:56.358 [line] RL=10 err=-100"}
+04:18:56.438 [line] RL=01 err=84"}
+04:18:56.495 [line] RL=00 err=11"}
+04:18:56.805 [imu] turning LEFT 14 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 2 deg LEFT of start | humps: none yet"}
+04:18:57.020 [line] RL=01 err=97"}
+04:18:57.060 [line] RL=11 err=36"}
+04:18:57.062 [line] RL=10 err=-91"}
+04:18:57.112 [line] RL=00 err=-28"}
+04:18:57.547 [line] RL=10 err=-97"}
+04:18:57.630 [line] RL=11 err=-13"}
+04:18:57.634 [line] RL=01 err=90"}
+04:18:57.675 [line] RL=00 err=8"}
+04:18:57.731 [imu] turning RIGHT 36 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 6 deg LEFT of start | humps: none yet"}
+04:18:58.200 [line] RL=01 err=92"}
+04:18:58.256 [line] RL=11 err=-47"}
+04:18:58.262 [line] RL=10 err=-83"}
+04:18:58.335 [line] RL=00 err=-13"}
+04:18:58.747 [imu] turning RIGHT 25 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 19 deg LEFT of start | humps: none yet"}
+04:18:58.772 [line] RL=10 err=-96"}
+04:18:58.851 [line] RL=01 err=60"}
+04:18:58.883 [line] RL=00 err=20"}
+04:18:59.316 [line] RL=01 err=91"}
+04:18:59.387 [line] RL=10 err=-43"}
+04:18:59.437 [line] RL=00 err=-14"}
+04:18:59.742 [imu] turning RIGHT 16 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 23 deg LEFT of start | humps: none yet"}
+04:18:59.813 [line] RL=10 err=-98"}
+04:18:59.885 [line] RL=00 err=12"}
+04:18:59.892 [line] RL=01 err=63"}
+04:18:59.908 [line] RL=00 err=13"}
+04:19:00.357 [line] RL=01 err=82"}
+04:19:00.412 [line] RL=10 err=-62"}
+04:19:00.475 [line] RL=00 err=-15"}
+04:19:00.746 [imu] turning RIGHT 8 deg/s, 48 mm/s, level | turns: 0 left, 0 right, facing 28 deg LEFT of start | humps: none yet"}
+04:19:00.895 [line] RL=10 err=-84"}
+04:19:00.944 [line] RL=00 err=39"}
+04:19:00.944 [line] RL=01 err=64"}
+04:19:01.015 [line] RL=00 err=13"}
+04:19:01.162 [motion] state LINE_FOLLOW -> BRAKED"}
+04:19:01.353 [imu] motion: stopped"}
+04:19:01.824 [imu] <<< turned LEFT 16 deg in 8.7 s  (turns so far: 1 left, 0 right)"}
+04:19:02.490 [line] LOST: RL=00 for 1500 ms"}
+04:19:03.932 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:19:06.775 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:19:06.775 [scan] angle -45: 1416 mm"}
+04:19:06.775 [scan] angle -35: 1250 mm"}
+04:19:06.775 [scan] angle -30: 261 mm  <- obstacle"}
+04:19:06.782 [scan] angle -25: 252 mm  <- obstacle"}
+04:19:06.782 [scan] angle 0: 248 mm  <- obstacle"}
+04:19:06.782 [scan] angle 10: 248 mm  <- obstacle"}
+04:19:06.782 [scan] angle 20: 262 mm  <- obstacle"}
+04:19:06.782 [scan] angle 25: 1377 mm"}
+04:19:06.782 [scan] angle 30: 1126 mm"}
+04:19:06.782 [scan] angle 45: 1099 mm"}
+04:19:06.782 [scan] profile: closest 248 mm @ 0 deg, edges -30..20 deg, x -110..69 mm, width 179 mm, IN the path"}
+04:19:06.782 [scan] clearance L 9999 R 9999 mm (need 248), offset L 358 R 317 mm"}
+04:19:06.782 [scan] ACTION: BYPASS RIGHT   (scan took 5626 ms, budget 7000 ms)"}
+04:19:06.792 [scan] FINE_SCAN -> PLANNING"}
+04:19:06.793 [scan] PLANNING -> AVOIDING"}
+04:19:06.810 [motion] every STOP bit clear, 5637 ms after the first one was seen."}
+04:19:06.810 [motion] avoid_cmd BYPASS right 317 mm (raw 0x13da): taken"}
+04:19:06.810 [motion] bypass OUT: 0 mm out, heading +1 deg to the line, IMU"}
+04:19:06.810 [motion] state BRAKED -> BYPASS"}
+04:19:07.053 [imu] >>> turning RIGHT"}
+04:19:07.145 [line] junction (GP7 black 80 ms) -> nav"}
+04:19:07.145 [nav] junction, no barcode command: straight on"}
+04:19:07.489 [line] line found (LOST_MS 1500)"}
+04:19:07.489 [barcode] REJECTED: malformed (bad_length)"}
+04:19:07.489 [barcode]   1 widths (1 letter = 29)"}
+04:19:07.489 [barcode]    0: B85"}
+04:19:07.734 [imu] turning RIGHT 69 deg/s, -1 mm/s, level | turns: 1 left, 0 right, facing 38 deg RIGHT of start | humps: none yet"}
+04:19:07.901 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:19:08.077 [imu] motion: stopped"}
+04:19:08.410 [scan] lane look 0 deg: 1034 mm (sent 511)"}
+04:19:08.410 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:19:08.410 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:19:08.696 [imu] motion: speeding up"}
+04:19:08.735 [imu] speeding up, 20 mm/s, level | turns: 1 left, 0 right, facing 50 deg RIGHT of start | humps: none yet"}
+04:19:08.794 [imu] motion: moving"}
+04:19:08.817 [imu] <<< turned RIGHT 67 deg in 1.9 s  (turns so far: 1 left, 1 right)"}
+04:19:09.296 [line] LOST: RL=00 for 1500 ms"}
+04:19:12.117 [motion] bypass PARALLEL: 317 mm out, heading +69 deg to the line, IMU"}
+04:19:12.311 [imu] >>> turning LEFT"}
+04:19:12.779 [imu] turning LEFT 68 deg/s, 37 mm/s, level | turns: 1 left, 1 right, facing 20 deg RIGHT of start | humps: none yet"}
+04:19:13.223 [motion] bypass STEP: 317 mm out, heading +4 deg to the line, IMU"}
+04:19:13.645 [imu] motion: moving"}
+04:19:14.062 [imu] <<< turned LEFT 67 deg in 1.9 s  (turns so far: 2 left, 1 right)"}
+04:19:15.976 [motion] bypass PROBE_IN: 327 mm out, heading +2 deg to the line, IMU"}
+04:19:16.197 [imu] >>> turning LEFT"}
+04:19:16.736 [imu] turning LEFT 73 deg/s, 24 mm/s, level | turns: 2 left, 1 right, facing 57 deg LEFT of start | humps: none yet"}
+04:19:16.779 [motion] bypass LOOK: 328 mm out, heading -41 deg to the line, IMU"}
+04:19:16.996 [imu] motion: stopped"}
+04:19:17.711 [imu] <<< turned LEFT 46 deg in 0.8 s  (turns so far: 3 left, 1 right)"}
+04:19:18.221 [scan] side look -45 deg: 1978 mm (sent 511)"}
+04:19:18.230 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:19:18.230 [motion] bypass PROBE_OUT: 327 mm out, heading -45 deg to the line, IMU"}
+04:19:18.458 [imu] >>> turning RIGHT"}
+04:19:18.743 [imu] turning RIGHT 62 deg/s, -1 mm/s, level | turns: 3 left, 1 right, facing 38 deg LEFT of start | humps: none yet"}
+04:19:18.972 [motion] bypass STEP: 328 mm out, heading -4 deg to the line, IMU"}
+04:19:19.392 [imu] motion: moving"}
+04:19:19.805 [imu] <<< turned RIGHT 41 deg in 1.5 s  (turns so far: 3 left, 2 right)"}
+04:19:20.156 [motion] bypass PROBE_IN: 323 mm out, heading -3 deg to the line, IMU"}
+04:19:20.355 [imu] >>> turning LEFT"}
+04:19:20.731 [imu] turning LEFT 75 deg/s, 39 mm/s, level | turns: 3 left, 2 right, facing 50 deg LEFT of start | humps: none yet"}
+04:19:20.867 [motion] bypass LOOK: 324 mm out, heading -41 deg to the line, IMU"}
+04:19:21.079 [imu] motion: stopped"}
+04:19:21.794 [imu] <<< turned LEFT 41 deg in 0.7 s  (turns so far: 4 left, 2 right)"}
+04:19:22.332 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:19:22.332 [scan] side look -45 deg: 2009 mm (sent 511)"}
+04:19:22.332 [motion] bypass PROBE_OUT: 324 mm out, heading -44 deg to the line, IMU"}
+04:19:22.469 [imu] >>> turning RIGHT"}
+04:19:22.734 [imu] turning RIGHT 73 deg/s, -1 mm/s, level | turns: 4 left, 2 right, facing 44 deg LEFT of start | humps: none yet"}
+04:19:23.053 [motion] bypass STEP: 324 mm out, heading -4 deg to the line, IMU"}
+04:19:23.468 [imu] motion: moving"}
+04:19:23.857 [imu] <<< turned RIGHT 41 deg in 1.4 s  (turns so far: 4 left, 3 right)"}
+04:19:24.247 [motion] bypass PROBE_IN: 319 mm out, heading -3 deg to the line, IMU"}
+04:19:24.469 [imu] >>> turning LEFT"}
+04:19:24.769 [imu] turning LEFT 63 deg/s, 47 mm/s, level | turns: 4 left, 3 right, facing 43 deg LEFT of start | humps: none yet"}
+04:19:24.966 [motion] bypass LOOK: 320 mm out, heading -41 deg to the line, IMU"}
+04:19:25.142 [imu] motion: stopped"}
+04:19:25.895 [imu] <<< turned LEFT 40 deg in 0.8 s  (turns so far: 5 left, 3 right)"}
+04:19:26.420 [scan] side look -45 deg: 1393 mm (sent 511)"}
+04:19:26.445 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:19:26.445 [motion] bypass PROBE_OUT: 320 mm out, heading -44 deg to the line, IMU"}
+04:19:26.602 [imu] >>> turning RIGHT"}
+04:19:26.748 [imu] turning RIGHT 57 deg/s, -1 mm/s, level | turns: 5 left, 3 right, facing 50 deg LEFT of start | humps: none yet"}
+04:19:27.166 [motion] bypass CLEAR: 320 mm out, heading -4 deg to the line, IMU"}
+04:19:27.592 [imu] motion: moving"}
+04:19:27.986 [imu] <<< turned RIGHT 40 deg in 1.4 s  (turns so far: 5 left, 4 right)"}
+04:19:28.553 [motion] bypass TURN_IN: 315 mm out, heading -3 deg to the line, IMU"}
+04:19:28.713 [imu] >>> turning LEFT"}
+04:19:28.761 [imu] turning LEFT 20 deg/s, 79 mm/s, level | turns: 5 left, 4 right, facing 24 deg LEFT of start | humps: none yet"}
+04:19:29.637 [motion] bypass STEP_IN: 315 mm out, heading -66 deg to the line, IMU"}
+04:19:29.732 [imu] turning RIGHT 1 deg/s, 1 mm/s, level | turns: 5 left, 4 right, facing 87 deg LEFT of start | humps: none yet"}
+04:19:30.299 [imu] motion: moving"}
+04:19:30.641 [imu] <<< turned LEFT 63 deg in 2.0 s  (turns so far: 6 left, 4 right)"}
+04:19:32.050 [motion] bypass ONTO: 115 mm out, heading -67 deg to the line, IMU"}
+04:19:33.524 [motion] bypass ALONG: 0 mm out, heading -66 deg to the line, IMU"}
+04:19:33.660 [imu] >>> turning RIGHT"}
+04:19:33.733 [imu] turning RIGHT 49 deg/s, 74 mm/s, level | turns: 6 left, 4 right, facing 76 deg LEFT of start | humps: none yet"}
+04:19:34.540 [motion] bypass DONE: 2 mm out, heading -4 deg to the line, IMU"}
+04:19:34.549 [motion] state BYPASS -> LINE_SEARCH"}
+04:19:34.749 [imu] turning LEFT 23 deg/s, -1 mm/s, level | turns: 6 left, 4 right, facing 22 deg LEFT of start | humps: none yet"}
+04:19:35.737 [imu] turning LEFT 44 deg/s, -1 mm/s, level | turns: 6 left, 4 right, facing 60 deg LEFT of start | humps: none yet"}
+04:19:36.738 [imu] turning RIGHT 39 deg/s, -1 mm/s, level | turns: 6 left, 4 right, facing 33 deg LEFT of start | humps: none yet"}
+04:19:37.735 [imu] turning RIGHT 35 deg/s, 1 mm/s, level | turns: 6 left, 4 right, facing 7 deg RIGHT of start | humps: none yet"}
+04:19:38.111 [nav] line lost: pausing the mission"}
+04:19:38.111 [nav] mission RUNNING -> PAUSED"}
+04:19:38.111 [nav] buzzer: 3 x 100 ms"}
+04:19:38.111 [scan] AVOIDING -> IDLE"}
+04:19:38.115 [motion] state LINE_SEARCH -> LINE_LOST, sent LINE_LOST"}
+04:19:38.124 [motion] state LINE_LOST -> IDLE"}
+04:19:38.272 [imu] motion: stopped"}
+04:19:38.942 [imu] <<< turned RIGHT 109 deg in 4.6 s  (turns so far: 6 left, 5 right)"}
+04:19:46.421 [imu] motion: moving"}
+04:19:46.612 [imu] motion: stopped"}
+04:19:47.083 [nav] junction while PAUSED: ignored"}
+04:19:47.083 [line] junction (GP7 black 80 ms) -> nav"}
+04:19:47.133 [imu] >>> picked up (hands on)"}
+04:19:47.598 [motion] STOP_IMU set: brake written 68 us after the request."}
+04:19:47.599 [imu] !!! STOPPING: car tipped over (30.1 deg to the RIGHT, left side up) !!!"}
+04:19:47.599 [nav] IMU fault"}
+04:19:47.599 [imu]     caught 21.4 ms after the first bad sample; brake requested (STOP_IMU), nav told (IMU_FAULT)"}
+04:19:47.599 [nav] mission PAUSED -> FAULT"}
+04:19:47.599 [line] line found (LOST_MS 1500)"}
+04:19:47.599 [barcode] REJECTED: aborted (cancelled)"}
+04:19:47.599 [nav] buzzer: 1 x 800 ms"}
+04:19:47.599 [imu] mission over (FAULT): turns: 11 (6 left, 5 right), humps: 0 (highest 0 mm), bumps: 0"}
+04:19:47.897 [line] RL=11 err=0"}
+04:19:49.854 [imu] <<< put down (hands off)"}
+04:19:49.965 [imu] >>> nose DOWN 10 deg"}
+04:19:50.275 [imu] <<< level front to back again"}
+04:19:50.275 [imu] motion: moving"}
+04:19:50.370 [imu] motion: stopped"}
+04:19:50.430 [imu] <<< level side to side again"}
+04:19:50.560 [line] RL=10 err=-39"}
+04:19:50.694 [line] RL=00 err=-32"}
+04:19:50.928 [imu] >>> picked up (hands on)"}
+04:19:51.631 [imu] <<< put down (hands off)"}
+04:19:51.753 [imu] motion: moving"}
+04:19:51.909 [imu] motion: stopped"}
+04:19:52.199 [line] LOST: RL=00 for 1500 ms"}
+04:19:52.678 [imu] motion: moving"}
+04:19:52.972 [imu] motion: stopped"}
+04:19:57.424 [nav] button GP20"}
+04:19:57.425 [nav] mission FAULT -> CALIBRATING"}
+04:19:58.418 [line] calibration FAILED: GP26 ok (white 275, black 2714, rise 1737) GP27 low_contrast (white 217, black 1745, rise 1133)"}
+04:19:58.418 [nav] calibration FAILED"}
+04:19:58.418 [nav] mission CALIBRATING -> FAULT"}
+04:19:58.418 [nav] buzzer: 1 x 800 ms"}
+04:19:59.306 === uT-Kernel 3.0 / RP2040 car ==="}
+04:19:59.306 [netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)"}
+04:19:59.306 SMP build: 2 processors"}
+04:19:59.503 [wifi] link DOWN"}
+04:19:59.504 [mqtt] state=WAIT_ADDR  0.0.0.0:0  conn#=0 lost=0  pub=0 err=0 drop=0  last=0/0"}
+04:19:59.803 [line] calibration FAILED: GP26 ok (white 0, black 1600, rise 900) GP27 low_contrast (white 0, black 1600, rise 900)"}
+04:19:59.803 [nav] calibration FAILED"}
+04:19:59.803 [nav] mission CALIBRATING -> FAULT"}
+04:19:59.803 [nav] buzzer: 1 x 800 ms"}
+04:20:00.001 [imu] cal ok: offsets x=28 y=-11 z=68 mg, spread 50 mg"}
+04:20:00.012 [imu] -> nav: CAL_OK_IMU"}
+04:20:00.705 [nav] GP20 = start/resume/reset, GP21 = pause"}
+04:20:01.895 [line] RL=10 err=-37"}
+04:20:01.896 [line] line found (LOST_MS 1500)"}
+04:20:02.071 [line] RL=00 err=-2"}
+04:20:02.115 [line] RL=01 err=40"}
+04:20:02.203 [imu] >>> picked up (hands on)"}
+04:20:02.336 [line] RL=00 err=20"}
+04:20:02.368 [line] RL=10 err=-17"}
+04:20:02.501 [wifi] state=JOINING join#=1 lease#=0 lost=0 t=1694ms"}
+04:20:02.611 [line] RL=00 err=-26"}
+04:20:02.822 [line] RL=10 err=-48"}
+04:20:04.001 [imu] <<< put down (hands off)"}
+04:20:05.502 [wifi] state=WAIT_LEASE join#=1 lease#=1 lost=0 t=4654ms"}
+04:20:05.502 [wifi] waiting for lease: state=8 tries=0 t=2182ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=1934 stage=7 rd=0"}
+04:20:06.052 [nav] button GP20"}
+04:20:06.052 [nav] mission FAULT -> CALIBRATING"}
+04:20:07.044 [line] calibration OK: GP26 ok (white 181, black 981, rise 661) GP27 ok (white 720, black 1556, rise 1221)"}
+04:20:07.054 [line] RL=00 err=-24"}
+04:20:07.054 [imu] cal 1/5: not still, spread 130 mg (max 80)"}
+04:20:07.153 [line] RL=10 err=-61"}
+04:20:07.627 [line] RL=10 err=-54"}
+04:20:08.507 [wifi] waiting for lease: state=8 tries=0 t=5186ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=2933 stage=7 rd=0"}
+04:20:08.553 [imu] cal ok: offsets x=28 y=-11 z=70 mg, spread 63 mg"}
+04:20:08.553 [imu] -> nav: CAL_OK_IMU"}
+04:20:08.553 [nav] CAL_OK_IMU: stale IMU_FAULT cleared"}
+04:20:08.553 [nav] mission CALIBRATING -> READY"}
+04:20:08.553 [nav] buzzer: 1 x 100 ms"}
+04:20:08.553 [motion] nav_cmd FAULT_CLEAR(IMU) (raw 0x1001): taken"}
+04:20:08.563 [motion] nav_cmd FAULT_CLEAR(MOTION) (raw 0x1002): taken"}
+04:20:09.845 [nav] button GP20"}
+04:20:09.845 [nav] mission READY -> RUNNING"}
+04:20:09.845 [scan] IDLE -> MONITORING"}
+04:20:09.845 [motion] state IDLE -> LINE_FOLLOW"}
+04:20:09.845 [imu] mission start: turns, humps, bumps and heading reset"}
+04:20:10.011 [line] RL=00 err=-14"}
+04:20:10.120 [line] RL=01 err=92"}
+04:20:10.154 [line] RL=00 err=14"}
+04:20:10.154 [imu] >>> turning RIGHT"}
+04:20:10.496 [imu] turning LEFT 28 deg/s, 23 mm/s, level | turns: 0 left, 0 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:20:10.610 [line] RL=01 err=77"}
+04:20:10.674 [line] RL=00 err=-10"}
+04:20:10.696 [line] RL=10 err=-73"}
+04:20:10.718 [line] RL=00 err=-22"}
+04:20:11.152 [line] RL=10 err=-78"}
+04:20:11.185 [line] RL=11 err=14"}
+04:20:11.209 [line] RL=01 err=100"}
+04:20:11.253 [line] RL=00 err=6"}
+04:20:11.498 [imu] turning LEFT 23 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:20:11.509 [wifi] waiting for lease: state=8 tries=0 t=8188ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=3927 stage=7 rd=0"}
+04:20:11.675 [line] RL=01 err=93"}
+04:20:11.752 [line] RL=00 err=-38"}
+04:20:12.220 [line] RL=01 err=67"}
+04:20:12.275 [line] RL=00 err=12"}
+04:20:12.498 [imu] turning RIGHT 6 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 2 deg RIGHT of start | humps: none yet"}
+04:20:12.796 [line] RL=01 err=82"}
+04:20:12.833 [line] RL=11 err=21"}
+04:20:12.852 [line] RL=10 err=-46"}
+04:20:12.899 [line] RL=00 err=-24"}
+04:20:13.346 [line] RL=10 err=-73"}
+04:20:13.385 [line] RL=01 err=78"}
+04:20:13.431 [line] RL=00 err=13"}
+04:20:13.498 [imu] turning RIGHT 38 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 3 deg LEFT of start | humps: none yet"}
+04:20:13.954 [line] RL=01 err=91"}
+04:20:13.998 [line] RL=00 err=-16"}
+04:20:14.008 [line] RL=00 err=-16"}
+04:20:14.010 [line] RL=10 err=-74"}
+04:20:14.074 [line] RL=00 err=-14"}
+04:20:14.498 [imu] turning RIGHT 31 deg/s, 49 mm/s, level | turns: 0 left, 0 right, facing 14 deg LEFT of start | humps: none yet"}
+04:20:14.510 [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=13986ms"}
+04:20:14.525 [line] RL=10 err=-69"}
+04:20:14.565 [line] RL=11 err=36"}
+04:20:14.571 [line] RL=01 err=80"}
+04:20:14.621 [line] RL=00 err=12"}
+04:20:15.055 [line] RL=01 err=71"}
+04:20:15.110 [line] RL=00 err=-24"}
+04:20:15.121 [line] RL=10 err=-69"}
+04:20:15.161 [line] RL=00 err=-28"}
+04:20:15.497 [imu] turning RIGHT 28 deg/s, 47 mm/s, level | turns: 0 left, 0 right, facing 18 deg LEFT of start | humps: none yet"}
+04:20:15.543 [line] RL=10 err=-71"}
+04:20:15.571 [line] RL=00 err=-26"}
+04:20:15.643 [line] RL=00 err=15"}
+04:20:16.087 [line] RL=01 err=60"}
+04:20:16.129 [line] RL=00 err=12"}
+04:20:16.142 [line] RL=10 err=-62"}
+04:20:16.210 [line] RL=00 err=-28"}
+04:20:16.498 [imu] turning RIGHT 9 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 21 deg LEFT of start | humps: none yet"}
+04:20:16.580 [line] RL=10 err=-61"}
+04:20:16.611 [line] RL=00 err=23"}
+04:20:16.621 [line] RL=01 err=80"}
+04:20:16.665 [line] RL=00 err=11"}
+04:20:17.067 [line] RL=01 err=65"}
+04:20:17.127 [line] RL=00 err=-29"}
+04:20:17.144 [line] RL=10 err=-52"}
+04:20:17.188 [line] RL=00 err=-37"}
+04:20:17.410 [scan] MONITORING -> COARSE_SCAN"}
+04:20:17.412 [motion] STOP_SCAN set: brake written 50 us after the request."}
+04:20:17.423 [motion] state LINE_FOLLOW -> BRAKED"}
+04:20:17.455 [line] RL=10 err=-60"}
+04:20:17.499 [imu] turning  0 deg/s, 46 mm/s, level | turns: 0 left, 0 right, facing 22 deg LEFT of start | humps: none yet"}
+04:20:17.617 [imu] motion: stopped"}
+04:20:18.008 [imu] <<< turned LEFT 22 deg in 7.4 s  (turns so far: 1 left, 0 right)"}
+04:20:20.180 [scan] COARSE_SCAN -> FINE_SCAN"}
+04:20:23.046 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----"}
+04:20:23.046 [scan] angle -45: 1220 mm"}
+04:20:23.046 [scan] angle -30: 1229 mm"}
+04:20:23.046 [scan] angle -25: 1221 mm"}
+04:20:23.046 [scan] angle -20: 252 mm  <- obstacle"}
+04:20:23.046 [scan] angle -10: 244 mm  <- obstacle"}
+04:20:23.046 [scan] angle 0: 240 mm  <- obstacle"}
+04:20:23.047 [scan] angle 25: 249 mm  <- obstacle"}
+04:20:23.047 [scan] angle 35: 267 mm  <- obstacle"}
+04:20:23.048 [scan] angle 40: 1119 mm"}
+04:20:23.048 [scan] angle 45: 1123 mm"}
+04:20:23.050 [scan] profile: closest 240 mm @ 0 deg, edges -20..35 deg, x -66..132 mm, width 198 mm, IN the path"}
+04:20:23.054 [scan] clearance L 9999 R 9999 mm (need 248), offset L 314 R 380 mm"}
+04:20:23.063 [scan] ACTION: BYPASS LEFT   (scan took 5641 ms, budget 7000 ms)"}
+04:20:23.063 [scan] FINE_SCAN -> PLANNING"}
+04:20:23.063 [scan] PLANNING -> AVOIDING"}
+04:20:23.063 [motion] every STOP bit clear, 5658 ms after the first one was seen."}
+04:20:23.070 [motion] avoid_cmd BYPASS left 314 mm (raw 0x13a2): taken"}
+04:20:23.070 [motion] bypass OUT: 0 mm out, heading +7 deg to the line, IMU"}
+04:20:23.070 [motion] state BRAKED -> BYPASS"}
+04:20:23.157 [line] RL=00 err=-8"}
+04:20:23.259 [imu] >>> turning LEFT"}
+04:20:24.062 [motion] bypass LANE_LOOK: 0 mm out, heading +66 deg to the line, IMU"}
+04:20:24.294 [imu] motion: stopped"}
+04:20:24.604 [scan] lane look 0 deg: 1382 mm (sent 511)"}
+04:20:24.604 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:20:24.605 [motion] bypass SIDESTEP: 0 mm out, heading +69 deg to the line, IMU"}
+04:20:24.660 [line] LOST: RL=00 for 1500 ms"}
+04:20:24.985 [imu] <<< turned LEFT 61 deg in 1.8 s  (turns so far: 2 left, 0 right)"}
+04:20:25.074 [imu] motion: moving"}
+04:20:28.294 [motion] bypass PARALLEL: 314 mm out, heading +67 deg to the line, IMU"}
+04:20:28.438 [imu] >>> turning RIGHT"}
+04:20:28.498 [imu] turning RIGHT 44 deg/s, 75 mm/s, level | turns: 2 left, 0 right, facing 75 deg LEFT of start | humps: none yet"}
+04:20:29.340 [motion] bypass STEP: 312 mm out, heading +4 deg to the line, IMU"}
+04:20:29.496 [imu] turning LEFT 9 deg/s, 5 mm/s, level | turns: 2 left, 0 right, facing 16 deg LEFT of start | humps: none yet"}
+04:20:29.816 [imu] motion: moving"}
+04:20:30.205 [imu] <<< turned RIGHT 64 deg in 1.8 s  (turns so far: 2 left, 1 right)"}
+04:20:32.104 [motion] bypass PROBE_IN: 324 mm out, heading +3 deg to the line, IMU"}
+04:20:32.248 [imu] >>> turning RIGHT"}
+04:20:32.498 [imu] turning RIGHT 68 deg/s, 56 mm/s, level | turns: 2 left, 1 right | humps: none yet"}
+04:20:33.006 [motion] bypass LOOK: 325 mm out, heading -41 deg to the line, IMU"}
+04:20:33.190 [imu] motion: stopped"}
+04:20:33.890 [imu] <<< turned RIGHT 46 deg in 0.9 s  (turns so far: 2 left, 2 right)"}
+04:20:34.626 [scan] side look 45 deg: 0 mm (sent 511)"}
+04:20:34.626 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:20:34.626 [motion] bypass PROBE_OUT: 325 mm out, heading -43 deg to the line, IMU"}
+04:20:34.807 [imu] >>> turning LEFT"}
+04:20:35.361 [motion] bypass STEP: 324 mm out, heading -4 deg to the line, IMU"}
+04:20:35.505 [imu] turning RIGHT 2 deg/s, 5 mm/s, level | turns: 2 left, 2 right, facing 14 deg LEFT of start | humps: none yet"}
+04:20:35.828 [imu] motion: moving"}
+04:20:36.216 [imu] <<< turned LEFT 40 deg in 1.4 s  (turns so far: 3 left, 2 right)"}
+04:20:36.560 [motion] bypass PROBE_IN: 319 mm out, heading -4 deg to the line, IMU"}
+04:20:36.687 [imu] >>> turning RIGHT"}
+04:20:37.251 [motion] bypass LOOK: 320 mm out, heading -41 deg to the line, IMU"}
+04:20:37.340 [line] junction (GP7 black 80 ms) -> nav"}
+04:20:37.340 [nav] junction, no barcode command: straight on"}
+04:20:37.495 [imu] turning  0 deg/s, 5 mm/s, level | turns: 3 left, 2 right, facing 29 deg RIGHT of start | humps: none yet"}
+04:20:37.517 [imu] motion: stopped"}
+04:20:38.167 [imu] <<< turned RIGHT 40 deg in 0.7 s  (turns so far: 3 left, 3 right)"}
+04:20:38.695 [scan] side look 45 deg: 1365 mm (sent 511)"}
+04:20:38.706 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:20:38.706 [motion] bypass PROBE_OUT: 319 mm out, heading -44 deg to the line, IMU"}
+04:20:38.875 [imu] >>> turning LEFT"}
+04:20:39.483 [motion] bypass STEP: 319 mm out, heading -4 deg to the line, IMU"}
+04:20:39.495 [imu] turning LEFT 69 deg/s, -1 mm/s, level | turns: 3 left, 3 right, facing 13 deg LEFT of start | humps: none yet"}
+04:20:40.006 [imu] motion: moving"}
+04:20:40.680 [imu] <<< turned LEFT 39 deg in 1.9 s  (turns so far: 4 left, 3 right)"}
+04:20:40.693 [motion] bypass PROBE_IN: 311 mm out, heading -6 deg to the line, IMU"}
+04:20:40.817 [imu] >>> turning RIGHT"}
+04:20:40.885 [line] line found (LOST_MS 1500)"}
+04:20:40.885 [barcode] REJECTED: aborted (width_too_long)"}
+04:20:40.979 [line] junction (GP7 black 80 ms) -> nav"}
+04:20:40.979 [nav] junction, no barcode command: straight on"}
+04:20:41.361 [motion] bypass LOOK: 311 mm out, heading -41 deg to the line, IMU"}
+04:20:41.500 [imu] turning  0 deg/s, 17 mm/s, level | turns: 4 left, 3 right, facing 29 deg RIGHT of start | humps: none yet"}
+04:20:41.583 [imu] motion: stopped"}
+04:20:42.277 [imu] <<< turned RIGHT 39 deg in 0.7 s  (turns so far: 4 left, 4 right)"}
+04:20:42.685 [line] LOST: RL=00 for 1500 ms"}
+04:20:42.806 [scan] side look 45 deg: 1337 mm (sent 511)"}
+04:20:42.812 [motion] avoid_cmd LOOK 511 mm (raw 0x1ff3): taken"}
+04:20:42.817 [motion] bypass PROBE_OUT: 311 mm out, heading -44 deg to the line, IMU"}
+04:20:43.038 [imu] >>> turning LEFT"}
+04:20:43.272 [line] RL=01 err=90"}
+04:20:43.272 [line] line found (LOST_MS 1500)"}
+04:20:43.305 [line] RL=11 err=0"}
+04:20:43.437 [nav] junction, no barcode command: straight on"}
+04:20:43.437 [line] junction (GP7 black 80 ms) -> nav"}
+04:20:43.605 [motion] bypass CLEAR: 311 mm out, heading -4 deg to the line, IMU"}
+04:20:43.906 [line] RL=00 err=0"}
+04:20:43.906 [barcode] REJECTED: malformed (bad_length)"}
+04:20:43.906 [barcode]   1 widths (1 letter = 29)"}
+04:20:43.906 [barcode]    0: B110"}
+04:20:44.094 [imu] motion: moving"}
+04:20:44.134 [line] junction (GP7 black 80 ms) -> nav"}
+04:20:44.134 [nav] junction, no barcode command: straight on"}
+04:20:44.606 [imu] <<< turned LEFT 38 deg in 1.7 s  (turns so far: 5 left, 4 right)"}
+04:20:45.027 [motion] bypass TURN_IN: 298 mm out, heading -7 deg to the line, IMU"}
+04:20:45.137 [barcode] REJECTED: malformed (bad_length)"}
+04:20:45.137 [barcode]   1 widths (1 letter = 29)"}
+04:20:45.137 [barcode]    0: B217"}
+04:20:45.149 [imu] >>> turning RIGHT"}
+04:20:45.498 [imu] turning RIGHT 62 deg/s, 49 mm/s, level | turns: 5 left, 4 right, facing 14 deg RIGHT of start | humps: none yet"}
+04:20:46.072 [motion] bypass STEP_IN: 298 mm out, heading -66 deg to the line, IMU"}
+04:20:46.427 [imu] motion: moving"}
+04:20:46.849 [imu] <<< turned RIGHT 61 deg in 1.8 s  (turns so far: 5 left, 5 right)"}
+04:20:46.937 [line] LOST: RL=00 for 1500 ms"}
+04:20:48.261 [motion] bypass ONTO: 116 mm out, heading -69 deg to the line, IMU"}
+04:20:49.726 [motion] bypass ALONG: 0 mm out, heading -69 deg to the line, IMU"}
+04:20:49.878 [imu] >>> turning LEFT"}
+04:20:50.497 [imu] turning LEFT 69 deg/s, 21 mm/s, level | turns: 5 left, 5 right, facing 12 deg RIGHT of start | humps: none yet"}
+04:20:50.861 [motion] bypass DONE: 0 mm out, heading -4 deg to the line, IMU"}
+04:20:50.872 [motion] state BYPASS -> LINE_SEARCH"}
+04:20:51.500 [imu] turning RIGHT 31 deg/s, -1 mm/s, level | turns: 5 left, 5 right, facing 4 deg RIGHT of start | humps: none yet"}
+04:20:52.504 [imu] turning LEFT 29 deg/s, -2 mm/s, level | turns: 5 left, 5 right, facing 24 deg RIGHT of start | humps: none yet"}
+04:20:54.461 [nav] line lost: pausing the mission"}
+04:20:54.461 [scan] AVOIDING -> IDLE"}
+04:20:54.461 [nav] mission RUNNING -> PAUSED"}
+04:20:54.461 [nav] buzzer: 3 x 100 ms"}
+04:20:54.462 [motion] state LINE_SEARCH -> LINE_LOST, sent LINE_LOST"}
+04:20:54.472 [motion] state LINE_LOST -> IDLE"}
+04:20:54.496 [imu] turning LEFT 2 deg/s, 2 mm/s, level | turns: 5 left, 5 right, facing 59 deg LEFT of start | humps: none yet"}
+04:20:54.583 [imu] motion: stopped"}
+04:20:55.279 [imu] <<< turned LEFT 113 deg in 4.7 s  (turns so far: 6 left, 5 right)"}

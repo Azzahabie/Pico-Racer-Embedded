@@ -1,0 +1,69 @@
+# NFR-20 width, mode 3, dwell scan (median of 3 per angle, 10 deg fine steps)
+# 2026-11-03, demo box ~90 mm wide, centred, 250 mm from sensor face, k = 0.080
+# Result: widths 287 257 256 256 289 mm -> 0/5 within 30 %; offsets 333-366 mm (max 400); scan 5.6-5.8 s
+
+23:20:11.928 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:20:11.928 [scan] angle -45: 688 mm
+23:20:11.928 [scan] angle -40: far
+23:20:11.928 [scan] angle -35: 284 mm  <- obstacle
+23:20:11.928 [scan] angle -25: 257 mm  <- obstacle
+23:20:11.928 [scan] angle 0: 252 mm  <- obstacle
+23:20:11.928 [scan] angle 25: 266 mm  <- obstacle
+23:20:11.928 [scan] angle 35: 295 mm  <- obstacle
+23:20:11.928 [scan] angle 40: 1420 mm
+23:20:11.928 [scan] angle 45: 1735 mm
+23:20:11.928 [scan] profile: closest 252 mm @ 0 deg, edges -35..35 deg, x -141..146 mm, width 287 mm, IN the path
+23:20:11.928 [scan] clearance L 9999 R 9999 mm (need 218), offset L 359 R 364 mm
+23:20:11.928 [scan] ACTION: BYPASS LEFT   (scan took 5685 ms, budget 7000 ms)
+23:20:21.135 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:20:21.135 [scan] angle -45: 1495 mm
+23:20:21.135 [scan] angle -40: 1522 mm
+23:20:21.135 [scan] angle -35: 288 mm  <- obstacle
+23:20:21.135 [scan] angle -25: 257 mm  <- obstacle
+23:20:21.135 [scan] angle 0: 252 mm  <- obstacle
+23:20:21.135 [scan] angle 25: 262 mm  <- obstacle
+23:20:21.135 [scan] angle 30: 275 mm  <- obstacle
+23:20:21.135 [scan] angle 35: 1760 mm
+23:20:21.135 [scan] angle 45: 1729 mm
+23:20:21.135 [scan] profile: closest 252 mm @ 0 deg, edges -35..30 deg, x -142..115 mm, width 257 mm, IN the path
+23:20:21.135 [scan] clearance L 9999 R 9999 mm (need 218), offset L 360 R 333 mm
+23:20:21.135 [scan] ACTION: BYPASS RIGHT   (scan took 5653 ms, budget 7000 ms)
+23:20:30.354 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:20:30.354 [scan] angle -45: far
+23:20:30.354 [scan] angle -40: 1495 mm
+23:20:30.354 [scan] angle -35: 284 mm  <- obstacle
+23:20:30.354 [scan] angle -25: 258 mm  <- obstacle
+23:20:30.354 [scan] angle 0: 252 mm  <- obstacle
+23:20:30.354 [scan] angle 25: 266 mm  <- obstacle
+23:20:30.354 [scan] angle 30: 275 mm  <- obstacle
+23:20:30.354 [scan] angle 35: 1742 mm
+23:20:30.354 [scan] angle 45: 1404 mm
+23:20:30.354 [scan] profile: closest 252 mm @ 0 deg, edges -35..30 deg, x -141..115 mm, width 256 mm, IN the path
+23:20:30.354 [scan] clearance L 9999 R 9999 mm (need 218), offset L 359 R 333 mm
+23:20:30.354 [scan] ACTION: BYPASS RIGHT   (scan took 5767 ms, budget 7000 ms)
+23:20:39.449 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:20:39.449 [scan] angle -45: 1512 mm
+23:20:39.449 [scan] angle -40: 1499 mm
+23:20:39.449 [scan] angle -35: 284 mm  <- obstacle
+23:20:39.449 [scan] angle -25: 257 mm  <- obstacle
+23:20:39.449 [scan] angle 0: 252 mm  <- obstacle
+23:20:39.449 [scan] angle 25: 262 mm  <- obstacle
+23:20:39.449 [scan] angle 30: 275 mm  <- obstacle
+23:20:39.449 [scan] angle 35: 1746 mm
+23:20:39.449 [scan] angle 45: 1428 mm
+23:20:39.449 [scan] profile: closest 252 mm @ 0 deg, edges -35..30 deg, x -141..115 mm, width 256 mm, IN the path
+23:20:39.449 [scan] clearance L 9999 R 9999 mm (need 218), offset L 359 R 333 mm
+23:20:39.450 [scan] ACTION: BYPASS RIGHT   (scan took 5647 ms, budget 7000 ms)
+23:20:48.515 [scan] ---- sweep (negative = left), obstacle <= 400 mm ----
+23:20:48.515 [scan] angle -45: 1504 mm
+23:20:48.515 [scan] angle -40: 1508 mm
+23:20:48.515 [scan] angle -35: 284 mm  <- obstacle
+23:20:48.515 [scan] angle -25: 258 mm  <- obstacle
+23:20:48.515 [scan] angle 0: 252 mm  <- obstacle
+23:20:48.515 [scan] angle 25: 266 mm  <- obstacle
+23:20:48.515 [scan] angle 35: 298 mm  <- obstacle
+23:20:48.515 [scan] angle 40: 1743 mm
+23:20:48.515 [scan] angle 45: 1408 mm
+23:20:48.515 [scan] profile: closest 252 mm @ 0 deg, edges -35..35 deg, x -141..148 mm, width 289 mm, IN the path
+23:20:48.515 [scan] clearance L 9999 R 9999 mm (need 218), offset L 359 R 366 mm
+23:20:48.515 [scan] ACTION: BYPASS LEFT   (scan took 5618 ms, budget 7000 ms)

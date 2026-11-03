@@ -45,6 +45,7 @@
 #include "../line_task/line_state.h"
 #include "../line_task/barcode_action.h"
 #include "../imu_task/imu_task.h"       /* hump_state word (D1) */
+#include "../imu_task/imu_events.h"     /* ev_heading_deg: bypass heading */
 #include "../common/line_config.h"      /* LINE_LOST_MS */
 #include "motion_cfg.h"
 #include "motion_lib.h"
@@ -167,9 +168,13 @@ typedef enum
                      us, rate_r = mean us, duty_l = min us  */
     EVT_STATE,    /* statechart: val_l = new state, val_r =
                      old state, rate_l = replies sent       */
-    EVT_CMD       /* a command taken from a buffer: val_l =
+    EVT_CMD,      /* a command taken from a buffer: val_l =
                      CMD_SRC_*, val_r = the raw 2 bytes,
                      rate_l = CMD_RES_*                     */
+    EVT_BYP       /* bypass phase: val_l = phase, val_r =
+                     sideways mm toward the side, rate_l =
+                     heading - line deg (x side), rate_r =
+                     1 IMU heading in use, 0 encoders only  */
 } report_event_t;
 
 /* EVT_CMD fields */
@@ -210,7 +215,8 @@ typedef struct
     uint16_t prev_l;
     uint16_t prev_r;
     int32_t  pos_l;
-    int32_t  pos_r;
+    int32_t  pos_r;        /* in left-wheel units (see tick_encoders) */
+    int32_t  raw_pos_r;    /* right counts as the encoder gives them   */
     int32_t  d_l;
     int32_t  d_r;
     uint32_t prev_edges_l; /* packed per-phase edge counts */
@@ -319,6 +325,17 @@ typedef struct
     int32_t bypass_pass_mm; /* driven alongside so far               */
     bool    b_bypass_seen;  /* a probe has seen the obstacle         */
     bool    b_look_present; /* the last probe's answer               */
+
+    /* IMU heading reference (MOTION_HD_*, motion_cfg.h) */
+    int64_t  hd_line_udeg;  /* line direction: average heading, udeg */
+    int32_t  hd_prev_deg;   /* heading last tick                     */
+    int32_t  hd_travel;     /* Line Following travel in the average,
+                               2 x counts (capped at MOTION_HD_MIN_MM) */
+    bool     b_hd_line;     /* an average has started                */
+    bool     b_hd_ok;       /* this tick: heading usable             */
+    int32_t  hd_err_deg;    /* this tick: heading - line, + = left   */
+    int32_t  hd_lat_acc;    /* sideways: sum of counts x sin1000     */
+    int32_t  byp_lat_target;/* sidestep end, mm toward the side      */
     uint8_t look_state;     /* LOOK_*: the probe's request to scan   */
     uint16_t look_mm;       /* scan_task's AVOID_LOOK reading        */
     uint32_t look_ticks;    /* ticks waited for it                   */
@@ -1036,6 +1053,25 @@ edges_since (uint16_t now, uint16_t prev)
     return (uint32_t)(uint16_t)(now - prev);
 }
 
+/* A right-encoder total in left-wheel units: raw x MOTION_COUNTS_PER_REV /
+   MOTION_COUNTS_PER_REV_R, rounded to the nearest unit (half away from
+   zero, the same both ways, so forward and back stay symmetric; truncating
+   would lag the left wheel by up to 1.6 units and read as a turn).
+   64-bit, so a total of +-2^31 counts cannot overflow. */
+static int32_t
+right_to_left_units (int32_t raw)
+{
+#if MOTION_COUNTS_PER_REV_R == MOTION_COUNTS_PER_REV
+    return raw;
+#else
+    int64_t num  = (int64_t)raw * MOTION_COUNTS_PER_REV;
+    int64_t half = MOTION_COUNTS_PER_REV_R / 2;
+
+    return (int32_t)(((num >= 0) ? (num + half) : (num - half))
+                     / MOTION_COUNTS_PER_REV_R);
+#endif
+}
+
 static void
 tick_encoders (motion_ctx_t *p_ctx)
 {
@@ -1049,11 +1085,22 @@ tick_encoders (motion_ctx_t *p_ctx)
     edges_r = encoder_read_edges_right();
 
     p_ctx->d_l    = motion_count_delta(now_l, p_ctx->prev_l);
-    p_ctx->d_r    = motion_count_delta(now_r, p_ctx->prev_r);
     p_ctx->prev_l = now_l;
-    p_ctx->prev_r = now_r;
     p_ctx->pos_l += p_ctx->d_l;
-    p_ctx->pos_r += p_ctx->d_r;
+
+    /* The right encoder gives fewer counts per wheel turn than the left
+       (MOTION_COUNTS_PER_REV_R, motion_cfg.h).  Scale its running total
+       to left-wheel units, then take the delta from the scaled total, so
+       rounding never builds up: everything after this line (speed PID,
+       distance_state, pivots, bypass) sees one unit for both wheels. */
+    p_ctx->raw_pos_r += motion_count_delta(now_r, p_ctx->prev_r);
+    p_ctx->prev_r     = now_r;
+    {
+        int32_t scaled = right_to_left_units(p_ctx->raw_pos_r);
+
+        p_ctx->d_r   = scaled - p_ctx->pos_r;
+        p_ctx->pos_r = scaled;
+    }
 
     p_ctx->e_la = edges_since(motion_unpack_left(edges_l),
                               motion_unpack_left(p_ctx->prev_edges_l));
@@ -1420,6 +1467,9 @@ static uint8_t const g_byp_deg[BYP_PH_DONE] = {
 #define LOOK_ASKED    (1u)
 #define LOOK_ANSWERED (2u)
 
+static int32_t hd_lat_mm(motion_ctx_t const *p_ctx); /* IMU heading, below */
+static void    byp_report(motion_ctx_t *p_ctx);
+
 /* Has the manoeuvre of this state reached its target? */
 static bool
 man_done (motion_ctx_t const *p_ctx, motion_state_t state)
@@ -1579,6 +1629,11 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
         p_ctx->b_look_present = false;
         p_ctx->look_state     = LOOK_NONE;
         p_ctx->look_ticks     = 0u;
+        /* The offset is from where the car is now (a re-plan may start
+           off the line): the sidestep ends that far beyond it. */
+        p_ctx->byp_lat_target = (hd_lat_mm(p_ctx) * p_ctx->bypass_side)
+                                + p_ctx->bypass_off_mm;
+        byp_report(p_ctx);
     }
     else if ((MOTION_ST_TURNING == state) && !b_resumed)
     {
@@ -1788,6 +1843,151 @@ turn_drive (motion_ctx_t *p_ctx)
     }
 }
 
+/* ------------------------------------------------------------------ *
+ *  IMU heading reference for the bypass (MOTION_HD_*, motion_cfg.h)
+ * ------------------------------------------------------------------ */
+
+/* round(1000 x sin(deg)), deg = 0..90 */
+static int16_t const g_sin1000[91] = {
+    0,   17,  35,  52,  70,  87,  105, 122, 139, 156, 174, 191, 208, 225,
+    242, 259, 276, 292, 309, 326, 342, 358, 375, 391, 407, 423, 438, 454,
+    469, 485, 500, 515, 530, 545, 559, 574, 588, 602, 616, 629, 643, 656,
+    669, 682, 695, 707, 719, 731, 743, 755, 766, 777, 788, 799, 809, 819,
+    829, 839, 848, 857, 866, 875, 883, 891, 899, 906, 914, 921, 927, 934,
+    940, 946, 951, 956, 961, 966, 970, 974, 978, 982, 985, 988, 990, 993,
+    995, 996, 998, 999, 999, 1000, 1000
+};
+
+/* 1000 x sin(deg) for any whole degree. */
+static int32_t
+sin1000_deg (int32_t deg)
+{
+    int32_t d    = deg % 360;
+    int32_t sign = 1;
+
+    if (d < 0)
+    {
+        d += 360;
+    }
+    if (d >= 180)
+    {
+        d -= 180;
+        sign = -1;
+    }
+    if (d > 90)
+    {
+        d = 180 - d;
+    }
+    return sign * (int32_t)g_sin1000[d];
+}
+
+/* Sideways distance from the line, mm, + = left.  hd_lat_acc sums
+   (d_l + d_r) x sin1000 each tick: 2 x counts x 1000. */
+static int32_t
+hd_lat_mm (motion_ctx_t const *p_ctx)
+{
+    return (int32_t)(((int64_t)p_ctx->hd_lat_acc * MOTION_WHEEL_DIA_MM * 355)
+                     / ((int64_t)113 * MOTION_COUNTS_PER_REV * 2000));
+}
+
+/* Once per tick, before man_drive: learn the line's direction in Line
+   Following, sum the sideways move off the line, and say whether the
+   heading can steer the bypass this tick (b_hd_ok). */
+/* MOTION_HD_LINE_MM / MOTION_HD_MIN_MM in the units hd_tick sums each tick,
+   d_l + d_r (2 x counts): 2 x mm x counts per turn / (pi x diameter),
+   pi as 355/113. */
+#define HD_2COUNTS(mm)                                                         \
+    ((int32_t)((2 * (int64_t)(mm) * MOTION_COUNTS_PER_REV * 113)               \
+               / ((int64_t)355 * MOTION_WHEEL_DIA_MM)))
+
+static void
+hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
+{
+#if MOTION_HD_ENABLE
+    int32_t h     = (int32_t)ev_heading_deg();
+    bool    b_imu = (0u == IMU_W_GET(imu_word_read(), FAULT));
+    int32_t jump  = motion_abs(h - p_ctx->hd_prev_deg);
+    int32_t fwd   = p_ctx->d_l + p_ctx->d_r; /* 2 x counts this tick */
+
+    p_ctx->hd_prev_deg = h;
+    if (!b_imu || (MOTION_ST_IDLE == state) || (MOTION_ST_TURNING == state)
+        || (MOTION_ST_FAULT == state)
+        || ((MOTION_ST_LINE_FOLLOW != state) && (jump > MOTION_HD_JUMP_DEG)))
+    {
+        /* New mission, a junction turn, a fault or a heading reset: the
+           old line direction no longer holds. */
+        p_ctx->b_hd_line  = false;
+        p_ctx->hd_travel  = 0;
+        p_ctx->hd_lat_acc = 0;
+    }
+    else if (MOTION_ST_LINE_FOLLOW == state)
+    {
+        if (!p_ctx->b_hd_line || (jump > MOTION_HD_JUMP_DEG))
+        {
+            p_ctx->hd_line_udeg = (int64_t)h * 1000000;
+            p_ctx->hd_travel    = 0;
+            p_ctx->b_hd_line    = true;
+        }
+        else if (fwd > 0)
+        {
+            /* Distance-weighted average: each tick pulls the line direction
+               toward the heading by the share of MOTION_HD_LINE_MM driven. */
+            p_ctx->hd_line_udeg
+                += ((((int64_t)h * 1000000) - p_ctx->hd_line_udeg) * fwd)
+                   / HD_2COUNTS(MOTION_HD_LINE_MM);
+            if (p_ctx->hd_travel < HD_2COUNTS(MOTION_HD_MIN_MM))
+            {
+                p_ctx->hd_travel += fwd;
+            }
+        }
+        else
+        {
+            /* Not moving forward: nothing new about the line. */
+        }
+        p_ctx->hd_lat_acc = 0; /* on the line */
+    }
+    else if (p_ctx->b_hd_line)
+    {
+        /* Off the line (Braked, Bypass, Reversing, Line Search). */
+        p_ctx->hd_lat_acc
+            += fwd
+               * sin1000_deg(h - (int32_t)(p_ctx->hd_line_udeg / 1000000));
+    }
+    else
+    {
+        /* No line direction yet: nothing to measure from. */
+    }
+    p_ctx->hd_err_deg = h - (int32_t)(p_ctx->hd_line_udeg / 1000000);
+    p_ctx->b_hd_ok    = b_imu && p_ctx->b_hd_line
+                     && (p_ctx->hd_travel >= HD_2COUNTS(MOTION_HD_MIN_MM));
+#else
+    (void)state;
+    p_ctx->b_hd_ok = false;
+#endif
+}
+
+/* Heading target of each bypass pivot with the IMU, as (heading - line)
+   x side in degrees; the straight and braked phases are not used. */
+static int8_t const g_byp_hd_target[BYP_PH_DONE] = {
+    MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, -45, 0, 0, 0,
+    -MOTION_BYPASS_SIDE_DEG, 0, 0, 0
+};
+
+/* One EVT_BYP line: the phase just entered and where the car is. */
+static void
+byp_report (motion_ctx_t *p_ctx)
+{
+    motion_report_t rep;
+    int32_t         side = p_ctx->bypass_side;
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BYP);
+    rep.val_l  = (int32_t)p_ctx->bypass_phase;
+    rep.val_r  = hd_lat_mm(p_ctx) * side;
+    rep.rate_l = p_ctx->hd_err_deg * side;
+    rep.rate_r = p_ctx->b_hd_ok ? 1 : 0;
+    report_send(p_ctx, &rep);
+}
+
 /* Next bypass phase: its own start positions and a fresh PID. */
 static void
 byp_next (motion_ctx_t *p_ctx, uint32_t ph)
@@ -1798,6 +1998,7 @@ byp_next (motion_ctx_t *p_ctx, uint32_t ph)
     p_ctx->look_ticks     = 0u;
     motion_pid_reset(&p_ctx->pid_l);
     motion_pid_reset(&p_ctx->pid_r);
+    byp_report(p_ctx);
 }
 
 /* Ask scan_task to look (SCAN_FLG_LOOK or SCAN_FLG_LOOK_AHEAD); the answer
@@ -1880,8 +2081,21 @@ bypass_drive (motion_ctx_t *p_ctx)
 
     dir          = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
     turned       = ((dr - dl) / 2) * dir;
-    b_pivot_done = (0 != dir)
-                   && (turned >= BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph]));
+    if (p_ctx->b_hd_ok && (0 != dir))
+    {
+        /* To a heading relative to the line, MOTION_HD_LEAD_DEG early;
+           twice the encoder count stops it if the IMU misleads. */
+        b_pivot_done
+            = ((((int32_t)g_byp_hd_target[ph] - (p_ctx->hd_err_deg * side))
+                * (int32_t)g_byp_turn[ph])
+               <= MOTION_HD_LEAD_DEG)
+              || (turned >= (2 * BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph])));
+    }
+    else
+    {
+        b_pivot_done = (0 != dir)
+                       && (turned >= BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph]));
+    }
     if (lane > (int32_t)MOTION_AVOID_DIST_MAX)
     {
         lane = (int32_t)MOTION_AVOID_DIST_MAX; /* 511 = nothing in range */
@@ -1925,7 +2139,12 @@ bypass_drive (motion_ctx_t *p_ctx)
             }
             break;
         case BYP_PH_SIDESTEP:
-            if (moved >= leg)
+            /* With the IMU: until the planned sideways distance from the
+               line (whatever angle the car stopped at), 2 x leg at most. */
+            if (p_ctx->b_hd_ok
+                    ? ((hd_lat_mm(p_ctx) * side >= p_ctx->byp_lat_target)
+                       || (moved >= (2 * leg)))
+                    : (moved >= leg))
             {
                 byp_next(p_ctx, BYP_PH_PARALLEL);
             }
@@ -1977,9 +2196,23 @@ bypass_drive (motion_ctx_t *p_ctx)
             }
             break;
         case BYP_PH_STEP_IN:
-            /* LINE_RL_CENTRED is "both white": anything else is the line. */
+            /* LINE_RL_CENTRED is "both white": anything else is the line.
+               A confirmed black within MOTION_LF_SEEN_MS also counts (the
+               same test as b_line_seen): crossing at ~60 deg the filtered
+               rl never left 00 while line_task confirmed the line, so the
+               car drove over it to the end of the leg (car, 4 Nov 2026). */
+            /* With the IMU, also when the line sensors (MOTION_LINE_SENSOR_MM
+               ahead of the axle) are back over the line's position: the
+               way back is the sideways distance driven out, measured. */
             if ((LINE_RL_CENTRED != line_state_rl(p_ctx->line_word))
-                || (moved >= (leg + MOTION_BYPASS_IN_EXTRA_MM)))
+                || (line_state_dark_ms(p_ctx->line_word) < MOTION_LF_SEEN_MS)
+                || (p_ctx->b_hd_ok
+                        ? (((hd_lat_mm(p_ctx)
+                             + ((MOTION_LINE_SENSOR_MM
+                                 * sin1000_deg(p_ctx->hd_err_deg)) / 1000))
+                            * side <= -MOTION_HD_PAST_MM)
+                           || (moved >= (2 * (leg + MOTION_BYPASS_IN_EXTRA_MM))))
+                        : (moved >= (leg + MOTION_BYPASS_IN_EXTRA_MM))))
             {
                 byp_next(p_ctx, BYP_PH_ONTO);
             }
@@ -2252,6 +2485,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     {
         motor_brake_all(); /* before any reply, e.g. MOTION_FAULT */
     }
+    hd_tick(p_ctx, motion_sm_state(&p_ctx->sm));
     if (out.b_changed)
     {
         man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
@@ -2805,6 +3039,29 @@ print_state (UB *p_line, motion_report_t const *p_rep)
     print_line(p_line);
 }
 
+/* EVT_BYP, e.g. "[motion] bypass SIDESTEP: 12 mm out, heading +68 deg to
+   the line, IMU". */
+#ifdef BYP_PH_DONE /* the statechart image only (MOTION_BENCH 0) */
+static void
+print_byp (UB *p_line, motion_report_t const *p_rep)
+{
+    static char const *const names[BYP_PH_DONE + 1u] = {
+        "OUT",   "LANE_LOOK", "LANE_BACK", "SWITCH",  "SIDESTEP",
+        "PARALLEL", "STEP",   "PROBE_IN",  "LOOK",    "PROBE_OUT",
+        "CLEAR", "TURN_IN",   "STEP_IN",   "ONTO",    "ALONG", "DONE"
+    };
+    uint32_t    ph   = (uint32_t)p_rep->val_l;
+    char const *name = (ph <= BYP_PH_DONE) ? names[ph] : "?";
+
+    (void)tm_sprintf(p_line,
+                     (UB *)"[motion] bypass %s: %d mm out, heading %+d deg"
+                           " to the line, %s",
+                     name, (INT)p_rep->val_r, (INT)p_rep->rate_l,
+                     (0 != p_rep->rate_r) ? "IMU" : "encoders only");
+    print_line(p_line);
+}
+#endif
+
 /* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken". */
 static void
 print_cmd (UB *p_line, motion_report_t const *p_rep)
@@ -2982,6 +3239,12 @@ print_event (UB *p_line, motion_report_t const *p_rep)
         case EVT_CMD:
             print_cmd(p_line, p_rep);
             break;
+
+#ifdef BYP_PH_DONE
+        case EVT_BYP:
+            print_byp(p_line, p_rep);
+            break;
+#endif
 
         case EVT_RAMP:
             (void)tm_sprintf(p_line,

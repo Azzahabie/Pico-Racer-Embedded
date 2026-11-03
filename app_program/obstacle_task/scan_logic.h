@@ -47,7 +47,16 @@
 #define SL_CAR_HALF_W_MM	63	/* half of 125 mm, rounded up                    */
 #define SL_AXLE_FRONT_MM	155
 #define SL_AXLE_BACK_MM		70
-#define SL_MARGIN_MM		50	/* safety gap past the edge [TBD]                */
+#define SL_MARGIN_MM		50	/* safety gap past the edge: the in-path corridor */
+/* Safety gap past the pivot sweep when passing (C_pass only). Was
+ * SL_MARGIN_MM (50); 80 since 4 Nov 2026 (car): with 50 the first bypass
+ * probe found the box 127 mm from the sensor and the forward pings read
+ * 95 mm (< D_rev), so the car re-planned while turned 45 deg toward the
+ * box, touched it and then circled it; side looks earlier read 79 mm.
+ * 80 keeps every offset tested at 200-250 mm under SL_MAX_OFFSET_MM. The
+ * corridor (SL_CORRIDOR_MM) keeps SL_MARGIN_MM, so what counts as "in the
+ * path" (FR-17 continue) is unchanged. */
+#define SL_PASS_MARGIN_MM	80
 
 /* A pivot on the spot (the bypass legs, the line search) sweeps the front
  * corners through sqrt(155^2 + 63^2) = 167.3 -> 168 mm (calculated). S7 attempt 1
@@ -59,7 +68,7 @@
  * half the width + margin (Integration Rules section 9, D12). The offset
  * sent to motion_task is the edge + C_pass, so the car's axle runs at
  * least C_pass from the obstacle's edge. */
-#define SL_C_PASS_MM		(SL_PIVOT_R_MM + SL_MARGIN_MM)
+#define SL_C_PASS_MM		(SL_PIVOT_R_MM + SL_PASS_MARGIN_MM)	/* 248 mm */
 
 /* Half-width of the car's path corridor: an obstacle wholly outside
  * +/-SL_CORRIDOR_MM is not in the way (FR-17 "continue"). The car drives
@@ -202,6 +211,23 @@ int32_t		sl_avoid_stop_mm(int32_t moved_mm);
 #define SL_LOOK_UNKNOWN_MM	1U
 #define SL_LOOK_FAR_MM		511U
 uint16_t	sl_look_reply_mm(uint16_t grid_mm);
+
+/* Sidestep lane (D14): motion_task drives the leg, offset / sin 70, along
+ * the lane the lane look measured, and Avoiding brakes for anything under
+ * D_stop while the car moves. So the lane must hold leg + D_stop +
+ * SL_LANE_SLACK_MM, or the car stops part-way and re-plans from a turned
+ * pose (car, 4 Nov: lane 559 mm for a 279 mm leg, braked at 213 mm, then
+ * looped). motion_task's own test (leg + 205, capped at 511) cannot see
+ * this: the LOOK distance tops out at 511. grid_mm is the raw reading:
+ * SL_FAR (nothing in range) is clear, SL_NOT_MEASURED is not. */
+#define SL_SIDE_LEG_X1000	1064	/* 1 / sin 70 deg, = MOTION_BYPASS_SIDE_LEG_X1000 */
+#define SL_LANE_SLACK_MM	50	/* echo error along an angled lane */
+bool		sl_lane_clear(uint16_t grid_mm, int32_t offset_mm);
+
+/* Bypass plans in one avoidance before giving up into Blocked (FR-18
+ * "otherwise stop"): car, 4 Nov, boxed in between the box and a second
+ * object, it re-planned left/right until paused by hand. */
+#define SL_MAX_BYPASS_PLANS	3
 void		sl_runs_reset(sl_runs_t *p_runs);
 void		sl_runs_add(sl_runs_t *p_runs, sl_ping_t ping);
 uint8_t		sl_runs_close(const sl_runs_t *p_runs);
