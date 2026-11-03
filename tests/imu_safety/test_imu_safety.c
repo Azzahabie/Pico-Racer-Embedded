@@ -15,6 +15,7 @@
 
 #include "imu_safety.h"
 #include "imu_class.h"
+#include "imu_events.h"
 #include "imu_task.h"		/* hump_state word layout */
 
 /* hump.c prints; nothing here needs its lines. */
@@ -41,6 +42,16 @@ static UINT tilt(double deg)
 	double r = deg * M_PI / 180;
 	return safety_step(TRUE, (W)lround(1000 * sin(r)), 0,
 			   (W)lround(1000 * cos(r)));
+}
+
+/* Still, until a turn in progress has ended (EV_BEND_OFF_MS of calm). */
+static UINT calm(void)
+{
+	UINT	ev = 0U;
+	int	i;
+
+	for (i = 0; i < 150; i++) ev |= ev_turn_step(FALSE, 0, 10);
+	return ev;
 }
 
 /* Returns the sample (1-based) on which `bit` first fired, 0 if never. */
@@ -215,7 +226,14 @@ int main(void)
 
 	/* Impact while moving: at once, held 500 ms, then back. */
 	for (i = 0; i < 10; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
-	expect(mclass_step(TRUE, 2000, 1, 0, FALSE, 0) == TRUE
+	/* Normal driving knocks (3 Nov: 1.5-2.0 g) are not impacts. */
+	for (i = 0; i < 10; i++) {
+		mclass_step(TRUE, (i & 1) ? 2000 : 1500, 1, 0, FALSE, 0);
+		if (mclass_get() == MC_IMPACT) break;
+	}
+	expect(mclass_get() != MC_IMPACT, "class: 1.5-2.0 g driving knocks");
+	for (i = 0; i < 20; i++) mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
+	expect(mclass_step(TRUE, 3000, 1, 0, FALSE, 0) == TRUE
 	       && mclass_get() == MC_IMPACT, "class: impact reported at once");
 	for (i = 0; i < MC_IMPACT_HOLD - 2; i++) {
 		mclass_step(TRUE, 1000, 1, 0, FALSE, 0);
@@ -226,7 +244,7 @@ int main(void)
 
 	/* Hit just after stopping (a crash brakes the car): still impact. */
 	for (i = 0; i < 30; i++) mclass_step(TRUE, 1000, 0, 0, FALSE, 0);
-	mclass_step(TRUE, 1800, 0, 0, FALSE, 0);
+	mclass_step(TRUE, 2800, 0, 0, FALSE, 0);
 	expect(mclass_get() == MC_IMPACT, "class: impact 0.3 s after stopping");
 
 	/* Carried by hand long after stopping: 2.4 g is not an impact. */
@@ -267,6 +285,196 @@ int main(void)
 		/* The fields fill exactly 32 bits. */
 		expect(IMU_W_TILT_SHIFT + IMU_W_TILT_BITS == 32, "word: 32 bits");
 	}
+
+	/* ---- readable events: turns ---- */
+	ev_reset();
+	/* A left turn: 45 deg/s for 2 s, the classifier confirming it
+	   100 ms in.  The angle counts from the start. */
+	ev = 0;
+	for (i = 0; i < 200; i++) ev |= ev_turn_step(i >= 10, 45, 10);
+	expect((ev & EV_TURN_START) != 0 && ev_turn_dir() == 1,
+	       "events: left turn starts LEFT");
+	ev = ev_turn_step(FALSE, 0, 10);
+	expect((ev & EV_TURN_DONE) == 0, "events: a turn waits to calm down");
+	ev = calm();
+	expect((ev & EV_TURN_DONE) != 0 && ev_turn_deg() == 90,
+	       "events: left turn is 90 deg");
+	expect(ev_turns_left() == 1 && ev_turns_right() == 0,
+	       "events: one left turn counted");
+	expect(ev_turn_ms() == 2000, "events: turn took 2 s");
+
+	/* A right turn of 30 deg. */
+	for (i = 0; i < 100; i++) ev_turn_step(i >= 10, -30, 10);
+	ev = calm();
+	expect((ev & EV_TURN_DONE) != 0 && ev_turn_deg() == -30
+	       && ev_turns_right() == 1, "events: right turn counted");
+	expect(ev_heading_deg() == 60, "events: facing 60 deg left");
+
+	/* A short wiggle is reported but not counted. */
+	for (i = 0; i < 30; i++) ev_turn_step(i >= 10, 25, 10);
+	ev = calm();
+	expect((ev & EV_TURN_SMALL) != 0 && (ev & EV_TURN_DONE) == 0
+	       && ev_turns_left() == 1, "events: wiggle not counted");
+
+	/* Encoder jitter on a straight adds nothing to the next turn. */
+	for (i = 0; i < 1000; i++) ev_turn_step(FALSE, (i & 1) ? 7 : -3, 10);
+	for (i = 0; i < 200; i++) ev_turn_step(i >= 10, -45, 10);
+	calm();
+	expect(ev_turn_deg() == -90, "events: jitter before a turn ignored");
+
+	/* The course bend (3 Nov): 90 deg right at 6 deg/s, never fast
+	   enough for MC_TURNING.  Counted as one right turn, nearly all of
+	   it. */
+	ev_reset();
+	ev = 0;
+	for (i = 0; i < 1500; i++) ev |= ev_turn_step(FALSE, -6, 10);
+	ev |= calm();
+	expect((ev & EV_TURN_START) != 0 && (ev & EV_TURN_DONE) != 0
+	       && ev_turns_right() == 1 && ev_turns_left() == 0,
+	       "events: a slow bend is a turn");
+	expect(ev_turn_deg() <= -87 && ev_turn_deg() >= -90,
+	       "events: the slow bend reads ~90 deg");
+
+	/* A bend that starts slow and ends fast: one turn, all of it. */
+	ev_reset();
+	for (i = 0; i < 500; i++) ev_turn_step(FALSE, -8, 10);	/* 40 deg */
+	for (i = 0; i < 100; i++) ev_turn_step(TRUE, -50, 10);	/* 50 deg */
+	calm();
+	expect(ev_turns_right() == 1 && ev_turn_deg() <= -87
+	       && ev_turn_deg() >= -90, "events: slow then fast, one turn");
+
+	/* The bend as driven (3 Nov): 10 deg slowly at 3.5 deg/s, then 37
+	   deg at 8 deg/s.  The slow start counts too: ~47, not ~37. */
+	ev_reset();
+	for (i = 0; i < 286; i++) ev_turn_step(FALSE, (i & 1) ? -3 : -4, 10);
+	for (i = 0; i < 463; i++) ev_turn_step(FALSE, -8, 10);
+	calm();
+	expect(ev_turns_right() == 1 && ev_turn_deg() <= -44
+	       && ev_turn_deg() >= -48, "events: a bend's slow start counts");
+
+	/* Straight-line drift, ~1 deg/s for 20 s: no turn. */
+	ev_reset();
+	ev = 0;
+	for (i = 0; i < 2000; i++) ev |= ev_turn_step(FALSE, (i % 3) ? 1 : 2, 10);
+	ev |= calm();
+	expect((ev & (EV_TURN_START | EV_TURN_DONE)) == 0,
+	       "events: drift on a straight is no turn");
+
+	/* Snaking on the line (3 Nov start): +/-30 deg/s, 0.4 s each way,
+	   for 6 s.  No turn counted. */
+	ev_reset();
+	for (i = 0; i < 600; i++) {
+		W r = ((i / 40) & 1) ? -30 : 30;
+		ev_turn_step(TRUE, r, 10);
+	}
+	calm();
+	expect(ev_turns_left() == 0 && ev_turns_right() == 0,
+	       "events: snaking is not a turn");
+
+	ev_mission_reset();
+	expect(ev_turns_left() == 0 && ev_turns_right() == 0
+	       && ev_heading_deg() == 0, "events: mission reset");
+
+	/* ---- readable events: hands on / off ---- */
+	ev_reset();
+	for (i = 0; i < 5; i++) ev_window_step(0, 0, 1000, 0);
+	expect(!ev_held(), "events: on the floor");
+	ev = ev_window_step(0, 0, 1060, 0);		/* one knock */
+	ev |= ev_window_step(0, 0, 1000, 0);
+	ev |= ev_window_step(0, 0, 1000, 0);
+	expect((ev & EV_PICKED_UP) == 0, "events: a knock is not a pick-up");
+	ev = ev_window_step(40, 0, 1080, 0);		/* lifted */
+	ev |= ev_window_step(-20, 50, 960, 0);
+	expect((ev & EV_PICKED_UP) != 0 && ev_held(), "events: picked up");
+	ev = 0;
+	for (i = 0; i < 9; i++) ev |= ev_window_step(-20, 50, 960 + (i & 1), 0);
+	expect((ev & EV_PUT_DOWN) == 0 && ev_held(),
+	       "events: still held after 0.9 s steady");
+	ev = ev_window_step(-20, 50, 960, 0);
+	expect((ev & EV_PUT_DOWN) != 0 && !ev_held(), "events: put down");
+	ev_window_step(0, 0, 1000, 0);
+	ev_window_step(80, 0, 1000, 0);
+	ev_window_step(0, 60, 1000, 0);
+	expect(ev_held(), "events: picked up again");
+	ev = ev_window_step(0, 0, 1000, 5);		/* wheels rolling */
+	expect((ev & EV_PUT_DOWN) != 0 && !ev_held(),
+	       "events: driving means it is on the floor");
+
+	/* A hard stop at the end of the line (3 Nov): wheels still, the body
+	   rocks ~50 mg for a few windows, then settles somewhere new. */
+	ev_reset();
+	for (i = 0; i < 5; i++) ev_window_step(0, 0, 1000, 5);	/* driving */
+	ev = ev_window_step(-60, 30, 1050, 0);
+	ev |= ev_window_step(45, -20, 970, 0);
+	ev |= ev_window_step(-30, 10, 1030, 0);
+	ev |= ev_window_step(20, 0, 990, 0);
+	for (i = 0; i < 15; i++) ev |= ev_window_step(10, 5, 1000, 0);
+	expect((ev & EV_PICKED_UP) == 0 && !ev_held(),
+	       "events: braking rock after a stop is not a pick-up");
+	ev = ev_window_step(60, 0, 1080, 0);		/* now lifted */
+	ev |= ev_window_step(-20, 50, 960, 0);
+	expect((ev & EV_PICKED_UP) != 0 && ev_held(),
+	       "events: picked up after the car has settled");
+
+	/* Held by hand (tremor > 8 mg each window) reaches the lift fault
+	   time; the in-hand time starts at the pick-up. */
+	expect(ev_held_ms() == 100, "events: in hand 100 ms at the pick-up");
+	for (i = 0; i < 11; i++) ev_window_step((i & 1) ? -5 : 25, 40, 990, 0);
+	expect(ev_held_ms() >= EV_LIFT_FAULT_MS,
+	       "events: held 1.2 s reaches the lift fault");
+
+	/* A jolt that settles somewhere new: "put down" after 1 s steady,
+	   before the lift fault time. */
+	ev_reset();
+	for (i = 0; i < 5; i++) ev_window_step(0, 0, 1000, 0);
+	ev = ev_window_step(50, 0, 1000, 0);
+	ev |= ev_window_step(50, 0, 1000, 0);		/* seen as a pick-up */
+	{
+		UW	most = 0;
+
+		for (i = 0; i < 15; i++) {
+			ev |= ev_window_step(50, 0, 1000, 0);
+			if (ev_held_ms() > most) most = ev_held_ms();
+		}
+		expect((ev & EV_PUT_DOWN) != 0 && most < EV_LIFT_FAULT_MS,
+		       "events: a jolt that settles never reaches the lift fault");
+	}
+
+	/* ---- readable events: lean and nose ---- */
+	{
+		W	w[3];
+
+#define WIN(left, up, dmm) (w[0] = w[1] = 0, w[2] = 1000, \
+		w[IMU_LEFT_AXIS] = IMU_LEFT_SIGN * (left), \
+		w[IMU_NOSE_AXIS] = IMU_NOSE_SIGN * (up), \
+		ev_window_step(w[0], w[1], w[2], (dmm)))
+
+		ev_reset();
+		ev = WIN(100, 0, 1);
+		expect((ev & EV_LEAN) == 0, "events: lean waits 200 ms");
+		ev = WIN(100, 0, 1);
+		expect((ev & EV_LEAN) != 0 && ev_lean() == 1,
+		       "events: leaning LEFT");
+		WIN(70, 0, 1);
+		WIN(70, 0, 1);
+		expect(ev_lean() == 1, "events: 4 deg still leaning (hysteresis)");
+		WIN(30, 0, 1);
+		ev = WIN(30, 0, 1);
+		expect((ev & EV_LEAN) != 0 && ev_lean() == 0, "events: level again");
+		WIN(-100, 0, 1);
+		WIN(-100, 0, 1);
+		expect(ev_lean() == -1, "events: leaning RIGHT");
+		WIN(0, 120, 1);
+		ev = WIN(0, 120, 1);
+		expect((ev & (EV_LEAN | EV_NOSE)) == (EV_LEAN | EV_NOSE)
+		       && ev_lean() == 0 && ev_nose() == 1, "events: nose UP");
+		WIN(0, -120, 1);
+		WIN(0, -120, 1);
+		expect(ev_nose() == -1, "events: nose DOWN");
+#undef WIN
+	}
+	expect(ev_side_name(1)[0] == 'L' && ev_side_name(-1)[0] == 'R'
+	       && ev_nose_name(1)[0] == 'U', "events: names");
 
 	printf("imu_safety: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;
