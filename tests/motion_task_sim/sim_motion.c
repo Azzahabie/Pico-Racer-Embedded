@@ -116,9 +116,17 @@ plant_step (void)
 	}
 
 	for (w = 0; w < 2; w++) {
-		sim_wheel_t *p_src = &g_wheel[g_enc_swap ? (1 - w) : w];
+		int src = g_enc_swap ? (1 - w) : w;
+		sim_wheel_t *p_src = &g_wheel[src];
 		sim_wheel_t *p_enc = &g_wheel[w];
-		long c = lround(p_src->pos) * (p_enc->b_enc_inv ? -1 : 1);
+		/* Wheel position is in left-wheel counts.  The encoder on the
+		   right motor gives MOTION_COUNTS_PER_REV_R per turn, as on the
+		   car (docs/motion/right_encoder_scaling.md); the encoder
+		   travels with its motor when the plugs are swapped. */
+		double cpr_scale = (src == 1)
+			? ((double)MOTION_COUNTS_PER_REV_R / MOTION_COUNTS_PER_REV)
+			: 1.0;
+		long c = lround(p_src->pos * cpr_scale) * (p_enc->b_enc_inv ? -1 : 1);
 
 		/* Walk the quadrature signals one count at a time, as the
 		   real pins would change, through the real decoder. */
@@ -334,6 +342,18 @@ uint32_t line_state_word(void) { return line_state_pack(&g_line); }
 /* imu_task.h (Buddy 4): the hump_state word; 0 = no hump. */
 static UW		g_imu_word;
 UW imu_word_read(void) { return g_imu_word; }
+/* imu_task's heading (left +, deg since mission start), here from the
+   simulated wheels: (right - left) arc / wheelbase.  g_head_offset_deg
+   stands in for the car stopping at an angle to the line. */
+static double		g_head_offset_deg;
+W ev_heading_deg(void)
+{
+	double mm = (g_wheel[1].pos - g_wheel[0].pos)
+		    * (M_PI * MOTION_WHEEL_DIA_MM / MOTION_COUNTS_PER_REV);
+
+	return (W)lround(g_head_offset_deg
+			 + ((mm / MOTION_WHEELBASE_MM) * (180.0 / M_PI)));
+}
 /* As the kernel does it (eventflag.c): wake if any waited bit is set,
    return the whole pattern from before the clear, and with TWF_BITCLR
    clear every waited bit. */
@@ -574,6 +594,7 @@ sim_reset (const char *p_name)
 	if (p_name != NULL) { printf("-- %s\n", p_name); }
 	memset(&g_ctx, 0, sizeof g_ctx);
 	g_imu_word = 0u;				/* no hump */
+	g_head_offset_deg = 0.0;			/* car along the line */
 	memset(g_wheel, 0, sizeof g_wheel);
 	g_duty[0] = g_duty[1] = 0;
 	g_duty_max_abs = 0;
@@ -692,6 +713,21 @@ check_stall_delay (void)
 
 #define DS_MM_PER_COUNT	(M_PI * MOTION_WHEEL_DIA_MM / MOTION_COUNTS_PER_REV)
 
+/* The right encoder is coarser than the left (MOTION_COUNTS_PER_REV_R):
+   one right count is this many left-wheel units after motion_task scales
+   it (2 at 2535 / 1590).  Checks that compared the two wheels exactly
+   allow one right count; with the scaling off (equal counts per turn)
+   every tolerance below is 0 and the checks are exact again. */
+#define SIM_R_SCALED	(MOTION_COUNTS_PER_REV_R != MOTION_COUNTS_PER_REV)
+#define SIM_R_COUNT_UNITS                                                      \
+	((MOTION_COUNTS_PER_REV + MOTION_COUNTS_PER_REV_R - 1)                 \
+	 / MOTION_COUNTS_PER_REV_R)
+/* First-tick duty change from one right count of measured speed:
+   (Kp + Ki) x units, per-mille. */
+#define SIM_R_DUTY_TOL                                                         \
+	(SIM_R_SCALED ? ((SIM_R_COUNT_UNITS * (MOTION_PID_KP_Q8 + MOTION_PID_KI_Q8)) \
+			 / 256) : 0)
+
 /* Turn both wheels by hand (counts, + = forward) and run one tick. */
 static void
 ds_move_tick (double left, double right)
@@ -718,6 +754,15 @@ ds_turn_at (double diff_per_tick)
 	return lround(diff * DS_MM_PER_COUNT / MOTION_WHEELBASE_MM * (180.0 / M_PI) / s);
 }
 
+/* Turn-rate reading from one right count of difference in the window. */
+static long
+sim_turn_tol (void)
+{
+	return SIM_R_SCALED
+	       ? ds_turn_at((double)SIM_R_COUNT_UNITS / MOTION_DS_WINDOW_TICKS)
+	       : 0L;
+}
+
 static void
 scenario_ds_straight (void)
 {
@@ -738,7 +783,7 @@ scenario_ds_straight (void)
 	}
 	CHECK(b_every_tick);
 	CHECK(motion_ds_delta_mm(now, w0) == ds_mm_at(1300.0));	/* 103 mm */
-	CHECK(motion_ds_turn_dps(now) == 0);
+	CHECK(labs((long)motion_ds_turn_dps(now)) <= sim_turn_tol());
 	CHECK(motion_ds_state(now) == MOTION_DS_STEADY);
 	CHECK(count_kind(REP_DIST, -1) >= 4);
 	CHECK(strstr(g_log, "[motion] distance_state 0x") != NULL);
@@ -1712,6 +1757,115 @@ scenario_bypass_give_up (void)
 	CHECK((g_phases & (1u << BYP_PH_TURN_IN)) == 0u);
 }
 
+/* Heading-referenced bypass (MOTION_HD_*, car runs 4 Nov): the car follows
+   the line long enough to learn its direction, then stops for the box
+   25 deg off it (line following zig-zags +-20-30 deg).  With the IMU the
+   bypass still ends with the axle back on the line's position, facing
+   along it, even when the line sensors never see the line.  Without a
+   heading (IMU fault) it falls back to the encoder-only bypass. */
+/* Line Following ticks to learn the line: MOTION_HD_MIN_MM at the base speed
+   (MOTION_LF_BASE counts per tick per wheel), plus 40 %. */
+#define SIM_HD_LEARN_TICKS                                                     \
+	((int)((1.4 * MOTION_HD_MIN_MM * MOTION_COUNTS_PER_REV)                 \
+	       / (M_PI * MOTION_WHEEL_DIA_MM * MOTION_LF_BASE)))
+
+static void
+scenario_bypass_heading (void)
+{
+	static int const	angles[4] = { 25, -25, 25, -25 };
+	static uint8_t const	sides[4]  = { MOTION_AVOID_SIDE_LEFT,
+					      MOTION_AVOID_SIDE_LEFT,
+					      MOTION_AVOID_SIDE_RIGHT,
+					      MOTION_AVOID_SIDE_RIGHT };
+	char	name[96];
+	int	k;
+	int	n;
+	long	head;
+	int32_t	lat;
+	int32_t	side;
+
+	for (k = 0; k < 4; k++) {
+		(void)snprintf(name, sizeof name,
+			       "bypass with IMU: %s, car stopped %+d deg off the line",
+			       (MOTION_AVOID_SIDE_LEFT == sides[k]) ? "LEFT" : "RIGHT",
+			       angles[k]);
+		sim_reset(name);
+		g_mission = MS_RUNNING;
+		sim_ticks(SIM_HD_LEARN_TICKS);		/* learn the line: ~420 mm */
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+		CHECK(g_ctx.b_hd_ok);
+		g_head_offset_deg = (double)angles[k];	/* the zig-zag's angle */
+		bypass_setup(sides[k], 300u, 401, 601);
+		g_line_at_mm = 1000000;			/* sensors never see it */
+		n = bypass_finish();
+		CHECK(n > 0);
+		CHECK(g_max_phase == BYP_PH_DONE);
+		side = g_ctx.bypass_side;
+		head = (long)ev_heading_deg() - (long)(g_ctx.hd_line_udeg / 1000000);
+		lat  = hd_lat_mm(&g_ctx) * side;
+		CHECK((head >= -8) && (head <= 8));	/* along the line */
+		/* never seen: on past the estimate by MOTION_HD_PAST_MM, then the
+		   axle onto that point */
+		CHECK((lat >= -MOTION_HD_PAST_MM - 30) && (lat <= -MOTION_HD_PAST_MM + 30));
+		CHECK(strstr(g_log, "bypass SIDESTEP") != NULL);
+		CHECK(strstr(g_log, "line, IMU") != NULL);
+		CHECK(strstr(g_log, "encoders only") == NULL);
+		(void)printf("-- %s: ends %+ld deg off, axle %+d mm past the estimated line (simulation)\n",
+			     name, head, (int)-lat);
+	}
+
+	/* The estimate is short: the line is a little beyond it.  The margin
+	   lets the sensors reach it, and the car comes onto the real line. */
+	sim_reset("bypass with IMU: line 50 mm past the estimate is still found");
+	g_mission = MS_RUNNING;
+	sim_ticks(SIM_HD_LEARN_TICKS);
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
+	g_line_at_mm = 1000000;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS)
+	       && (g_ctx.bypass_phase != BYP_PH_STEP_IN)) {
+		bypass_tick();
+	}
+	/* sensors over the estimate after (lat - 125 sin 70) / sin 70 mm;
+	   put the real line 50 mm of sideways travel beyond that */
+	g_line_at_mm = (int32_t)(((double)hd_lat_mm(&g_ctx) + 50.0) / sin(70.0 * M_PI / 180.0))
+		       - MOTION_LINE_SENSOR_MM;
+	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	lat = hd_lat_mm(&g_ctx);
+	CHECK((lat >= -50 - 30) && (lat <= -50 + 30));	/* axle on the real line */
+	(void)printf("-- line 50 mm past the estimate: axle %+d mm from the estimate (simulation)\n",
+		     (int)lat);
+
+	/* Trials 9-10: line following wandered slowly (2 deg right to 28 deg
+	   left over 8 s).  Averaged over distance the line direction stays
+	   close; the old 1.5 s average took most of the wander. */
+	sim_reset("bypass with IMU: slow +-20 deg wander while learning the line");
+	g_mission = MS_RUNNING;
+	for (n = 0; n < 2 * SIM_HD_LEARN_TICKS; n++) {
+		/* one sway per ~380 mm at the base speed */
+		g_head_offset_deg = 20.0 * sin(2.0 * M_PI * (double)n / 800.0);
+		sim_tick();
+	}
+	CHECK(g_ctx.b_hd_ok);
+	head = (long)(g_ctx.hd_line_udeg / 1000000);
+	CHECK((head >= -6) && (head <= 6));
+	(void)printf("-- slow +-20 deg wander: line direction learned %+ld deg off (simulation)\n",
+		     head);
+
+	/* An IMU fault drops the line direction: encoder-only, as before. */
+	sim_reset("bypass with IMU fault: encoder-only bypass, same ending");
+	g_mission = MS_RUNNING;
+	sim_ticks(SIM_HD_LEARN_TICKS);
+	CHECK(g_ctx.b_hd_ok);
+	g_imu_word = imu_w_pack(0u, 0u, 0u, 0u, 0u, 1u, 0u);	/* FAULT */
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 300u, 401, 601);
+	CHECK(!g_ctx.b_hd_ok);
+	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	CHECK(strstr(g_log, "encoders only") != NULL);
+	CHECK(strstr(g_log, "line, IMU") == NULL);
+}
+
 /* A stop during the bypass (the obstacle seen again) brakes it; if it
    clears with no new command the same bypass carries on from the same
    phase and ends as one uninterrupted run would. */
@@ -1970,7 +2124,11 @@ scenario_reverse_twice (void)
 	g_ctx.avoid_mm = 150u;
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_REVERSING);
-	CHECK((g_duty[0] == duty1_l) && (g_duty[1] == duty1_r));	/* PID reset */
+	/* PID reset: the same first duty as the first reverse (the right
+	   wheel within one right count of measured speed, SIM_R_DUTY_TOL;
+	   an integrator left over from the first reverse would be far more) */
+	CHECK((g_duty[0] == duty1_l)
+	      && (abs(g_duty[1] - duty1_r) <= SIM_R_DUTY_TOL));
 	(void)run_reverse(500);
 	moved_mm = (start - sim_avg_pos()) * DS_MM_PER_COUNT;
 	CHECK((g_scan_flag & SCAN_FLG_REVERSE_DONE) != 0u);
@@ -2637,6 +2795,7 @@ main (int argc, char **argv)
 	scenario_bypass_give_up();
 	scenario_bypass_lane_blocked();
 	scenario_bypass_resume();
+	scenario_bypass_heading();
 	scenario_hump();
 	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();

@@ -247,12 +247,63 @@
 #define MOTION_BYPASS_SPEED       (12)
 #define MOTION_BYPASS_TURN_SPEED  (10)
 
+/* IMU heading reference for the bypass (4 Nov 2026, Buddy 5; see
+   docs/motion/right_encoder_scaling.md section 10).  Line following
+   zig-zags +-20-30 deg, so the car stops for the box at an angle to the
+   line, and an encoder-only rectangle drawn from that pose missed the line
+   on the way back (car runs, 4 Nov).  With a valid heading:
+   - the line's direction is a running average of imu_task's heading
+     (ev_heading_deg) over Line Following, MOTION_HD_TAU_TICKS long,
+     trusted after MOTION_HD_MIN_TICKS, restarted on a jump of more than
+     MOTION_HD_JUMP_DEG in one tick (the heading resets at mission start),
+     forgotten in Idle, Turning and on an IMU fault;
+   - the sideways distance from the line is summed every tick off the line
+     (distance x sin(heading - line));
+   - the sidestep ends at the planned sideways distance; PARALLEL,
+     PROBE_OUT and ALONG turn to the line's direction and TURN_IN to
+     SIDE_DEG off it, each stopping MOTION_HD_LEAD_DEG early for the
+     overshoot, with 2x the encoder count as a backstop;
+   - STEP_IN also ends when the line sensors are back over the line's
+     position.
+   Without a valid heading every phase runs on the encoders as before.
+   MOTION_HD_ENABLE 0 builds the encoder-only bypass. */
+#ifndef MOTION_HD_ENABLE
+#define MOTION_HD_ENABLE      (1)
+#endif
+/* The average is over distance, not time (changed 4 Nov after trials 9-10):
+   at ~4.75 cm/s a 1.5 s average covered only ~7 cm, and line following
+   wanders slowly (2 deg right to 28 deg left over 8 s before the box), so
+   the line direction came out ~20 deg off, the probes missed the box, the
+   car turned in onto it and missed the line.  Weighted by distance over
+   MOTION_HD_LINE_MM, a full sway averages out (calculated: +-20 deg over a
+   ~380 mm sway -> ~+-3 deg). */
+#define MOTION_HD_LINE_MM     (400)  /* average over this much travel    */
+#define MOTION_HD_MIN_MM      (300)  /* trusted after this much travel   */
+#define MOTION_HD_JUMP_DEG    (30)
+#define MOTION_HD_LEAD_DEG    (4)
+/* STEP_IN with the IMU: if the sensors have not seen the line by the time
+   they are over its estimated position, drive this much further first (the
+   line was seen 4-30 mm before the estimate in trials 1-7; trials 9-10
+   stopped exactly on the estimate and never crossed it). */
+#define MOTION_HD_PAST_MM     (80)
+
 /* Measured on the car, docs/motion/results.md: counts per wheel turn
    (x4 quadrature, 2 trials), wheel diameter and the distance between the
    two wheels (ruler).  Distance uses the first two; turn rate uses all
    three.  Calibrate with the NFR-04 straight trials. */
 #define MOTION_COUNTS_PER_REV (2535)
 #define MOTION_WHEEL_DIA_MM   (64)
+
+/* The right wheel's own counts per turn (x4).  Measured 4 Nov 2026 by
+   Buddy 5: the right motor gives ~0.63 x the left's counts per turn
+   (likely a different gearbox), steady at hand speed and at 35 % duty:
+     hand, single turns: 1582, 1583, 1595, 1598 (1646 first, with slop)
+     bench open-loop:    R fwd 3101-3111 vs L 5018-5049 counts
+   motion_task scales every right count to left-wheel units on read
+   (tick_encoders), so MOTION_COUNTS_PER_REV stays the one unit for
+   distance, speed and pivots.  Set it equal to MOTION_COUNTS_PER_REV to
+   switch the scaling off.  See docs/motion/right_encoder_scaling.md. */
+#define MOTION_COUNTS_PER_REV_R (1590)
 #define MOTION_WHEELBASE_MM   (127)
 
 /* Hump (W6 6.2 / 6.4, Integration Rules 2.7; M3), while imu_task's
