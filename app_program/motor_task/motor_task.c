@@ -335,7 +335,17 @@ typedef struct
     bool     b_hd_ok;       /* this tick: heading usable             */
     int32_t  hd_err_deg;    /* this tick: heading - line, + = left   */
     int32_t  hd_lat_acc;    /* sideways: sum of counts x sin1000     */
+    int32_t  hd_lon_acc;    /* along the line: sum of counts x cos1000 */
     int32_t  byp_lat_target;/* sidestep end, mm toward the side      */
+    int32_t  byp_pass_more; /* known box: extra mm past, way in blocked */
+    bool     b_arc;         /* this bypass runs the arc (MOTION_BYPASS_ARC) */
+    int32_t  arc_r;         /* circle radius about the box centre, mm */
+    int32_t  arc_cx;        /* box centre: sideways toward the side, mm */
+    int32_t  arc_cy;        /* box centre: along the line, mm         */
+    int32_t  arc_deg;       /* tangent angle theta off the line, deg  */
+    int32_t  arc_xt;        /* tangent point: sideways, mm            */
+    int32_t  arc_yt;        /* tangent point: along the line, mm      */
+    int32_t  arc_leg;       /* straight leg to the tangent point, mm  */
     uint8_t look_state;     /* LOOK_*: the probe's request to scan   */
     uint16_t look_mm;       /* scan_task's AVOID_LOOK reading        */
     uint32_t look_ticks;    /* ticks waited for it                   */
@@ -1441,17 +1451,22 @@ sm_send_replies (uint32_t replies)
 #define BYP_PH_STEP_IN   (12u) /* until GP26/GP27 see the line        */
 #define BYP_PH_ONTO      (13u) /* axle onto the line                  */
 #define BYP_PH_ALONG     (14u) /* pivot SIDE_DEG onto the heading     */
-#define BYP_PH_DONE      (15u)
+#define BYP_PH_IN_LOOK   (15u) /* known box: braked, look the way in  */
+#define BYP_PH_IN_BACK   (16u) /* way in not clear: pivot back along  */
+#define BYP_PH_ARC_LEG   (17u) /* arc: straight out to the circle     */
+#define BYP_PH_ARC       (18u) /* arc: round the box on the circle    */
+#define BYP_PH_DONE      (19u)
 
 /* Pivot direction of each phase, x the side (+1 = toward the bypass
-   side), and its angle; 0 = straight or braked (the looks, SWITCH, DONE). */
+   side), and its angle; 0 = straight or braked (the looks, SWITCH, DONE).
+   BYP_PH_ARC is neither: arc_drive() sets the wheels. */
 static int8_t const g_byp_turn[BYP_PH_DONE] = {
-    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1
+    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1, 0, 1, 0, 0
 };
 static uint8_t const g_byp_deg[BYP_PH_DONE] = {
     MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
     MOTION_BYPASS_SIDE_DEG, 0, 45, 0, 45, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
-    MOTION_BYPASS_SIDE_DEG
+    MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0
 };
 
 /* A bypass pivot's encoder target: scaled for the overshoot measured at
@@ -1468,7 +1483,9 @@ static uint8_t const g_byp_deg[BYP_PH_DONE] = {
 #define LOOK_ANSWERED (2u)
 
 static int32_t hd_lat_mm(motion_ctx_t const *p_ctx); /* IMU heading, below */
+static int32_t hd_lon_mm(motion_ctx_t const *p_ctx);
 static void    byp_report(motion_ctx_t *p_ctx);
+static void    arc_plan(motion_ctx_t *p_ctx);
 
 /* Has the manoeuvre of this state reached its target? */
 static bool
@@ -1633,6 +1650,8 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
            off the line): the sidestep ends that far beyond it. */
         p_ctx->byp_lat_target = (hd_lat_mm(p_ctx) * p_ctx->bypass_side)
                                 + p_ctx->bypass_off_mm;
+        p_ctx->byp_pass_more  = 0;
+        arc_plan(p_ctx);
         byp_report(p_ctx);
     }
     else if ((MOTION_ST_TURNING == state) && !b_resumed)
@@ -1890,6 +1909,15 @@ hd_lat_mm (motion_ctx_t const *p_ctx)
                      / ((int64_t)113 * MOTION_COUNTS_PER_REV * 2000));
 }
 
+/* Distance along the line since the car left it (where it braked for the
+   obstacle), mm, same units as hd_lat_mm. */
+static int32_t
+hd_lon_mm (motion_ctx_t const *p_ctx)
+{
+    return (int32_t)(((int64_t)p_ctx->hd_lon_acc * MOTION_WHEEL_DIA_MM * 355)
+                     / ((int64_t)113 * MOTION_COUNTS_PER_REV * 2000));
+}
+
 /* Once per tick, before man_drive: learn the line's direction in Line
    Following, sum the sideways move off the line, and say whether the
    heading can steer the bypass this tick (b_hd_ok). */
@@ -1919,6 +1947,7 @@ hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
         p_ctx->b_hd_line  = false;
         p_ctx->hd_travel  = 0;
         p_ctx->hd_lat_acc = 0;
+        p_ctx->hd_lon_acc = 0;
     }
     else if (MOTION_ST_LINE_FOLLOW == state)
     {
@@ -1945,13 +1974,16 @@ hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
             /* Not moving forward: nothing new about the line. */
         }
         p_ctx->hd_lat_acc = 0; /* on the line */
+        p_ctx->hd_lon_acc = 0;
     }
     else if (p_ctx->b_hd_line)
     {
-        /* Off the line (Braked, Bypass, Reversing, Line Search). */
-        p_ctx->hd_lat_acc
-            += fwd
-               * sin1000_deg(h - (int32_t)(p_ctx->hd_line_udeg / 1000000));
+        /* Off the line (Braked, Bypass, Reversing, Line Search): sideways
+           and along it, from where it left the line. */
+        int32_t err = h - (int32_t)(p_ctx->hd_line_udeg / 1000000);
+
+        p_ctx->hd_lat_acc += fwd * sin1000_deg(err);
+        p_ctx->hd_lon_acc += fwd * sin1000_deg(90 - err);
     }
     else
     {
@@ -1967,11 +1999,181 @@ hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
 }
 
 /* Heading target of each bypass pivot with the IMU, as (heading - line)
-   x side in degrees; the straight and braked phases are not used. */
+   x side in degrees; the straight and braked phases are not used.  The
+   arc's OUT uses arc_deg instead. */
 static int8_t const g_byp_hd_target[BYP_PH_DONE] = {
     MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, -45, 0, 0, 0,
-    -MOTION_BYPASS_SIDE_DEG, 0, 0, 0
+    -MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, 0
 };
+
+/* Integer square root (floor). */
+static int32_t
+isqrt32 (int32_t v)
+{
+    int32_t r = 0;
+
+    while (((r + 1) * (r + 1)) <= v)
+    {
+        r++;
+    }
+    return r;
+}
+
+/* The obstacle's reach from its centre and the circle (MOTION_OBS_*,
+   MOTION_ARC_*, motion_cfg.h). */
+#if MOTION_OBS_ROUND
+#define ARC_REACH_MM()  (MOTION_OBS_W_MM / 2)
+#define ARC_HALF_LEN_MM (MOTION_OBS_W_MM / 2)
+#else
+#define ARC_REACH_MM()                                                         \
+    isqrt32(((MOTION_OBS_W_MM / 2) * (MOTION_OBS_W_MM / 2))                    \
+            + ((MOTION_OBS_L_MM / 2) * (MOTION_OBS_L_MM / 2)))
+#define ARC_HALF_LEN_MM (MOTION_OBS_L_MM / 2)
+#endif
+
+/* At a new BYPASS: run the arc (MOTION_BYPASS_ARC) if the heading is valid
+   and the car is still on the line, and work out its circle (centred on
+   the obstacle, which may sit off the line), the tangent angle and leg. */
+static void
+arc_plan (motion_ctx_t *p_ctx)
+{
+#if MOTION_BYPASS_ARC
+    int32_t cy = MOTION_ARC_STOP_MM + MOTION_SENSOR_AXLE_MM + ARC_HALF_LEN_MM;
+    int32_t cx = p_ctx->bypass_off_mm - MOTION_ARC_OFFSET_CENTRED;
+    int32_t r  = ARC_REACH_MM() + ((MOTION_WHEELBASE_MM + 1) / 2)
+                 + MOTION_ARC_GAP_MM;
+    int32_t d2;
+    int32_t phi;
+    int32_t ang;
+
+    p_ctx->b_arc = p_ctx->b_hd_ok && (motion_abs(hd_lat_mm(p_ctx)) < 30);
+    if (!p_ctx->b_arc)
+    {
+        return;
+    }
+    /* how far the centre sits toward (+) or away from (-) the bypass side,
+       from scan_task's offset (45 + C_pass when centred) */
+    if (cx > MOTION_ARC_MAX_SHIFT_MM)
+    {
+        cx = MOTION_ARC_MAX_SHIFT_MM;
+    }
+    if (cx < -MOTION_ARC_MAX_SHIFT_MM)
+    {
+        cx = -MOTION_ARC_MAX_SHIFT_MM;
+    }
+    d2 = (cx * cx) + (cy * cy);
+    /* phi: direction of the centre off the line, atan(cx / cy) */
+    phi = 0;
+    while ((phi < 89) && ((sin1000_deg(phi) * cy) < (cx * sin1000_deg(90 - phi))))
+    {
+        phi++;
+    }
+    while ((phi > -89) && ((sin1000_deg(phi) * cy) > (cx * sin1000_deg(90 - phi))))
+    {
+        phi--;
+    }
+    /* ang: half the angle the circle fills seen from the car, asin(r / d) */
+    ang = 0;
+    while ((ang < 89)
+           && (((int64_t)sin1000_deg(ang) * sin1000_deg(ang) * d2)
+               < ((int64_t)r * r * 1000000)))
+    {
+        ang++;
+    }
+    p_ctx->arc_r   = r;
+    p_ctx->arc_cx  = cx;
+    p_ctx->arc_cy  = cy;
+    p_ctx->arc_deg = ((phi + ang) > 80) ? 80 : (phi + ang);
+    p_ctx->arc_leg = isqrt32(d2 - (r * r));
+    p_ctx->arc_xt  = (p_ctx->arc_leg * sin1000_deg(p_ctx->arc_deg)) / 1000;
+    p_ctx->arc_yt  = (p_ctx->arc_leg * sin1000_deg(90 - p_ctx->arc_deg)) / 1000;
+#else
+    p_ctx->b_arc = false;
+#endif
+}
+
+/* Angle of (y, x) from the +x axis toward +y, whole degrees, -180..180. */
+static int32_t
+atan2_deg (int32_t y, int32_t x)
+{
+    int32_t ax = motion_abs(x);
+    int32_t ay = motion_abs(y);
+    int32_t a  = 0;
+
+    while ((a < 90) && ((sin1000_deg(a) * ax) < (ay * sin1000_deg(90 - a))))
+    {
+        a++;
+    }
+    if (x < 0)
+    {
+        a = 180 - a;
+    }
+    return (y < 0) ? -a : a;
+}
+
+/* Following the arc (BYP_PH_ARC).  Positions and headings are taken toward
+   the bypass side (x), along the line (y), headings from the line toward
+   the side.  At the car's place relative to the centre, p = (dx, dy), the
+   circle runs along t = (-dy, dx); the heading wanted is t's direction plus
+   MOTION_ARC_K_X10 / 10 deg per mm the car is inside the circle (outward),
+   at most MOTION_ARC_K_MAX_DEG.  The wheels: the turn the circle needs
+   (feed-forward, b / 2R of the speed) plus one count per
+   MOTION_ARC_STEER_DEG of heading error.  A distance-only trim overshot in
+   the sim (177 mm from the centre on a 243 mm circle). */
+#define MOTION_ARC_EARLY_MM  (20) /* start the arc this far before the circle */
+#define MOTION_ARC_K_X10     (3)  /* 0.3 deg per mm off the circle            */
+#define MOTION_ARC_K_MAX_DEG (30)
+#define MOTION_ARC_STEER_DEG (3)
+
+static void
+arc_drive (motion_ctx_t *p_ctx)
+{
+    int32_t side = p_ctx->bypass_side;
+    int32_t r    = p_ctx->arc_r;
+    int32_t dx   = (hd_lat_mm(p_ctx) * side) - p_ctx->arc_cx;
+    int32_t dy   = hd_lon_mm(p_ctx) - p_ctx->arc_cy;
+    int32_t dist = isqrt32((dx * dx) + (dy * dy));
+    int32_t corr = ((r - dist) * MOTION_ARC_K_X10) / 10;
+    int32_t want;
+    int32_t err;
+    int32_t turn;
+
+    if (corr > MOTION_ARC_K_MAX_DEG)
+    {
+        corr = MOTION_ARC_K_MAX_DEG;
+    }
+    if (corr < -MOTION_ARC_K_MAX_DEG)
+    {
+        corr = -MOTION_ARC_K_MAX_DEG;
+    }
+    /* heading of t from the line toward the side: atan2(t_x, t_y) */
+    want = atan2_deg(-dy, dx) + corr;
+    err  = want - (p_ctx->hd_err_deg * side);
+    while (err > 180)
+    {
+        err -= 360;
+    }
+    while (err < -180)
+    {
+        err += 360;
+    }
+    /* + = turn toward the side; the circle itself turns away from it */
+    turn = (err / MOTION_ARC_STEER_DEG)
+           - (((MOTION_BYPASS_SPEED * MOTION_WHEELBASE_MM) + r) / (2 * r));
+    if (turn > MOTION_BYPASS_SPEED)
+    {
+        turn = MOTION_BYPASS_SPEED;
+    }
+    if (turn < -MOTION_BYPASS_SPEED)
+    {
+        turn = -MOTION_BYPASS_SPEED;
+    }
+    /* toward the side = left for a left bypass (+1): the right wheel faster */
+    p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                              MOTION_BYPASS_SPEED - (turn * side), p_ctx->d_l);
+    p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                              MOTION_BYPASS_SPEED + (turn * side), p_ctx->d_r);
+}
 
 /* One EVT_BYP line: the phase just entered and where the car is. */
 static void
@@ -2085,8 +2287,14 @@ bypass_drive (motion_ctx_t *p_ctx)
     {
         /* To a heading relative to the line, MOTION_HD_LEAD_DEG early;
            twice the encoder count stops it if the IMU misleads. */
+        /* the arc's OUT: theta + the lead, so it ends near theta (stopping
+           MOTION_HD_LEAD_DEG short aimed the leg inside the circle) */
+        int32_t target = (p_ctx->b_arc && (BYP_PH_OUT == ph))
+                             ? (p_ctx->arc_deg + MOTION_HD_LEAD_DEG)
+                             : (int32_t)g_byp_hd_target[ph];
+
         b_pivot_done
-            = ((((int32_t)g_byp_hd_target[ph] - (p_ctx->hd_err_deg * side))
+            = (((target - (p_ctx->hd_err_deg * side))
                 * (int32_t)g_byp_turn[ph])
                <= MOTION_HD_LEAD_DEG)
               || (turned >= (2 * BYP_PIVOT_COUNTS((int32_t)g_byp_deg[ph])));
@@ -2113,7 +2321,39 @@ bypass_drive (motion_ctx_t *p_ctx)
         case BYP_PH_LANE_LOOK:
             if (byp_look_done(p_ctx, lane, &b_near))
             {
-                byp_next(p_ctx, b_near ? BYP_PH_LANE_BACK : BYP_PH_SIDESTEP);
+                byp_next(p_ctx, b_near ? BYP_PH_LANE_BACK
+                                       : (p_ctx->b_arc ? BYP_PH_ARC_LEG
+                                                       : BYP_PH_SIDESTEP));
+            }
+            break;
+        case BYP_PH_ARC_LEG:
+            /* straight out to the circle: at the tangent point, or as soon
+               as it is within R of the box centre (heading a little steep) */
+            {
+                int32_t x  = hd_lat_mm(p_ctx) * side;
+                int32_t dx = x - p_ctx->arc_cx;
+                int32_t dy = hd_lon_mm(p_ctx) - p_ctx->arc_cy;
+
+                if ((hd_lon_mm(p_ctx) >= p_ctx->arc_yt)
+                    || (x >= p_ctx->arc_xt)
+                    || (((dx * dx) + (dy * dy))
+                        <= ((p_ctx->arc_r + MOTION_ARC_EARLY_MM)
+                            * (p_ctx->arc_r + MOTION_ARC_EARLY_MM)))
+                    || (moved >= (2 * p_ctx->arc_leg)))
+                {
+                    byp_next(p_ctx, BYP_PH_ARC);
+                }
+            }
+            break;
+        case BYP_PH_ARC:
+            /* round the box until heading theta back toward the line;
+               then the measured sideways distance takes it to the line */
+            if ((((p_ctx->hd_err_deg * side) + p_ctx->arc_deg)
+                 <= MOTION_HD_LEAD_DEG)
+                || !p_ctx->b_hd_ok
+                || (moved >= (4 * p_ctx->arc_r)))
+            {
+                byp_next(p_ctx, BYP_PH_STEP_IN);
             }
             break;
         case BYP_PH_LANE_BACK:
@@ -2156,12 +2396,30 @@ bypass_drive (motion_ctx_t *p_ctx)
             }
             break;
         case BYP_PH_STEP:
+#if MOTION_BYPASS_KNOWN
+            /* Known obstacle: straight past it by the calculated distance
+               (MOTION_KNOWN_PASS_MM along the line from where the car
+               braked), no probes beside it.  Without the IMU, alongside
+               by that minus what the sidestep already went forward. */
+            if (p_ctx->b_hd_ok
+                    ? (hd_lon_mm(p_ctx)
+                       >= (MOTION_KNOWN_PASS_MM + p_ctx->byp_pass_more))
+                    : (moved >= ((0 == p_ctx->byp_pass_more)
+                                     ? (MOTION_KNOWN_PASS_MM
+                                        - ((leg * 342) / 1000)) /* cos 70 */
+                                     : MOTION_KNOWN_MORE_MM)))
+            {
+                p_ctx->bypass_pass_mm += moved;
+                byp_next(p_ctx, BYP_PH_TURN_IN);
+            }
+#else
             if (moved >= ((0 == p_ctx->bypass_pass_mm) ? MOTION_BYPASS_FIRST_MM
                                                        : MOTION_BYPASS_STEP_MM))
             {
                 p_ctx->bypass_pass_mm += moved;
                 byp_next(p_ctx, BYP_PH_PROBE_IN);
             }
+#endif
             break;
         case BYP_PH_PROBE_IN:
             if (b_pivot_done)
@@ -2192,7 +2450,35 @@ bypass_drive (motion_ctx_t *p_ctx)
         case BYP_PH_TURN_IN:
             if (b_pivot_done)
             {
+#if MOTION_BYPASS_KNOWN
+                /* Facing the way back: is it clear of the obstacle? */
+                byp_next(p_ctx, BYP_PH_IN_LOOK);
+                byp_ask(p_ctx, SCAN_FLG_LOOK_AHEAD);
+#else
                 byp_next(p_ctx, BYP_PH_STEP_IN);
+#endif
+            }
+            break;
+        case BYP_PH_IN_LOOK:
+            if (byp_look_done(p_ctx, MOTION_KNOWN_IN_LOOK_MM, &b_near))
+            {
+                byp_next(p_ctx, b_near ? BYP_PH_IN_BACK : BYP_PH_STEP_IN);
+            }
+            break;
+        case BYP_PH_IN_BACK:
+            if (b_pivot_done)
+            {
+                /* Not past it yet: along again, a little further. */
+                p_ctx->byp_pass_more += MOTION_KNOWN_MORE_MM;
+                if (p_ctx->byp_pass_more > MOTION_KNOWN_MORE_MAX_MM)
+                {
+                    byp_next(p_ctx, BYP_PH_DONE); /* give up: Line Search */
+                    p_ctx->line_dir = -side;
+                }
+                else
+                {
+                    byp_next(p_ctx, BYP_PH_STEP);
+                }
             }
             break;
         case BYP_PH_STEP_IN:
@@ -2238,10 +2524,15 @@ bypass_drive (motion_ctx_t *p_ctx)
     ph  = p_ctx->bypass_phase;
     dir = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
     if ((ph >= BYP_PH_DONE) || (BYP_PH_LOOK == ph)
-        || (BYP_PH_LANE_LOOK == ph) || (BYP_PH_SWITCH == ph))
+        || (BYP_PH_LANE_LOOK == ph) || (BYP_PH_SWITCH == ph)
+        || (BYP_PH_IN_LOOK == ph))
     {
         p_ctx->cmd_l = 0;
         p_ctx->cmd_r = 0;
+    }
+    else if (BYP_PH_ARC == ph)
+    {
+        arc_drive(p_ctx);
     }
     else if (0 != dir)
     {
@@ -3048,7 +3339,8 @@ print_byp (UB *p_line, motion_report_t const *p_rep)
     static char const *const names[BYP_PH_DONE + 1u] = {
         "OUT",   "LANE_LOOK", "LANE_BACK", "SWITCH",  "SIDESTEP",
         "PARALLEL", "STEP",   "PROBE_IN",  "LOOK",    "PROBE_OUT",
-        "CLEAR", "TURN_IN",   "STEP_IN",   "ONTO",    "ALONG", "DONE"
+        "CLEAR", "TURN_IN",   "STEP_IN",   "ONTO",    "ALONG",
+        "IN_LOOK", "IN_BACK", "ARC_LEG", "ARC", "DONE"
     };
     uint32_t    ph   = (uint32_t)p_rep->val_l;
     char const *name = (ph <= BYP_PH_DONE) ? names[ph] : "?";

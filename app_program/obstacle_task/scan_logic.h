@@ -70,6 +70,31 @@
  * least C_pass from the obstacle's edge. */
 #define SL_C_PASS_MM		(SL_PIVOT_R_MM + SL_PASS_MARGIN_MM)	/* 248 mm */
 
+/* Known obstacle width (4 Nov 2026, user request): the demo box is 90 mm
+ * wide. The HC-SR04 cone makes it read 150-290 mm wide (NFR-20), roughly
+ * the same on both sides, so the scan's centre ((x_left + x_right) / 2) is
+ * kept and the real width put around it; the offset is that edge + the
+ * clearance. 0 = use the measured edges (obstacles of unknown size).
+ *
+ * SL_KNOWN_STRAIGHT picks the clearance and must equal MOTION_BYPASS_KNOWN:
+ *   0 (default): motion's zig-zag probing bypass pivots beside the box, so
+ *     C_pass (248): offset = |centre| + 45 + 248 = ~293 mm for a centred
+ *     box, instead of 290-365 mm from the cone-widened edges;
+ *   1: motion drives straight past (no pivots beside it): the car's
+ *     half-width + a 70 mm gap (133): ~178 mm. */
+#ifndef SL_KNOWN_W_MM
+#define SL_KNOWN_W_MM		90
+#endif
+#ifndef SL_KNOWN_STRAIGHT
+#define SL_KNOWN_STRAIGHT	0
+#endif
+#define SL_KNOWN_GAP_MM		70	/* car side to box face when passing */
+#if SL_KNOWN_STRAIGHT
+#define SL_KNOWN_CLEAR_MM	(SL_CAR_HALF_W_MM + SL_KNOWN_GAP_MM)	/* 133 */
+#else
+#define SL_KNOWN_CLEAR_MM	SL_C_PASS_MM				/* 248 */
+#endif
+
 /* Half-width of the car's path corridor: an obstacle wholly outside
  * +/-SL_CORRIDOR_MM is not in the way (FR-17 "continue"). The car drives
  * straight there, so half the width + the margin is enough. */

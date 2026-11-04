@@ -235,8 +235,20 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	/* sideways move needed so the car's near side clears the edge:
 	 * pass left  -> car centre must reach x_left  - C_pass
 	 * pass right -> car centre must reach x_right + C_pass */
+#if SL_KNOWN_W_MM > 0
+	{
+		/* known obstacle: the real width around the scan's centre */
+		int32_t	centre = ((int32_t)p_prof->x_left_mm + (int32_t)p_prof->x_right_mm) / 2;
+
+		p_prof->offset_left_mm  = (int16_t)(-(centre - (SL_KNOWN_W_MM / 2)
+						      - SL_KNOWN_CLEAR_MM));
+		p_prof->offset_right_mm = (int16_t)(centre + (SL_KNOWN_W_MM / 2)
+						    + SL_KNOWN_CLEAR_MM);
+	}
+#else
 	p_prof->offset_left_mm  = (int16_t)(-(p_prof->x_left_mm - SL_C_PASS_MM));
 	p_prof->offset_right_mm = (int16_t)(p_prof->x_right_mm + SL_C_PASS_MM);
+#endif
 	if(p_prof->offset_left_mm < 0) {
 		p_prof->offset_left_mm = 0;
 	}
@@ -271,14 +283,24 @@ bool sl_same_object(uint16_t prev_mm, uint16_t dist_mm, int32_t d_obs_mm)
 	       (abs_val((int32_t)dist_mm - (int32_t)prev_mm) <= SL_DEPTH_JUMP_MM);
 }
 
+/* Free space a side needs beyond the measured edge. Straight past a known
+ * box: the car's whole width past the gap (its side 70 mm off the face);
+ * otherwise C_pass (pivots beside the obstacle). Measured from the
+ * cone-widened edge, so it errs on the safe side. */
+#if (SL_KNOWN_W_MM > 0) && SL_KNOWN_STRAIGHT
+#define SL_SIDE_NEED_MM		(SL_KNOWN_CLEAR_MM + SL_CAR_HALF_W_MM)	/* 196 */
+#else
+#define SL_SIDE_NEED_MM		SL_C_PASS_MM
+#endif
+
 /* Can the car pass on this side (clearance and offset limit)? */
 static bool side_ok(const sl_profile_t *p_prof, bool b_left)
 {
 	return b_left ? (p_prof->left_open &&
-			 (p_prof->clear_left_mm >= SL_C_PASS_MM) &&
+			 (p_prof->clear_left_mm >= SL_SIDE_NEED_MM) &&
 			 (p_prof->offset_left_mm <= SL_MAX_OFFSET_MM))
 		      : (p_prof->right_open &&
-			 (p_prof->clear_right_mm >= SL_C_PASS_MM) &&
+			 (p_prof->clear_right_mm >= SL_SIDE_NEED_MM) &&
 			 (p_prof->offset_right_mm <= SL_MAX_OFFSET_MM));
 }
 

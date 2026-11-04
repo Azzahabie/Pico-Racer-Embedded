@@ -369,6 +369,39 @@ int main(void)
 		      sl_lane_clear(1300U, SL_MAX_OFFSET_MM));
 	}
 
+#if SL_KNOWN_W_MM > 0
+	/* 20. known obstacle: the real width around the scan's centre */
+	printf("Test 20: known 90 mm box, offsets from its centre (demo box)\n");
+	{
+		/* the demo box at 200 mm read on the car (4 Nov): hits -25..25 */
+		grid_clear(grid);
+		set(grid, -45, SL_FAR); set(grid, -30, SL_FAR);
+		set(grid, -25, 220);    set(grid, 0, 194);   set(grid, 25, 216);
+		set(grid, 30, SL_FAR);  set(grid, 45, SL_FAR);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		/* 45 + clearance: 293 with the zig-zag (C_pass), 178 straight past */
+		check("centred box: offsets 45 + clearance (+-15 mm) each side",
+		      (prof.offset_left_mm >= 45 + SL_KNOWN_CLEAR_MM - 15) &&
+		      (prof.offset_left_mm <= 45 + SL_KNOWN_CLEAR_MM + 15) &&
+		      (prof.offset_right_mm >= 45 + SL_KNOWN_CLEAR_MM - 15) &&
+		      (prof.offset_right_mm <= 45 + SL_KNOWN_CLEAR_MM + 15));
+		check("centred box: smaller than from the widened edges (74 + 248)",
+		      prof.offset_right_mm < 74 + SL_C_PASS_MM);
+		check("centred box: still a bypass", (SL_BYPASS_LEFT == act) || (SL_BYPASS_RIGHT == act));
+
+		/* box mostly to the left of the car: hits -45..0 */
+		grid_clear(grid);
+		set(grid, -45, 230); set(grid, -25, 200); set(grid, 0, 205);
+		set(grid, 25, SL_FAR); set(grid, 30, SL_FAR); set(grid, 45, SL_FAR);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("box to the left: shorter move to the right",
+		      prof.offset_right_mm < prof.offset_left_mm);
+		check("box to the left: bypass right", SL_BYPASS_RIGHT == act);
+		check("box to the left: smaller than from the widened edge",
+		      prof.offset_right_mm < prof.x_right_mm + SL_C_PASS_MM);
+	}
+#endif
+
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
 	return g_fails ? 1 : 0;

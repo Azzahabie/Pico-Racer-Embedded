@@ -96,6 +96,20 @@ _Static_assert(SL_REV_DIST_MM <= MOTION_AVOID_DIST_MAX,
 	       "reverse distance exceeds the packed avoid-command distance");
 _Static_assert(SL_SIDE_LEG_X1000 == MOTION_BYPASS_SIDE_LEG_X1000,
 	       "scan_task's lane check must use motion_task's sidestep leg");
+/* The small straight-past sidestep is only safe if motion does not pivot
+ * beside the box, and the zig-zag probing bypass needs the C_pass offsets. */
+_Static_assert((SL_KNOWN_STRAIGHT != 0) == (MOTION_BYPASS_KNOWN != 0),
+	       "SL_KNOWN_STRAIGHT and MOTION_BYPASS_KNOWN must be set together");
+_Static_assert(!SL_KNOWN_STRAIGHT || (SL_KNOWN_W_MM > 0),
+	       "the straight-past bypass needs the known width");
+#if MOTION_BYPASS_ARC
+/* The arc reads how far the box sits off centre from scan_task's offset. */
+_Static_assert((SL_KNOWN_W_MM > 0) && !SL_KNOWN_STRAIGHT && !MOTION_BYPASS_KNOWN &&
+	       (MOTION_ARC_OFFSET_CENTRED == ((SL_KNOWN_W_MM / 2) + SL_C_PASS_MM)),
+	       "the arc needs the zig-zag known-width offsets (45 + C_pass)");
+_Static_assert(SL_KNOWN_W_MM == MOTION_OBS_W_MM,
+	       "scan_task's known width and the arc's obstacle width must match");
+#endif
 
 LOCAL const INT g_coarse_deg[NUM_COARSE] = { -45, -25, 0, 25, 45 };
 

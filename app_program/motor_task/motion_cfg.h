@@ -278,7 +278,12 @@
    MOTION_HD_LINE_MM, a full sway averages out (calculated: +-20 deg over a
    ~380 mm sway -> ~+-3 deg). */
 #define MOTION_HD_LINE_MM     (400)  /* average over this much travel    */
-#define MOTION_HD_MIN_MM      (300)  /* trusted after this much travel   */
+/* Trusted after MOTION_HD_MIN_MM of Line Following.  300 -> 100 on 4 Nov:
+   on the test track the box sits ~25 cm into the line, so every bypass
+   fell back to the encoders and the right ones circled the box; the
+   average starts at the heading where Line Following began, so with the car
+   placed along the line 100 mm is enough, and better than no heading. */
+#define MOTION_HD_MIN_MM      (100)  /* trusted after this much travel   */
 #define MOTION_HD_JUMP_DEG    (30)
 #define MOTION_HD_LEAD_DEG    (4)
 /* STEP_IN with the IMU: if the sensors have not seen the line by the time
@@ -286,6 +291,72 @@
    line was seen 4-30 mm before the estimate in trials 1-7; trials 9-10
    stopped exactly on the estimate and never crossed it). */
 #define MOTION_HD_PAST_MM     (80)
+
+/* Known-obstacle bypass (4 Nov 2026, user request): the demo box is known,
+   90 mm wide x 130 mm long x 190-200 mm high, so the car does not probe
+   beside it (each probe pivot swept the front corner 168 mm out, which is
+   why C_pass, and so the sidestep, had to be 248 + edge = 290-365 mm).
+   Instead (scan_task sizes the sidestep from the real width, see
+   SL_KNOWN_W_MM):
+     sidestep to the planned offset -> parallel -> straight on until the
+     axle is MOTION_KNOWN_PASS_MM along the line from where it braked ->
+     turn in -> look along the way back (IN_LOOK) -> clear: back to the line
+     by the measured sideways distance; not clear: turn back parallel, on
+     MOTION_KNOWN_MORE_MM, look again, up to MOTION_KNOWN_MORE_MAX_MM.
+   PASS: stop distance (<= 252 mm seen, 4 Nov) + sensor to axle 155 + box
+   130 + rear corner swing when turning in sqrt(70^2 + 63^2) = 94 + gap 60
+   = 691 -> 700 mm (calculated).  The way back counts as blocked for a
+   reading under MOTION_KNOWN_IN_LOOK_MM (scan_task's lane check also
+   reports a lane shorter than leg + D_stop + 50 as 1 = blocked).
+   0 = the probing bypass (D14) for obstacles of unknown size. */
+#ifndef MOTION_BYPASS_KNOWN
+#define MOTION_BYPASS_KNOWN       (0)
+#endif
+#define MOTION_KNOWN_PASS_MM      (700)
+#define MOTION_KNOWN_MORE_MM      (100)
+#define MOTION_KNOWN_MORE_MAX_MM  (400)
+#define MOTION_KNOWN_IN_LOOK_MM   (300)
+
+/* Arc bypass (4 Nov 2026, user request; test option, 0 = zig-zag): round
+   the obstacle on a circle about its centre (radius and centre from
+   MOTION_OBS_* below).  Tangent leg out at theta (the centre's direction
+   + asin(R / distance)), an arc round the obstacle until heading theta
+   back toward the line, then back to the line by the measured sideways
+   distance (STEP_IN, ONTO, ALONG as before).  The turn-out aims at theta +
+   MOTION_HD_LEAD_DEG; the leg ends at the tangent point or when within R of
+   the centre; on the arc the inner wheel is trimmed by the distance to the
+   centre.  Only with a valid IMU heading and the car still on the line
+   (|sideways| < 30 mm); otherwise the zig-zag runs.  No look at the
+   obstacle on the way. */
+#ifndef MOTION_BYPASS_ARC
+#define MOTION_BYPASS_ARC         (0)
+#endif
+/* The obstacle the arc goes round (the sensor cannot tell its shape or
+   length, so they are set here; the demo box by default):
+     MOTION_OBS_ROUND 0: a box W x L (a cube: W = L), reach from its centre
+       = half the diagonal, sqrt((W/2)^2 + (L/2)^2): 79 mm for 90 x 130;
+     MOTION_OBS_ROUND 1: a cylinder of diameter W, reach W / 2.
+   Circle radius R = reach + half the car (63) + MOTION_ARC_GAP_MM.
+   Centre ahead of the axle where it braked: C = MOTION_ARC_STOP_MM + 155
+   (sensor to axle) + half its length along the line (L / 2, or W / 2 for a
+   cylinder).  Demo box: R = 79 + 63 + 100 = 242, C = 240 + 155 + 65 = 460,
+   theta 32 deg; a 200 mm cube: R 304, C 495, theta 38 deg; a 100 mm
+   cylinder: R 213, C 445, theta 29 deg (calculated).  The centre's
+   sideways place comes from scan_task's offset (box off the line). */
+#define MOTION_SENSOR_AXLE_MM     (155)  /* axle to the car front / sensor, measured 1 Nov */
+#ifndef MOTION_OBS_W_MM
+#define MOTION_OBS_W_MM           (90)
+#endif
+#ifndef MOTION_OBS_L_MM
+#define MOTION_OBS_L_MM           (130)
+#endif
+#ifndef MOTION_OBS_ROUND
+#define MOTION_OBS_ROUND          (0)
+#endif
+#define MOTION_ARC_GAP_MM         (100)  /* car side to the obstacle's reach */
+#define MOTION_ARC_STOP_MM        (240)  /* sensor to its face at the stop (223-252 seen) */
+#define MOTION_ARC_OFFSET_CENTRED (293)  /* scan_task: 45 + C_pass 248, centred */
+#define MOTION_ARC_MAX_SHIFT_MM   (150)  /* centre off the line: at most this */
 
 /* Measured on the car, docs/motion/results.md: counts per wheel turn
    (x4 quadrature, 2 trials), wheel diameter and the distance between the

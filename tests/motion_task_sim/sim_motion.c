@@ -1494,6 +1494,9 @@ static uint16_t	g_other_offset;		/* the other side's offset */
 static int	g_no_replan;		/* stand-in ignores SIDE_BLOCKED */
 /* the box as the car read it square-on (S7 attempt 3: 230-333 mm) */
 static uint16_t	g_seen_mm = 333u;
+static int	g_in_looks;		/* known bypass: looks along the way in */
+static int	g_in_blocks;		/* ...answered "not past it yet" first */
+static uint32_t	g_prev_phase;
 
 /* One tick with the stand-in scan_task and line model: answer a LOOK the
    way scan_task does (a separate AVOID_LOOK command), and put the line
@@ -1506,12 +1509,25 @@ bypass_tick (void)
 	int	 b_seen;
 
 	if ((g_scan_flag & SCAN_FLG_LOOK_AHEAD) != 0u) {
+		uint16_t reply = g_lane_mm;
+
 		g_scan_flag &= ~SCAN_FLG_LOOK_AHEAD;
-		g_lane_looks++;
+		if (BYP_PH_IN_LOOK == g_ctx.bypass_phase) {
+			/* known obstacle: the look along the way back in */
+			g_in_looks++;
+			if (g_in_blocks > 0) {
+				g_in_blocks--;
+				reply = 1u;		/* not past it yet */
+			} else {
+				reply = 511u;
+			}
+		} else {
+			g_lane_looks++;
+		}
 		if (g_scan_answers) {
 			CHECK(motion_avoid_cmd_pack(MOTION_AVOID_OP_LOOK,
 						    MOTION_AVOID_SIDE_NONE,
-						    g_lane_mm, &word));
+						    reply, &word));
 			CHECK(sim_send_avoid(word));
 		}
 	}
@@ -1551,11 +1567,15 @@ bypass_tick (void)
 	g_phases |= (1u << g_ctx.bypass_phase);
 	if (g_ctx.bypass_phase > g_max_phase) {
 		g_max_phase = g_ctx.bypass_phase;
-		if (BYP_PH_STEP_IN == g_ctx.bypass_phase) {
-			g_step_in_l = g_ctx.pos_l;
-			g_step_in_r = g_ctx.pos_r;
-		}
 	}
+	/* the step back in starts here (the known bypass reaches it after
+	   IN_LOOK, a higher phase number, so not by the maximum) */
+	if ((BYP_PH_STEP_IN == g_ctx.bypass_phase)
+	    && (BYP_PH_STEP_IN != g_prev_phase)) {
+		g_step_in_l = g_ctx.pos_l;
+		g_step_in_r = g_ctx.pos_r;
+	}
+	g_prev_phase = g_ctx.bypass_phase;
 	if ((BYP_PH_STEP_IN == g_ctx.bypass_phase)
 	    && (FWD_MM(g_ctx.pos_l - g_step_in_l, g_ctx.pos_r - g_step_in_r)
 		>= g_line_at_mm)) {
@@ -1581,6 +1601,9 @@ bypass_setup (uint8_t side, uint16_t offset_mm, int32_t near_mm,
 	g_lane_mm      = 511u;
 	g_lane_looks   = 0;
 	g_switches     = 0;
+	g_in_looks     = 0;
+	g_in_blocks    = 0;
+	g_prev_phase   = BYP_PH_DONE;
 	g_other_offset = offset_mm;
 	bypass_begin(side, offset_mm);
 	g_line.rl = LINE_RL_CENTRED;			/* both white: off it */
@@ -1841,7 +1864,7 @@ scenario_bypass_heading (void)
 	   close; the old 1.5 s average took most of the wander. */
 	sim_reset("bypass with IMU: slow +-20 deg wander while learning the line");
 	g_mission = MS_RUNNING;
-	for (n = 0; n < 2 * SIM_HD_LEARN_TICKS; n++) {
+	for (n = 0; n < 1760; n++) {	/* ~830 mm: two sways */
 		/* one sway per ~380 mm at the base speed */
 		g_head_offset_deg = 20.0 * sin(2.0 * M_PI * (double)n / 800.0);
 		sim_tick();
@@ -1865,6 +1888,169 @@ scenario_bypass_heading (void)
 	CHECK(strstr(g_log, "encoders only") != NULL);
 	CHECK(strstr(g_log, "line, IMU") == NULL);
 }
+
+#if MOTION_BYPASS_KNOWN
+/* Known-obstacle bypass (MOTION_BYPASS_KNOWN, demo box 90 x 130 mm): the
+   sidestep is the planned offset, the car goes straight past to
+   MOTION_KNOWN_PASS_MM along the line with no probes, looks along the way
+   back, and comes back by the measured sideways distance.  When the way
+   back is not clear it turns back, goes MOTION_KNOWN_MORE_MM further and
+   looks again; past MOTION_KNOWN_MORE_MAX_MM it gives up into Line Search. */
+static void
+scenario_bypass_known (void)
+{
+	static uint8_t const	sides[2] = { MOTION_AVOID_SIDE_LEFT,
+					     MOTION_AVOID_SIDE_RIGHT };
+	char	name[96];
+	int	k;
+	int32_t	lat_par = 0;
+	int32_t	lon_in  = 0;
+	long	head;
+
+	for (k = 0; k < 2; k++) {
+		(void)snprintf(name, sizeof name,
+			       "known box: %s, offset 178, straight past, back by the sideways distance",
+			       (MOTION_AVOID_SIDE_LEFT == sides[k]) ? "LEFT" : "RIGHT");
+		sim_reset(name);
+		g_mission = MS_RUNNING;
+		sim_ticks(SIM_HD_LEARN_TICKS);
+		CHECK(g_ctx.b_hd_ok);
+		bypass_setup(sides[k], 178u, 401, 531);
+		g_line_at_mm = 1000000;			/* sensors never see it */
+		while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS)
+		       && (g_ctx.bypass_phase != BYP_PH_DONE)) {
+			if ((BYP_PH_PARALLEL == g_ctx.bypass_phase) && (0 == lat_par)) {
+				lat_par = hd_lat_mm(&g_ctx) * g_ctx.bypass_side;
+			}
+			if ((BYP_PH_TURN_IN == g_ctx.bypass_phase) && (0 == lon_in)) {
+				lon_in = hd_lon_mm(&g_ctx);
+			}
+			bypass_tick();
+		}
+		CHECK(g_ctx.bypass_phase == BYP_PH_DONE);
+		sim_ticks(2);
+		CHECK((g_phases & (1u << BYP_PH_PROBE_IN)) == 0u);	/* no probes */
+		CHECK((g_phases & (1u << BYP_PH_IN_LOOK)) != 0u);
+		CHECK(g_in_looks == 1);
+		CHECK((lat_par >= 178) && (lat_par <= 178 + 20));	/* sidestep */
+		CHECK((lon_in >= MOTION_KNOWN_PASS_MM) && (lon_in <= MOTION_KNOWN_PASS_MM + 20));
+		head = (long)ev_heading_deg() - (long)(g_ctx.hd_line_udeg / 1000000);
+		CHECK((head >= -8) && (head <= 8));
+		CHECK(strstr(g_log, "bypass IN_LOOK") != NULL);
+		(void)printf("-- %s: sidestep %d mm, turned in %d mm along, ends %+ld deg (simulation)\n",
+			     name, (int)lat_par, (int)lon_in, head);
+		lat_par = 0;
+		lon_in = 0;
+	}
+
+	sim_reset("known box: way back blocked twice: on 100 mm each time, then in");
+	g_mission = MS_RUNNING;
+	sim_ticks(SIM_HD_LEARN_TICKS);
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 178u, 401, 531);
+	g_line_at_mm = 1000000;
+	g_in_blocks = 2;
+	CHECK(bypass_finish() > 0);
+	CHECK(g_max_phase == BYP_PH_DONE);
+	CHECK(g_in_looks == 3);
+	CHECK(g_ctx.byp_pass_more == 2 * MOTION_KNOWN_MORE_MM);
+	CHECK((g_phases & (1u << BYP_PH_IN_BACK)) != 0u);
+	CHECK((g_phases & (1u << BYP_PH_STEP_IN)) != 0u);
+
+	sim_reset("known box: way back never clear: gives up into Line Search");
+	g_mission = MS_RUNNING;
+	sim_ticks(SIM_HD_LEARN_TICKS);
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 178u, 401, 531);
+	g_in_blocks = 100;
+	CHECK(bypass_finish() > 0);
+	CHECK((g_phases & (1u << BYP_PH_STEP_IN)) == 0u);	/* never went in */
+	CHECK(g_ctx.byp_pass_more > MOTION_KNOWN_MORE_MAX_MM);
+}
+#endif
+
+#if MOTION_BYPASS_ARC
+/* Arc bypass (MOTION_BYPASS_ARC): tangent leg out, an arc round the box
+   centre (from MOTION_OBS_*), back to the line.  Checks that the
+   car never comes nearer the box centre than the radius allows, how far out
+   it goes, that no zig-zag phases run, and the ending on the line. */
+static void
+scenario_bypass_arc (void)
+{
+	static uint8_t const	sides[2] = { MOTION_AVOID_SIDE_LEFT,
+					     MOTION_AVOID_SIDE_RIGHT };
+	static int const	off[2]   = { 293, 343 };	/* centred, 50 mm off */
+	char	name[112];
+	int	k;
+	int	j;
+	int32_t	side;
+	int32_t	x;
+	int32_t	y;
+	int32_t	cx;
+	double	d;
+	double	dmin;
+	int32_t	xmax;
+	long	head;
+
+	for (j = 0; j < 2; j++) {
+		for (k = 0; k < 2; k++) {
+			(void)snprintf(name, sizeof name,
+				       "arc (%s %dx%d): %s, %s",
+				       MOTION_OBS_ROUND ? "cylinder" : "box",
+				       MOTION_OBS_W_MM, MOTION_OBS_ROUND ? MOTION_OBS_W_MM : MOTION_OBS_L_MM,
+				       (MOTION_AVOID_SIDE_LEFT == sides[k]) ? "LEFT" : "RIGHT",
+				       (0 == j) ? "centred" : "50 mm toward the side");
+			sim_reset(name);
+			g_mission = MS_RUNNING;
+			sim_ticks(SIM_HD_LEARN_TICKS);
+			CHECK(g_ctx.b_hd_ok);
+			bypass_setup(sides[k], (uint16_t)off[j], 401, 531);
+			g_line_at_mm = 1000000;			/* sensors never see it */
+			CHECK(g_ctx.b_arc);
+			side = g_ctx.bypass_side;
+			cx = off[j] - MOTION_ARC_OFFSET_CENTRED;	/* box centre, toward side */
+			dmin = 1e9;
+			xmax = 0;
+			while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_BYPASS)
+			       && (g_ctx.bypass_phase != BYP_PH_DONE)) {
+				x = hd_lat_mm(&g_ctx) * side;
+				y = hd_lon_mm(&g_ctx);
+				d = sqrt((double)(x - cx) * (x - cx)
+					 + (double)(y - g_ctx.arc_cy) * (y - g_ctx.arc_cy));
+				if (d < dmin) { dmin = d; }
+				if (x > xmax) { xmax = x; }
+				bypass_tick();
+			}
+			CHECK(g_ctx.bypass_phase == BYP_PH_DONE);
+			CHECK((g_phases & (1u << BYP_PH_ARC_LEG)) != 0u);
+			CHECK((g_phases & (1u << BYP_PH_ARC)) != 0u);
+			CHECK((g_phases & (1u << BYP_PH_SIDESTEP)) == 0u);	/* no zig-zag */
+			CHECK((g_phases & (1u << BYP_PH_PROBE_IN)) == 0u);
+			/* clear of the obstacle: never nearer its centre than R - 30 */
+			CHECK(dmin >= (double)(g_ctx.arc_r - 30));
+			CHECK((xmax >= g_ctx.arc_r + cx - 30) && (xmax <= g_ctx.arc_r + cx + 40));
+			/* R = reach + half the car + gap, from MOTION_OBS_* */
+			CHECK(g_ctx.arc_r == ARC_REACH_MM() + ((MOTION_WHEELBASE_MM + 1) / 2)
+			      + MOTION_ARC_GAP_MM);
+			CHECK(g_ctx.arc_cy == MOTION_ARC_STOP_MM + MOTION_SENSOR_AXLE_MM
+			      + ARC_HALF_LEN_MM);
+			head = (long)ev_heading_deg() - (long)(g_ctx.hd_line_udeg / 1000000);
+			CHECK((head >= -8) && (head <= 8));
+			CHECK(strstr(g_log, "bypass ARC") != NULL);
+			(void)printf("-- %s: R %d, theta %d deg, out %d mm, nearest box centre %.0f mm, ends %+ld deg (simulation)\n",
+				     name, (int)g_ctx.arc_r, (int)g_ctx.arc_deg, (int)xmax, dmin, head);
+		}
+	}
+
+	sim_reset("arc: IMU fault: the zig-zag runs instead");
+	g_mission = MS_RUNNING;
+	sim_ticks(SIM_HD_LEARN_TICKS);
+	g_imu_word = imu_w_pack(0u, 0u, 0u, 0u, 0u, 1u, 0u);	/* FAULT */
+	bypass_setup(MOTION_AVOID_SIDE_LEFT, 293u, 401, 601);
+	CHECK(!g_ctx.b_arc);
+	CHECK(bypass_finish() > 0);
+	CHECK((g_phases & (1u << BYP_PH_ARC)) == 0u);
+	CHECK((g_phases & (1u << BYP_PH_PROBE_IN)) != 0u);	/* zig-zag looks */
+}
+#endif
 
 /* A stop during the bypass (the obstacle seen again) brakes it; if it
    clears with no new command the same bypass carries on from the same
@@ -2791,11 +2977,19 @@ main (int argc, char **argv)
 	scenario_turns();
 	scenario_turn_no_line();
 	scenario_turn_resume();
-	scenario_bypass();
+#if MOTION_BYPASS_KNOWN
+	scenario_bypass_known();
+#else
+	scenario_bypass();			/* the probing bypass (D14) */
 	scenario_bypass_give_up();
+#endif
 	scenario_bypass_lane_blocked();
 	scenario_bypass_resume();
+#if MOTION_BYPASS_ARC
+	scenario_bypass_arc();		/* with a heading the arc runs instead */
+#else
 	scenario_bypass_heading();
+#endif
 	scenario_hump();
 	scenario_cmd_avoid_reverse();
 	scenario_statechart_replies();

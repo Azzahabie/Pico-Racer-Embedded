@@ -13,9 +13,13 @@ DEPS   := sim_motion.c $(SRC)/motor_task.c $(SRC)/motion_lib.c $(SRC)/motion_sm.
           $(wildcard $(SRC)/*.h $(SRC)/../common/*.h stubs/*/*.h)
 
 .PHONY: test clean
-test: sim_off sim_off_unpacked sim_open sim_pid sim_wdt sim_stop
+test: sim_off sim_off_unpacked sim_known sim_arc sim_arc_cube sim_arc_cyl sim_open sim_pid sim_wdt sim_stop
 	./sim_off $(RUNARG)
 	./sim_off_unpacked $(RUNARG)
+	./sim_known $(RUNARG)
+	./sim_arc $(RUNARG)
+	./sim_arc_cube $(RUNARG)
+	./sim_arc_cyl $(RUNARG)
 	./sim_open $(RUNARG)
 	./sim_pid $(RUNARG)
 	./sim_wdt $(RUNARG)
@@ -29,6 +33,22 @@ sim_off: $(DEPS)
 # Week 13 "before" build, with distance_state behind a mutex.
 sim_off_unpacked: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_PACKED=0 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
+
+# The straight-past bypass for the known demo box (MOTION_BYPASS_KNOWN 1):
+# no side looks alongside, one look along the way back in.
+sim_known: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_BYPASS_KNOWN=1 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
+
+# The arc bypass (MOTION_BYPASS_ARC 1, test option): round the known box.
+sim_arc: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_BYPASS_ARC=1 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
+
+# The arc round other obstacles: a 200 mm cube and a 100 mm cylinder.
+sim_arc_cube: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_BYPASS_ARC=1 -DMOTION_OBS_W_MM=200 -DMOTION_OBS_L_MM=200 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
+
+sim_arc_cyl: $(DEPS)
+	$(CC) $(FLAGS) -DMOTION_BENCH=0 -DMOTION_TEST_PID=0 -DMOTION_BYPASS_ARC=1 -DMOTION_OBS_ROUND=1 -DMOTION_OBS_W_MM=100 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
 
 sim_open: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
@@ -45,6 +65,6 @@ sim_stop: $(DEPS)
 	$(CC) $(FLAGS) -DMOTION_BENCH=1 -DMOTION_TEST_PID=0 -DMOTION_TEST_STOP=1 -o $@ sim_motion.c $(SRC)/motion_lib.c $(SRC)/motion_sm.c -lm
 
 clean:
-	rm -f sim_off sim_off_unpacked sim_open sim_pid sim_wdt sim_stop
+	rm -f sim_off sim_off_unpacked sim_known sim_arc sim_arc_cube sim_arc_cyl sim_open sim_pid sim_wdt sim_stop
 
 .DEFAULT_GOAL := test
