@@ -184,10 +184,10 @@ the course photos (19 Nov):
   reason (with the widths for malformed reads) and send letter 31.
 - **Action codes:** 0 FORWARD (straight), 1 LEFT, 2 RIGHT, 3 U_TURN.
 - **Table:**
-  - **No approved table exists yet** (MQTT_SCHEMA.md §12 item 9). Until a
-    7-byte map arrives, every letter is rejected as unknown. Set
-    `BARCODE_DEFAULT_TABLE_SET` / `BARCODE_DEFAULT_TABLE` once the mapping
-    is approved.
+  - **The letters are only given on the day**, so no table is compiled in
+    (`BARCODE_DEFAULT_TABLE_SET` 0). Until a 7-byte map arrives, every
+    letter is rejected as unknown. How to load one: "Commands on the day"
+    below.
   - Maps are applied only between reads.
   - A map of the wrong length is rejected and the working table kept.
 - **The stored command:** it survives a pause and is cleared on a new
@@ -195,11 +195,106 @@ the course photos (19 Nov):
   Running. With none stored, nav sends nothing and motion follows straight
   on.
 
+## Commands on the day
+
+The letter for each command is only given on the day (expected: left,
+right, straight and U-turn; diagonal is out of scope). Nothing needs a
+reflash: the table goes to the car over MQTT before the run.
+
+**The chain, and what each step prints** (host tests in brackets):
+
+| Step | Console | Test |
+|---|---|---|
+| 1. The map arrives (comms checks the length, `barcode_task` applies it between reads) | `[comms] map mv=2 LRFUFF... -> barcode_task`, then `[barcode] map v2 applied: LRFUFF...` | `test_barcode_task`, `tests/host` |
+| 2. A sheet is read; the letter is looked up; the command is stored for the next junction | `[barcode] 'B' -> RIGHT (dir=fwd), stored for the next junction` | `test_barcode_task`, `test_barcode_action` |
+| 3. GP7 sees the crossbar | `[line] junction (GP7 black 280 ms) -> nav` | `test_line_track` |
+| 4. nav sends the stored action to motion | `[nav] -> motion: JUNCTION(RIGHT)` | `tests/nav` (PR #24) |
+| 5. motion turns: F drives `MOTION_TURN_CROSS_MM` across; L and R drive `MOTION_TURN_FWD_MM`, then pivot 90 deg; U pivots 180 deg counter-clockwise | `[motion] nav_cmd JUNCTION (raw 0x2002): accepted, TURNING`, `[motion] state LINE_FOLLOW -> TURNING` | `tests/motion_task_sim` (PR #22) |
+| 6. The turn ends on an arm (or not) | `[motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE` (or `-> LINE_SEARCH, sent MOVE_DONE`), `[nav] motion: MOVE_DONE` | `tests/motion_task_sim` |
+
+The raw value in step 5 is `0x20` followed by the action: 00 F, 01 L,
+02 R, 03 U. The crossbar also opens a barcode read of its own, so each
+junction adds `[barcode] REJECTED: malformed (bad_length)` and a width
+dump; the stored command is not touched by it.
+
+**Loading the table (the normal way, no reflash).** Needs the MQTT car
+image (the USB-only image has no `comms_task`).
+
+1. Write down the letter for each command, e.g. A left, B right, C
+   straight, D U-turn.
+2. `python3 tools/barcode_map.py A=L B=R C=F D=U --mv 2` (on
+   `proposal/comms-fixes`, PR #26). It prints the 26-letter table
+   (`LRFUFFFFFFFFFFFFFFFFFFFFFF`, A first; letters not named are F), the
+   7 bytes, and a `mosquitto_pub` line. It sends nothing unless given
+   `--publish --broker HOST`.
+3. Send it, **before pressing start**, one of three ways: the viewer's
+   "Send map" box (the 26 letters and mv); the printed `mosquitto_pub`
+   line; or the script with `--publish`. All three publish retained at
+   QoS 1 on `robocar/<UTK_MQTT_CLIENT_ID>/map`, so a car that reboots gets
+   it again when it subscribes.
+4. Check the two console lines of step 1 and that `S.mpv` shows the mv.
+   Use mv 1-15 and a new one for every new map: `S.mpv` is 0 with no map,
+   and the car has no version gate, so an older mv is applied too.
+
+Rejected maps change nothing: `[comms] map rejected #n: len=6 bytes=...`
+(wrong length), `[comms] radio refused n inbound message(s): ...` (empty,
+over 7 bytes or a wrong topic), `[comms] map mv=3 ... not passed on
+(er=-50): table kept, mpv stays 2` (two maps already waiting behind a
+read). A map stays until the car is reset; a new mission keeps it.
+
+**Fallback: a compiled-in table (rebuild and flash).** Edit the two lines
+in `line_config.h`: `BARCODE_DEFAULT_TABLE_SET (1)` and
+`BARCODE_DEFAULT_TABLE "LRFUFFFFFFFFFFFFFFFFFFFFFF"` (or build with the
+session kit's `TABLE=`). Build from a clean tree or through the kit: an
+in-place rebuild does not recompile on a changed `-D`. The boot line then
+reads `[barcode] decoder ready, table: compiled-in default LRFUFF...`. A
+character other than F, L, R, U gives `... table: none until a map arrives
+(compiled-in table is not 26 of F/L/R/U)`, and a wrong length stops the
+build. `S.mpv` stays 0, and a later map replaces the table.
+
+**No command.** With no map and no compiled-in table, every read prints
+`[barcode] REJECTED: 'A' unknown (no barcode map loaded)` and sends letter
+31; at the junction nav prints `[nav] junction, no barcode command:
+straight on`, sends nothing, and line following carries on across. Once a
+table is loaded every letter A-Z has an action (the map has no empty
+value), and anything that is not A-Z is outside the decoder's alphabet
+(`REJECTED: malformed`). A barcode F is a command: motion drives 40 mm
+across without steering, which is not the same as line following across.
+
+**A map sent during a run** is applied only when no barcode is being
+read: the read in progress uses the table it started with, and a command
+already stored for the next junction is not changed (host test). The rule
+stays: publish before start (MQTT_SCHEMA.md 8.3).
+
+**Limits that no table fixes** (car session checks):
+
+- GP7 reads only a sheet on its own side of the line. Which side GP7 is
+  on is not measured; a sheet on the other side is never read.
+- A T met from the side, with the stem on the side away from GP7: GP7
+  crosses no line, so there is no junction event (sim). The stored
+  command waits for the next junction, the wrong place.
+- A T met from the stem: GP26/GP27 (125 mm ahead of the axle, measured)
+  leave the end of the stem about 1.48 s before GP7 (50 mm ahead,
+  `MOTION_TURN_FWD_MM`, proposed) fires the junction at base 6 (sim,
+  straight approach). The line is lost after `LINE_LOST_MS` 1500 ms, a
+  20 ms margin, and in that time line following steers hard toward the
+  last side it saw the line on (register S1), which the sim does not
+  model. If motion has left Line Following, it refuses the JUNCTION.
+- A dead end has no crossbar, so no junction: a U-turn command there never
+  runs, and the car goes Line Search, Line Lost, and pauses (C, from the
+  code).
+- A command with no arm to go to (straight at a T met from the stem, or a
+  turn to the side a T has no arm on) ends `TURNING -> LINE_SEARCH`, then
+  `LINE_SEARCH -> LINE_LOST, sent LINE_LOST` unless the 45 deg sweep finds
+  a line (host test; the sweep against real lines is not modelled).
+
 ## Console
 
 ```
 [line] raw ADC GP26=312 GP27=298 norm 41/38 err=0 | barcode DO GP7=0 (white) | missed 0 ticks (0 since boot)
 [line] calibration OK: GP26 ok (white 300, rise 2500) GP27 ok (...)
+[barcode] decoder ready, table: none until a map arrives
+[barcode] map v2 applied: LRFUFFFFFFFFFFFFFFFFFFFFFF
 [barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
 [barcode] REJECTED: malformed (bad_length)
 [line] junction (GP7 black 280 ms) -> nav
@@ -230,7 +325,8 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
 | `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
-| `test_barcode_action` | the table, map apply and reject, the command word |
+| `test_barcode_action` | the table, map apply and reject, the command word; every action for every letter from a map; the writeup example as the laptop's 7 bytes; the comms vector; built again with a compiled-in table (`test_barcode_action_table`) |
+| `test_barcode_task` | `barcode_task.c`'s own loop on a fake kernel: the boot table line, a map from comms, each action stored from it, a map sent while a sheet is read (waits for the read), a map between a read and its junction (the stored command stays), a full map queue, a wrong length, a new mission; built three times (no table, a compiled-in table, one with a bad character) |
 | `test_line_state` | the word, and the motion statechart contract |
 
 These are software tests only. Thresholds, the barcode sensor at speed, the
@@ -240,6 +336,10 @@ are not verified on hardware.
 ## Open items for the team
 
 - **Buddy 2:** nav_cmd_mbf, reading `line_state`, the drive and the turns.
-- **Buddy 1:** call `barcode_map_submit()` from the `map` command (M8), and
-  report `barcode_map_version()` as `S.mpv`.
-- **Team:** approve the action codes and a default table.
+- **Buddy 1:** done: the `map` command calls `barcode_map_submit()` (M8b)
+  and `S.mpv` is `barcode_map_version()`.
+- **Team:** name who sends the map on the day, from which laptop, to which
+  broker, and check a retained map reaches the car on that broker
+  (register J1, C1). The action codes are fixed: 0 F, 1 L, 2 R, 3 U.
+- **Car session:** the limits under "Commands on the day" (GP7's side, a T
+  met from the stem, a T met from the side).
