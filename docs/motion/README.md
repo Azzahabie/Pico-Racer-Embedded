@@ -418,6 +418,22 @@ in the same tick, what the statechart did with it:
 [motion] state BRAKED -> BRAKED, sent CMD_REJECTED
 ```
 
+If the state changed in that same tick for another reason (a STOP, a
+fault or a pause, or a braked turn resuming), the REFUSED line names
+both states: the one the JUNCTION met and the one the statechart went
+to. Only Line Following takes a JUNCTION, but a STOP that arrives in the
+same tick wins (from the simulator):
+
+```
+[motion] STOP_SCAN set: brake written 17 us after the request.
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED (LINE_FOLLOW -> BRAKED), sent CMD_REJECTED
+[motion] state LINE_FOLLOW -> BRAKED, sent CMD_REJECTED
+```
+
+`REFUSED (BRAKED -> TURNING)` is a braked turn resuming as it was; the
+new JUNCTION is not taken, and the old turn keeps its own action.
+
 The low byte of `raw` is the action (0 forward, 1 left, 2 right, 3
 U-turn). A state line with the same state on both sides means a reply
 was sent with no change of state. Older logs print `taken` for every

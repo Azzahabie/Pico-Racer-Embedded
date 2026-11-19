@@ -1721,8 +1721,31 @@ scenario_turn_resume (void)
 	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + PIVOT_COUNTS(5));
 }
 
+/* A LEFT turn braked by STOP_SCAN part way round its pivot; the
+   positions where the turn began. */
+static void
+left_turn_braked (int32_t *p_l0, int32_t *p_r0)
+{
+	int	n = 0;
+
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	*p_l0 = g_ctx.pos_l;
+	*p_r0 = g_ctx.pos_r;
+	while ((g_ctx.turn_phase != 1u) && (n++ < 3000)) {	/* TURN_PH_PIVOT */
+		sim_tick();
+	}
+	sim_ticks(60);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+}
+
 /* A JUNCTION while a turn is braked half way is refused, and does not
-   change the turn: the LEFT still ends as a LEFT. */
+   change the turn: the LEFT still ends as a LEFT.  The same when it comes
+   in the tick the braked turn resumes (review L2). */
 static void
 scenario_turn_refused_keeps (void)
 {
@@ -1731,19 +1754,7 @@ scenario_turn_refused_keeps (void)
 	int	n = 0;
 
 	sim_reset("turning: a JUNCTION refused mid-turn leaves the turn as it was");
-	g_mission = MS_RUNNING;
-	sim_ticks(3);
-	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
-	sim_tick();
-	l0 = g_ctx.pos_l;
-	r0 = g_ctx.pos_r;
-	while ((g_ctx.turn_phase != 1u) && (n++ < 3000)) {	/* TURN_PH_PIVOT */
-		sim_tick();
-	}
-	sim_ticks(60);
-	stop_request(MOTION_EVT_STOP_SCAN, 1);
-	sim_tick();
-	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	left_turn_braked(&l0, &r0);
 	g_nav_flag = 0u;
 	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_RIGHT));
 	sim_tick();
@@ -1755,6 +1766,33 @@ scenario_turn_refused_keeps (void)
 	g_nav_flag = 0u;
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK((g_ctx.pos_l - l0 < 0) && (g_ctx.pos_r - r0 > 0));	/* turned left */
+	CHECK(TURNED(g_ctx.pos_l - l0, g_ctx.pos_r - r0) >= PIVOT_COUNTS(90));
+
+	/* The state changes (BRAKED -> TURNING) in that tick, but the turn is
+	   the old one resumed: never "accepted" for the new JUNCTION. */
+	sim_reset("turning: a JUNCTION in the tick a braked turn resumes is refused");
+	left_turn_braked(&l0, &r0);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_RIGHT));
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	CHECK(g_ctx.turn_phase == 1u);				/* the same pivot */
+	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(g_ctx.turn_action == (uint8_t)BARCODE_ACT_LEFT);
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2002): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2002): REFUSED (BRAKED ->"
+			    " TURNING), sent CMD_REJECTED\n"
+			    "[motion] state BRAKED -> TURNING, sent CMD_REJECTED\n")
+	      != NULL);
+	CHECK(strstr(g_log, "(raw 0x2002): accepted") == NULL);
+	g_nav_flag = 0u;
 	n = 0;
 	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
 		sim_tick();
@@ -2483,6 +2521,29 @@ scenario_cmd_junction_rejected (void)
 	sim_tick();
 	CHECK(strstr(g_log, "nav_cmd unknown (raw 0x7700): dropped (invalid)") != NULL);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+
+	/* A STOP in the same tick moves Line Following to Braked: the
+	   REFUSED line names both states, not "in LINE_FOLLOW" (review L1). */
+	sim_reset("nav_cmd: a JUNCTION in the tick STOP_SCAN brakes is refused");
+	g_mission = MS_RUNNING;
+	sim_ticks(5);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, 1u));	/* LEFT */
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED (LINE_FOLLOW"
+			    " -> BRAKED), sent CMD_REJECTED\n"
+			    "[motion] state LINE_FOLLOW -> BRAKED, sent CMD_REJECTED\n")
+	      != NULL);
+	CHECK(strstr(g_log, "REFUSED in") == NULL);
+	CHECK(strstr(g_log, "accepted") == NULL);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(3);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);	/* no turn later */
 }
 
 /* avoid_cmd_mbf: scan_task's packed REVERSE starts the reverse, as the
