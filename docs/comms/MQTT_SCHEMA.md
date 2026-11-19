@@ -145,6 +145,10 @@ for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23) and v5
 >   record was dropped there — every boot before the first connect, and every
 >   outage — **or** the laptop was not subscribed at the time. These drops show
 >   only on the car's console (`[mqtt] … drop=N`), not on the wire.
+> - **The first gap right after the laptop subscribes** → usually no loss at
+>   all: the broker first hands a new subscriber the **retained `D`** from the
+>   last `snap`, whose `s` is from that moment, so the first live record does
+>   not follow it (§7, "A retained `D` gives a false gap").
 >
 > It is almost never the network: records travel over one TCP connection,
 > which retransmits while it is up. The earlier wording ("`drp` unchanged
@@ -443,6 +447,36 @@ turn rate are why the record limit rose to 24).
 > not a live reading; 127 also stands for "unknown". `qd` counts records waiting
 > in the radio's outbound queue.
 
+> **A retained `D` gives a false gap when a viewer connects** *(documented
+> 19 Nov, register C6; the car is not changed)*. `D` goes out with the MQTT
+> retain flag (`lwip_utk_mqtt.c:464-465`) and takes its `s` from the same
+> counter as every other record (`comms_task.c` `send_snapshot()`). The broker
+> keeps the last `D`, across car reboots, until a newer `snap` replaces it, and
+> gives it to every new subscriber first. So a viewer that subscribes after any
+> `snap`, from this run or an earlier one:
+>
+> - shows that old `D` first. Its fields are the state at that `snap`, not now
+>   (its `up` gives it away). The viewer's mission and fault panel read only
+>   `S`, so they are not affected;
+> - prints `GAP: expected s=<the D's s + 1>` on the first live record
+>   (`telemetry_decode.py:194-196` flags any `s` that is not the last + 1), and
+>   its gap counter starts at 1. The viewer re-subscribes after each reconnect
+>   to the broker, so the same false gap can come back then.
+>
+> Reproduced off the car (19 Nov, sim: amqtt 0.12.2 broker, paho-mqtt 2.2.0,
+> this repo's `telemetry_decode.py`): a retained `D s=40`, then a rebooted
+> car's `H s=0`, printed `GAP: expected s=41`.
+>
+> **Before a run, clear it** with an empty retained message on the state
+> topic: `amqtt_pub --url mqtt://<broker>:<port> -t robocar/<id>/state -r -n`
+> (or `mosquitto_pub -h <broker> -p <port> -t robocar/<id>/state -r -n`, the
+> same thing, not tried here). The
+> broker then holds no `D`, and the next viewer starts with no gap (same sim,
+> with `amqtt_pub`). A viewer that is already subscribed gets the empty message
+> once and prints one `REJECT … empty payload` line (its reject counter goes
+> up by 1). Any `snap` during the run retains a new `D`. Otherwise, ignore the
+> first gap after connecting when it follows a `D` line.
+
 ---
 
 ## 8. Inbound — the commands the car accepts
@@ -515,6 +549,17 @@ car echoes** — observe delivery, do not assume it.
 - **The trade-off.** Text could be rejected for a non-digit; in binary every
   2-bit value is a valid action, so a wrong-but-right-length table is accepted.
   The `mv`/`mpv` echo and the publisher script are the defence.
+- **No version gate** *(documented 19 Nov, register C6; not built)*. The car
+  applies every map that passes the check, whatever its `mv` (the same, older
+  or newer than `mpv`), and in any mission state, Running included, only
+  waiting until no barcode is being read (`comms_task.c` `handle_map()`,
+  `barcode_task.c` `apply_maps()`). The prof's Week 6 feedback asked for a
+  rule: ignore a version equal to or older than `mpv`, and apply a new map
+  only when the mission is not Running, so a Wi-Fi drop mid-run cannot swap
+  the table. Today the retained `map` is applied again on every reconnect; as
+  long as nobody publishes a different map during a run, that changes
+  nothing (idempotent, above). **Rule until it is built: publish the map
+  before pressing start, and not during a run.**
 
 > **Still open (§12 items 7–9):** what each of the four action codes *means*
 > (Buddy 3 owns the 2-bit action), the A–Z alphabet assumption, and the

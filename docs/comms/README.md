@@ -189,6 +189,12 @@ What the `S` fields that are easy to misread really say. The full rows are in
 - **`bar` and `act` are the last accepted barcode.** A rejected read (E barcode
   `letter=none`), including the crossbar at every junction, leaves them as they
   were; the E barcode records show every read, good or rejected.
+- **The first `GAP` after the viewer connects is usually false.** The broker
+  first hands the viewer the retained `D` from the last `snap` (this run or an
+  earlier one), with an old `s` and old fields, so the first live record reads
+  as a gap. Clear it before the run with an empty retained message:
+  `amqtt_pub --url mqtt://<broker>:<port> -t robocar/<id>/state -r -n`
+  ([`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §7).
 
 > **Read this first, then stop here** unless a task sends you into one of the
 > detail documents above.
