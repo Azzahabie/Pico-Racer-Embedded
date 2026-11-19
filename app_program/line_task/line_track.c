@@ -111,7 +111,9 @@ static bool junction_step(line_track_t *trk, bool mark_black,
 		if (trk->clear_run < CANDIDATE_COUNT_MAX) {
 			trk->clear_run++;
 		}
-		if (trk->clear_run >= LINE_JUNCTION_REARM_SAMPLES) {
+		/* not while a junction is held: it has not fired yet */
+		if ((trk->clear_run >= LINE_JUNCTION_REARM_SAMPLES) &&
+		    !trk->junction_due) {
 			trk->junction_armed = true;
 		}
 	}

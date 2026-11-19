@@ -243,12 +243,15 @@ static void test_junction_gate(void)
 	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
 	CHECK(feed_gate(50u, true, true, true, false) == 0u);
 
-	/* due while waiting for the verdict: held, then fires, even on white */
+	/* due while waiting for the verdict: held, then fires, even on white;
+	   held past the rearm time, it fires once, and the next black within
+	   the rearm time after it is not another junction */
 	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
 	CHECK(feed_gate(LINE_JUNCTION_SAMPLES + 20u, true, false, false, true) == 0u);
-	CHECK(feed_gate(5u, false, false, false, true) == 0u);
+	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES + 5u, false, false, false, true) == 0u);
 	CHECK(feed_gate(1u, false, false, false, false) == 1u);
 	CHECK(!out.crossing);			/* GP7 already off it */
+	CHECK(feed_gate(LINE_JUNCTION_SAMPLES, true, false, true, false) == 0u);
 	CHECK(feed_gate(100u, false, false, false, false) == 0u);
 
 	/* a mission change drops a held junction */

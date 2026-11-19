@@ -252,6 +252,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	line_junction_gate_t	gate;
 	jarm_event_t	arm_event;
 	jarm_event_t	cancel_event;
+	uint32_t	judged;
+	uint32_t	cmd_now;
 	uint32_t	ds_now;
 	uint32_t	ds_prev = motion_ds_read();
 	int32_t		moved;
@@ -332,12 +334,17 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		}
 
 #if LINE_JUNCTION_RULE
-		/* the barcode-armed junction: travel from distance_state */
+		/* the barcode-armed junction: travel from distance_state.
+		   The judged word first, then the command: barcode_task (core
+		   0) stores them the other way round, so a read judged here
+		   always comes with its command (as function arguments the
+		   two loads would have no order) */
 		ds_now = motion_ds_read();
 		moved = motion_ds_delta_mm(ds_now, ds_prev);
 		ds_prev = ds_now;
-		arm_event = junction_arm_step(&g_arm, barcode_judged_word(),
-					      barcode_cmd_word(),
+		judged = barcode_judged_word();
+		cmd_now = barcode_cmd_word();
+		arm_event = junction_arm_step(&g_arm, judged, cmd_now,
 					      black ? true : false,
 					      (uint32_t)((moved < 0) ? -moved : moved),
 					      bar_capture_in_read(&g_cap), &gate);
