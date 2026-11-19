@@ -80,6 +80,8 @@ _Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
 #define REPORT_LINE_LEN   (192)
 #define MBF_HEADER_BYTES  (4u) /* per message, messagebuf.h */
 
+#define INIT_FAIL_POLL_MS  (100) /* set-up failed: mission check */
+
 #define CONSOLE_WAIT_POLLS (200) /* x 100 ms = 20 s max     */
 #define CONSOLE_WAIT_MS    (100)
 #define CONSOLE_ENUMERATED (2u)
@@ -3198,6 +3200,21 @@ motion_cycle (motion_ctx_t *p_ctx)
     }
 }
 
+/* A failed set-up (motion_start_up), for nav_ctrl_task and S.faults
+   (W7): MOTION_FAULT sends the mission to Fault.  No fault bit is just
+   for it, so both motion bits are set, motor and encoder. */
+static void
+init_fail_report (void)
+{
+    ID nav_id = nav_flag();
+
+    fault_set(FAULT_MOTOR_STALL | FAULT_ENCODER);
+    if (nav_id > 0)
+    {
+        (void)tk_set_flg(nav_id, NAV_FLG_MOTION_FAULT);
+    }
+}
+
 void
 motor_task (INT stacd, void *exinf)
 {
@@ -3215,11 +3232,19 @@ motor_task (INT stacd, void *exinf)
 
     if (ercd != E_OK)
     {
-        /* Without encoders or PWM nothing here is safe to run: stay
-           braked and do nothing else (the watchdog is not armed). */
+        /* Without encoders, PWM or the tick nothing here is safe to run:
+           stay braked and do nothing else (the watchdog is not armed).
+           Tell nav, or a mission would run with no motor and no fault
+           (W7): now, and again whenever the mission is Running (a fault
+           reset recalibrates and allows a start). */
+        init_fail_report();
         for (;;)
         {
-            (void)tk_slp_tsk(TMO_FEVR);
+            (void)tk_dly_tsk((TMO)INIT_FAIL_POLL_MS);
+            if (MS_RUNNING == nav_mission_state())
+            {
+                init_fail_report();
+            }
         }
     }
 

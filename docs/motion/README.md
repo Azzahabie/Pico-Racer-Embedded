@@ -107,7 +107,11 @@ and the 10 ms tick: `motor_task_start()` makes the tick before it starts
 motion_task, and if it cannot (for example `er=-34`, E_LIMIT: no free
 cyclic handler) motion_task still starts, brakes and reports init FAILED.
 The watchdog is then not armed, so the car does not reboot over and over
-(with no tick nothing would feed it).
+(with no tick nothing would feed it). nav is told at once: `[nav] MOTION
+fault`, the mission goes to FAULT, and S.faults shows both motion bits
+(`motor_stall|encoder`, which together mean the set-up failed). A fault
+reset (GP20) lets the mission start again, but motion raises the same
+fault within 100 ms of RUNNING, so a mission never runs with no motor.
 
 `last reset` says why the chip started:
 

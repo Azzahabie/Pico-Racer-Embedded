@@ -526,7 +526,13 @@ ER tk_loc_mtx(ID id, TMO tmo)
 	return E_OK;
 }
 ER tk_unl_mtx(ID id) { CHECK(id == SIM_MTXID); CHECK(g_mtx_held); g_mtx_held = 0; return E_OK; }
-ER tk_dly_tsk(TMO tmo) { (void)tmo; return E_OK; }
+/* A scenario's hook on every tk_dly_tsk (it may longjmp out). */
+static void		(*g_dly_hook)(TMO tmo);
+ER tk_dly_tsk(TMO tmo)
+{
+	if (g_dly_hook != NULL) { g_dly_hook(tmo); }
+	return E_OK;
+}
 ER tk_slp_tsk(TMO tmo) { (void)tmo; return E_OK; }
 INT tk_get_prc(void) { return 2; }
 
@@ -2832,6 +2838,59 @@ scenario_no_tick_not_armed (void)
 	CHECK(g_tick_ercd == E_OK);
 }
 
+/* motor_task() after a failed set-up: nav gets MOTION_FAULT and S.faults
+   both motion bits at once, nothing more while the mission is not
+   Running, and both again once a mission is started (W7). */
+static int	g_init_fail_polls;
+
+static void
+init_fail_dly_hook (TMO tmo)
+{
+	int n;
+
+	if (tmo != (TMO)INIT_FAIL_POLL_MS) { return; }	/* bench: button settle */
+	n = ++g_init_fail_polls;
+	if (n == 1) {
+		CHECK(g_nav_flag == NAV_FLG_MOTION_FAULT);	/* before any wait */
+		CHECK(g_fault_bits == (FAULT_MOTOR_STALL | FAULT_ENCODER));
+		g_nav_flag = 0u;			/* nav took it: FAULT */
+		g_fault_bits = 0u;
+	} else if (n == 2) {
+		CHECK(g_nav_flag == 0u);		/* Ready: not raised again */
+		g_mission = MS_RUNNING;			/* GP20 after a fault reset */
+	} else {
+		CHECK(g_nav_flag == NAV_FLG_MOTION_FAULT);
+		CHECK(g_fault_bits == (FAULT_MOTOR_STALL | FAULT_ENCODER));
+		longjmp(g_loop_jmp, 1);
+	}
+}
+
+static void
+scenario_init_fail_tells_nav (void)
+{
+	printf("-- init fails: nav gets MOTION_FAULT, again when a mission starts\n");
+	memset(&g_ctx, 0, sizeof g_ctx);
+	g_n_seen = 0; g_q_count = 0; g_log_len = 0; g_log[0] = '\0';
+	g_wdt_starts = 0;
+	g_nav_flag = 0u;
+	g_fault_bits = 0u;
+	g_mission = MS_READY;
+	g_fail_init = 1;
+	g_init_fail_polls = 0;
+	g_dly_hook = init_fail_dly_hook;
+	if (setjmp(g_loop_jmp) == 0) {
+		motor_task(0, NULL);
+	}
+	g_dly_hook = NULL;
+	g_fail_init = 0;
+	g_mission = MS_READY;
+	drain_reports();
+	CHECK(g_init_fail_polls == 3);
+	CHECK(g_wdt_starts == 0);
+	CHECK(strstr(g_log, "init FAILED") != NULL);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+}
+
 #if !MOTION_BENCH
 /* Integration build: GP20 is Buddy 5's start button, so motion must
    never configure or read it, and no press may drive a motor. */
@@ -3174,6 +3233,7 @@ main (int argc, char **argv)
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
 	scenario_no_tick_not_armed();
+	scenario_init_fail_tells_nav();
 	scenario_bench_off();
 	scenario_ds_straight();
 	scenario_ds_turn_and_reverse();
@@ -3229,6 +3289,7 @@ main (int argc, char **argv)
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
 	scenario_no_tick_not_armed();
+	scenario_init_fail_tells_nav();
 	scenario_button_held_at_boot();
 	scenario_open_loop();
 	scenario_dead_encoder();
