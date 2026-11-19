@@ -294,7 +294,7 @@ typedef struct
     uint32_t    tele_ticks;   /* ticks since the last E motion try   */
     int32_t     tele_pos_l;   /* positions at the last E motion sent */
     int32_t     tele_pos_r;
-    bool        b_tele_retry; /* the last E motion was refused       */
+    uint8_t     tele_refused; /* E motion sends refused in a row     */
     uint32_t    mission_counts; /* |change of pos_l + pos_r|, mission */
     int32_t     odo_prev;     /* pos_l + pos_r at the last tick      */
     uint8_t     mission_prev; /* mission_state_t at the last tick    */
@@ -2719,7 +2719,8 @@ fault_flg_bits (uint8_t faults)
     return bits;
 }
 
-/* A refused E motion is tried again this many ticks later (100 ms). */
+/* A refused E motion is tried again this many ticks later (100 ms), then
+   once a second while tele_mbf still refuses it. */
 #define TELE_RETRY_TICKS (10u)
 
 /* E motion (MQTT_SCHEMA.md 5, k = 0), on every statechart change and once
@@ -2728,10 +2729,11 @@ fault_flg_bits (uint8_t faults)
    tick's counts would truncate 6 counts to 4 cm/s instead of ~4.8), the
    distance travelled in this mission, the turn rate and the motion faults
    now.  The distance counts forward and backward travel alike, so it
-   never goes down: comms_task takes S.dst as an unsigned difference, and
-   a reverse would otherwise read as ~32 m.  comms_tele_send() polls, so
-   the tick never waits; a send tele_mbf refuses is counted (timing line,
-   NFR-10) and tried again TELE_RETRY_TICKS later with the values then. */
+   never goes down: comms_task takes S.dst as a modulo-32768 difference,
+   and a reverse would otherwise come out as about 32 m, which S.dst clamps
+   to 255 cm.  comms_tele_send() polls, so the tick never waits; a send
+   tele_mbf refuses is counted (timing line, NFR-10) and tried again with
+   the values then (TELE_RETRY_TICKS, then once a second). */
 static void
 tele_motion (motion_ctx_t *p_ctx)
 {
@@ -2749,13 +2751,16 @@ tele_motion (motion_ctx_t *p_ctx)
                       speed_r, (uint32_t)mission_mm, p_ctx->ds_turn,
                       (uint32_t)fault_flg_bits(p_ctx->faults), 0u)))
     {
-        p_ctx->b_tele_retry = false;
+        p_ctx->tele_refused = 0u;
         p_ctx->tele_pos_l   = p_ctx->pos_l;
         p_ctx->tele_pos_r   = p_ctx->pos_r;
     }
     else
     {
-        p_ctx->b_tele_retry = true;
+        if (p_ctx->tele_refused < UINT8_MAX)
+        {
+            p_ctx->tele_refused++;
+        }
         p_ctx->tele_dropped++;
     }
     p_ctx->tele_ticks = 0u;
@@ -2769,8 +2774,11 @@ tele_motion (motion_ctx_t *p_ctx)
    jump would read as a fake movement.  The distance motion reports in
    telemetry (mission_counts) starts again at a new mission (Section 4:
    Ready -> Running; Paused -> Running is a resume and keeps it).  nav
-   enters Running only from those two, so any other way in is a new
-   mission too: a Ready shorter than one tick is not missed. */
+   enters Running only from those two, so any other way in (Finished,
+   Fault or Calibrating seen last) is a new mission too, even when Ready
+   lasted less than a tick.  Paused -> Finished -> Ready -> Running inside
+   one tick (three MQTT commands in one comms window) still reads as a
+   resume; catching it would need a mission number from nav. */
 static void
 tick_statechart (motion_ctx_t *p_ctx)
 {
@@ -2845,7 +2853,7 @@ tick_statechart (motion_ctx_t *p_ctx)
 /* After tick_distance: add this tick's travel to the mission distance
    (both wheels' counts, forward or back), then send the E motion record
    once a second while a wheel moves (plan 1.8), or again after a refused
-   send.  Between state changes this is what lets the laptop, and
+   send (100 ms, then once a second).  Between state changes this is what lets the laptop, and
    comms_task's S.dst (cm since the last motion change), see the distance
    grow.  Nothing while the car stands still. */
 static void
@@ -2857,7 +2865,10 @@ tick_telemetry (motion_ctx_t *p_ctx)
     p_ctx->odo_prev = sum;
 
     p_ctx->tele_ticks++;
-    if ((p_ctx->b_tele_retry && (p_ctx->tele_ticks >= TELE_RETRY_TICKS))
+    if (((0u != p_ctx->tele_refused)
+         && (p_ctx->tele_ticks >= ((1u == p_ctx->tele_refused)
+                                       ? TELE_RETRY_TICKS
+                                       : (uint32_t)TICKS_PER_S)))
         || ((p_ctx->tele_ticks >= (uint32_t)TICKS_PER_S)
             && ((p_ctx->pos_l != p_ctx->tele_pos_l)
                 || (p_ctx->pos_r != p_ctx->tele_pos_r))))

@@ -292,7 +292,9 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 ## 5. Record `E` — the edge event (8–13 bytes, per kind)
 
 *Rewritten for schema v3 (2026-10-22).* Published on the **same** topic as `S`
-the instant something happens. It is the audit trail; a lost `E` is a real gap
+the instant something happens. (Exception: motion also sends a same-state `E`
+once a second while a wheel moves, §5.1 `dist_mm`, so `S.dst` grows between
+changes.) It is the audit trail; a lost `E` is a real gap
 in the run map. Header (§3) with `t = 1`, then the **event body**:
 
 | Bits | Field | Meaning |

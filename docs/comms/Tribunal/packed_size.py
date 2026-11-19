@@ -60,12 +60,12 @@ E_BODIES = {
     0: ("motion", "Buddy 2", [
         KIND,
         ("state",     "motion state",        "0..15",                 4, ""),
-        ("speed_l",   "left wheel speed",    "-128..127 cm/s",        8, "PLACEHOLDER; offset-encoded, stored + 128"),
-        ("speed_r",   "right wheel speed",   "-128..127 cm/s",        8, "PLACEHOLDER; offset-encoded, stored + 128"),
+        ("speed_l",   "left wheel speed",    "-128..127 cm/s",        8, "offset-encoded, stored + 128"),
+        ("speed_r",   "right wheel speed",   "-128..127 cm/s",        8, "offset-encoded, stored + 128"),
         ("dist_mm",   "distance travelled",  "0..32767 mm, wraps",   15, "wrapping counter; take differences"),
         ("turn_rate", "turn rate",           "-512..511 deg/s",      10, "offset-encoded, stored + 512"),
         ("fault",     "fault at the moment", "bit 0 stall, bit 1 encoder", 2, "the S bitmask is the current state"),
-        ("ovf",       "a field was clamped", "0..1",                  1, "PLACEHOLDER"),
+        ("ovf",       "a field was clamped", "0..1",                  1, ""),
     ]),
     1: ("line", "Buddy 3", [
         KIND,

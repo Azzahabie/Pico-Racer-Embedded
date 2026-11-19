@@ -44,9 +44,9 @@ Building both from one commit means RAM, message sizes and timing compare
 like for like (PostTri1 Version C row 8 promises the stop-time test on both
 builds).
 
-Today the switch covers the encoder counts and `distance_state`. Each
-later feature (commands, the motion state) is written with both forms
-under the same switch; see "To be added".
+In the final code the switch covers only the encoder counts and
+`distance_state`. The commands, the statechart byte and the E motion
+record were built without a Week 6 form and are the same in both builds.
 
 ## Method
 
@@ -73,8 +73,9 @@ objects. Both task stacks and the report queue are static arrays
 (`TA_USERBUF`), so they are inside that number; nothing of motion's comes
 from the kernel heap. Kernel control blocks sit in fixed tables sized in
 `config/config.h`, so creating or dropping a flag, mutex or buffer changes
-no byte in the map: motion uses 2 task, 1 flag, 1 message buffer and
-1 cyclic handler slots. Buddy 5's `gpio_irq.o` is not counted. The whole
+no byte in the map: motion uses 2 task, 1 flag, 3 message buffer
+(report queue, nav_cmd_mbf, avoid_cmd_mbf) and 1 cyclic handler slots,
+plus 1 mutex in the `MOTION_PACKED` 0 build only. Buddy 5's `gpio_irq.o` is not counted. The whole
 image is shown as well, but it can move by linker alignment.
 
 **Message sizes.** A message buffer stores each message as a 4-byte
@@ -82,7 +83,7 @@ header plus the message rounded up to 4 bytes
 (`kernel/tkernel/messagebuf.h`), so the RAM a message costs is not its
 `sizeof`. Both are reported.
 
-## Results now (M, commit 292860e, car profile)
+## Results, 24 Oct (M, commit 292860e, car profile)
 
 Raw output: [measure_292860e.txt](measure_292860e.txt).
 
@@ -120,7 +121,7 @@ The print record is motion's console channel, present in every build
 including the integration image, and the same in both settings, so it is
 not a "before" for anything. With its 4096 B stack it costs 4544 B.
 
-## To be added as features land
+## October plan (all built since; final forms in representation.md)
 
 | Item (plan step) | Switched? | Expected before -> after | Owner |
 |---|---|---|---|
@@ -130,11 +131,11 @@ not a "before" for anything. With its 4096 B stack it costs 4544 B.
 | Telemetry sender (1.8) | no (Buddy 1's format) | Buddy 1's v1 record -> 7 B event | Buddy 1, motion supplies fields |
 | Shared fault bits (1.11, 2.4) | no | event-flag bits in both | Buddy 5's flag, motion sets its bits |
 
-Each one adds its Week 6 form under `MOTION_PACKED`, a line in `sizes.c`
-where it is a message, and a row update in
-[representation.md](representation.md).
+In the end only `distance_state` got a Week 6 form; the commands, the
+statechart byte, the telemetry sender and the fault bits were built
+packed only (see [representation.md](representation.md)).
 
-## Needs the car
+## Needs the car (October plan; since 27 Oct the both-builds runs are optional)
 
 - **NFR-11 timing on both builds:** run the bench test on
   `motion_packed0.uf2` and `motion_packed1.uf2` from the script (same

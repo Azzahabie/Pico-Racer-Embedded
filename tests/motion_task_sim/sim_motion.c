@@ -1355,6 +1355,15 @@ scenario_telemetry (void)
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
 	sim_ticks(300);
 	CHECK(g_tele_count == 9);			/* once */
+	g_tele_full = 1;		/* still full: 100 ms, then once a second */
+	for (i = 0; i < 60; i++) { ds_move_tick(4.0, 4.0); }
+	CHECK(g_ctx.tele_dropped == 3u);	/* the send and one fast retry */
+	g_tele_full = 0;
+	sim_ticks(40);
+	CHECK(g_tele_count == 9);		/* backed off, not every 100 ms */
+	sim_ticks(30);
+	CHECK(g_tele_count == 10);		/* a second after the retry */
+	CHECK(g_ctx.tele_dropped == 3u);
 
 	g_mission = MS_READY;				/* reset button */
 	sim_tick();

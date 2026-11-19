@@ -3,7 +3,7 @@
 `motion_task` owns the two motors and the two wheel encoders: PWM on the
 H-bridge, both encoders, the 10 ms tick on core 1, the FR-30 stall check,
 the hardware watchdog, the emergency stop (STOP_SCAN and STOP_IMU),
-`distance_state` for `imu_task`, statechart 6.2 and what each state
+`distance_state` for `imu_task` and `scan_task`, statechart 6.2 and what each state
 drives (line following, junction turns, reverse, bypass, line search),
 the commands from `nav_ctrl_task` and `scan_task`, and the E motion
 telemetry record. This guide covers the bench bring-up and motion's own
@@ -227,8 +227,8 @@ well below 30000 us; record the worst one, with Wi-Fi on too once motion
 runs in the Wi-Fi build.
 
 `E motion sends refused` counts the E motion sends (one per statechart
-change, one a second while a wheel moves, and a retry 100 ms after each
-refusal) that `tele_mbf` had no room for since start-up. The send never
+change, one a second while a wheel moves, and retries after a refusal:
+100 ms later, then once a second) that `tele_mbf` had no room for since start-up. The send never
 waits, so a full queue costs a send, never a tick. Without MQTT nothing
 empties the queue, so in a non-MQTT build it climbs once the queue fills;
 only the MQTT car build's number is evidence.
@@ -318,13 +318,17 @@ Decided here, where the design is silent:
   The mission distance (Section 4: reset on a new mission, kept on a
   resume) is what the E motion record carries as `dist_mm`: the distance
   travelled since the mission began, forward and back alike
-  (`mission_counts`), so it never goes down. comms_task takes `S.dst`
-  (cm since the last motion change) as an unsigned difference, so a
-  falling distance would read as about 32 m. The record goes out on
+  (`mission_counts`), so it never goes down. comms_task works out
+  `S.dst` (cm since the last motion change) as a modulo-32768
+  difference, so a falling distance would come out as about 32 m, which
+  `S.dst` clamps to 255 cm. The record goes out on
   every state change and once a second while a wheel moves, so `S.dst`
   grows between changes. nav enters Running only from Ready (new
   mission) or Paused (resume), so motion treats any other way into
-  Running as a new mission too.
+  Running as a new mission too. A Paused -> Finished -> Ready -> Running
+  burst inside one 10 ms tick (three MQTT commands in one comms window)
+  still reads as a resume; catching it would need a mission number from
+  nav.
 
 Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 
