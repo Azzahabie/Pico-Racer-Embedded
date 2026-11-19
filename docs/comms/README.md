@@ -203,10 +203,12 @@ What the `S` fields that are easy to misread really say. The full rows are in
   `S`. So `lin` is current unless that record was dropped (`drp` rises).
   - `lin` = 1 (lost): GP26 and GP27 have seen no confirmed black for 1500 ms
     (`LINE_LOST_MS`), or a line sensor is faulty. Lost wins over crossing.
-  - `lin` = 2 (crossing): **any** GP7 black of 80 ms or more
-    (`LINE_JUNCTION_SAMPLES`, 1 ms samples in a row). A crossbar gives it, but
-    so does GP7 sweeping along the line when the car is angled to it, or a
-    barcode bar: at base 6 (47.6 mm/s, C) 80 ms is only 3.8 mm of black. It is
+  - `lin` = 2 (crossing): **any** GP7 black of at least
+    `LINE_JUNCTION_SAMPLES` 1 ms samples in a row (`common/line_config.h`:
+    80 on master, 280 proposed). A crossbar gives it, but so does GP7 sweeping
+    along the line when the car is angled to it, or a barcode bar: at base 6
+    (47.6 mm/s, C) 80 ms is only 3.8 mm of black (a 9 mm bar counts), 280 ms is
+    13.3 mm. It is
     not proof of a junction event and not proof of a turn; for a turn look for
     E motion state 2 (TURNING).
 - **`dev` is not live.** It is the line error carried by that same E line

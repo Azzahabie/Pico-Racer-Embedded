@@ -249,7 +249,7 @@ Commit hashes are on `integration`; see section 11 for the full list.
 | D7 | MQTT back-off was 2 → 15 s; the design says fixed 2-5 s | **Fixed:** capped at 5 s |
 | D8 | comms paced by timeouts, not a 1 s cyclic handler | Kept (H spacing 0.989-1.012 s) |
 | D9 | MQTT mission commands (start/pause/resume/reset/finish) | Kept |
-| D10 | **No end-of-course trigger**: Finished only by command | **Settled 19 Nov (the prof):** the run ends when the car is lifted and inverted. The IMU fault (`imu_task.c` `raise_fault()`: the tilt check, or in hand 1.2 s with the wheels still) sets STOP_IMU, which brakes, and nav goes to FAULT (`nav_ctrl.c`, 1 × 800 ms beep). So a good run ends with `mis` = FAULT and `faults` = imu, not FINISHED; Finished stays reachable only by the MQTT `finish` command. On `master` a car resting upside down reads as level (see the 19 Nov note at the top) |
+| D10 | **No end-of-course trigger**: Finished only by command | **Settled 19 Nov (the prof):** the run ends when the car is lifted and inverted. The IMU fault (`imu_task.c` `raise_fault()`: the tilt check, or in hand 1.2 s with the wheels still) sets STOP_IMU, which brakes, and nav goes to FAULT (`nav_ctrl.c`, 1 × 800 ms beep). So a good run ends with `mis` = FAULT and `faults` = imu, not FINISHED; Finished stays reachable only by the MQTT `finish` command. On `master` a car resting upside down reads as level until the upside-down fix (Buddy 4's pull request) is merged |
 | D11 | Line sensors both inside the line; junction from GP7 only | Kept; **GP7 must sit beside the line** |
 | D12 | C_pass = pivot sweep + margin (218 mm), not half width + margin | Decided 1 Nov |
 | D13 | While bypassing, re-plan below D_rev (not D_stop) while still or pivoting | Decided 1 Nov |
@@ -285,7 +285,7 @@ Commit hashes are on `integration`; see section 11 for the full list.
    barcodes cannot be tested until it is replaced and mounted beside the line.
 2. **End of the run** (D10): settled 19 Nov, lift and invert → IMU fault → FAULT
    (section 6). The pick-up fault ran on the car on 4 Nov; the car held upside
-   down has not (see the 19 Nov note at the top).
+   down has not (it needs the upside-down fix, Buddy 4's pull request).
 3. **NFR-07** (bypass ≤ 7 s) cannot be met at these speeds; report it as a
    measured shortfall.
 4. **NFR-11** tick jitter while driving (worst 11.5 ms); cause not found.
