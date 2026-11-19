@@ -10,8 +10,9 @@
  * Calibration: a GP20 fault reset waits NAV_CAL_SETTLE_MS before CAL_REQ;
  * boot and an MQTT reset do not; an MQTT command sent while calibrating is
  * dropped, not applied at Ready.
- * Built twice: the real image, and a TEST image (-DNAV_TEST_JUNCTION_ACTION=1)
- * that must say so at boot. */
+ * Built three times: the real image, a TEST image (-DNAV_TEST_JUNCTION_ACTION=1)
+ * that must say so at boot, and -DNAV_KEEP_CMD_ON_REFUSAL=0, where a refused
+ * junction uses the command up (the design rule). */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -209,9 +210,11 @@ static bool sent_junction(uint32_t action)
 
 /* ---- scenarios ------------------------------------------------------- */
 
-/* The bug: a junction motion refuses (here during a bypass) used to use up
-   the barcode command, so the real junction after it went straight on. */
-static void refused_keeps_command(void)
+/* NAV_KEEP_CMD_ON_REFUSAL 1: a junction motion refuses (here during a
+   bypass) used to use up the barcode command, so the real junction after
+   it went straight on; now it keeps it.  0, the design rule: the refused
+   junction uses it up, and the next junction goes straight on. */
+static void refused_junction(void)
 {
 	reset();
 	bar_store(11u, 1u, 1u);			/* 'L', LEFT, seq 1 */
@@ -219,6 +222,7 @@ static void refused_keeps_command(void)
 	CHECK(1 == g_sent_n);
 	CHECK(sent_junction(1u));
 	on_motion_reply(NAV_FLG_CMD_REJECTED);	/* motion was in BYPASS */
+#if NAV_KEEP_CMD_ON_REFUSAL
 	CHECK(NULL != strstr(g_log, "CMD_REJECTED, barcode command kept for the next junction"));
 	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
 	on_junction();				/* the real junction */
@@ -228,6 +232,13 @@ static void refused_keeps_command(void)
 	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
 	on_junction();				/* the next junction: no command */
 	CHECK(2 == g_sent_n);
+#else
+	CHECK(NULL != strstr(g_log, "[nav] motion: CMD_REJECTED\n"));
+	CHECK(NULL == strstr(g_log, "kept"));
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+	on_junction();				/* the real junction: no command */
+	CHECK(1 == g_sent_n);
+#endif
 	CHECK(NULL != strstr(g_log, "no barcode command: straight on"));
 }
 
@@ -257,7 +268,8 @@ static void newer_command_waits(void)
 }
 
 /* A junction while a move is open is ignored; a full buffer sends nothing
-   and keeps the command; a mission change drops the open move. */
+   and keeps the command (uses it with NAV_KEEP_CMD_ON_REFUSAL 0); a
+   mission change drops the open move. */
 static void edges(void)
 {
 	reset();
@@ -273,10 +285,16 @@ static void edges(void)
 	on_junction();
 	CHECK(0 == g_sent_n);
 	CHECK(!g_move_open);
-	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
 	g_mbf_full = 0;
+#if NAV_KEEP_CMD_ON_REFUSAL
+	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
 	on_junction();
 	CHECK(sent_junction(1u));
+#else
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));	/* this junction's */
+	on_junction();
+	CHECK(0 == g_sent_n);
+#endif
 
 	reset();
 	bar_store(11u, 1u, 1u);
@@ -284,7 +302,11 @@ static void edges(void)
 	set_state(MS_FINISHED);			/* the open move ends with it */
 	CHECK(!g_move_open && !g_cmd_sent);
 	on_motion_reply(NAV_FLG_MOVE_DONE);	/* a late reply uses nothing */
+#if NAV_KEEP_CMD_ON_REFUSAL
 	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
+#else
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));	/* used when sent */
+#endif
 
 	reset();
 	g_mission = (uint32_t)MS_PAUSED;
@@ -318,8 +340,12 @@ static void pause_mid_turn_uses_command(void)
 	g_pins_low = 0U;
 	CHECK(MS_PAUSED == nav_mission_state());
 	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+#if NAV_KEEP_CMD_ON_REFUSAL
 	CHECK(log_before("paused during a barcode turn: command used",
 			 "mission RUNNING -> PAUSED"));
+#else
+	CHECK(NULL == strstr(g_log, "paused during a barcode turn"));	/* used when sent */
+#endif
 	on_motion_reply(NAV_FLG_CMD_REJECTED);	/* motion dropped the turn */
 	CHECK(NULL == strstr(g_log, "kept"));
 	CHECK(!g_move_open);
@@ -486,7 +512,7 @@ int main(void)
 	       NAV_TEST_JUNCTION_ACTION, g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 #endif
-	refused_keeps_command();
+	refused_junction();
 	done_uses_command();
 	newer_command_waits();
 	edges();
@@ -495,6 +521,11 @@ int main(void)
 	reset_and_boot_no_wait();
 	cmd_during_cal_dropped();
 	test_image_marker();
+#if NAV_KEEP_CMD_ON_REFUSAL
 	printf("nav junctions and calibration: %d checks, %d failures\n", g_checks, g_failures);
+#else
+	printf("nav NAV_KEEP_CMD_ON_REFUSAL 0 image (a refused junction uses the command): "
+	       "%d checks, %d failures\n", g_checks, g_failures);
+#endif
 	return (0 == g_failures) ? 0 : 1;
 }

@@ -29,7 +29,8 @@
  *	no command (straight on).  motion_task turns and answers MOVE_DONE, or
  *	CMD_REJECTED when it is not following the line (a bypass, a search);
  *	the stored command counts as used only on MOVE_DONE, or when the
- *	mission pauses during the turn.
+ *	mission pauses during the turn (NAV_KEEP_CMD_ON_REFUSAL 1, default).
+ *	With 0 it is used up at the junction where it is sent, as before.
  *
  *	End of the run: the demo ends by lifting and inverting the car
  *	(the prof, 19 Nov), which imu_task turns into an IMU fault.
@@ -69,6 +70,22 @@
    never set it for the demo build.  A TEST image says so at boot. */
 #ifndef NAV_TEST_JUNCTION_ACTION
 #define NAV_TEST_JUNCTION_ACTION	(-1)
+#endif
+/* What a refused JUNCTION (CMD_REJECTED) does to the barcode command.
+   1, the default: the command is kept for the next junction.  During a
+   bypass or a line search GP7 crosses lines that read as junctions (the 4
+   Nov logs show 0-7 per bypass, M: trials_batch1/2, fr20_bypass_rejoin),
+   motion refuses each one, and the first of them used to lose the command
+   before the real junction after the box.  This goes against the design
+   rule "a junction command is only valid at the junction where it was
+   issued" (Week 6 review, section 8.2): with the box just past a
+   crossroad, the crossroad is crossed during the bypass, refused, and the
+   command then runs at the next junction, the wrong place.
+   0: the command is used up at the junction where it is sent, whatever
+   motion answers and also when nav_cmd_mbf is full (the rule, and the
+   behaviour before 19 Nov).  The owner chooses. */
+#ifndef NAV_KEEP_CMD_ON_REFUSAL
+#define NAV_KEEP_CMD_ON_REFUSAL	1
 #endif
 #define BTN_LOCKOUT_MS		300	/* ignore bounces after a press */
 #define CAL_TIMEOUT_MS		10000	/* [TBD with Buddies 3 and 4] */
@@ -494,8 +511,9 @@ LOCAL void on_mission_cmd(void)
 
 /* NAV_FLG_JUNCTION from ir_sense_task (FR-08): the barcode command stored
    since the last junction goes to motion_task as NAV_CMD_JUNCTION.  It is
-   used up only when motion turns (on_motion_reply).  With none stored, no
-   command: motion_task follows the line straight on. */
+   used up only when motion turns (on_motion_reply), or here with
+   NAV_KEEP_CMD_ON_REFUSAL 0.  With none stored, no command: motion_task
+   follows the line straight on. */
 LOCAL void on_junction(void)
 {
 	uint32_t	cmd = barcode_cmd_word();	/* one aligned load */
@@ -515,7 +533,11 @@ LOCAL void on_junction(void)
 		return;
 	}
 	if(barcode_cmd_pending(cmd, g_cmd_taken)) {
+#if NAV_KEEP_CMD_ON_REFUSAL
 		b_barcode = true;		/* used once motion has turned */
+#else
+		g_cmd_taken = barcode_cmd_seq(cmd);	/* this junction used it */
+#endif
 	} else {
 #if NAV_TEST_JUNCTION_ACTION >= 0
 		action = (uint32_t)NAV_TEST_JUNCTION_ACTION;
@@ -547,7 +569,8 @@ LOCAL void on_junction(void)
 }
 
 /* MOVE_DONE or CMD_REJECTED for the open JUNCTION.  The barcode command it
-   carried is used up only when motion turned (MOVE_DONE).  motion_task
+   carried is used up only when motion turned (MOVE_DONE; with
+   NAV_KEEP_CMD_ON_REFUSAL 0 it was used when sent).  motion_task
    refuses a JUNCTION outside Line Following, and during a bypass or a
    search GP7 crosses lines that read as junctions: a refusal there used to
    lose the command before the real junction.  Now it waits for the next
