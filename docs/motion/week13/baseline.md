@@ -1,9 +1,34 @@
-# Week 13 evidence 2 and 3: motion's RAM and message sizes, before and after
+# Week 13 evidence 2 and 3: motion's RAM and message sizes
 
 The changed requirement (Tribunal 1) asks for RAM and message sizes before
 and after the minimum-bit change, and evidence that timing did not get
 unacceptably worse. This file is motion's (Buddy 2's) share. Every number
 says how it was obtained: M = measured, C = calculated, E = estimated.
+
+## Final implementation (what Week 13 needs since 27 Oct)
+
+The prof's 27 Oct announcement: comparing with the original design is no
+longer required; give evidence for the final implementation only. The
+final numbers, measured with `tests/week13/measure.sh` on commit a817433
+(car profile, `MOTION_PACKED` 1, 0 warnings;
+[measure_a817433.txt](measure_a817433.txt)):
+
+| What | Final | How |
+|---|---|---|
+| Motion static RAM | 9345 B (36 B .data + 9309 B .bss), of which 8192 B are the two task stacks and 544 B the motion_task context g_ctx | M, `arm-none-eabi-size` and `nm` |
+| Whole image static RAM | 240 B .data + 32084 B .bss | M, `arm-none-eabi-size -A` |
+| Command buffers | nav_cmd_mbf 32 B (room 4), avoid_cmd_mbf 16 B (room 2) | M, nm |
+| E motion record | 7 B payload, 12 B in tele_mbf, 13 B record E | M, compiler (`tests/week13/sizes.c`) |
+| Avoid command | 2 B payload (packed uint16) | C, messages.h |
+| Nav command | 2 B payload (2 raw bytes, INTEGRATION.md D4) | C, nav_ctrl.h |
+
+Per-field detail: [representation.md](representation.md). Re-run
+measure.sh on the demo commit. Timing evidence (correctness and timing,
+item 4) comes from the 5 s timing line on the car, see
+`docs/motion/README.md` "Timing evidence".
+
+The rest of this file is the before/after method and numbers from October,
+kept as history.
 
 ## Before and after, on the same code
 
@@ -84,7 +109,7 @@ stacks (C: 2 x (4096 B stack + 128 B system stack + 8 B heap block
 header), kernel/tkernel/task_manage.c and memory.c); the map could not
 show those.
 
-**Messages today.** None of motion's Week 13 messages exist yet.
+**Messages (October; the E motion record has existed since 754fdf7, 1 Nov).**
 
 | Message | Before | After |
 |---|---|---|
