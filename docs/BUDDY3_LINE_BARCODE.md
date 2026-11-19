@@ -75,12 +75,29 @@ Neither task drives the motors.
 
   | Base | Speed (C) | 9 mm wide bar (C) | 18 mm crossbar (C) | With J_n 280 |
   |---|---|---|---|---|
-  | 4 | 31.7 mm/s | 284 ms | 567 ms | wide bars fire junctions |
-  | **6 (now)** | **47.6 mm/s** | **189 ms** | **378 ms** | no bar fires, the crossbar does, for bars and crossbar ±2 mm off print (host test, sim) |
-  | 8 | 63.5 mm/s | 142 ms | 284 ms | marginal: a crossbar seen 1 mm narrow is missed (host test) |
+  | 4 | 31.7 mm/s | 284 ms | 567 ms | wide bars fire junctions (host test) |
+  | **6 (now)** | **47.6 mm/s** | **189 ms** | **378 ms** | at a constant GP7 speed: no bar fires, the crossbar does, for bars and crossbar ±2 mm off print (host test, sim) |
+  | 8 | 63.5 mm/s | 142 ms | 284 ms | no bar fires, but a crossbar seen 1 mm or more narrow is missed (host test) |
 
   Speed: base × 100 counts/s × π × 64 mm / 2535 counts (C);
   INTEGRATION.md S4 gives about 4.7 cm/s at base 6 from lap times.
+  - **The margins hold only at a constant GP7 speed near the base speed.**
+    With J_n 280, a 9 mm bar fires a junction if GP7 is slower than about
+    32 mm/s, and an 18 mm crossbar is missed if GP7 is faster than about
+    64 mm/s (C). Steering moves GP7's speed. On 4 Nov the car turned at
+    41-49 deg/s during line following
+    (`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`, lines 2554 and
+    2562). If GP7 sits 45 mm to the side of the centreline (assumed; the
+    real mount is not measured), that moves GP7's speed by about ±32 mm/s
+    at 41 deg/s and ±38 mm/s at 49 deg/s (C), past both limits. So a
+    weaving car can miss a crossbar or fire on a wide bar. The host test
+    and the sim both feed a constant speed.
+  - **The gate for J_n 280** is the car session C1 count of junction lines
+    per sheet and per crossbar, with the car weaving as it really does.
+  - **J_n must move with `MOTION_LF_BASE`.** With J_n 280 the host test
+    passes at base 5 to 7 and fails at base 4 or below and 8 or above.
+    Nothing in the firmware checks it: an image built with
+    `-DMOTION_LF_BASE=4` or `=8` quietly keeps 280.
   - The old J_n 80 (sized for about 12 cm/s) was 3.8 mm of black at base 6,
     so every 9 mm bar fired a junction: 6 per sheet (sim). motion accepts a
     JUNCTION in LINE_FOLLOW, so a TEST image, or a command still pending

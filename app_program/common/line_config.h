@@ -90,19 +90,30 @@
    instead: a crossbar is one black run far longer than any barcode bar.
    J_n: GP7 black this many samples running = one junction.  It must be
    above the widest barcode bar and below the crossbar at the speed GP7
-   passes them, which is motion's line-following base (MOTION_LF_BASE,
-   motion_cfg.h), so J_n is tied to that base: change both together.
+   passes them, taken as motion's line-following base (MOTION_LF_BASE,
+   motion_cfg.h), so J_n must move with MOTION_LF_BASE: change both
+   together.  Nothing in the firmware checks this; only the host test
+   does, with the default headers.
    Base 6 is 47.6 mm/s (C: 6 counts a 10 ms tick, 64 mm wheel, 2535 counts
    a turn; INTEGRATION.md S4 gives ~4.7 cm/s from lap times).  There the
    course's 9 mm wide bar is 189 ms and the 18 mm crossbar 378 ms (C), and
    280 sits about midway.  The old 80 was sized for ~12 cm/s: at base 6 it
    is 3.8 mm of black, so every wide bar fired a junction (6 per sheet,
-   sim) that motion accepts in LINE_FOLLOW.  280: 0 events per sheet for
-   bars -2..+2 mm off their printed width at base 6 and 8, crossbar still
-   fires (sim).  At base 8 the crossbar is 284 ms (C), marginal; at base 4
-   a wide bar is 284 ms (C) and fires.  Rearm: GP7 white this many samples
-   running first.  PROVISIONAL until the junction lines per sheet are
-   counted on the car; -DLINE_JUNCTION_SAMPLES=80 builds the old value. */
+   sim) that motion accepts in LINE_FOLLOW.
+   280 at a constant GP7 speed, bars and crossbar -2..+2 mm off their
+   printed width: at base 6 no bar fires and every crossbar does (sim,
+   host test).  At base 8 no bar fires either, but the crossbar is only
+   284 ms (C), so one seen 1 mm or more narrow is missed; at base 4 a wide
+   bar is 284 ms (C) and fires (host test).
+   These margins hold only while GP7 moves at about the base speed: a 9 mm
+   bar fires if GP7 is slower than ~32 mm/s, an 18 mm crossbar is missed
+   if it is faster than ~64 mm/s (C).  Steering moves GP7's speed: at the
+   41-49 deg/s logged in line following (4 Nov), by about +/-32 mm/s
+   (+/-38 at 49 deg/s) if GP7 is 45 mm to the side of the centreline (C;
+   the 45 mm is assumed, the mount is not measured).  So the gate for 280
+   is the car session C1 count of junction lines per sheet and per
+   crossbar.  Rearm: GP7 white this many samples running first.
+   PROVISIONAL; -DLINE_JUNCTION_SAMPLES=80 builds the old value. */
 #ifndef LINE_JUNCTION_SAMPLES
 #define LINE_JUNCTION_SAMPLES                     (280u)
 #endif

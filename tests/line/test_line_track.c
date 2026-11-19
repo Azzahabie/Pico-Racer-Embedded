@@ -162,9 +162,13 @@ static unsigned ms_for_mm(int mm)
    141 mm (3 symbols, 15 bars), at least 12 mm before the 18 mm crossbar.
    GP7 may see the bars up to 2 mm wider or narrower than printed (the
    spaces the other way).  No sheet bar may be a junction or a crossing,
-   every crossbar exactly one, and it rearms for the next.  This fails if
-   MOTION_LF_BASE moves and J_n does not (base 4: a 9 mm bar is 284 ms;
-   the old J_n 80 fired on every wide bar at base 6). */
+   every crossbar exactly one, and it rearms for the next.  GP7 moves at a
+   constant MOTION_LF_BASE speed here; on the car steering changes GP7's
+   speed (line_config.h), which this test does not model.  With J_n 280 it
+   passes at base 5 to 7 and fails at base 4 or below (a 9 mm bar fires:
+   284 ms at base 4) and at base 8 or above (a crossbar seen 1 mm narrow
+   is missed), so J_n must move with MOTION_LF_BASE.  The old J_n 80 fails
+   at base 6: it fired on every wide bar. */
 static void test_junction_course(void)
 {
 	int err;
