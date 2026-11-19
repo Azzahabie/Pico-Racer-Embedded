@@ -148,7 +148,7 @@ the course photos (19 Nov):
 ## Console
 
 ```
-[line] raw ADC GP26=312 GP27=298 norm 41/38 err=0 | barcode DO GP7=0 (white)
+[line] raw ADC GP26=312 GP27=298 norm 41/38 err=0 | barcode DO GP7=0 (white) | missed 0 ticks (0 since boot)
 [line] calibration OK: GP26 ok (white 300, rise 2500) GP27 ok (...)
 [barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
 [barcode] REJECTED: malformed (bad_length)
@@ -157,6 +157,17 @@ the course photos (19 Nov):
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
 2 s. Nothing prints while a barcode is under the car.
+
+**Missed ticks (NFR-11, line sampling every 1 ms ± 0.5 ms).** The heartbeat
+ends with the 1 ms ticks `ir_sense_task` did not serve on time: since the
+previous heartbeat line, and since boot. A tick is missed when the task
+wakes a whole tick or more late (`wait_tick`, the wake-ups still queued).
+That tick gets no line sample of its own; the barcode capture still counts
+it as time. 0 on every line means no sample came a whole tick late. It
+cannot show jitter under 1 ms. Take NFR-11 evidence from the plain car
+image: print-heavy images (`LINE_GP7_DIAG`, commissioning mode) add console
+work inside the 1 ms loop, and the netlog image measured worse 10 ms
+windows for the IMU (docs/imu/terrain_analysis_report.md, NFR-11 rows).
 
 ## Tests
 

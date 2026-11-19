@@ -181,6 +181,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	mission_state_t	mission = nav_mission_state();
 	UINT		cal_left = 0U;
 	UINT		missed;
+	UINT		missed_beat = 0U;	/* NFR-11: since the last heartbeat */
+	UINT		missed_total = 0U;	/* and since boot */
 	UINT		holdoff = 0U;
 	UINT		print_ms = 0U;
 	UINT		tele_state = TELE_LINE_UNSENT;	/* S.lin defaults to ON */
@@ -225,6 +227,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 
 	while(1) {
 		missed = wait_tick();
+		missed_beat += missed;
+		missed_total += missed;
 
 		/* sample first, so the 1 ms cadence does not depend on the work */
 		raw = line_reader_read_raw();
@@ -355,7 +359,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		if(print_ms >= ((LINE_COMMISSIONING_MODE != 0) ? IR_COMMISSION_MS
 							       : LINE_HEARTBEAT_MS)) {
 			print_ms = 0U;
-			tm_printf((UB *)"[line] raw ADC GP26=%u GP27=%u norm %u/%u err=%d%s%s | barcode DO GP%d=%u (%s)\n",
+			tm_printf((UB *)"[line] raw ADC GP26=%u GP27=%u norm %u/%u err=%d%s%s | barcode DO GP%d=%u (%s) | missed %u ticks (%u since boot)\n",
 				  (UINT)raw.left_guard, (UINT)raw.right_guard,
 				  (UINT)out.left_norm, (UINT)out.right_norm,
 				  (INT)out.fields.error,
@@ -363,7 +367,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  out.fields.cal ? "" : " uncal",
 				  (INT)BARCODE_SENSOR_GPIO,
 				  (UINT)barcode_scanner_get_last_raw(),
-				  black ? "black" : "white");
+				  black ? "black" : "white",
+				  missed_beat, missed_total);
+			missed_beat = 0U;
 			tm_printf((UB *)"[line] dbg GP26 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d"
 				  " | GP27 raw=%u min=%u max=%u norm=%u thr=%u/%u on_line=%d | dark_ms=%u lost=%d\n",
 				  (UINT)raw.left_guard, (UINT)g_trk.left_cal.white,
