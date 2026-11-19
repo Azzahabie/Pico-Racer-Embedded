@@ -108,9 +108,9 @@
    These margins hold only while GP7 moves at about the base speed: a 9 mm
    bar fires if GP7 is slower than ~32 mm/s, an 18 mm crossbar is missed
    if it is faster than ~64 mm/s (C).  Steering moves GP7's speed: at the
-   41-49 deg/s logged in line following (4 Nov), by about +/-32 mm/s
-   (+/-38 at 49 deg/s) if GP7 is 45 mm to the side of the centreline (C;
-   the 45 mm is assumed, the mount is not measured).  So the gate for 280
+   41 deg/s logged in line following (4 Nov, trials_batch1 line 2554), by
+   about +/-32 mm/s if GP7 is 45 mm to the side of the centreline (C; the
+   45 mm is assumed, the mount is not measured).  So the gate for 280
    is the car session C1 count of junction lines per sheet and per
    crossbar.  Rearm: GP7 white this many samples running first.
    PROVISIONAL; -DLINE_JUNCTION_SAMPLES=80 builds the old value. */

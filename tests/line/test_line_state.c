@@ -78,7 +78,7 @@ static void test_motion_contract(void)
 	motion_sm_step(&sm, &in, &out);
 	CHECK(motion_sm_state(&sm) == MOTION_ST_LINE_FOLLOW);
 
-	/* a barcode under the car: never mistaken for lost */
+	/* a held barcode read with the car on the line (dark 0): not lost */
 	inputs_from(word_of(LINE_RL_CENTRED, true, false, 3u, 0, 0u), &in);
 	motion_sm_step(&sm, &in, &out);
 	CHECK(motion_sm_state(&sm) == MOTION_ST_LINE_FOLLOW);

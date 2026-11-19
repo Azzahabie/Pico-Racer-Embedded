@@ -87,11 +87,12 @@ Neither task drives the motors.
     With J_n 280, a 9 mm bar fires a junction if GP7 is slower than about
     32 mm/s, and an 18 mm crossbar is missed if GP7 is faster than about
     64 mm/s (C). Steering moves GP7's speed. On 4 Nov the car turned at
-    41-49 deg/s during line following
-    (`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`, lines 2554 and
-    2562). If GP7 sits 45 mm to the side of the centreline (assumed; the
-    real mount is not measured), that moves GP7's speed by about ±32 mm/s
-    at 41 deg/s and ±38 mm/s at 49 deg/s (C), past both limits. So a
+    41 deg/s during line following
+    (`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`, line 2554; the
+    49 deg/s at line 2561 came after the line was already lost). If GP7 sits
+    45 mm to the side of the centreline (assumed; the real mount is not
+    measured), that moves GP7's speed by about ±32 mm/s (C), past both
+    limits. So a
     weaving car can miss a crossbar or fire on a wide bar. The host test
     and the sim both feed a constant speed.
   - **The gate for J_n 280** is the car session C1 count of junction lines
