@@ -1,8 +1,10 @@
 /* Host test for line_track.c: line detection and error direction, junction
-   debounce and rearming, noisy line loss, barcode hold, stuck sensors. */
+   debounce and rearming, J_n against the course barcodes, noisy line loss,
+   barcode hold, stuck sensors. */
 
 #include "check.h"
 #include "../../app_program/line_task/line_track.h"
+#include "../../app_program/motor_task/motion_cfg.h"	/* line-following speed */
 
 #define W  (300u)	/* white reading  */
 #define B  (3500u)	/* black reading  */
@@ -143,6 +145,55 @@ static void test_junction(void)
 	CHECK(feed_mark(LINE_JUNCTION_SAMPLES, B, B, false, true) == 1u);
 }
 
+/* GP7 black or white for mm of travel at motion's line-following base
+   speed: MOTION_LF_BASE counts a tick, MOTION_COUNTS_PER_REV a wheel turn
+   (47.6 mm/s at base 6, calculated) */
+static unsigned ms_for_mm(int mm)
+{
+	const double mm_per_s = ((double)MOTION_LF_BASE * 1000.0 /
+				 (double)MOTION_TICK_MS) *
+				(3.14159265358979 * (double)MOTION_WHEEL_DIA_MM) /
+				(double)MOTION_COUNTS_PER_REV;
+
+	return (unsigned)(((double)mm * 1000.0 / mm_per_s) + 0.5);
+}
+
+/* The course: Code 39 sheets beside the line, narrow 3 mm, wide 9 mm, about
+   141 mm (3 symbols, 15 bars), at least 12 mm before the 18 mm crossbar.
+   GP7 may see the bars up to 2 mm wider or narrower than printed (the
+   spaces the other way).  No sheet bar may be a junction or a crossing,
+   every crossbar exactly one, and it rearms for the next.  This fails if
+   MOTION_LF_BASE moves and J_n does not (base 4: a 9 mm bar is 284 ms;
+   the old J_n 80 fired on every wide bar at base 6). */
+static void test_junction_course(void)
+{
+	int err;
+
+	for (err = -2; err <= 2; ++err) {
+		unsigned events = 0u;
+		bool crossing = false;
+		unsigned bar;
+
+		setup();
+		feed(LINE_JUNCTION_REARM_SAMPLES, B, B, false);	/* armed */
+		/* worse than any letter: every bar wide */
+		for (bar = 0u; bar < 15u; ++bar) {
+			events += feed_mark(ms_for_mm(9 + err), B, B, false, true);
+			crossing = crossing || out.crossing;
+			events += feed(ms_for_mm(3 - err), B, B, false);
+		}
+		CHECK(events == 0u);
+		CHECK(!crossing);
+
+		feed(ms_for_mm(12), B, B, false);
+		CHECK(feed_mark(ms_for_mm(18 + err), B, B, false, true) == 1u);
+		CHECK(out.crossing);
+		CHECK(feed(LINE_JUNCTION_REARM_SAMPLES, B, B, false) == 0u);
+		CHECK(!out.crossing);
+		CHECK(feed_mark(ms_for_mm(18 + err), B, B, false, true) == 1u);
+	}
+}
+
 static void test_line_loss(void)
 {
 	unsigned i;
@@ -240,6 +291,7 @@ int main(void)
 	test_direction();
 	test_weak_black_not_lost();
 	test_junction();
+	test_junction_course();
 	test_line_loss();
 	test_faults();
 	test_word();

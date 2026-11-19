@@ -6,6 +6,12 @@
 
 #define CANDIDATE_COUNT_MAX (1000u)
 
+/* both_black_run stops counting at CANDIDATE_COUNT_MAX: a longer J_n would
+   never fire */
+#if (LINE_JUNCTION_SAMPLES < 1u) || (LINE_JUNCTION_SAMPLES > CANDIDATE_COUNT_MAX)
+#error "LINE_JUNCTION_SAMPLES must be 1..1000"
+#endif
+
 void line_track_disarm_junction(line_track_t *trk)
 {
 	trk->both_black_run = 0u;

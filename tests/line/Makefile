@@ -28,7 +28,7 @@ test_barcode_action: test_barcode_action.c check.h $(SRC_DIR)/barcode_action.c $
 test_ir_cal: test_ir_cal.c check.h $(SRC_DIR)/ir_cal.c $(SRC_DIR)/ir_cal.h
 	$(CC) $(BASE) -o $@ test_ir_cal.c $(SRC_DIR)/ir_cal.c
 
-test_line_track: test_line_track.c check.h $(SRC_DIR)/line_track.c $(SRC_DIR)/line_track.h $(SRC_DIR)/ir_cal.c $(SRC_DIR)/line_state.h
+test_line_track: test_line_track.c check.h $(SRC_DIR)/line_track.c $(SRC_DIR)/line_track.h $(SRC_DIR)/ir_cal.c $(SRC_DIR)/line_state.h $(SM_DIR)/motion_cfg.h
 	$(CC) $(BASE) -o $@ test_line_track.c $(SRC_DIR)/line_track.c $(SRC_DIR)/ir_cal.c
 
 test_barcode_pipeline: test_barcode_pipeline.c check.h $(SRC_DIR)/bar_capture.c $(SRC_DIR)/bar_capture.h $(SRC_DIR)/barcode_rx.c $(SRC_DIR)/barcode_rx.h $(SRC_DIR)/barcode_decode.c $(SRC_DIR)/barcode_action.c

@@ -53,8 +53,32 @@ Neither task drives the motors.
   both read black (rl 11) whenever the car is centred. That is normal
   following, never a junction, and those two sensors cannot see a
   crossing. The junction comes from the barcode sensor: GP7 black for
-  `LINE_JUNCTION_SAMPLES` (J_n = 80, provisional) samples running gives one
-  event. That is longer than any barcode bar and shorter than the crossbar.
+  `LINE_JUNCTION_SAMPLES` (J_n = 280, provisional) samples running gives one
+  event. J_n must be longer than any barcode bar and shorter than the
+  crossbar at the speed GP7 passes them, so **J_n is tied to motion's
+  line-following base `MOTION_LF_BASE`** (`motion_cfg.h`): change both
+  together. With the course bars (see "The course barcodes" below):
+
+  | Base | Speed (C) | 9 mm wide bar (C) | 18 mm crossbar (C) | With J_n 280 |
+  |---|---|---|---|---|
+  | 4 | 31.7 mm/s | 284 ms | 567 ms | wide bars fire junctions |
+  | **6 (now)** | **47.6 mm/s** | **189 ms** | **378 ms** | no bar fires, the crossbar does, for bars and crossbar ±2 mm off print (host test, sim) |
+  | 8 | 63.5 mm/s | 142 ms | 284 ms | marginal: a crossbar seen 1 mm narrow is missed (host test) |
+
+  Speed: base × 100 counts/s × π × 64 mm / 2535 counts (C);
+  INTEGRATION.md S4 gives about 4.7 cm/s at base 6 from lap times.
+  - The old J_n 80 (sized for about 12 cm/s) was 3.8 mm of black at base 6,
+    so every 9 mm bar fired a junction: 6 per sheet (sim). motion accepts a
+    JUNCTION in LINE_FOLLOW, so a TEST image, or a command still pending
+    from a missed junction, turned the car in the middle of a sheet.
+  - On 4 Nov a 124 ms GP7 run on a plain line fired a false junction during
+    line following (`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`,
+    lines 2555-2559, `0: B124`). J_n 280 would not fire on it.
+  - At base 6 J_n 280 fires with GP7 13.3 mm into the crossbar (3.8 mm with
+    80) (C), about 200 ms later; `MOTION_TURN_FWD_MM` (Buddy 2) counts from
+    there.
+  - `-DLINE_JUNCTION_SAMPLES=80` builds the old value for an A/B run.
+
   It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
   samples running. A barcode read doesn't block it, because the crossbar
   starts a capture of its own.
@@ -67,6 +91,26 @@ Neither task drives the motors.
   opens a read too) and made motion read "line seen" on white.
 - **Mission change:** the junction is disarmed and a partial barcode
   aborted.
+
+## The course barcodes
+
+From the prof's Barcode_Line_Specification.pdf and Barcode_Sample.pdf, and
+the course photos (19 Nov):
+
+- **Code 39**, start/stop `*`, one letter per sheet (`*A*`, `*Z*` in the
+  sample).
+- A printed sheet **about 141 mm long**, placed **beside the line**, just
+  before a junction, bars running across the direction of travel. One photo
+  has a sheet on each side of the line.
+- The bars start **20 mm from the line edge** (29 mm from the centre of the
+  18 mm line), so GP26 and GP27 never see them: only GP7 reads them, and it
+  must sit over the bars on the sheet's side.
+- **Narrow 3 mm, wide 9 mm** (C: `*X*` is 47 narrow modules, 141 / 47 =
+  3.0 mm, wide = 3 × narrow).
+- At base 6 GP7 sees a narrow bar for 63 ms and a wide bar for 189 ms (C).
+  That sets J_n (above).
+- The 3 mm sheet has never been read on the car. The "KY-033 cannot resolve
+  2 mm bars" result (INTEGRATION.md S3) does not cover it.
 
 ## Barcode
 
@@ -108,7 +152,7 @@ Neither task drives the motors.
 [line] calibration OK: GP26 ok (white 300, rise 2500) GP27 ok (...)
 [barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
 [barcode] REJECTED: malformed (bad_length)
-[line] junction (GP7 black 80 ms) -> nav
+[line] junction (GP7 black 280 ms) -> nav
 ```
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
@@ -123,7 +167,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_line_track` | error direction, J_n debounce, one event, rearm, noise, barcode hold, noisy loss, stuck sensors |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold, noisy loss, stuck sensors |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
 | `test_barcode_action` | the table, map apply and reject, the command word |
 | `test_line_state` | the word, and the motion statechart contract |
