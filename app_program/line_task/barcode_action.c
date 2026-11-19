@@ -66,6 +66,23 @@ bool barcode_table_from_string(barcode_table_t *table, const char *text)
 	return true;
 }
 
+void barcode_table_to_string(const barcode_table_t *table,
+			     char text[BARCODE_TABLE_TEXT_SIZE])
+{
+	static const char letters[] = "FLRU";	/* by barcode_action_t */
+	uint32_t i;
+
+	if (!table->loaded) {
+		text[0] = '-';
+		text[1] = '\0';
+		return;
+	}
+	for (i = 0u; i < BARCODE_LETTER_COUNT; ++i) {
+		text[i] = letters[table->action[i] & 3u];
+	}
+	text[BARCODE_LETTER_COUNT] = '\0';
+}
+
 bool barcode_table_apply_map(barcode_table_t *table, const uint8_t *map,
 			     int length)
 {

@@ -40,6 +40,12 @@ void barcode_table_init(barcode_table_t *table);
    on any other length or character. */
 bool barcode_table_from_string(barcode_table_t *table, const char *text);
 
+/* The table as 26 F/L/R/U characters, 'A' first, then '\0' (the form
+   barcode_table_from_string() takes); "-" when the table is not loaded. */
+#define BARCODE_TABLE_TEXT_SIZE (BARCODE_LETTER_COUNT + 1u)
+void barcode_table_to_string(const barcode_table_t *table,
+			     char text[BARCODE_TABLE_TEXT_SIZE]);
+
 /* Apply a 7-byte map.  false (table unchanged) unless length is exactly
    BARCODE_MAP_SIZE.  Every 2-bit value is a valid action. */
 bool barcode_table_apply_map(barcode_table_t *table, const uint8_t *map,

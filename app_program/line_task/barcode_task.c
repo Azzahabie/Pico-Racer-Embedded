@@ -162,6 +162,7 @@ LOCAL void report(const barcode_verdict_t *v)
 LOCAL void apply_maps(void)
 {
 	UB	map[BARCODE_MAP_SIZE];
+	char	text[BARCODE_TABLE_TEXT_SIZE];
 	INT	size;
 
 	size = tk_rcv_mbf(g_map_mbfid, map, TMO_POL);
@@ -169,7 +170,9 @@ LOCAL void apply_maps(void)
 		if(barcode_table_apply_map(&g_table, map, size)) {
 			g_map_version = g_table.version;
 			g_map_loaded = TRUE;
-			tm_printf((UB *)"[barcode] map v%u applied\n", (UINT)g_table.version);
+			barcode_table_to_string(&g_table, text);
+			tm_printf((UB *)"[barcode] map v%u applied: %s\n",
+				  (UINT)g_table.version, text);
 		} else {
 			tm_printf((UB *)"[barcode] map of %d bytes rejected: table kept\n", size);
 		}
@@ -199,6 +202,7 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 	barcode_verdict_t	verdict;
 	mission_state_t	mission = nav_mission_state();
 	mission_state_t	now;
+	char		text[BARCODE_TABLE_TEXT_SIZE];
 
 	(void)stacd;
 	(void)exinf;
@@ -212,8 +216,19 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 			(void)tk_slp_tsk(TMO_FEVR);
 		}
 	}
-	tm_printf((UB *)"[barcode] decoder ready, table: %s\n",
-		  g_table.loaded ? "compiled-in default" : "none until a map arrives");
+	/* The table the car starts with, so the image can be checked on the
+	   console before a run: a compiled-in one is printed letter by letter,
+	   A first; one that failed to parse is named, not silently dropped. */
+	barcode_table_to_string(&g_table, text);
+	if(g_table.loaded) {
+		tm_printf((UB *)"[barcode] decoder ready, table: compiled-in default %s\n",
+			  text);
+	} else if(0 != BARCODE_DEFAULT_TABLE_SET) {
+		tm_printf((UB *)"[barcode] decoder ready, table: none until a map arrives "
+			  "(compiled-in table is not 26 of F/L/R/U)\n");
+	} else {
+		tm_printf((UB *)"[barcode] decoder ready, table: none until a map arrives\n");
+	}
 
 	while(1) {
 		size = tk_rcv_mbf(g_bar_mbfid, msg, BARCODE_WAIT_MS);

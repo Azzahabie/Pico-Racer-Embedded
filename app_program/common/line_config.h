@@ -50,12 +50,26 @@
 #define BARCODE_READ_MAX_TICKS         (BARCODE_SCAN_MAX_US / 1000u)
 
 /* Compiled-in letter -> movement table, used until a valid map arrives
-   (MQTT_SCHEMA.md 8.3).  No approved table exists yet (schema section 12
-   item 9), so it is off: until a map is loaded every letter is rejected
-   as unknown and no junction command is sent.  To use one, set _SET to 1
-   and give 26 characters, 'A' first: F forward, L left, R right, U U-turn. */
+   (MQTT_SCHEMA.md 8.3).  The letters are only given on the day, so it is
+   off: until a map is loaded every letter is rejected as unknown and no
+   junction command is sent.  To use one, set _SET to 1
+   and give 26 characters, 'A' first: F forward, L left, R right, U U-turn,
+   e.g. "LRFUFFFFFFFFFFFFFFFFFFFFFF" for the writeup's example (A left,
+   B right, C straight, D U-turn).  For a car image edit the two lines
+   here: an in-place rebuild does not recompile on a changed -D.  The host
+   tests set them with -D (tests/line/Makefile).  A wrong length stops the
+   build; any character other than F, L, R, U leaves the table empty, and
+   the boot line says so (docs/BUDDY3_LINE_BARCODE.md, "Commands on the
+   day"). */
+#ifndef BARCODE_DEFAULT_TABLE_SET
 #define BARCODE_DEFAULT_TABLE_SET                 (0)
+#endif
+#ifndef BARCODE_DEFAULT_TABLE
 #define BARCODE_DEFAULT_TABLE                     ""
+#endif
+#if (BARCODE_DEFAULT_TABLE_SET != 0) && (BARCODE_DEFAULT_TABLE_SET != 1)
+#error "BARCODE_DEFAULT_TABLE_SET must be 0 or 1"
+#endif
 
 /* Barcode hold.  1 (default, today's behaviour): while a barcode is being
    read, and BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds
