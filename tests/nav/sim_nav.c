@@ -4,7 +4,8 @@
  * comms_task.  make -C tests/nav
  *
  * What it checks: the barcode command goes to motion_task once per
- * junction, and is used up only when motion turns (MOVE_DONE); a refusal
+ * junction, and is used up only when motion turns (MOVE_DONE); every action
+ * from a loaded map arrives as that JUNCTION's action; a refusal
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
  * it for the next junction; a pause during the turn uses it.
  * Calibration: a GP20 fault reset waits NAV_CAL_SETTLE_MS before CAL_REQ;
@@ -315,6 +316,65 @@ static void edges(void)
 	CHECK(0 == g_sent_n);			/* not Running: ignored */
 }
 
+/* Every action, from a loaded map, reaches motion: the 7 map bytes the
+   laptop sends (mv 1, the writeup's example: A left, B right, C straight,
+   D U-turn; 0x0C91 little end first, as tests/line test_barcode_action)
+   -> barcode_action's table -> the word barcode_task stores ->
+   on_junction -> {NAV_CMD_JUNCTION, action} on nav_cmd_mbf.  Straight on
+   from a barcode is a command too (motion drives across); only "no
+   command" sends nothing.  One run, four junctions, a barcode before each. */
+static void every_action_from_map(void)
+{
+	static const uint8_t map[BARCODE_MAP_SIZE] = {
+		0x91u, 0x0Cu, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+	};
+	static const struct {
+		char		letter;
+		uint32_t	action;
+		const char	*line;
+	} want[4] = {
+		{ 'A', BARCODE_ACT_LEFT,    "[nav] -> motion: JUNCTION(LEFT)\n" },
+		{ 'B', BARCODE_ACT_RIGHT,   "[nav] -> motion: JUNCTION(RIGHT)\n" },
+		{ 'C', BARCODE_ACT_FORWARD, "[nav] -> motion: JUNCTION(FORWARD)\n" },
+		{ 'D', BARCODE_ACT_UTURN,   "[nav] -> motion: JUNCTION(U_TURN)\n" },
+	};
+	barcode_table_t		table;
+	barcode_action_t	action;
+	uint32_t		i;
+
+	barcode_table_init(&table);
+	CHECK(barcode_table_apply_map(&table, map, BARCODE_MAP_SIZE));
+	reset();
+	for (i = 0u; i < 4u; ++i) {
+		g_log[0] = '\0';
+		CHECK(barcode_table_lookup(&table, want[i].letter, &action));
+		bar_store(barcode_letter_index(want[i].letter), (uint32_t)action, i + 1u);
+		on_junction();			/* the junction after the sheet */
+		CHECK((int)(i + 1u) == g_sent_n);
+		CHECK(sent_junction(want[i].action));
+		CHECK(NULL != strstr(g_log, want[i].line));
+		CHECK(g_move_open);
+		on_junction();			/* GP7 crosses lines mid-turn */
+		CHECK((int)(i + 1u) == g_sent_n);
+		on_motion_reply(NAV_FLG_MOVE_DONE);
+		CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+	}
+	/* no barcode before the next junction: nothing sent, straight on */
+	g_log[0] = '\0';
+	on_junction();
+	CHECK(4 == g_sent_n);
+	CHECK(NULL != strstr(g_log, "[nav] junction, no barcode command: straight on\n"));
+
+	/* no map loaded: barcode_task stores nothing (the read is rejected as
+	   unknown), so every junction goes straight on */
+	barcode_table_init(&table);
+	CHECK(!barcode_table_lookup(&table, 'A', &action));
+	reset();
+	on_junction();
+	CHECK(0 == g_sent_n);
+	CHECK(NULL != strstr(g_log, "[nav] junction, no barcode command: straight on\n"));
+}
+
 /* text a appears in the log, and before text b */
 static bool log_before(const char *a, const char *b)
 {
@@ -514,6 +574,7 @@ int main(void)
 #endif
 	refused_junction();
 	done_uses_command();
+	every_action_from_map();
 	newer_command_waits();
 	edges();
 	pause_mid_turn_uses_command();
