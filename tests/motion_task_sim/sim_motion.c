@@ -1557,7 +1557,12 @@ scenario_turns (void)
 	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + tol);
 	CHECK(FWD_MM(dl, dr) >= MOTION_TURN_FWD_MM);
 	CHECK(FWD_MM(dl, dr) <= MOTION_TURN_FWD_MM + 20);	/* + the line follow after */
-	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2001): taken") != NULL);
+	/* "received" at the read, then the outcome (critic C3) */
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING\n"
+			    "[motion] state LINE_FOLLOW -> TURNING\n") != NULL);
+	CHECK(strstr(g_log, "taken") == NULL);
+	CHECK(strstr(g_log, "REFUSED") == NULL);
 
 	sim_reset("turning: RIGHT pivots clockwise");
 	CHECK(run_turn(BARCODE_ACT_RIGHT, &dl, &dr) > 0);
@@ -1669,6 +1674,8 @@ scenario_turn_refused_keeps (void)
 	sim_tick();
 	CHECK((g_nav_flag & NAV_FLG_CMD_REJECTED) != 0u);	/* refused */
 	CHECK(g_ctx.turn_action == (uint8_t)BARCODE_ACT_LEFT);
+	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2002): REFUSED in BRAKED,"
+			    " sent CMD_REJECTED") != NULL);
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
 	g_nav_flag = 0u;
 	sim_tick();
@@ -2383,6 +2390,11 @@ scenario_cmd_junction_rejected (void)
 	sim_tick();
 	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	/* the refusal is on the console even with no state change (C3) */
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED in BRAKED,"
+			    " sent CMD_REJECTED\n") != NULL);
+	CHECK(strstr(g_log, "accepted") == NULL);
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
 	sim_ticks(3);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);

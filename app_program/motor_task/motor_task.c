@@ -179,7 +179,8 @@ typedef enum
                      old state, rate_l = replies sent       */
     EVT_CMD,      /* a command taken from a buffer: val_l =
                      CMD_SRC_*, val_r = the raw 2 bytes,
-                     rate_l = CMD_RES_*                     */
+                     rate_l = CMD_RES_*; for a JUNCTION's
+                     outcome rate_r = the state it met      */
     EVT_BYP,      /* bypass phase: val_l = phase, val_r =
                      sideways mm toward the side, rate_l =
                      heading - line deg (x side), rate_r =
@@ -195,7 +196,10 @@ typedef enum
 #define CMD_SRC_NAV       (0)
 #define CMD_SRC_AVOID     (1)
 #define CMD_RES_TAKEN     (0) /* passed to the statechart          */
+#define CMD_RES_RECEIVED  (1) /* JUNCTION read; its outcome follows */
 #define CMD_RES_INVALID   (2) /* unknown or malformed: dropped      */
+#define CMD_RES_ACCEPTED  (3) /* JUNCTION: a new turn started       */
+#define CMD_RES_REFUSED   (4) /* JUNCTION: refused, CMD_REJECTED    */
 
 typedef struct
 {
@@ -2639,7 +2643,8 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
    before the receives, so a command placed after it is still read.
 
    A JUNCTION goes to the statechart with its action kept for turn_drive();
-   outside Line Following the statechart refuses it (CMD_REJECTED).
+   outside Line Following the statechart refuses it (CMD_REJECTED).  Here
+   it is only "received": tick_statechart() reports the outcome.
    A BYPASS keeps its side and offset for bypass_drive(). */
 static void
 report_cmd (motion_ctx_t *p_ctx, int32_t src, uint32_t raw, int32_t res)
@@ -2708,6 +2713,7 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         else if ((NAV_CMD_JUNCTION == msg[0])
                  && (msg[1] <= (UB)BARCODE_ACT_UTURN))
         {
+            res             = CMD_RES_RECEIVED;
             p_in->nav       = MOTION_SM_NAV_JUNCTION;
             p_ctx->turn_req = msg[1]; /* the turn's, if the statechart
                                          takes it (tick_statechart) */
@@ -2883,6 +2889,21 @@ tick_statechart (motion_ctx_t *p_ctx)
         tele_motion(p_ctx);
     }
 
+    if (MOTION_SM_NAV_JUNCTION == in.nav)
+    {
+        /* What became of the JUNCTION (critic C3): accepted only if a new
+           turn started this tick, else refused with CMD_REJECTED. */
+        report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_CMD);
+        rep.val_l  = CMD_SRC_NAV;
+        rep.val_r  = (int32_t)(((uint32_t)NAV_CMD_JUNCTION << 8)
+                               | (uint32_t)p_ctx->turn_req);
+        rep.rate_l = (out.b_changed && !out.b_resumed
+                      && (MOTION_ST_TURNING == motion_sm_state(&p_ctx->sm)))
+                         ? CMD_RES_ACCEPTED
+                         : CMD_RES_REFUSED;
+        rep.rate_r = (int32_t)before;
+        report_send(p_ctx, &rep);
+    }
     if (b_fault_in)
     {
         report_send(p_ctx, &fault_rep);
@@ -3538,7 +3559,9 @@ print_byp (UB *p_line, motion_report_t const *p_rep)
 }
 #endif
 
-/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken". */
+/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken".  A JUNCTION
+   prints twice: "received" at the read, then "accepted, TURNING" or
+   "REFUSED in <state>, sent CMD_REJECTED" once the statechart decided. */
 static void
 print_cmd (UB *p_line, motion_report_t const *p_rep)
 {
@@ -3569,9 +3592,21 @@ print_cmd (UB *p_line, motion_report_t const *p_rep)
                                                       : "BYPASS right";
         }
     }
-    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken" : "dropped (invalid)";
+    res = (CMD_RES_TAKEN == p_rep->rate_l)      ? "taken"
+          : (CMD_RES_RECEIVED == p_rep->rate_l) ? "received"
+          : (CMD_RES_ACCEPTED == p_rep->rate_l) ? "accepted, TURNING"
+          : (CMD_RES_REFUSED == p_rep->rate_l)  ? "REFUSED in "
+                                                : "dropped (invalid)";
 
-    if (CMD_SRC_NAV == p_rep->val_l)
+    if (CMD_RES_REFUSED == p_rep->rate_l)
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] nav_cmd %s (raw 0x%04x): %s%s,"
+                               " sent CMD_REJECTED",
+                         what, (UINT)raw, res,
+                         motion_sm_name((uint32_t)p_rep->rate_r));
+    }
+    else if (CMD_SRC_NAV == p_rep->val_l)
     {
         (void)tm_sprintf(p_line, (UB *)"[motion] nav_cmd %s (raw 0x%04x): %s",
                          what, (UINT)raw, res);

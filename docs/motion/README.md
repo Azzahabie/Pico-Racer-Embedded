@@ -395,6 +395,27 @@ Each change prints one line:
 [motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE
 ```
 
+A JUNCTION from nav prints twice: `received` when motion reads it, then,
+in the same tick, what the statechart did with it:
+
+```
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING
+[motion] state LINE_FOLLOW -> TURNING
+```
+
+```
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED in BRAKED, sent CMD_REJECTED
+[motion] state BRAKED -> BRAKED, sent CMD_REJECTED
+```
+
+The low byte of `raw` is the action (0 forward, 1 left, 2 right, 3
+U-turn). A state line with the same state on both sides means a reply
+was sent with no change of state. Older logs print `taken` for every
+well-formed JUNCTION, refused or not; there only `state LINE_FOLLOW ->
+TURNING` proves the turn was taken.
+
 Entering FAULT also prints why, just before the state line (numbers from
 the simulator, left wheel held during Line Following):
 
