@@ -277,15 +277,21 @@ static void test_faults(void)
 	feed(1u, W, W, false);
 	CHECK(!line_state_fault(out.word));
 
+	/* S.faults bit 4 (FAULT_LINE_SENSOR) follows line_state's fault bit.
+	   The glue that sends it (fault_set/fault_clear on the bit's edges in
+	   line_task.c, before the console's barcode check) is kernel code and
+	   is NOT tested here.  The checks below cover line_track only, and
+	   they pass on the line_track.c from before the bit was wired: they
+	   show the fault bit cannot stick, not that the glue is right.  The
+	   console check depends on bar_capture_reading(), not on the hold, so
+	   hold=true below says nothing about the glue's order either. */
 	line_track_step(&trk, W, W, false, false, false, &out);	/* ADC read failed */
 	CHECK(line_state_fault(out.word));
-	/* the next good read ends it: ir_sense_task clears S.faults bit 4 on
-	   this edge, so the bit must not stick */
-	line_track_step(&trk, W, W, true, false, false, &out);
+	line_track_step(&trk, W, W, true, false, false, &out);	/* the next good read ends it */
 	CHECK(!line_state_fault(out.word));
 
-	/* a fault while a barcode is under the car is still a fault (the bit
-	   is sent before the console's barcode check) */
+	/* a rail fault under a barcode hold starts and ends the same way: the
+	   hold does not mask the fault bit */
 	feed(IR_RAIL_FAULT_SAMPLES, 4095u, W, true);		/* GP26 at the top rail */
 	CHECK(line_state_fault(out.word));
 	feed(1u, W, W, true);

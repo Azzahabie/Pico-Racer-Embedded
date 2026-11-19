@@ -59,6 +59,8 @@ Neither task drives the motors.
     MQTT_SCHEMA.md 4.1) on the edge where it starts and clears it on the
     edge where it ends, before the console, so a barcode read never holds
     it back. A failed ADC start-up sets it for good (the task stops).
+    This glue in `line_task.c` is kernel code and is not host-tested: the
+    host test covers only `line_state`'s fault bit, which it follows.
     The bit is a report: nav does not read the fault flag
     (`FAULT_STOP_MASK` has no user), so a line fault still stops the car
     the old way: motion treats it as the line missing, LINE_SEARCH, then
@@ -225,7 +227,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (the fault starts and ends, also under a barcode) |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
 | `test_barcode_action` | the table, map apply and reject, the command word |
 | `test_line_state` | the word, and the motion statechart contract |
