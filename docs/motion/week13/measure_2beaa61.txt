@@ -1,9 +1,9 @@
-commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
+commit 2beaa61, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
 
 ==== MOTION_PACKED=1 (0 warnings)
 -- whole image, static RAM (bytes):
-  .data 240
-  .bss 32108
+  .data 244
+  .bss 32112
 -- motion objects (bytes; RAM = data + bss):
      text	   data	    bss	    dec	    hex	filename
       616	      0	     53	    669	    29d	encoder.o
@@ -11,8 +11,8 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17499	      4	   9280	  26783	   689f	motor_task.o
-    21465	     36	   9333	  30834	   7872	(TOTALS)
+    18575	      8	   9288	  27871	   6cdf	motor_task.o
+    22541	     40	   9341	  31922	   7cb2	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_edges_l encoder.o
   2 g_edges_la encoder.o
@@ -31,7 +31,7 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   32 g_motor motor.o
   16 g_avoid_buf motor_task.o
   4 g_avoid_mbfid motor_task.o
-  568 g_ctx motor_task.o
+  576 g_ctx motor_task.o
   4 g_ds_word motor_task.o
   4 g_flgid motor_task.o
   4 g_mbfid motor_task.o
@@ -41,6 +41,7 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   448 g_report_buf motor_task.o
   4096 g_report_stack motor_task.o
   8 g_stop_req_us motor_task.o
+  4 g_tick_ercd motor_task.o
 -- message sizes from the ARM compiler (bytes, name):
   12 msg_tele_motion_in_mbf
   13 msg_tele_motion_on_wire
@@ -49,8 +50,8 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
 
 ==== MOTION_PACKED=0 (0 warnings)
 -- whole image, static RAM (bytes):
-  .data 236
-  .bss 32120
+  .data 240
+  .bss 32132
 -- motion objects (bytes; RAM = data + bss):
      text	   data	    bss	    dec	    hex	filename
       612	      0	     57	    669	    29d	encoder.o
@@ -58,8 +59,8 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17475	      0	   9296	  26771	   6893	motor_task.o
-    21437	     32	   9353	  30822	   7866	(TOTALS)
+    18695	      4	   9304	  28003	   6d63	motor_task.o
+    22657	     36	   9361	  32054	   7d36	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_count_l encoder.o
   4 g_count_r encoder.o
@@ -79,7 +80,7 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   32 g_motor motor.o
   16 g_avoid_buf motor_task.o
   4 g_avoid_mbfid motor_task.o
-  568 g_ctx motor_task.o
+  576 g_ctx motor_task.o
   8 g_ds motor_task.o
   4 g_ds_mtxid motor_task.o
   4 g_flgid motor_task.o
@@ -90,6 +91,7 @@ commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   448 g_report_buf motor_task.o
   4096 g_report_stack motor_task.o
   8 g_stop_req_us motor_task.o
+  4 g_tick_ercd motor_task.o
 -- message sizes from the ARM compiler (bytes, name):
   12 msg_tele_motion_in_mbf
   13 msg_tele_motion_on_wire

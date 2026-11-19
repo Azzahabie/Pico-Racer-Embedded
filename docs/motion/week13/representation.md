@@ -8,9 +8,9 @@ final build; the "Week 6 form" column is kept only to show what the
 minimum-bit change replaced.
 
 Legend: M = measured, E = estimated, C = calculated. "nm" = measured with
-`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit eee90fe, car
+`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit 2beaa61, car
 profile (SMP=1 CONSOLE=usb_cdc), `MOTION_PACKED` 1, 0 warnings; its output
-is in [measure_eee90fe.txt](measure_eee90fe.txt). Re-run it on the demo
+is in [measure_2beaa61.txt](measure_2beaa61.txt). Re-run it on the demo
 commit.
 
 | # | Field | Owner | Writer -> reader(s), core | Valid range (M/E) | Bits | Week 6 form | Final form, size, sync | RAM (final) | Message bytes (final) | Status |
@@ -49,16 +49,16 @@ commit.
 | 29 | line_state as read by motion | Buddy 3 | ir_sense_task (1 ms, core 1) -> motion_task (10 ms) | rl 0..3, steer 0..2, barcode/lost/fault/cal flags, counter 0..255, error -100..+100 (+128), dark 0..255 x 10 ms | 32 | struct + priority-inheritance mutex | one uint32 word, one store, one load per tick, no mutex (line_task/line_state.h) | Buddy 3's; motion keeps a copy in g_ctx | none | built |
 | 30 | hump_state as read by motion | Buddy 4 | imu_task -> motion_task | NONE / CLIMBING / DESCENDING | 2 | enum (1 B) + priority-inheritance mutex | 2-bit field in one word, no mutex (imu_task.h, INTEGRATION.md D1) | Buddy 4's | none | built; the hump speed cap has not fired on the car yet |
 | 31 | PID working variables (motion_pid_t x2) | Buddy 2 | motion_task only | int32 Q8 | n/a | n/a | 28 B each; working variables, kept unpacked | in g_ctx | none | built (motion_lib.h) |
-| 32 | motion_ctx_t g_ctx: every working field (positions, speeds, timing, distance_state window, statechart, line following, turn, reverse, bypass) | Buddy 2 (with integration fields from Buddies 1, 3, 5) | motion_task only | n/a | n/a | n/a | one static struct | 568 B (M, nm) | none | built |
+| 32 | motion_ctx_t g_ctx: every working field (positions, speeds, timing, distance_state window, statechart, line following, turn, reverse, bypass) | Buddy 2 (with integration fields from Buddies 1, 3, 5) | motion_task only | n/a | n/a | n/a | one static struct | 576 B (M, nm) | none | built |
 | 33 | Motor driver table g_motor | Buddy 2 | motor.c | pin and slice configuration | n/a | n/a | 32 B .data | 32 B (M, nm) | none | built |
 | 34 | Tunables (motion_cfg.h) | Buddy 2 | compile time | n/a | n/a | n/a | #define constants | 0 B | none | built |
 | 35 | Motion print record (console channel) | Buddy 2 | motion_task -> motion_report (core 0) | n/a | n/a | n/a | 52 B record; 8 slots x 56 B; carries the timing evidence | 448 B (M, nm: g_report_buf) | 52 / 56 B (console only) | built |
 | 36 | Task stacks motion_task, motion_report | Buddy 2 | n/a | n/a | n/a | n/a | 2 x 4096 B static | 8192 B (M, nm) | none | built |
 | 37 | Kernel objects | Buddy 2 | n/a | n/a | n/a | n/a | 2 TCB, 1 FLGCB, 3 MBFCB (report, nav_cmd, avoid_cmd), 1 CYCCB; fixed tables (config/config.h CNF_MAX_*) | 0 B beyond the tables; IDs 4 B each in .bss | none | built |
 
-**Motion's static RAM, final build (M, nm, eee90fe):** 36 B .data + 9333 B
-.bss = 9369 B, of which 8192 B are the two task stacks and 568 B the
-motion_task context. Whole image: 240 B .data + 32108 B .bss.
+**Motion's static RAM, final build (M, nm, 2beaa61):** 40 B .data + 9341 B
+.bss = 9381 B, of which 8192 B are the two task stacks and 576 B the
+motion_task context. Whole image: 244 B .data + 32112 B .bss.
 
 **Kept unpacked on purpose.** Working variables used only inside one task
 (PID state, positions, timing, the decoder state) stay in natural C types:
