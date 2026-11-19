@@ -83,9 +83,15 @@ Neither task drives the motors.
      than the first bar of any barcode in the size range (every Code 39
      barcode starts with a narrow bar, at most 6 mm), so a second sheet
      before the same junction does not fire, and shorter than the 18 mm
-     crossbar. The car turns from about 10 mm into the crossbar at any
-     speed (with J_n 280: 13.3 mm at base 6, 17.8 mm at base 8, C), which
-     `MOTION_TURN_FWD_MM` counts from.
+     crossbar. Where it fires, which `MOTION_TURN_FWD_MM` counts from:
+     about 10 mm into the crossbar at base 6 and 8 (J_n 280 is 13.3 and
+     17.8 mm there, C). **At base 4 J_n 280 is 8.9 mm (C), so the length
+     rule fires first** and the line still reads `[line] junction (armed
+     by barcode ..., GP7 black 8 mm)` or `9 mm` (host test: 8.9-10.3 mm at
+     a steady GP7 speed). With GP7's speed ±0-20 % off the car's and blur
+     ±1 mm, by either rule: 7.6-10.3 mm at base 4, 7.8-15.5 at base 6,
+     7.4-19.1 at base 8 (sim). A speck or dropout before or in the
+     crossbar (below) can move it later, up to the crossbar's end.
   5. nav reads the stored command at the flag, so the command is always
      there first. A junction that falls due while a complete read waits
      for its verdict waits up to `LINE_ARMED_VERDICT_WAIT_MS` (50 ms).

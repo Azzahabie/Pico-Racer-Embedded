@@ -279,10 +279,17 @@
    starts with a narrow bar, at most 6 mm printed, so a second sheet
    before the same junction does not fire), and shorter than the 18 mm
    crossbar, also with the bars read 1 mm off and GP7's speed 20 % off the
-   car's (sim, tests/line).  The car then turns from 10 mm into the
-   crossbar, at any speed (13.3 mm with J_n 280 at base 6, C), which
-   MOTION_TURN_FWD_MM counts from.  PROVISIONAL: a guess to confirm on the
-   car.  0 mm: the first LINE_ARMED_MIN_SAMPLES of black fire. */
+   car's (sim, tests/line).  Where the junction fires, which
+   MOTION_TURN_FWD_MM counts from: about 10 mm into the crossbar at base 6
+   and 8 (J_n 280 is 13.3 and 17.8 mm there, C); at base 4 J_n 280 is 8.9
+   mm (C), so the length rule fires first, and the armed junction line
+   prints "GP7 black 8-9 mm" (host test: 8.9-10.3 mm at a steady GP7
+   speed).  With GP7's speed +/-0-20 % off the car's and blur +/-1 mm, by
+   either rule: 7.6-10.3 mm at base 4, 7.8-15.5 at base 6, 7.4-19.1 at
+   base 8 (sim, the size envelope under BARCODE_NOT_BAR_RATIO_X10).  A
+   speck or dropout before or in the crossbar can move it later, up to the
+   crossbar's end.  PROVISIONAL: 10 mm is a guess to confirm on the car.
+   0 mm: the first LINE_ARMED_MIN_SAMPLES of black fire. */
 #ifndef LINE_ARMED_MIN_SAMPLES
 #define LINE_ARMED_MIN_SAMPLES                    (5u)
 #endif
