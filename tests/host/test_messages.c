@@ -477,6 +477,48 @@ static void test_commands(void)
     ok(!comm_w_check_map(long_map, sizeof long_map, &mv, act), "8 bytes rejected", "map length");
 }
 
+/* Every action for every letter, as a map the laptop sends on the day:
+   comm_w_check_map (comms_task's handle_map) must unpack each 2-bit value
+   into its own letter and nothing else, and the mv.  Then the writeup's
+   example (A left, B right, C straight, D U-turn, mv 1) as bytes worked
+   out by hand: A=1 at bits 4-5, B=2 at 6-7, C=0, D=3 at 10-11, so 0x0C91
+   little end first (tools/barcode_map.py and tests/line give the same). */
+static void test_map_every_action(void)
+{
+    static const uint8_t example[COMM_W_MAP_SIZE] = {0x91, 0x0C, 0, 0, 0, 0, 0};
+    static const char flru[] = "FLRU";
+    uint8_t map[COMM_W_MAP_SIZE], mv, act[COMM_W_MAP_LETTERS];
+    char shown[COMM_W_MAP_LETTERS + 1];
+
+    for(uint32_t a = 0; a < 4; a++) {
+        for(uint32_t i = 0; i < COMM_W_MAP_LETTERS; i++) {
+            uint32_t pos = 0;
+            int only = 1;
+
+            memset(map, 0, sizeof map);
+            comm_w_put_bits(map, &pos, i % 16U, COMM_W_MAP_MV_BITS);
+            pos += i * COMM_W_MAP_ACT_BITS;
+            comm_w_put_bits(map, &pos, a, COMM_W_MAP_ACT_BITS);
+            ok(comm_w_check_map(map, sizeof map, &mv, act), "accepted", "map one letter");
+            ok(mv == (i % 16U), "mv", "map one letter mv");
+            for(uint32_t j = 0; j < COMM_W_MAP_LETTERS; j++) {
+                if(act[j] != ((j == i) ? a : 0U)) only = 0;
+            }
+            ok(only, "that letter has the action, every other letter 0 (F)",
+               "map one letter");
+        }
+    }
+
+    ok(comm_w_check_map(example, sizeof example, &mv, act), "example accepted", "map example");
+    ok(mv == 1, "example mv 1", "map example");
+    for(uint32_t j = 0; j < COMM_W_MAP_LETTERS; j++) {
+        shown[j] = flru[act[j]];         /* as handle_map prints it */
+    }
+    shown[COMM_W_MAP_LETTERS] = '\0';
+    ok(strcmp(shown, "LRFUFFFFFFFFFFFFFFFFFFFFFF") == 0,
+       "example reads A L, B R, C F, D U, the rest F", "map example");
+}
+
 /* Unpack a packed body and fold it, as comms_task's handle_intake does. */
 static void fold_body(T_COMM_W_S *s, T_COMMS_FOLD *f, const uint8_t *body,
                       uint32_t len, const char *name)
@@ -555,6 +597,7 @@ int main(void)
     test_avoid_command();
     test_pack_d();
     test_commands();
+    test_map_every_action();
     test_fold();
 
     printf("%d checks passed, %d failed\n", passes, failures);
