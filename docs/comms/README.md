@@ -211,6 +211,13 @@ What the `S` fields that are easy to misread really say. The full rows are in
     13.3 mm. It is
     not proof of a junction event and not proof of a turn; for a turn look for
     E motion state 2 (TURNING).
+    With the barcode-armed rule (`LINE_JUNCTION_RULE` 1, in
+    proposal/line-barcode-beside-line and on by default there), crossing
+    starts at the armed junction after a valid barcode (GP7 black for
+    `LINE_ARMED_CONFIRM_MM` of travel, 10 mm provisional), and the bars of an
+    open barcode read never count, however long. The length rule above
+    applies only when nothing is armed (one exception: at base 4, 280 ms is
+    8.9 mm, so it comes before the 10 mm, C).
 - **`dev` is not live.** It is the line error carried by that same E line
   record, so it is the error at the moment `lin` last changed, frozen until the
   next change. Its unit is percent,
