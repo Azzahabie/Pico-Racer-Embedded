@@ -395,6 +395,23 @@ Each change prints one line:
 [motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE
 ```
 
+Entering FAULT also prints why, just before the state line (numbers from
+the simulator, left wheel held during Line Following):
+
+```
+[motion] FAULT 0x01: left wheel stalled  motors braked until nav sends FAULT_CLEAR(MOTION).
+[motion]   at the fault: duty L+377 R+168; since each wheel last made progress: L+0 counts in 300 ms, R+0 counts in 0 ms; missed L0 R0
+[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT
+```
+
+The fault byte uses the bits of the bench `FAULT` line (0x01 left stall,
+0x02 right stall, 0x10 left encoder, 0x20 right encoder). `duty` is what
+the stall check judged, the tick before the brake. Each wheel's stall
+window restarts whenever the wheel makes progress (3 counts the
+commanded way), so the stalled wheel shows about 300 ms with fewer than
+3 counts and a wheel that kept moving shows 0 ms or close to it.
+`missed` is the encoder's illegal transitions, as in the status line.
+
 **Test** (normal image, wheels off, Buddy 5's sensor plugged in): press
 GP20 and look for `state IDLE -> LINE_FOLLOW`; put a hand in front of the
 sensor for `-> BRAKED` and take it away for `-> LINE_FOLLOW`; press GP21

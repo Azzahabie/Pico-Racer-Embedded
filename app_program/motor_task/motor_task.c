@@ -180,10 +180,15 @@ typedef enum
     EVT_CMD,      /* a command taken from a buffer: val_l =
                      CMD_SRC_*, val_r = the raw 2 bytes,
                      rate_l = CMD_RES_*                     */
-    EVT_BYP       /* bypass phase: val_l = phase, val_r =
+    EVT_BYP,      /* bypass phase: val_l = phase, val_r =
                      sideways mm toward the side, rate_l =
                      heading - line deg (x side), rate_r =
                      1 IMU heading in use, 0 encoders only  */
+    EVT_SM_FAULT  /* statechart entered Motion Fault: faults
+                     byte; duty_l/_r = the duty the stall check
+                     judged; val_l/_r = net counts in each
+                     wheel's stall window, rate_l/_r = its
+                     length in ticks                        */
 } report_event_t;
 
 /* EVT_CMD fields */
@@ -2801,6 +2806,8 @@ tick_statechart (motion_ctx_t *p_ctx)
     motion_state_t  before  = motion_sm_state(&p_ctx->sm);
     mission_state_t mission = nav_mission_state();
     motion_report_t rep;
+    motion_report_t fault_rep;
+    bool            b_fault_in;
 
     take_commands(p_ctx, &in);
     if ((MS_RUNNING == mission)
@@ -2834,6 +2841,19 @@ tick_statechart (motion_ctx_t *p_ctx)
     {
         (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);
     }
+    /* Why it entered Motion Fault, for the console (W3).  Filled before
+       the brake, which zeroes the duty, and man_start(), which resets
+       the stall windows; sent with the state line below. */
+    b_fault_in = out.b_changed
+                 && (MOTION_ST_FAULT == motion_sm_state(&p_ctx->sm));
+    if (b_fault_in)
+    {
+        report_fill(p_ctx, &fault_rep, REP_EVENT, (uint8_t)EVT_SM_FAULT);
+        fault_rep.val_l  = p_ctx->stall_l.net;
+        fault_rep.val_r  = p_ctx->stall_r.net;
+        fault_rep.rate_l = (int32_t)p_ctx->stall_l.idle_ticks;
+        fault_rep.rate_r = (int32_t)p_ctx->stall_r.idle_ticks;
+    }
     if (out.b_changed && !motion_sm_driving(motion_sm_state(&p_ctx->sm)))
     {
         motor_brake_all(); /* before any reply, e.g. MOTION_FAULT */
@@ -2863,6 +2883,10 @@ tick_statechart (motion_ctx_t *p_ctx)
         tele_motion(p_ctx);
     }
 
+    if (b_fault_in)
+    {
+        report_send(p_ctx, &fault_rep);
+    }
     if (out.b_changed || (0u != out.replies))
     {
         report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STATE);
@@ -3270,23 +3294,30 @@ print_line (UB const *p_line)
 
 static void print_step_hints(UB *p_line, motion_report_t const *p_rep);
 
+/* "[motion] FAULT 0x01: left wheel stalled  <tail>": every fault bit by
+   name. */
 static void
-print_faults (UB *p_line, motion_report_t const *p_rep)
+print_fault_bits (UB *p_line, uint8_t faults, char const *p_tail)
 {
-    uint8_t faults = p_rep->faults;
-
     (void)tm_sprintf(
-        p_line,
-        (UB *)"[motion] FAULT 0x%02x:%s%s%s%s%s%s  motors braked."
-              " Fix, then press the button to run again.",
-        (UINT)faults,
+        p_line, (UB *)"[motion] FAULT 0x%02x:%s%s%s%s%s%s  %s", (UINT)faults,
         ((faults & MOTION_FAULT_STALL_L) != 0u) ? " left wheel stalled" : "",
         ((faults & MOTION_FAULT_STALL_R) != 0u) ? " right wheel stalled" : "",
         ((faults & MOTION_FAULT_ENC_L) != 0u) ? " left encoder fault" : "",
         ((faults & MOTION_FAULT_ENC_R) != 0u) ? " right encoder fault" : "",
         ((faults & MOTION_FAULT_TICK) != 0u) ? " tick lost" : "",
-        ((faults & MOTION_FAULT_INIT) != 0u) ? " init failed" : "");
+        ((faults & MOTION_FAULT_INIT) != 0u) ? " init failed" : "", p_tail);
     print_line(p_line);
+}
+
+static void
+print_faults (UB *p_line, motion_report_t const *p_rep)
+{
+    uint8_t faults = p_rep->faults;
+
+    print_fault_bits(p_line, faults,
+                     "motors braked. Fix, then press the button to run"
+                     " again.");
 
     (void)tm_sprintf(
         p_line,
@@ -3303,6 +3334,27 @@ print_faults (UB *p_line, motion_report_t const *p_rep)
                          " wires of that encoder.");
     }
     print_step_hints(p_line, p_rep);
+}
+
+/* EVT_SM_FAULT (normal image): why the statechart entered Motion Fault,
+   with what the stall check judged.  Each wheel's stall window restarts
+   whenever it makes progress (MOTION_STALL_MIN_COUNTS the commanded
+   way), so a wheel that kept moving shows 0 ms or close to it. */
+static void
+print_sm_fault (UB *p_line, motion_report_t const *p_rep)
+{
+    print_fault_bits(p_line, p_rep->faults,
+                     "motors braked until nav sends FAULT_CLEAR(MOTION).");
+    (void)tm_sprintf(
+        p_line,
+        (UB *)"[motion]   at the fault: duty L%+d R%+d; since each wheel"
+              " last made progress: L%+d counts in %d ms, R%+d counts in"
+              " %d ms; missed L%u R%u",
+        (INT)p_rep->duty_l, (INT)p_rep->duty_r, (INT)p_rep->val_l,
+        (INT)(p_rep->rate_l * (int32_t)MOTION_TICK_MS), (INT)p_rep->val_r,
+        (INT)(p_rep->rate_r * (int32_t)MOTION_TICK_MS), (UINT)p_rep->inv_l,
+        (UINT)p_rep->inv_r);
+    print_line(p_line);
 }
 
 static void
@@ -3648,6 +3700,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
 
         case EVT_FAULT:
             print_faults(p_line, p_rep);
+            break;
+
+        case EVT_SM_FAULT:
+            print_sm_fault(p_line, p_rep);
             break;
 
         case EVT_STOP:

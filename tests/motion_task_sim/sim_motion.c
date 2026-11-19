@@ -1417,6 +1417,12 @@ scenario_statechart_fault (void)
 	CHECK(g_brakes_at_nav > brakes);		/* braked before the reply */
 	CHECK((g_nav_flag & NAV_FLG_MOTION_FAULT) != 0u);
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT") != NULL);
+	/* the reason, before the state line (W3) */
+	CHECK(strstr(g_log, "[motion] FAULT 0x01: left wheel stalled  motors braked"
+			    " until nav sends FAULT_CLEAR(MOTION).\n[motion]   at the"
+			    " fault: duty L") != NULL);
+	CHECK(strstr(g_log, "FAULT_CLEAR(MOTION).\n[motion]   at the fault")
+	      < strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT"));
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_FAULT);
 	CHECK(g_tele_last.fault == 0x1u);		/* E motion fault: stall */
 	sim_ticks(5);
@@ -1430,6 +1436,46 @@ scenario_statechart_fault (void)
 	CHECK(g_ctx.faults == 0u);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
 	CHECK(g_tele_last.fault == 0u);			/* cleared with it */
+}
+
+/* W3: a wheel held during Line Following.  The FAULT line names the
+   wheel and gives the duty the stall check judged (the tick before the
+   brake) and each stall window: the held wheel's spans [t_stall] with no
+   progress, the free wheel's is short because it keeps moving. */
+static void
+scenario_statechart_fault_reason (void)
+{
+	char	want[160];
+	int32_t	duty_l = 0;
+	int32_t	duty_r = 0;
+	int	t;
+
+	sim_reset("statechart: a wheel held while line following, the reason printed");
+	g_mission = MS_RUNNING;
+	sim_ticks(50);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_wheel[0].b_blocked = 1;
+	for (t = 0; (t < 100) && (motion_sm_state(&g_ctx.sm) != MOTION_ST_FAULT); t++) {
+		duty_l = g_duty[0];
+		duty_r = g_duty[1];
+		sim_tick();
+	}
+	g_wheel[0].b_blocked = 0;
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);
+	CHECK(g_ctx.faults == (uint8_t)MOTION_FAULT_STALL_L);
+	CHECK(duty_l >= MOTION_DEADBAND_DUTY);		/* judged while driven */
+	CHECK(strstr(g_log, "[motion] FAULT 0x01: left wheel stalled  motors braked"
+			    " until nav sends FAULT_CLEAR(MOTION).") != NULL);
+	(void)snprintf(want, sizeof want, "at the fault: duty L%+d R%+d; since each"
+		       " wheel last made progress: L+0 counts in %d ms, R+",
+		       (int)duty_l, (int)duty_r,
+		       (int)(MOTION_STALL_TICKS * MOTION_TICK_MS));
+	CHECK(strstr(g_log, want) != NULL);
+	if (strstr(g_log, want) == NULL) { printf("   wanted: %s\n%s", want, g_log); }
+	CHECK(strstr(g_log, "; missed L0 R0\n") != NULL);
+	CHECK(count_kind(REP_EVENT, EVT_SM_FAULT) == 1);
+	sim_ticks(20);
+	CHECK(count_kind(REP_EVENT, EVT_SM_FAULT) == 1);	/* once per entry */
 }
 
 /* nav_cmd_mbf: after an IMU fault and recalibration, FAULT_CLEAR(IMU)
@@ -3250,6 +3296,7 @@ main (int argc, char **argv)
 	scenario_statechart();
 	scenario_telemetry();
 	scenario_statechart_fault();
+	scenario_statechart_fault_reason();
 	scenario_line_follow_steer();
 	scenario_line_follow_soft();
 	scenario_line_follow_off_curve();
