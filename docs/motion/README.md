@@ -97,9 +97,14 @@ your car's numbers will differ.
 
 ```
 [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop, MOTION_PACKED=1
+[motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 1590 (MOTION_COUNTS_PER_REV_R), right counts scaled to left units
 [motion] last reset: power-on or RUN pin.
 [motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
 ```
+
+`counts per wheel turn` shows the values this image was built with
+(every image, the car build too), so a log says which right-wheel value
+was on the car; `no scaling` means the two are equal.
 
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
 nothing else runs: report the `er` value. It covers the hardware set-up
@@ -695,7 +700,8 @@ Checked against master on 19 Nov (52b707d). Car results so far are in
 - Right wheel counts per turn: `MOTION_COUNTS_PER_REV_R` is 1590
   (4 Nov), but the right wheel measured 2533 and 2536.8 on 23-24 Oct
   (`results.md`). Settle it with a 10-turn count; it scales distances,
-  turns, the bypass and imu_task's hump heights.
+  turns, the bypass and imu_task's hump heights. Every image prints the
+  value it was built with at boot (`counts per wheel turn`).
 - The final bypass settings (7c7d669) have not been counted on the car.
   Re-check `MOTION_BYPASS_PIVOT_PCT` (90 %, set in S7 before the
   right-wheel scaling; `right_encoder_scaling.md` point 4).
