@@ -9,14 +9,14 @@ says how it was obtained: M = measured, C = calculated, E = estimated.
 
 The prof's 27 Oct announcement: comparing with the original design is no
 longer required; give evidence for the final implementation only. The
-final numbers, measured with `tests/week13/measure.sh` on commit e47c4d8
+final numbers, measured with `tests/week13/measure.sh` on commit a7ee725
 (car profile, `MOTION_PACKED` 1, 0 warnings;
-[measure_e47c4d8.txt](measure_e47c4d8.txt)):
+[measure_a7ee725.txt](measure_a7ee725.txt)):
 
 | What | Final | How |
 |---|---|---|
-| Motion static RAM | 9361 B (36 B .data + 9325 B .bss), of which 8192 B are the two task stacks and 560 B the motion_task context g_ctx | M, `arm-none-eabi-size` and `nm` |
-| Whole image static RAM | 240 B .data + 32100 B .bss | M, `arm-none-eabi-size -A` |
+| Motion static RAM | 9369 B (36 B .data + 9333 B .bss), of which 8192 B are the two task stacks and 568 B the motion_task context g_ctx | M, `arm-none-eabi-size` and `nm` |
+| Whole image static RAM | 240 B .data + 32108 B .bss | M, `arm-none-eabi-size -A` |
 | Command buffers | nav_cmd_mbf 32 B (room 4), avoid_cmd_mbf 16 B (room 2) | M, nm |
 | E motion record | 7 B payload, 12 B in tele_mbf, 13 B record E | C, messages.h (`COMM_W_INTAKE_SIZE_MOTION`, `COMM_W_E_SIZE_MOTION`) and the 4 B header + round-to-4 rule; cross-checked by the car's ARM compiler in `tests/week13/sizes.c` |
 | Avoid command | 2 B payload (packed uint16) | C, messages.h |
