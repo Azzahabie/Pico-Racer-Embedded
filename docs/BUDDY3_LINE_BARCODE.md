@@ -132,7 +132,7 @@ Neither task drives the motors.
   | `BARCODE_Q_WIDTH_FACTOR` | 6 (trade-off under Capture) | `-DBARCODE_Q_WIDTH_FACTOR=4` |
   | `BARCODE_GLITCH_TICKS` | 6 | `-DBARCODE_GLITCH_TICKS=0` |
   | `BARCODE_NOT_BAR_RATIO_X10` | 25 | `-DBARCODE_NOT_BAR_RATIO_X10=0` |
-  | `LINE_SCAN_GATE` (the team's decision from the prof's tip, 19 Nov) | 1, with 6 deg/s `LINE_SCAN_MAX_TURN_DPS` and 1/64 `LINE_SCAN_AVG_DIV`, both guesses, none measured | `-DLINE_SCAN_GATE=0` |
+  | `LINE_SCAN_GATE` (the team's decision from the prof's tip, 19 Nov) | 1: shut in motion's TURNING, BYPASS, LINE_SEARCH and REVERSING, and otherwise from 6 deg/s `LINE_SCAN_MAX_TURN_DPS` with 1/64 `LINE_SCAN_AVG_DIV`, both guesses, none measured; the car session can set either with `-D` | `-DLINE_SCAN_GATE=0` |
 
   All of them together are `OLD_RULE` in `tests/line/Makefile`. A `-D`
   car image needs a clean tree and `make GCC="arm-none-eabi-gcc -D..."`:
@@ -225,28 +225,40 @@ Neither task drives the motors.
   lines in one bypass (`tests/scan_bench/logs/fr20_bypass_rejoin_2026-11-04.txt:42-133`)
   and one during line following (`trials_batch1_2026-11-04.txt:2553-2563`).
   Now (`scan_gate.c`):
-  1. The signal is the turn rate motion publishes in `distance_state`
+  1. **Motion's state first.** `ir_sense_task` reads motion's statechart
+     state every 1 ms with `motion_state_read()` (`motor_task.h`: one
+     aligned 32-bit word, written by `motion_task` once a tick, both
+     tasks on core 1, like `distance_state`). In a manoeuvre that is not
+     line following, TURNING (the run to the crossing and the pivot),
+     BYPASS, LINE_SEARCH or REVERSING, the gate is shut whatever the turn
+     rate. When the manoeuvre ends, both averaging stages below go back to
+     0, so the straight after a junction pivot scans at once.
+  2. In every other state (LINE_FOLLOW, and the stopped states IDLE,
+     BRAKED, LINE_LOST and FAULT) the turn rate decides, as for a curve.
+     The signal is the turn rate motion publishes in `distance_state`
      (`motion_ds.h`: deg/s, counter-clockwise positive, a 50 ms average,
      every 10 ms), the word `ir_sense_task` already reads for the armed
      junction's travel.
-  2. Every 10 ms it goes through two low-pass stages, each moving
+  3. Every 10 ms it goes through two low-pass stages, each moving
      1/`LINE_SCAN_AVG_DIV` (1/64) of the way to its input: a time constant
      of 640 ms each, integer maths.
-  3. The car is going straight while the average is below
+  4. The car is going straight while the average is below
      `LINE_SCAN_MAX_TURN_DPS` (6 deg/s, a guess) either way.
-  4. While it is not, a GP7 black that would open a read opens none, and
-     the capture waits for a quiet zone (`BARCODE_Q_TICKS` of white)
-     before another can: no read, so no steering hold and no reject. A
-     read already open goes on. A GP7 black run that begins while turning
-     never fires a junction by the length rule, and telemetry does not
-     show it as CROSSING.
-  5. The barcode-armed junction is not gated: a barcode and its junction
+  5. While the gate is shut, a GP7 black that would open a read opens
+     none, and the capture waits for a quiet zone (`BARCODE_Q_TICKS` of
+     white) before another can: no read, so no steering hold and no
+     reject. A read already open goes on. A GP7 black run that begins
+     while the gate is shut never fires a junction by the length rule,
+     and telemetry does not show it as CROSSING.
+  6. The barcode-armed junction is not gated: a barcode and its junction
      are on a straight, so an armed junction fires even if the car has
-     started to turn (host test).
-  6. **Fails open:** without `distance_state` the gate never blocks:
-     `motor_task_flag()` 0 (a bench image, `MOTION_BENCH` 1, or motion not
-     started), or its counter unchanged for `LINE_SCAN_STALE_MS` (100 ms).
-     The average then starts again from 0, and the console says so.
+     started to turn or motion is already in TURNING (host test).
+  7. **Fails open:** without `distance_state` the gate never blocks,
+     whatever motion's state says: `motor_task_flag()` 0 (a bench image,
+     `MOTION_BENCH` 1, or motion not started), or its counter unchanged
+     for `LINE_SCAN_STALE_MS` (100 ms). The average then starts again from
+     0, and the console says so. A bench image never writes the state
+     word either (it stays IDLE).
 
   **Why not a plain 500 ms average:** on a straight the car weaves (41
   deg/s logged in line following, `trials_batch1_2026-11-04.txt:2554`,
@@ -264,8 +276,9 @@ Neither task drives the motors.
   |---|---|---|
   | 150 mm curve | 18.2 deg/s (v / R; 33 with the line sensors 125 mm ahead of the axle) | 0.76 s, 36 mm |
   | 300 mm curve | 9.1 deg/s (10) | 1.47 s, 70 mm |
-  | junction pivot (`MOTION_TURN_SPEED` 6) | about 43 deg/s | 0.42 s |
-  | a fast pivot (test case) | 90 deg/s | 0.27 s |
+  | junction pivot (`MOTION_TURN_SPEED` 6) | about 43 deg/s | at once (TURNING); 0.42 s on the average alone |
+  | a fast pivot (test case) | 90 deg/s | at once (TURNING); 0.27 s on the average alone |
+  | bypass, line search, reverse | any | at once (the state) |
 
   - Weave ±45 deg/s on a straight, after 6 s of it: the average stays at
     or under 5.1 deg/s at 0.7 Hz, 2.6 at 1 Hz, 0.6 at 2 Hz; the gate never
@@ -278,12 +291,43 @@ Neither task drives the motors.
     42 and 132 deg in (C, GP7 assumed 50 mm ahead of the axle and 45 mm
     aside): nothing opens, nothing fires. Without the gate the same
     sweeps open every read, and the blacks past J_n fire junctions.
-  - After a 90 deg junction pivot it opens again 2.1 s later.
+  - After a 90 deg junction pivot it opens on the sample TURNING ends.
+    On the average alone it opened 2.1 s later (43 deg/s pivot) to 2.6 s
+    later (90 deg/s), about 100-120 mm at base 6 (sim).
+  - A pivot, then a sheet on the new arm (sheet 1 arms a left or right
+    turn, the car drives 50 mm, pivots 90 deg, then meets sheet 2 d mm
+    after the crossing centre; sim, base 6, no weave):
+
+    | Sheet 2 at d | 60 mm | 100 mm | 140 mm | 180 mm |
+    |---|---|---|---|---|
+    | `test_junction_arm` (GP7 path only), 43 and 90 deg/s, with motion's state | read | read | read | read |
+    | the same, average alone (the gate in aa6139b) | lost | lost | lost | read |
+    | checker's 2D car (`own_scen.c`), 43 and 90 deg/s, with motion's state | read | read | read | read |
+    | the same, average alone | lost | lost | lost | read |
+    | the same, no gate | read at 43, lost at 90 | read | read | read |
+
+    Without the gate a 90 deg/s pivot sweeps GP7 over the crossing's line
+    for 171 ms (under J_n), which opens a read still open when a sheet
+    60 mm on arrives; the gate turns that sweep away.
+  - A sheet and its crossbar met driving straight in TURNING, BYPASS,
+    LINE_SEARCH or REVERSING: nothing opens, nothing fires by the length
+    rule (host test). In the checker's 2D bypass with GP7 on the bypass
+    side, the straight step back in to the line opened 1 read on the
+    average alone (it was at 4.8 deg/s); with motion's state, none (sim).
 
   **Limits (car session):**
   - The first 40-70 mm of a curve still scan, until the average has
     risen. Where GP7 meets the line in a curve depends on its mount, not
     measured.
+  - After a curve (LINE_FOLLOW all through, so the average alone
+    decides) the gate opens late: the checker's 2D car read a sheet only
+    from about 130-140 mm after the end of a 90 deg curve of 150 mm
+    radius, 100-110 mm after 200 mm, 50-60 mm after 300 mm, and 60-70 mm
+    later still with a ±45 deg/s 1 Hz weave (sim, GP7's mount assumed).
+    A sheet starts about 171 mm before its crossbar, so a junction about
+    300 mm or less after the end of a 150 mm curve (230 mm after a 300 mm
+    curve) can lose its command and fall back to the length rule
+    (straight on). Only the averaging covers curves; tune it on the car.
   - A 300 mm curve is near the limit: with the ±45 deg/s weave on top,
     16 of 64 reads and junctions still got through at 1 Hz and 24 of 64
     at 0.8 Hz (sim); a 150 mm curve with the weave, none.
@@ -293,14 +337,23 @@ Neither task drives the motors.
     `MOTION_HD_LINE_MM`: about 4 deg/s on average, C) with the weave's
     2.6 deg/s left over on top. A sheet met then is not read; the
     `[line] GP7 black ignored` line shows it, with the averaged rate.
-  - No read starts for about 2.1 s (about 100 mm at base 6) after a
-    junction pivot: a sheet that close after a turn is missed.
+  - A sheet whose first bar meets a shut gate is not simply skipped.
+    The capture waits only `BARCODE_Q_TICKS` (50 ms) of white after an
+    ignored black, shorter than a narrow space at base 6 (63 ms, C), so
+    if the gate opens partway through the sheet a read starts mid-sheet:
+    a REJECTED malformed read, a steering hold partway through the sheet,
+    and then the crossbar fires by the length rule with no command
+    (checker's sim: every gate-shut case in their weave runs). Not fixed:
+    a longer wait after an ignored black would fix it.
   - From a standing start of a full ±45 deg/s weave the gate was shut
     2.5 % of the first 6 s (sim); on the car the weave builds up from
     rest.
   - 6 deg/s and 1/64 are guesses: log the averaged rate on straights and
-    curves at the car session. `-DLINE_SCAN_GATE=0` builds the car
-    without the gate.
+    curves at the car session. All three switches are `#ifndef` in
+    `line_config.h`, so a car image can take them with `-D`, for example
+    `-DLINE_SCAN_MAX_TURN_DPS=8` or `-DLINE_SCAN_AVG_DIV=32` (both built
+    with 0 warnings); `-DLINE_SCAN_GATE=0` builds the car without the
+    gate.
 - **Mission change:** the junction is disarmed and a partial barcode
   aborted.
 
@@ -541,8 +594,9 @@ stays: publish before start (MQTT_SCHEMA.md 8.3).
 [line] junction disarmed: no junction within 150 mm of barcode 'C' (command kept for nav)
 [line] junction disarmed: mission PAUSED
 [barcode] REJECTED: malformed (bad_length)
-[line] junction rule: barcode-armed, length rule as fallback (LINE_JUNCTION_RULE 1) | scan gate on: GP7 black opens no read and no length-rule junction while the averaged turn rate is 6 deg/s or more (LINE_SCAN_GATE 1)
+[line] junction rule: barcode-armed, length rule as fallback (LINE_JUNCTION_RULE 1) | scan gate on: GP7 black opens no read and no length-rule junction in TURNING, BYPASS, LINE_SEARCH or REVERSING, or while the averaged turn rate is 6 deg/s or more (LINE_SCAN_GATE 1)
 [line] GP7 black ignored: turning 18.2 deg/s left (scan gate, limit 6): no read, no length-rule junction (0 more since the last line)
+[line] GP7 black ignored: motion TURNING (scan gate): no read, no length-rule junction (0 more since the last line)
 [line] scan gate: no distance_state (motor_task_flag 0, bench image?): GP7 scans while turning too (fails open)
 [line] scan gate: distance_state back, no read starts while turning
 ```
@@ -553,10 +607,10 @@ barcode is read (as the junction line does).
 The `junction rule` line prints once at boot, after the `ir_sense_task`
 line (`... | scan gate off (LINE_SCAN_GATE 0)` without the gate). The
 `GP7 black ignored` line prints at most once a second, with the averaged
-turn rate (left = counter-clockwise) and how many more blacks were turned
-away since the last such line. A bench image prints the `no
-distance_state` line once at start (`counter stopped` instead if motion
-stops publishing).
+turn rate (left = counter-clockwise) or, in a manoeuvre, motion's state,
+and how many more blacks were turned away since the last such line. A
+bench image prints the `no distance_state` line once at start (`counter
+stopped` instead if motion stops publishing).
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
 2 s. Nothing prints while a barcode is under the car.
@@ -581,8 +635,8 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_scan_gate` | the scan gate: straight and a steady 5 deg/s open, 6 shut; the ±45 deg/s weave at 0.7-2 Hz never shuts it after 6 s; 150/300 mm curves and 43/90 deg/s pivots shut it within 1/2/0.6/0.4 s and keep it shut, it opens again within 3 s of a pivot; a 150 mm curve with the weave stays shut; fails open with `motor_task_flag()` 0 and with a stopped counter, and starts again from 0; missed ticks; ±2048 deg/s without overflow. The capture: a black with the gate shut opens no read, nor the rest of it once the gate opens, an open read decodes to its END; the length rule: a run begun while turning never fires, one begun straight does, the armed junction fires while turning |
-| `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, 8.9-10.3 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. H1, at base 4/6/8: a 4 ms dropout 3 mm into the crossbar after an armed sheet (and the next crossroad finds no command), a 2 mm speck 5 and 10 mm before the crossbar, a 1 ms white 0.5 mm in and 2-3 ms at 12 mm in, armed and not, and an unreadable sheet of 17/21/25 widths 5-10 mm before it, each exactly one junction at the crossbar; a second sheet either way round before the junction (288 runs), none inside it. The scan gate on `distance_state` built as motion publishes it: a sheet on a straight and on a weaving straight (±45 deg/s, 0.8-1.25 Hz, 192 runs) decodes, arms and fires with the command; GP7 sweeping the line in 150 and 300 mm curves (both ways) opens no read, holds nothing and fires no junction from 100 mm in; U-turn pivots at 43 and 90 deg/s open nothing; an armed junction fires while the car turns; no `distance_state` fails open. Built again with `-DLINE_SCAN_GATE=0` (`test_junction_arm_nogate`): every test before the gate passes, and the gate tests find the behaviour before it. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail; `make -C tests/line junction_h1_off` without the H1 fix: 34 of 206 fail; `make -C tests/line junction_scan_off` without the gate but expecting it: 40 of 204 fail; `make -C tests/line scan_gate_short` with a 500 ms average: the weave checks fail |
+| `test_scan_gate` | the scan gate: straight and a steady 5 deg/s open, 6 shut; the ±45 deg/s weave at 0.7-2 Hz never shuts it after 6 s; 150/300 mm curves and 43/90 deg/s pivots shut it within 1/2/0.6/0.4 s and keep it shut, it opens again within 3 s of a pivot; a 150 mm curve with the weave stays shut; fails open with `motor_task_flag()` 0 and with a stopped counter, and starts again from 0; missed ticks; ±2048 deg/s without overflow. Motion's state: only TURNING, BYPASS, LINE_SEARCH and REVERSING count as manoeuvres; each shuts the gate on its first sample at 0 deg/s and keeps it shut; the sample it ends on opens it with the average at 0, and distance_state's 50 ms tail does not shut it again; a 90 deg pivot at 43 deg/s opens it 0 ms after (2.1 s on the average alone); a stop mid-pivot resets, the resumed turn shuts at once; in LINE_FOLLOW, IDLE, BRAKED, LINE_LOST and FAULT the average decides; with `motor_task_flag()` 0 or a stopped counter every manoeuvre is open, and the gate shuts at once when the counter moves again. The capture: a black with the gate shut opens no read, nor the rest of it once the gate opens, an open read decodes to its END; the length rule: a run begun while turning never fires, one begun straight does, the armed junction fires while turning |
+| `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, 8.9-10.3 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. H1, at base 4/6/8: a 4 ms dropout 3 mm into the crossbar after an armed sheet (and the next crossroad finds no command), a 2 mm speck 5 and 10 mm before the crossbar, a 1 ms white 0.5 mm in and 2-3 ms at 12 mm in, armed and not, and an unreadable sheet of 17/21/25 widths 5-10 mm before it, each exactly one junction at the crossbar; a second sheet either way round before the junction (288 runs), none inside it. The scan gate on `distance_state` built as motion publishes it: a sheet on a straight and on a weaving straight (±45 deg/s, 0.8-1.25 Hz, 192 runs) decodes, arms and fires with the command; GP7 sweeping the line in 150 and 300 mm curves (both ways) opens no read, holds nothing and fires no junction from 100 mm in; U-turn pivots at 43 and 90 deg/s open nothing; an armed junction fires while the car turns; no `distance_state` fails open, also with motion in TURNING. With motion's state: a sheet and its crossbar met straight in TURNING, BYPASS, LINE_SEARCH or REVERSING open nothing and fire nothing; after a 90 deg junction pivot at 43 and 90 deg/s a second sheet 60, 100, 140 and 180 mm past the crossing decodes, arms and fires with its command (on the average alone only 180 mm does). Built again with `-DLINE_SCAN_GATE=0` (`test_junction_arm_nogate`): every test before the gate passes, and the gate tests find the behaviour before it. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail; `make -C tests/line junction_h1_off` without the H1 fix: 34 of 264 fail; `make -C tests/line junction_scan_off` without the gate but expecting it: 62 of 260 fail; `make -C tests/line scan_gate_short` with a 500 ms average: the weave checks fail (10 of 209 and 3 of 264) |
 | `test_barcode_decode` (`tests/`) | every letter and 3 strings both ways with ±10-20 % edge bias; A-Z with bars 25-33 % of narrow wider and spaces narrower at wide 2-3 × (needs the bar/space split) |
 | `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), the barcode side's gate (bars arriving block, armed fires, a due junction waits for the verdict), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks past the glitch filter, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor; the glitch filter (1-6 tick glitches in every bar and space of a sheet merged, 7 ticks kept, a short speck opens no read); not a bar (where a dropout, a speck, a reversed start, 8 narrow widths and an unreadable sheet stop being bars; no bar of any letter, either way, 6 blur and ratio cases, ever is not one); a read ENDed or dropped by a junction |

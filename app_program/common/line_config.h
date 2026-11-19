@@ -331,12 +331,19 @@
    no barcode read (so no steering hold and no reject) and never fires a
    junction by the length rule.  A read already open goes on, and the
    barcode-armed junction is not gated (a barcode and its junction are on
-   a straight).  "Turning" is motion's turn rate (distance_state,
-   motion_ds.h) averaged by two low-pass stages, each 1/LINE_SCAN_AVG_DIV
-   of the way every 10 ms, at or above LINE_SCAN_MAX_TURN_DPS.  Without
-   distance_state (motor_task_flag() 0, as in a bench image, or its
-   counter unchanged for LINE_SCAN_STALE_MS) the gate stays open (fails
-   open).  0: no gate, as before (-DLINE_SCAN_GATE=0).
+   a straight).  "Turning" is either of:
+   - motion in a manoeuvre that is not line following: TURNING, BYPASS,
+     LINE_SEARCH or REVERSING (motion_state_read(), motor_task.h).  When
+     the manoeuvre ends the average below starts again from 0, so the
+     straight after a junction pivot scans at once;
+   - otherwise (LINE_FOLLOW, and the stopped states), motion's turn rate
+     (distance_state, motion_ds.h) averaged by two low-pass stages, each
+     1/LINE_SCAN_AVG_DIV of the way every 10 ms, at or above
+     LINE_SCAN_MAX_TURN_DPS: a curve.
+   Without distance_state (motor_task_flag() 0, as in a bench image, or
+   its counter unchanged for LINE_SCAN_STALE_MS) the gate stays open
+   (fails open), whatever the motion state.  0: no gate, as before
+   (-DLINE_SCAN_GATE=0).
    On curves and in pivots GP7 sweeps across the line itself (register L5
    and S3, _handover/diag_plan_v2.md): seven junction lines in one bypass
    (tests/scan_bench/logs/fr20_bypass_rejoin_2026-11-04.txt:42-133), and
@@ -370,11 +377,15 @@
    (pi/2)), far above 6, so a sheet met at the wrong moment would be
    ignored; these two stages leave 2.6 deg/s at 1 Hz and 5.1 at 0.7 Hz
    (sim, tests/line test_scan_gate); a weave slower than about 0.65 Hz at
-   that size would shut the gate (C).  The cost is time: the gate shuts
-   about 0.8 s into a 150 mm curve, 1.5 s into a 300 mm curve, 0.4 s into
-   a 43 deg/s pivot and 0.3 s into a 90 deg/s one, and opens again about
-   2.1 s after a 90 deg junction pivot (sim, steady turn rates from the
-   start of the turn).  A GUESS, not measured. */
+   that size would shut the gate (C).  The cost is time on curves: the
+   gate shuts about 0.8 s into a 150 mm curve and 1.5 s into a 300 mm
+   curve (sim, steady turn rates from the start of the turn), and opens
+   again late after one: the checker's 2D sim reads a sheet from about
+   130-140 mm after the end of a 90 deg curve of 150 mm radius, 50-60 mm
+   after a 300 mm one (sim, no weave).  Pivots no longer wait for it:
+   TURNING shuts the gate at once and its end resets the average (it
+   used to open again about 2.1 s after a 90 deg junction pivot, sim).
+   A GUESS, not measured. */
 #ifndef LINE_SCAN_AVG_DIV
 #define LINE_SCAN_AVG_DIV                         (64u)
 #endif

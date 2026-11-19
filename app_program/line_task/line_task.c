@@ -20,9 +20,12 @@
  *
  * The scan gate (LINE_SCAN_GATE 1, scan_gate.h): barcodes are only on
  * straight segments (the prof's tip, 19 Nov), so a GP7 black that starts
- * while motion's averaged turn rate is at or above LINE_SCAN_MAX_TURN_DPS
- * opens no read and fires no junction by the length rule.  The armed
- * junction is not gated.  Without distance_state it fails open.
+ * while motion is in a manoeuvre (TURNING, BYPASS, LINE_SEARCH,
+ * REVERSING: motion_state_read(), one aligned load, core 1), or while
+ * its averaged turn rate is at or above LINE_SCAN_MAX_TURN_DPS, opens no
+ * read and fires no junction by the length rule.  The average starts
+ * again from 0 when a manoeuvre ends.  The armed junction is not gated.
+ * Without distance_state it fails open.
  */
 
 #include <tk/tkernel.h>
@@ -45,6 +48,7 @@
 #include "junction_arm.h"
 #include "scan_gate.h"
 #include "../motor_task/motion_ds.h"
+#include "../motor_task/motion_sm.h"
 #include "../motor_task/motor_task.h"
 
 #define IR_SAMPLE_MS		1	/* the 1 ms cadence (CNF_TIMER_PERIOD 1) */
@@ -234,15 +238,21 @@ LOCAL void print_arm(jarm_event_t event, mission_state_t mission)
 
 #if LINE_SCAN_GATE
 /* A GP7 black the scan gate turned away; more = others since the last
-   such line, not printed (IR_GATE_PRINT_MS). */
-LOCAL void print_ignored(UINT more)
+   such line, not printed (IR_GATE_PRINT_MS); motion = the motion state
+   now. */
+LOCAL void print_ignored(UINT more, uint32_t motion)
 {
 	INT	avg = (INT)scan_gate_avg_x10(&g_gate);
 	UINT	size = (UINT)((avg < 0) ? -avg : avg);
 
-	tm_printf((UB *)"[line] GP7 black ignored: turning %u.%u deg/s %s (scan gate, limit %u): no read, no length-rule junction (%u more since the last line)\n",
-		  size / 10U, size % 10U, (avg < 0) ? "right" : "left",
-		  (UINT)LINE_SCAN_MAX_TURN_DPS, more);
+	if(g_gate.manoeuvre) {
+		tm_printf((UB *)"[line] GP7 black ignored: motion %s (scan gate): no read, no length-rule junction (%u more since the last line)\n",
+			  motion_sm_name(motion), more);
+	} else {
+		tm_printf((UB *)"[line] GP7 black ignored: turning %u.%u deg/s %s (scan gate, limit %u): no read, no length-rule junction (%u more since the last line)\n",
+			  size / 10U, size % 10U, (avg < 0) ? "right" : "left",
+			  (UINT)LINE_SCAN_MAX_TURN_DPS, more);
+	}
 }
 
 /* distance_state lost or back: the gate fails open without it. */
@@ -311,6 +321,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 #if LINE_SCAN_GATE
 	BOOL		scan_open;	/* a GP7 black may open a read */
 	BOOL		motion_up;
+	uint32_t	motion_now;	/* motion_state_read() */
 	BOOL		ds_reported = TRUE;	/* distance_state as last printed */
 	uint16_t	ignored_seen = 0U;	/* g_cap.ignored as last counted */
 	UINT		ignored_more = 0U;	/* turned away, not yet printed */
@@ -363,7 +374,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		  (INT)LINE_SENSOR_LEFT_GPIO, (INT)LINE_SENSOR_RIGHT_GPIO,
 		  (INT)BARCODE_SENSOR_GPIO);
 #if LINE_SCAN_GATE
-	tm_printf((UB *)"[line] junction rule: " IR_RULE_TEXT " | scan gate on: GP7 black opens no read and no length-rule junction while the averaged turn rate is %u deg/s or more (LINE_SCAN_GATE 1)\n",
+	tm_printf((UB *)"[line] junction rule: " IR_RULE_TEXT " | scan gate on: GP7 black opens no read and no length-rule junction in TURNING, BYPASS, LINE_SEARCH or REVERSING, or while the averaged turn rate is %u deg/s or more (LINE_SCAN_GATE 1)\n",
 		  (UINT)LINE_SCAN_MAX_TURN_DPS);
 #else
 	tm_printf((UB *)"[line] junction rule: " IR_RULE_TEXT " | scan gate off (LINE_SCAN_GATE 0)\n");
@@ -387,9 +398,12 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		ds_now = motion_ds_read();
 #endif
 #if LINE_SCAN_GATE
-		/* before the capture: no read starts while the car turns */
+		/* before the capture: no read starts while the car turns or
+		   is in a manoeuvre (motion's state, one load) */
 		motion_up = (0 < motor_task_flag()) ? TRUE : FALSE;
-		scan_open = scan_gate_step(&g_gate, ds_now, motion_up ? true : false,
+		motion_now = motion_state_read();
+		scan_open = scan_gate_step(&g_gate, ds_now, motion_now,
+					   motion_up ? true : false,
 					   (uint32_t)elapsed) ? TRUE : FALSE;
 		bar_capture_set_gate(&g_cap, scan_open ? true : false);
 #endif
@@ -568,7 +582,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			ignored_more += (UINT)(uint16_t)(g_cap.ignored - ignored_seen);
 			ignored_seen = g_cap.ignored;
 			if(0U == gate_quiet) {
-				print_ignored(ignored_more - 1U);
+				print_ignored(ignored_more - 1U, motion_now);
 				ignored_more = 0U;
 				gate_quiet = IR_GATE_PRINT_MS;
 			}

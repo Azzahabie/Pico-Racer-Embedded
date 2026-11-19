@@ -24,7 +24,8 @@
    default run): every test before the gate passes unchanged, and the
    gate tests check the behaviour before it.  junction_scan_off (not in
    the default run) builds the gate out but expects it: those tests
-   fail. */
+   fail.  motion's state (motion_state_read()) goes to the gate too:
+   LINE_FOLLOW unless a test says otherwise. */
 
 #include <math.h>
 #include <string.h>
@@ -36,6 +37,7 @@
 #include "../../app_program/line_task/line_track.h"
 #include "../../app_program/line_task/scan_gate.h"
 #include "../../app_program/motor_task/motion_ds.h"
+#include "../../app_program/motor_task/motion_sm.h"
 
 /* The gate tests expect what the build has, unless told otherwise. */
 #ifndef TEST_EXPECT_GATE
@@ -151,6 +153,7 @@ static uint32_t ds_word;
 static uint32_t ds_ctr;
 static bool motion_up;		/* motor_task_flag() > 0 */
 static bool ds_frozen;		/* motion_task stopped publishing */
+static uint32_t motion_st;	/* motion_state_read() */
 static double curve_x;
 static double curve_dps;
 static double weave_amp;
@@ -228,6 +231,7 @@ static void chain_reset(bool table_loaded)
 	scan_gate_init(&sg, ds_word);
 	motion_up = true;
 	ds_frozen = false;
+	motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
 	curve_x = 1.0e9;
 	curve_dps = 0.0;
 	weave_amp = 0.0;
@@ -282,7 +286,7 @@ static void sample(bool black)
 	bar_event_t ev;
 #if LINE_SCAN_GATE
 	/* the scan gate, before the capture */
-	bool scan_open = scan_gate_step(&sg, ds_word, motion_up, 1u);
+	bool scan_open = scan_gate_step(&sg, ds_word, motion_st, motion_up, 1u);
 
 	bar_capture_set_gate(&cap, scan_open);
 #endif
@@ -1064,8 +1068,10 @@ typedef struct {
    GP7 meets the line on a curve depends on its mount, not measured (S3);
    the gate needs the averaged rate to rise first.  amp, hz, ph: a weave
    on top (amp 0: none).  sweep_ds: 0 distance_state as usual, 1
-   motor_task_flag() 0, 2 motion_task not publishing. */
+   motor_task_flag() 0, 2 motion_task not publishing.  sweep_motion: the
+   motion state all through. */
 static unsigned sweep_ds;
+static uint32_t sweep_motion = (uint32_t)MOTION_ST_LINE_FOLLOW;
 
 static void curve_sweeps(double dps, double d0, double amp, double hz,
 			 double ph, sweep_t *r)
@@ -1085,6 +1091,7 @@ static void curve_sweeps(double dps, double d0, double amp, double hz,
 		weave_ph = ph;
 		motion_up = (sweep_ds != 1u);
 		ds_frozen = (sweep_ds == 2u);
+		motion_st = sweep_motion;
 		curve_x = 100.0;
 		curve_dps = dps;
 		black_run(x, x + lens[i], 0.0);
@@ -1265,19 +1272,203 @@ static void test_scan_armed_turning(void)
 
 /* No distance_state: the gate fails open, so the curve sweeps behave as
    before the gate.  motor_task_flag() 0 (a bench image), and motion_task
-   not publishing (the counter never moves). */
+   not publishing (the counter never moves); in Line Following and with
+   motion's state saying Turning (no distance_state wins over the state). */
 static void test_scan_fail_open(void)
 {
 	sweep_t r;
+	unsigned m;
 
-	for (sweep_ds = 1u; sweep_ds <= 2u; ++sweep_ds) {
-		curve_sweeps(curve_rate(150.0), 100.0, 0.0, 1.0, 0.0, &r);
-		CHECK((r.opened == 5u) && (r.fired == 3u) && (r.held > 0u));
-		if (LINE_SCAN_GATE) {
-			CHECK(!sg.available && sg.open);
+	for (m = 0u; m < 2u; ++m) {
+		sweep_motion = (m == 0u) ? (uint32_t)MOTION_ST_LINE_FOLLOW
+					 : (uint32_t)MOTION_ST_TURNING;
+		for (sweep_ds = 1u; sweep_ds <= 2u; ++sweep_ds) {
+			curve_sweeps(curve_rate(150.0), 100.0, 0.0, 1.0, 0.0, &r);
+			CHECK((r.opened == 5u) && (r.fired == 3u) && (r.held > 0u));
+			if (LINE_SCAN_GATE) {
+				CHECK(!sg.available && sg.open && !sg.manoeuvre);
+			}
 		}
 	}
 	sweep_ds = 0u;
+	sweep_motion = (uint32_t)MOTION_ST_LINE_FOLLOW;
+}
+
+/* A course sheet and its crossbar met driving straight (0 deg/s) while
+   motion is in each manoeuvre that is not line following (Turning's run
+   to the crossing, a bypass leg, the line search, the reverse): the gate
+   is shut by the state, not by the average, so nothing opens, nothing is
+   judged, and the crossbar fires nothing by the length rule.  In Line
+   Following the same run reads and fires (test_scan_straight). */
+static void test_scan_manoeuvres(void)
+{
+	static const uint32_t man[4] = {
+		MOTION_ST_TURNING, MOTION_ST_BYPASS, MOTION_ST_LINE_SEARCH,
+		MOTION_ST_REVERSING
+	};
+	unsigned k;
+
+	for (k = 0u; k < 4u; ++k) {
+		uint8_t id0;
+
+		chain_reset(true);
+		motion_st = man[k];
+		id0 = cap.read_id;
+		sheet_run('C', -300.0);
+		if (TEST_EXPECT_GATE) {
+			CHECK((uint8_t)(cap.read_id - id0) == 0u);
+			CHECK((junctions == 0u) && (verdicts == 0u) && (held_ms == 0u));
+			/* every bar after a space longer than the quiet zone
+			   counts again, then the crossbar */
+			CHECK(cap.ignored >= 2u);
+		} else {
+			CHECK((ev_armed == 1u) && (j_cross == 1u) && j_cmd_ok);
+		}
+	}
+}
+
+/* ---- a junction turn, then a sheet on the new arm ----
+   distance_state's travel (mm), and the turn rate its 50 ms window still
+   shows after a pivot: tail_dps x tail_n / 5 for the next tail_n
+   publishes. */
+static double leg_mm;
+static double tail_dps;
+static unsigned tail_n;
+
+/* GP7 from x0 towards x1 at base 6, the car straight, distance_state
+   counting on from leg_mm; with stop_j it stops on the sample a junction
+   fires. */
+static void leg(double x0, double x1, bool stop_j)
+{
+	double v = 6.0 * 100.0 * MM_PER_COUNT / 1000.0;	/* mm/ms */
+	unsigned j0 = junctions;
+
+	gp7_x = x0;
+	while ((gp7_x < x1) && !(stop_j && (junctions != j0))) {
+		if ((now % 10u) == 0u) {
+			double dps = 0.0;
+
+			if (tail_n > 0u) {
+				dps = tail_dps * (double)tail_n / 5.0;
+				tail_n--;
+			}
+			ds_mm = (uint32_t)leg_mm;
+			publish(dps);
+		}
+		sample(black_at(gp7_x));
+		gp7_x += v;
+		leg_mm += v;
+		now++;
+	}
+}
+
+/* The checker's case (19 Nov).  Sheet 1 'B' (LEFT in this table) on
+   arm 1, its crossbar 40 mm after.  When that junction fires, motion
+   goes TURNING: 50 mm straight (MOTION_TURN_FWD_MM, motion_cfg.h), GP7
+   running on over the crossbar, then a 90 deg pivot on the spot at rate
+   deg/s, in which GP7 (assumed 50 mm ahead of the axle and 45 mm aside,
+   67 mm from it; not measured) sweeps the crossing's line ahead 42 deg
+   in.  Then LINE_FOLLOW on arm 2, GP7 starting 50 mm past the crossing
+   centre.  Sheet 2 'C' starts d mm past the crossing centre, its
+   crossbar 40 mm after.  state false: the gate is not told motion's
+   state (Line Following all through), the gate before this change.
+   Returns true when sheet 2 decodes, arms, and its crossbar alone fires,
+   with 'C'.  pivot_j: junctions during the turn. */
+static unsigned pivot_j;
+
+static bool pivot_then_sheet(double rate, double d, bool state)
+{
+	double end;
+	unsigned on[1];
+	unsigned len[1];
+	unsigned j0;
+
+	chain_reset(true);
+	leg_mm = 0.0;
+	tail_dps = 0.0;
+	tail_n = 0u;
+	want = 'B';
+	end = sheet('B', 3.0, 3.0, 0.0, 0.0);
+	crossbar(end + 40.0, 0.0);
+	leg(-300.0, crossbar_b + 100.0, true);
+	CHECK((ev_armed == 1u) && (j_cross == 1u) && j_cmd_ok);
+
+	/* Turning: to the crossing, then the pivot */
+	j0 = junctions;
+	if (state) {
+		motion_st = (uint32_t)MOTION_ST_TURNING;
+	}
+	leg(gp7_x, gp7_x + 50.0, false);
+	on[0] = (unsigned)(42.0 / rate * 1000.0);
+	len[0] = (unsigned)(18.0 / (67.0 * rate * 3.14159265358979 / 180.0) * 1000.0);
+	spin((unsigned)(90.0 / rate * 1000.0), rate, on, len, 1u);
+	pivot_j = junctions - j0;
+
+	/* arm 2, measured from the crossing centre */
+	motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
+	nsegs = 0u;
+	crossbar_a = -1.0;
+	junctions = 0u;
+	j_before = 0u;
+	j_cross = 0u;
+	j_cmd_ok = false;
+	j_letter = '-';
+	ev_armed = 0u;
+	want = 'C';
+	end = sheet('C', 3.0, 3.0, 0.0, d);
+	crossbar(end + 40.0, 0.0);
+	tail_dps = rate;
+	tail_n = 4u;
+	leg(50.0, crossbar_b + 100.0, false);
+	return (ev_armed == 1u) && (j_cross == 1u) && (junctions == 1u) && j_cmd_ok &&
+	       (j_letter == 'C');
+}
+
+/* Sheet 2 at d = 60, 100, 140 and 180 mm after the crossing, pivots at
+   43 and 90 deg/s: with motion's state every sheet is read (GP7 starts
+   50 mm along the new arm, so even 60 mm leaves it 10 mm of straight).
+   Without it, the average alone loses the near ones (it opens about
+   2.1-2.6 s after the pivot: 100-120 mm at base 6).  The sweep in the
+   pivot fires nothing with the gate either way.  Before the gate
+   (LINE_SCAN_GATE 0) every sheet is read except at 90 deg/s and 60 mm:
+   there the sweep (171 ms, under J_n) opens a read that is still open
+   when sheet 2 arrives. */
+static void test_scan_pivot_sheet(void)
+{
+	static const double rates[] = { 43.0, 90.0 };
+	static const double ds[] = { 60.0, 100.0, 140.0, 180.0 };
+	char row[2][2][4];
+	unsigned k;
+	unsigned i;
+	unsigned m;
+
+	for (k = 0u; k < 2u; ++k) {
+		for (m = 0u; m < 2u; ++m) {
+			for (i = 0u; i < 4u; ++i) {
+				bool ok = pivot_then_sheet(rates[k], ds[i], m == 1u);
+
+				row[k][m][i] = ok ? 'y' : 'n';
+				if (TEST_EXPECT_GATE) {
+					if (m == 1u) {
+						CHECK(ok);
+					}
+					CHECK(pivot_j == 0u);
+				} else {
+					CHECK(ok == !((k == 1u) && (i == 0u)));
+				}
+			}
+			if ((m == 0u) && TEST_EXPECT_GATE) {
+				CHECK(row[k][0][0] == 'n');	/* the lag it fixes */
+			}
+		}
+	}
+	(void)printf("  scan gate, sheet 2 read after a 90 deg junction pivot (d = 60/100/140/180 mm "
+		     "after the crossing, y/n): 43 deg/s with motion's state %c%c%c%c, average alone "
+		     "%c%c%c%c; 90 deg/s with motion's state %c%c%c%c, average alone %c%c%c%c\n",
+		     row[0][1][0], row[0][1][1], row[0][1][2], row[0][1][3],
+		     row[0][0][0], row[0][0][1], row[0][0][2], row[0][0][3],
+		     row[1][1][0], row[1][1][1], row[1][1][2], row[1][1][3],
+		     row[1][0][0], row[1][0][1], row[1][0][2], row[1][0][3]);
 }
 #endif
 
@@ -1333,6 +1524,8 @@ int main(void)
 	test_scan_pivot();
 	test_scan_armed_turning();
 	test_scan_fail_open();
+	test_scan_manoeuvres();
+	test_scan_pivot_sheet();
 #endif
 	return check_report("barcode-armed junction");
 }

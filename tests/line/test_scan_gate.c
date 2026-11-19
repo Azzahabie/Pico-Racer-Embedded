@@ -2,6 +2,9 @@
    places it acts: the barcode capture (bar_capture_set_gate) and the
    length rule (line_junction_gate_t.turning in line_track.c).
 
+   motion's state (motion_state_read()) is given as motion_task would
+   publish it: LINE_FOLLOW unless a test says otherwise.
+
    distance_state is built with motion_ds_pack() as motion_task builds it:
    one publish every 10 ms, the counter +1 each time, the turn rate in
    whole deg/s.  Turn rates (C, at base 6, 47.6 mm/s): a curve of radius
@@ -19,6 +22,7 @@
 #include "../../app_program/line_task/bar_capture.h"
 #include "../../app_program/line_task/line_track.h"
 #include "../../app_program/motor_task/motion_ds.h"
+#include "../../app_program/motor_task/motion_sm.h"
 
 #define PI (3.14159265358979)
 #define B (3500u)		/* line sensors: on the line */
@@ -30,6 +34,7 @@ static uint32_t ds_ctr;
 static unsigned now;		/* ms */
 static bool motion_up;
 static bool publishing;
+static uint32_t motion_st;	/* motion_state_read() */
 
 /* a turn rate profile: base + amp x sin(2 pi hz t + ph), from t0 (ms) */
 static double base_dps;
@@ -45,6 +50,7 @@ static void gate_reset(void)
 	scan_gate_init(&g, ds_word);
 	motion_up = true;
 	publishing = true;
+	motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
 	base_dps = 0.0;
 	amp_dps = 0.0;
 	hz = 1.0;
@@ -66,7 +72,7 @@ static bool step1(void)
 		ds_word = motion_ds_pack(0, MOTION_DS_STEADY, ds_ctr,
 					 (int32_t)lround(rate_now()));
 	}
-	open = scan_gate_step(&g, ds_word, motion_up, 1u);
+	open = scan_gate_step(&g, ds_word, motion_st, motion_up, 1u);
 	now++;
 	return open;
 }
@@ -270,9 +276,9 @@ static void test_elapsed_and_range(void)
 	scan_gate_init(&b, w);
 	for (i = 1u; i <= 300u; ++i) {
 		w = motion_ds_pack(0, MOTION_DS_STEADY, i, (int32_t)(i % 37u) - 10);
-		(void)scan_gate_step(&a, w, true, 10u);
+		(void)scan_gate_step(&a, w, MOTION_ST_LINE_FOLLOW, true, 10u);
 		for (j = 0u; j < 10u; ++j) {
-			(void)scan_gate_step(&b, w, true, 1u);
+			(void)scan_gate_step(&b, w, MOTION_ST_LINE_FOLLOW, true, 1u);
 		}
 	}
 	CHECK(a.stage1 == b.stage1);
@@ -281,15 +287,172 @@ static void test_elapsed_and_range(void)
 	scan_gate_init(&a, w);
 	for (i = 1u; i <= 3000u; ++i) {
 		w = motion_ds_pack(0, MOTION_DS_STEADY, i, MOTION_DS_TURN_MAX);
-		(void)scan_gate_step(&a, w, true, 10u);
+		(void)scan_gate_step(&a, w, MOTION_ST_LINE_FOLLOW, true, 10u);
 	}
 	CHECK(scan_gate_avg_x10(&a) > 20400);
 	for (i = 1u; i <= 3000u; ++i) {
 		w = motion_ds_pack(0, MOTION_DS_STEADY, i, MOTION_DS_TURN_MIN);
-		(void)scan_gate_step(&a, w, true, 10u);
+		(void)scan_gate_step(&a, w, MOTION_ST_LINE_FOLLOW, true, 10u);
 	}
 	CHECK(scan_gate_avg_x10(&a) < -20400);
 	CHECK(!a.open);
+}
+
+/* ---- motion's state ---- */
+
+static const uint32_t manoeuvres[4] = {
+	MOTION_ST_TURNING, MOTION_ST_BYPASS, MOTION_ST_LINE_SEARCH,
+	MOTION_ST_REVERSING
+};
+
+/* The states that shut the gate on their own, and only those (a value
+   that is not a state does not). */
+static void test_manoeuvre_states(void)
+{
+	uint32_t st;
+
+	for (st = 0u; st < 16u; ++st) {
+		bool want = (st == (uint32_t)MOTION_ST_TURNING) ||
+			    (st == (uint32_t)MOTION_ST_BYPASS) ||
+			    (st == (uint32_t)MOTION_ST_LINE_SEARCH) ||
+			    (st == (uint32_t)MOTION_ST_REVERSING);
+
+		CHECK(scan_gate_manoeuvre(st) == want);
+	}
+}
+
+/* Each manoeuvre shuts the gate on its first sample even driving
+   straight (0 deg/s: Turning's run to the crossing, a bypass leg, the
+   line search, the reverse) and keeps it shut; the average runs on
+   meanwhile.  The sample it ends on opens the gate again with the
+   average back at 0, even after 2 s at 90 deg/s, and distance_state's
+   50 ms window, still showing 4/5 to 1/5 of the turn for the next four
+   publishes, does not shut it. */
+static void test_manoeuvre_shuts(void)
+{
+	unsigned k;
+	unsigned i;
+
+	for (k = 0u; k < 4u; ++k) {
+		gate_reset();
+		CHECK(run(3000u) == 0u);
+		motion_st = manoeuvres[k];
+		CHECK(!step1() && g.manoeuvre && g.available);
+		CHECK(run(3000u) == 3000u);
+		base_dps = (k == 3u) ? -90.0 : 90.0;
+		CHECK(run(2000u) == 2000u);
+		CHECK(scan_gate_avg_x10(&g) != 0);
+		/* the end, into Line Following */
+		motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
+		CHECK(step1() && !g.manoeuvre);
+		CHECK(scan_gate_avg_x10(&g) == 0);
+		for (i = 4u; i > 0u; --i) {	/* the window's tail */
+			base_dps = ((k == 3u) ? -90.0 : 90.0) * (double)i / 5.0;
+			CHECK(run(10u) == 0u);
+		}
+		base_dps = 0.0;
+		CHECK(run(5000u) == 0u);
+	}
+}
+
+/* The reset when a manoeuvre ends, against the average alone: a 90 deg
+   junction pivot at 43 deg/s.  Published with motion in Line Following
+   (the gate before the state was read, as for a curve) the gate opens
+   again about 2.1 s after the pivot; in Turning it opens on the sample
+   the pivot ends.  A stop mid-pivot (Braked, a stopped state) resets
+   too, and the resumed turn shuts again at once. */
+static void test_manoeuvre_reset(void)
+{
+	unsigned avg_only;
+	unsigned with_state;
+
+	gate_reset();
+	(void)run(3000u);
+	base_dps = 43.0;
+	(void)run(2100u);
+	base_dps = 0.0;
+	avg_only = until_open(10000u);
+
+	gate_reset();
+	(void)run(3000u);
+	motion_st = (uint32_t)MOTION_ST_TURNING;
+	base_dps = 43.0;
+	CHECK(run(2100u) == 2100u);
+	base_dps = 0.0;
+	motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
+	with_state = until_open(10000u);
+	(void)printf("  a 90 deg pivot at 43 deg/s: open again %u ms after it with the average alone, "
+		     "%u ms with motion's state (Turning)\n", avg_only, with_state);
+	CHECK(avg_only > 500u);
+	CHECK(with_state == 0u);
+
+	/* a stop mid-pivot, then the turn resumes and ends */
+	gate_reset();
+	motion_st = (uint32_t)MOTION_ST_TURNING;
+	base_dps = 43.0;
+	CHECK(run(1000u) == 1000u);
+	motion_st = (uint32_t)MOTION_ST_BRAKED;
+	base_dps = 0.0;
+	CHECK(step1() && (scan_gate_avg_x10(&g) == 0));
+	CHECK(run(500u) == 0u);
+	motion_st = (uint32_t)MOTION_ST_TURNING;
+	base_dps = 43.0;
+	CHECK(!step1());
+	CHECK(run(1000u) == 1000u);
+	motion_st = (uint32_t)MOTION_ST_LINE_FOLLOW;
+	base_dps = 0.0;
+	CHECK(run(3000u) == 0u);
+}
+
+/* The other states are not manoeuvres: the average decides there, as in
+   Line Following (a 150 mm curve, 18.2 deg/s, shuts it within 1 s;
+   straight, it stays open). */
+static void test_other_states(void)
+{
+	static const uint32_t others[5] = {
+		MOTION_ST_LINE_FOLLOW, MOTION_ST_IDLE, MOTION_ST_BRAKED,
+		MOTION_ST_LINE_LOST, MOTION_ST_FAULT
+	};
+	unsigned k;
+
+	for (k = 0u; k < 5u; ++k) {
+		gate_reset();
+		motion_st = others[k];
+		CHECK(run(3000u) == 0u);
+		CHECK(!g.manoeuvre);
+		base_dps = 18.2;
+		CHECK(until_shut(5000u) < 1000u);
+		CHECK(!g.manoeuvre);
+	}
+}
+
+/* No distance_state wins over the state: in every manoeuvre the gate is
+   open with motor_task_flag() 0 (a bench image) and once the counter
+   has stopped for LINE_SCAN_STALE_MS; when it moves again, still in the
+   manoeuvre, the gate shuts at once. */
+static void test_manoeuvre_fail_open(void)
+{
+	unsigned k;
+
+	for (k = 0u; k < 4u; ++k) {
+		gate_reset();
+		motion_up = false;
+		motion_st = manoeuvres[k];
+		base_dps = 43.0;
+		CHECK(run(3000u) == 0u);
+		CHECK(!g.available && !g.manoeuvre);
+
+		gate_reset();
+		motion_st = manoeuvres[k];
+		CHECK(run(1000u) == 1000u);
+		publishing = false;
+		(void)run(LINE_SCAN_STALE_MS);
+		CHECK(g.open && !g.available && !g.manoeuvre);
+		CHECK(run(2000u) == 0u);
+		publishing = true;
+		CHECK(until_shut(20u) < 11u);
+		CHECK(g.manoeuvre);
+	}
 }
 
 /* ---- the capture with the gate ---- */
@@ -449,6 +612,11 @@ int main(void)
 	test_curves_pivots();
 	test_fail_open();
 	test_elapsed_and_range();
+	test_manoeuvre_states();
+	test_manoeuvre_shuts();
+	test_manoeuvre_reset();
+	test_other_states();
+	test_manoeuvre_fail_open();
 	test_capture_gate();
 	test_length_rule_gate();
 	return check_report("scan gate");

@@ -36,13 +36,15 @@ JA_SRC := $(SRC_DIR)/bar_capture.c $(SRC_DIR)/barcode_rx.c \
 JA_DEPS := test_junction_arm.c check.h $(JA_SRC) $(SRC_DIR)/bar_capture.h \
            $(SRC_DIR)/barcode_rx.h $(SRC_DIR)/junction_arm.h $(SRC_DIR)/line_track.h \
            $(SRC_DIR)/scan_gate.h ../../app_program/motor_task/motion_ds.h \
-           ../../app_program/common/line_config.h
-# The scan gate (test_scan_gate.c): the average, and where it acts.
+           $(SM_DIR)/motion_sm.h ../../app_program/common/line_config.h
+# The scan gate (test_scan_gate.c): the average, motion's state, and where
+# it acts.
 SG_SRC := $(SRC_DIR)/scan_gate.c $(SRC_DIR)/bar_capture.c $(SRC_DIR)/barcode_decode.c \
           $(SRC_DIR)/line_track.c $(SRC_DIR)/ir_cal.c
 SG_DEPS := test_scan_gate.c check.h $(SG_SRC) $(SRC_DIR)/scan_gate.h \
            $(SRC_DIR)/bar_capture.h $(SRC_DIR)/line_track.h \
-           ../../app_program/motor_task/motion_ds.h ../../app_program/common/line_config.h
+           ../../app_program/motor_task/motion_ds.h $(SM_DIR)/motion_sm.h \
+           ../../app_program/common/line_config.h
 # The scan gate built out but expected by the tests: the gate tests FAIL
 # (they see the behaviour before the gate).  Not in the default run.
 SCAN_OFF := -DLINE_SCAN_GATE=0 -DTEST_EXPECT_GATE=1

@@ -4,6 +4,7 @@
 
 #include "scan_gate.h"
 #include "../motor_task/motion_ds.h"
+#include "../motor_task/motion_sm.h"
 
 #ifndef LINE_SCAN_MAX_TURN_DPS
 #error "LINE_SCAN_MAX_TURN_DPS must come from line_config.h"
@@ -21,7 +22,16 @@ void scan_gate_init(scan_gate_t *gate, uint32_t ds)
 	gate->counter = motion_ds_counter(ds);
 	gate->stale_ms = 0u;
 	gate->available = true;
+	gate->manoeuvre = false;
 	gate->open = true;
+}
+
+bool scan_gate_manoeuvre(uint32_t motion)
+{
+	return (motion == (uint32_t)MOTION_ST_TURNING) ||
+	       (motion == (uint32_t)MOTION_ST_BYPASS) ||
+	       (motion == (uint32_t)MOTION_ST_LINE_SEARCH) ||
+	       (motion == (uint32_t)MOTION_ST_REVERSING);
 }
 
 static uint32_t sat_add(uint32_t a, uint32_t b)
@@ -43,10 +53,11 @@ static int32_t low_pass(int32_t stage, int32_t input)
 	return stage + step;
 }
 
-bool scan_gate_step(scan_gate_t *gate, uint32_t ds, bool motion_up,
-		    uint32_t elapsed_ms)
+bool scan_gate_step(scan_gate_t *gate, uint32_t ds, uint32_t motion,
+		    bool motion_up, uint32_t elapsed_ms)
 {
 	uint32_t counter = motion_ds_counter(ds);
+	bool was_manoeuvre = gate->manoeuvre;
 	int32_t input;
 	int32_t size;
 
@@ -63,8 +74,18 @@ bool scan_gate_step(scan_gate_t *gate, uint32_t ds, bool motion_up,
 		gate->stage1 = 0;
 		gate->stage2 = 0;
 		gate->sample_ms = 0u;
+		gate->manoeuvre = false;
 		gate->open = true;
 		return true;
+	}
+
+	/* a manoeuvre shuts the gate; when it ends the average starts again
+	   from 0, so the straight after it scans at once */
+	gate->manoeuvre = scan_gate_manoeuvre(motion);
+	if (was_manoeuvre && !gate->manoeuvre) {
+		gate->stage1 = 0;
+		gate->stage2 = 0;
+		gate->sample_ms = 0u;
 	}
 
 	input = motion_ds_turn_dps(ds) * SCAN_GATE_SCALE;
@@ -75,7 +96,8 @@ bool scan_gate_step(scan_gate_t *gate, uint32_t ds, bool motion_up,
 		gate->stage2 = low_pass(gate->stage2, gate->stage1);
 	}
 	size = (gate->stage2 < 0) ? -gate->stage2 : gate->stage2;
-	gate->open = size < ((int32_t)LINE_SCAN_MAX_TURN_DPS * SCAN_GATE_SCALE);
+	gate->open = !gate->manoeuvre &&
+		     (size < ((int32_t)LINE_SCAN_MAX_TURN_DPS * SCAN_GATE_SCALE));
 	return gate->open;
 }
 

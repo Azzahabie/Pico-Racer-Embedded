@@ -14,10 +14,19 @@
  * car's weave on a straight averages out while a curve or a pivot stays.
  * The car is going straight while |average| < LINE_SCAN_MAX_TURN_DPS.
  *
+ * Motion's own state (motion_state_read(), motor_task.h) comes first: in
+ * a manoeuvre that is not line following (TURNING, BYPASS, LINE_SEARCH,
+ * REVERSING: scan_gate_manoeuvre()) the gate is shut whatever the
+ * average says, and when the manoeuvre ends both stages go back to 0, so
+ * the straight after a junction pivot scans at once instead of waiting
+ * about 2 s for the average to fall.  In every other state (LINE_FOLLOW,
+ * and the stopped states IDLE, BRAKED, LINE_LOST, FAULT) the average
+ * decides, as for a curve.
+ *
  * Fails open: without distance_state (motion_up false, which ir_sense_task
  * takes from motor_task_flag() 0 as in a bench image, or the publish
- * counter unchanged for LINE_SCAN_STALE_MS) the gate is open and the
- * average starts again from 0.
+ * counter unchanged for LINE_SCAN_STALE_MS) the gate is open whatever
+ * the motion state, and the average starts again from 0.
  *
  * Pure logic, no kernel calls, so tests/line checks it on a PC.
  * ir_sense_task calls scan_gate_step() once a sample, before the barcode
@@ -42,6 +51,7 @@ typedef struct {
 	uint32_t counter;	/* distance_state's counter, last seen        */
 	uint32_t stale_ms;	/* ms since it last changed                   */
 	bool available;		/* distance_state usable (last step)          */
+	bool manoeuvre;		/* motion in a manoeuvre (last step): shut    */
 	bool open;		/* a read may start (last step)               */
 } scan_gate_t;
 
@@ -49,16 +59,23 @@ typedef struct {
 void scan_gate_init(scan_gate_t *gate, uint32_t ds);
 
 /*
- * One sample.  ds = motion_ds_read(), motion_up = motor_task_flag() > 0,
+ * One sample.  ds = motion_ds_read(), motion = motion_state_read() (a
+ * motion_state_t, motion_sm.h), motion_up = motor_task_flag() > 0,
  * elapsed_ms = ms since the last call (1, more after missed ticks).
- * Returns true when a GP7 black may open a read: going straight, or no
- * distance_state (fails open).
+ * Returns true when a GP7 black may open a read: not in a manoeuvre and
+ * going straight, or no distance_state (fails open).
  */
-bool scan_gate_step(scan_gate_t *gate, uint32_t ds, bool motion_up,
-		    uint32_t elapsed_ms);
+bool scan_gate_step(scan_gate_t *gate, uint32_t ds, uint32_t motion,
+		    bool motion_up, uint32_t elapsed_ms);
+
+/* true for the motion states that shut the gate on their own: TURNING,
+   BYPASS, LINE_SEARCH and REVERSING.  false for the others and for a
+   value that is not a state. */
+bool scan_gate_manoeuvre(uint32_t motion);
 
 /* The averaged turn rate in tenths of a deg/s, counter-clockwise (left)
-   positive; 0 while distance_state is not available. */
+   positive; 0 while distance_state is not available.  It keeps running
+   during a manoeuvre and starts from 0 when the manoeuvre ends. */
 int32_t scan_gate_avg_x10(const scan_gate_t *gate);
 
 #endif
