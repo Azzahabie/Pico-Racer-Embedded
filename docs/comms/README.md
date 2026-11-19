@@ -215,7 +215,9 @@ What the `S` fields that are easy to misread really say. The full rows are in
     proposal/line-barcode-beside-line and on by default there), crossing
     starts at the armed junction after a valid barcode (GP7 black for
     `LINE_ARMED_CONFIRM_MM` of travel, 10 mm provisional), and the bars of an
-    open barcode read never count, however long. The length rule above
+    open barcode read do not count; a black run too long to be a bar of
+    that read (more than 2.5 times its widest element) does, so a crossbar
+    after a speck or a dropout still fires. The length rule above
     applies only when nothing is armed (one exception: at base 4, 280 ms is
     8.9 mm, so it comes before the 10 mm, C).
 - **`dev` is not live.** It is the line error carried by that same E line
