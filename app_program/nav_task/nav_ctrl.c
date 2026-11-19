@@ -28,7 +28,8 @@
  *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf; no stored command means
  *	no command (straight on).  motion_task turns and answers MOVE_DONE, or
  *	CMD_REJECTED when it is not following the line (a bypass, a search);
- *	the stored command counts as used only on MOVE_DONE.
+ *	the stored command counts as used only on MOVE_DONE, or when the
+ *	mission pauses during the turn.
  *
  *	End of the run: the demo ends by lifting and inverting the car
  *	(the prof, 19 Nov), which imu_task turns into an IMU fault.
@@ -277,6 +278,18 @@ LOCAL void set_state(mission_state_t next)
 	if((MS_RUNNING != next) && (MS_PAUSED != next)) {
 		g_move_open = false;	/* no turn survives Finished, Fault or a new mission */
 		g_cmd_sent = false;
+	} else if((MS_RUNNING == prev) && (MS_PAUSED == next) && g_cmd_sent) {
+		/* Paused (GP21, MQTT, BLOCKED, LINE_LOST) during a barcode turn:
+		   motion drops the turn and answers CMD_REJECTED.  The turn was
+		   started at the junction the command was for, so it counts as
+		   used: kept, it would turn the car at a later junction, or pivot
+		   a full turn from the half-turned pose when GP7 reads the same
+		   junction again after the resume. */
+		g_cmd_taken = g_cmd_sent_seq;
+		g_cmd_sent = false;
+		tm_printf((UB *)"[nav] paused during a barcode turn: command used\n");
+	} else {
+		/* Running, or Paused with no barcode turn open: nothing to end */
 	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
@@ -539,7 +552,8 @@ LOCAL void on_junction(void)
    search GP7 crosses lines that read as junctions: a refusal there used to
    lose the command before the real junction.  Now it waits for the next
    junction.  (A turn dropped half way by an obstacle also answers
-   CMD_REJECTED, so its command is used at the next junction instead.) */
+   CMD_REJECTED, so its command is used at the next junction instead.  A
+   turn dropped by a pause was already counted as used in set_state.) */
 LOCAL void on_motion_reply(UINT bits)
 {
 	bool	b_done = (0U != (bits & NAV_FLG_MOVE_DONE));

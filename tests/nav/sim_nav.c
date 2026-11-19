@@ -6,9 +6,10 @@
  * What it checks: the barcode command goes to motion_task once per
  * junction, and is used up only when motion turns (MOVE_DONE); a refusal
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
- * it for the next junction.  Calibration: a GP20 fault reset waits
- * NAV_CAL_SETTLE_MS before CAL_REQ; boot and an MQTT reset do not; an
- * MQTT command sent while calibrating is dropped, not applied at Ready.
+ * it for the next junction; a pause during the turn uses it.
+ * Calibration: a GP20 fault reset waits NAV_CAL_SETTLE_MS before CAL_REQ;
+ * boot and an MQTT reset do not; an MQTT command sent while calibrating is
+ * dropped, not applied at Ready.
  * Built twice: the real image, and a TEST image (-DNAV_TEST_JUNCTION_ACTION=1)
  * that must say so at boot. */
 
@@ -301,6 +302,50 @@ static bool log_before(const char *a, const char *b)
 	return (NULL != p_a) && (NULL != p_b) && (p_a < p_b);
 }
 
+/* A pause during a barcode turn: motion drops the turn (CMD_REJECTED), but
+   the turn was started at the junction the command was for, so it is used
+   up; kept, GP7 reading the same junction after the resume would pivot a
+   full turn from the half-turned pose. */
+static void pause_mid_turn_uses_command(void)
+{
+	/* GP21 */
+	reset();
+	bar_store(11u, 1u, 1u);			/* LEFT, seq 1 */
+	on_junction();				/* the junction it is for */
+	CHECK(sent_junction(1u) && g_move_open);
+	g_pins_low = 1U << BTN_PAUSE_PIN;
+	on_button();				/* GP21 mid-turn */
+	g_pins_low = 0U;
+	CHECK(MS_PAUSED == nav_mission_state());
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+	CHECK(log_before("paused during a barcode turn: command used",
+			 "mission RUNNING -> PAUSED"));
+	on_motion_reply(NAV_FLG_CMD_REJECTED);	/* motion dropped the turn */
+	CHECK(NULL == strstr(g_log, "kept"));
+	CHECK(!g_move_open);
+	set_state(MS_RUNNING);			/* resume */
+	on_junction();				/* GP7 reads the same junction */
+	CHECK(1 == g_sent_n);			/* no second turn */
+	CHECK(NULL != strstr(g_log, "no barcode command: straight on"));
+
+	/* MQTT PAUSE: the same */
+	reset();
+	bar_store(17u, 2u, 4u);			/* RIGHT, seq 4 */
+	on_junction();
+	mq_put((UB)MCMD_PAUSE);
+	on_mission_cmd();
+	CHECK(MS_PAUSED == nav_mission_state());
+	on_motion_reply(NAV_FLG_CMD_REJECTED);
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+
+	/* a pause with no turn open uses nothing */
+	reset();
+	bar_store(11u, 1u, 1u);
+	set_state(MS_PAUSED);
+	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
+	CHECK(NULL == strstr(g_log, "paused during a barcode turn"));
+}
+
 /* Boot: run nav_ctrl_task up to its main wait. */
 static void run_boot(void)
 {
@@ -445,6 +490,7 @@ int main(void)
 	done_uses_command();
 	newer_command_waits();
 	edges();
+	pause_mid_turn_uses_command();
 	fault_reset_waits();
 	reset_and_boot_no_wait();
 	cmd_during_cal_dropped();
