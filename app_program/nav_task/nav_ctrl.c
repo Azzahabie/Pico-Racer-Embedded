@@ -1,7 +1,7 @@
 /*
  *	nav_ctrl.c
- *	nav_ctrl_task, MINIMAL version: the System-Level Statechart (Section 5)
- *	without junction / barcode navigation yet.
+ *	nav_ctrl_task: the System-Level Statechart (Section 5) and the
+ *	junction / barcode navigation.
  *
  *	  Initialising -> Calibrating -> Ready -> Running <-> Paused
  *	                       ^                     |
@@ -23,12 +23,14 @@
  *	FAULT_CLEAR is sent only after both calibrations pass.
  *
  *	JUNCTION (ir_sense_task, FR-08): barcode_task's stored command goes to
- *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf, once that is bound;
- *	no stored command means no command (straight on).
+ *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf; no stored command means
+ *	no command (straight on).  motion_task turns and answers MOVE_DONE, or
+ *	CMD_REJECTED when it is not following the line (a bypass, a search);
+ *	the stored command counts as used only on MOVE_DONE.
  *
- *	NOT YET (needs Buddy 2): motion_task executing the junction command,
- *	MOVE_DONE / CMD_REJECTED handling, end-of-course trigger (owner
- *	unassigned), RGB LED on GP18 (WS2812, needs PIO).
+ *	End of the run: the demo ends by lifting and inverting the car
+ *	(the prof, 19 Nov), which imu_task turns into an IMU fault.
+ *	NOT YET: RGB LED on GP18 (WS2812, needs PIO).
  *
  *	Barr-C (safety subset): braces on every body, constant on the left of
  *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
@@ -87,6 +89,8 @@ LOCAL ID		g_fault_flgid = 0;
 LOCAL nav_bind_t	g_nav_bind;
 LOCAL bool		g_move_open = false;	/* JUNCTION sent, no reply yet */
 LOCAL uint32_t		g_cmd_taken;		/* seq of the last barcode command used */
+LOCAL bool		g_cmd_sent = false;	/* the open JUNCTION carries a barcode command */
+LOCAL uint32_t		g_cmd_sent_seq;		/* ... with this seq */
 
 /* ------------------------------------------------------------------ */
 /* Readers                                                            */
@@ -259,6 +263,7 @@ LOCAL void set_state(mission_state_t next)
 	g_mission = (uint32_t)next;			/* the only writer */
 	if((MS_RUNNING != next) && (MS_PAUSED != next)) {
 		g_move_open = false;	/* no turn survives Finished, Fault or a new mission */
+		g_cmd_sent = false;
 	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
@@ -434,12 +439,14 @@ LOCAL void on_mission_cmd(void)
 }
 
 /* NAV_FLG_JUNCTION from ir_sense_task (FR-08): the barcode command stored
-   since the last junction goes to motion_task as NAV_CMD_JUNCTION, once.
-   With none stored, no command: motion_task follows the line straight on. */
+   since the last junction goes to motion_task as NAV_CMD_JUNCTION.  It is
+   used up only when motion turns (on_motion_reply).  With none stored, no
+   command: motion_task follows the line straight on. */
 LOCAL void on_junction(void)
 {
 	uint32_t	cmd = barcode_cmd_word();	/* one aligned load */
 	uint32_t	action = barcode_cmd_action(cmd);
+	bool		b_barcode = false;
 	UB		msg[2];
 	ER		ercd;
 
@@ -454,7 +461,7 @@ LOCAL void on_junction(void)
 		return;
 	}
 	if(barcode_cmd_pending(cmd, g_cmd_taken)) {
-		g_cmd_taken = barcode_cmd_seq(cmd);	/* this junction used it */
+		b_barcode = true;		/* used once motion has turned */
 	} else {
 #if NAV_TEST_JUNCTION_ACTION >= 0
 		action = (uint32_t)NAV_TEST_JUNCTION_ACTION;
@@ -471,6 +478,8 @@ LOCAL void on_junction(void)
 		ercd = tk_snd_mbf(g_nav_bind.nav_cmd_mbfid, msg, (INT)sizeof(msg), TMO_POL);
 		if(E_OK == ercd) {
 			g_move_open = true;
+			g_cmd_sent = b_barcode;
+			g_cmd_sent_seq = barcode_cmd_seq(cmd);
 			tm_printf((UB *)"[nav] -> motion: JUNCTION(%s)\n",
 				  barcode_action_name(action));
 		} else {
@@ -481,6 +490,27 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] -> nav_cmd_mbf: JUNCTION(%s) (motion_task not bound)\n",
 			  barcode_action_name(action));
 	}
+}
+
+/* MOVE_DONE or CMD_REJECTED for the open JUNCTION.  The barcode command it
+   carried is used up only when motion turned (MOVE_DONE).  motion_task
+   refuses a JUNCTION outside Line Following, and during a bypass or a
+   search GP7 crosses lines that read as junctions: a refusal there used to
+   lose the command before the real junction.  Now it waits for the next
+   junction.  (A turn dropped half way by an obstacle also answers
+   CMD_REJECTED, so its command is used at the next junction instead.) */
+LOCAL void on_motion_reply(UINT bits)
+{
+	bool	b_done = (0U != (bits & NAV_FLG_MOVE_DONE));
+	bool	b_kept = (!b_done) && g_cmd_sent;
+
+	if(b_done && g_cmd_sent) {
+		g_cmd_taken = g_cmd_sent_seq;		/* this junction used it */
+	}
+	g_cmd_sent = false;
+	g_move_open = false;				/* ready for the next junction */
+	tm_printf((UB *)"[nav] motion: %s%s\n", b_done ? "MOVE_DONE" : "CMD_REJECTED",
+		  b_kept ? ", barcode command kept for the next junction" : "");
 }
 
 EXPORT void nav_ctrl_task(INT stacd, void *exinf)
@@ -543,10 +573,7 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 			on_junction();
 		}
 		if(0U != (bits & (NAV_FLG_MOVE_DONE | NAV_FLG_CMD_REJECTED))) {
-			g_move_open = false;		/* ready for the next junction */
-			tm_printf((UB *)"[nav] motion: %s\n",
-				  (0U != (bits & NAV_FLG_MOVE_DONE)) ? "MOVE_DONE"
-								     : "CMD_REJECTED");
+			on_motion_reply(bits);
 		}
 	}
 }
