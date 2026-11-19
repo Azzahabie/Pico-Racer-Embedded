@@ -15,15 +15,10 @@ typedef enum { HUMP_NONE, HUMP_CLIMBING, HUMP_DESCENDING } HUMP_STATE;
  * mm (- reversing), and whether motion_task reported STEADY. */
 IMPORT void hump_step(W ax, W ay, W dmm, BOOL steady);
 
-/* Drop a hump in progress, and the "on top" follow, without counting it
- * (Statechart 6.4: fault discards the unfinished hump). */
+/* Drop a hump in progress, and the "on top" follow, without counting it:
+ * a fault, or the car tilted past T (Statechart 6.4: fault discards the
+ * unfinished hump). */
 IMPORT void hump_abort(void);
-
-/* The IMU fault, or the car tilted past T: a hump in progress that is past
- * its top is counted, at its height before the fault's own windows (the
- * lift that ends the run); one still on the way up is dropped, as by
- * hump_abort().  The "on top" follow ends: the car is in the air. */
-IMPORT void hump_fault(void);
 
 /* Mission paused / ended (not by a fault): a hump in progress that is
  * past its top is counted now; one still on the way up is dropped.  The

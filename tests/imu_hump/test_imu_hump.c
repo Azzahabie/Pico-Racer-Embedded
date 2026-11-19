@@ -157,20 +157,6 @@ static void carry(double to)
 	for (i = 0; i < 10; i++) window(0, 1);	/* put down: 1 s still */
 }
 
-/* Lifted to end the run with the wheels still driving (a lifted car's
-   line sensors read black): n windows tipping nose up (hand < 0) or down
-   (hand > 0), 8 then 16 deg, before the tilt fault (T = 25 deg). */
-static void lift(int n, int way)
-{
-	int	i;
-
-	for (i = 1; i <= n; i++) {
-		hand = way * 100 * i;
-		window(4.8, 1);
-	}
-	hand = 0;
-}
-
 /* Drive to `to` at `speed` mm/s. */
 static void drive(double to, double speed)
 {
@@ -414,53 +400,6 @@ static void demo_as_read_end(void)
 	hump_mission_end();
 }
 
-/* Lifted to end the run 80 mm after the demo hump, before the 120 mm
-   level close (register I3: hump_abort() dropped it).  Past the top, the
-   IMU fault counts it, at the height before the lift: tipping nose up
-   with the wheels driving adds ~2 mm (calculated) and resets the level
-   run, so the hump as it stood then would read ~12 mm. */
-static void demo_as_read_lift(void)
-{
-	USE(DEMO_AS_READ); stop(2); drive(297 + 80, 48);
-	if (hump_get_state() == HUMP_NONE) _exit(3);	/* not open: no test */
-	lift(2, -1);
-	hump_fault();
-	if (hump_get_count() != 1 || hump_get_last_mm() < 9
-	    || hump_get_last_mm() > 11) _exit(3);
-	hump_fault();					/* every window after */
-}
-
-/* The same tipping nose down (the state flips to descending). */
-static void demo_as_read_lift_down(void)
-{
-	USE(DEMO_AS_READ); stop(2); drive(297 + 80, 48);
-	lift(2, 1);
-	hump_fault();
-	if (hump_get_last_mm() < 9 || hump_get_last_mm() > 11) _exit(3);
-}
-
-/* A fault with no lift windows before it (a fast flip, or no data). */
-static void demo_as_read_fault(void)
-{
-	USE(DEMO_AS_READ); stop(2); drive(297 + 80, 48);
-	hump_fault();
-}
-
-/* Lifted on the way down the real demo hump. */
-static void demo_lift_way_down(void)
-{
-	USE(DEMO); stop(2); drive(360, 48);
-	lift(2, -1);
-	hump_fault();
-	if (hump_get_last_mm() < 9 || hump_get_last_mm() > 11) _exit(3);
-}
-
-/* Lifted half way up: a part height is not counted, as before. */
-static void lift_mid_climb(void)
-{
-	USE(HUMP); stop(2); drive(280, 50); lift(2, -1); hump_fault();
-}
-
 /* Paused on the way down the demo hump: counted once, not again after. */
 static void demo_pause_way_down(void)
 {
@@ -505,11 +444,6 @@ static const SCENARIO scenarios[] = {
 	{ "demo as read, mission ends 80 mm after", demo_as_read_end,	1 },
 	{ "demo hump, paused on the way down",	demo_pause_way_down,	1 },
 	{ "mission ends mid-climb",		end_mid_climb,		0 },
-	{ "demo as read, lifted 80 mm after",	demo_as_read_lift,	1 },
-	{ "demo as read, lifted nose down",	demo_as_read_lift_down,	1 },
-	{ "demo as read, fault 80 mm after",	demo_as_read_fault,	1 },
-	{ "demo hump, lifted on the way down",	demo_lift_way_down,	1 },
-	{ "lifted mid-climb",			lift_mid_climb,		0 },
 };
 
 int main(int argc, char **argv)

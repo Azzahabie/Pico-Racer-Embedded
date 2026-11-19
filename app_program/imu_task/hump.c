@@ -70,11 +70,6 @@ LOCAL W		top_level;		/* level distance since, mm          */
 LOCAL BOOL	top_down;		/* has come down some since          */
 LOCAL BOOL	top_still;		/* last window was stopped           */
 LOCAL W		top_last[2];		/* its tilt                          */
-LOCAL BOOL	past_top;		/* the open hump has been past its top
-					   (way down, or level since), and
-					   how it stood then, for hump_fault()*/
-LOCAL W		past_peak, past_trough, past_len;
-LOCAL UW	past_tilt;
 
 EXPORT UW imu_isqrt(UW v)
 {
@@ -165,48 +160,6 @@ LOCAL void hump_end_early(const char *why)
 
 EXPORT void hump_pause(void)		{ hump_end_early("paused"); }
 EXPORT void hump_mission_end(void)	{ hump_end_early("ended"); }
-
-/* The open hump past its top, as hump_end_early() judges it: keep how it
-   stands now for hump_fault(). */
-LOCAL void past_keep(void)
-{
-	if(hump_state != HUMP_NONE
-	   && (hump_state == HUMP_DESCENDING || level_mm > 0)) {
-		past_top = TRUE;
-		past_peak = peak_um;
-		past_trough = trough_um;
-		past_tilt = tilt_peak;
-		past_len = hump_len;
-	}
-}
-
-/* The IMU fault (tilt past T, upside down, no data) with a hump open.
-   Past its top it is counted: lifting the car ends the run (the prof,
-   19 Nov), and the demo hump stays open ~14-15 cm past its crest, so a
-   lift there dropped it (register I3).  Unlike a pause, the lift moves
-   the car before the fault: it tips while the wheels still drive, which
-   adds height and resets the level run.  So the hump is counted as it
-   stood when a window last began past its top, before the lift's
-   windows; or as it stands now, if only the last window took it past
-   the top.  Still climbing: dropped, as before.  The car is in the air,
-   so no "on top" follow. */
-EXPORT void hump_fault(void)
-{
-	if(!past_top) past_keep();
-	if(hump_state == HUMP_NONE || !past_top) {
-		hump_abort();
-		return;
-	}
-	peak_um = past_peak;
-	trough_um = past_trough;
-	tilt_peak = past_tilt;
-	hump_len = past_len;
-	tm_printf((UB *)"[imu] hump: IMU fault past its top, counted as it"
-		       " stood before\n");
-	hump_finish();
-	on_top = FALSE;
-	pend_win = 0;
-}
 
 EXPORT void hump_mission_reset(void)
 {
@@ -394,16 +347,12 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 		tilt_peak = pend_peak;
 		level_mm = 0;
 		still_win = flip_win = pend_win = 0;
-		past_top = FALSE;
 		hump_state = HUMP_CLIMBING;
 		tm_printf((UB *)"[imu] hump: climbing (%u deg up, %d mm)\n",
 			  (imu_deg10(tilt) + 5) / 10, h_um / 1000);
 		return;
 	}
 
-	/* Before this window: a lift's own windows come before its fault
-	   and must not count toward the hump that hump_fault() keeps. */
-	past_keep();
 	hump_len += ad;
 	dot = dx * onset[0] + dy * onset[1];	/* > 0: nose up */
 	rise = (W)tilt * dmm;
