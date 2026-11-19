@@ -651,10 +651,11 @@ static void test_fallback(void)
 
 	chain_reset(true);
 	crossbar(50.0, 0.0);
-	drive(-40.0, 50.0 + 13.6, 6u, 0.0);
+	drive(-40.0, 50.0 + 14.0, 6u, 0.0);
 	CHECK((junctions == 1u) && (j_cross == 1u) && (j_letter == '-'));
 	CHECK(ev_armed == 0u);
-	/* fired at J_n: 280 ms into the crossbar at 47.6 mm/s (C: 13.3 mm) */
+	/* fired at J_n: 280 ms into the crossbar at 47.6 mm/s (C: 13.3 mm),
+	   plus the glitch filter's lag (6 samples, 0.3 mm) */
 	CHECK((j_into > 12.5) && (j_into < 14.0));
 	/* and its own read is dropped there: no line_state hold, no reject */
 	CHECK(!bar_capture_reading(&cap));
@@ -736,14 +737,14 @@ static void test_h1_crossbar_in_read(void)
 	(void)memset(&blip, 0, sizeof(blip));
 	(void)memset(&unread, 0, sizeof(unread));
 
-	/* 1. armed sheet, a 4 ms white dropout 3 mm into the crossbar (the
-	   GP7 log has one: trials_batch2_2026-11-04.txt:196, B63 w4 B24),
-	   one sample longer than a glitch the filter merges.  Then a second
-	   crossroad 300 mm on, no sheet: the command was used at the first,
-	   so nav finds none there. */
+	/* 1. armed sheet, a white dropout 3 mm into the crossbar one sample
+	   longer than a glitch the filter merges (the GP7 log has a 4 ms one:
+	   trials_batch2_2026-11-04.txt:196, B63 w4 B24; see 1b for that one).
+	   Then a second crossroad 300 mm on, no sheet: the command was used at
+	   the first, so nav finds none there. */
 	for (b = 0u; b < 3u; ++b) {
 		c1 = h1_start(true);
-		white_gap(c1, c1 + 3.0, 4u, bases[b]);
+		white_gap(c1, c1 + 3.0, BARCODE_GLITCH_TICKS + 1u, bases[b]);
 		drive(-40.0, c1 + 100.0, bases[b], 0.0);
 		h1_count(&drop);
 		CHECK(junction_ends == 1u);	/* the 2-width read ENDed there */
@@ -753,6 +754,20 @@ static void test_h1_crossbar_in_read(void)
 		j_letter = '?';
 		drive(gp7_x, c1 + 400.0, bases[b], 0.0);
 		CHECK((j_cross == 1u) && (j_letter == '-'));
+	}
+
+	/* 1b. the logged 4 ms dropout itself (B63 w4 B24): within the filter
+	   (BARCODE_GLITCH_TICKS 6), so it is merged: the junction fires with
+	   the sheet's command and no 2-width read is ENDed inside the
+	   crossbar; only the crossbar's own read, dropped as usual. */
+	for (b = 0u; b < 3u; ++b) {
+		c1 = h1_start(true);
+		white_gap(c1, c1 + 3.0, 4u, bases[b]);
+		drive(-40.0, c1 + 100.0, bases[b], 0.0);
+		h1_count(&drop);
+		CHECK(junction_ends == 0u);	/* merged: no 2-width read */
+		CHECK(verdicts == 2u);		/* the sheet, then the crossbar's
+						   own read, dropped (aborted) */
 	}
 
 	/* 2. a 2 mm speck (a brush of the line, a sheet edge) 5 and 10 mm

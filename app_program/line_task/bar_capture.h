@@ -112,7 +112,8 @@ bool bar_capture_reading(const bar_capture_t *cap);
    not a valid *X*), so a long black after it is the crossbar.  Nor is a
    black run too long to be a bar of this read (BARCODE_NOT_BAR_RATIO_X10,
    line_config.h): a crossbar that starts inside a read that is not a
-   barcode (a speck, a dropout, an unreadable sheet).  A read that is
+   barcode (a speck, a dropout, merged equal bars; not a damaged course
+   sheet with a 9 mm element: line_config.h, known limit).  A read that is
    complete counts until its END (the sample after), so the junction side
    sees the END before any junction can fall due. */
 bool bar_capture_in_read(const bar_capture_t *cap);

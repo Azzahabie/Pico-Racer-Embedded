@@ -383,7 +383,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			/* the crossbar is not a bar: a read it opened itself is
 			   dropped, so it neither holds line_state for its quiet
 			   zone nor prints a reject; a read with widths before it
-			   (a speck, a dropout, an unreadable sheet) ENDs there,
+			   (a speck, a dropout, merged bars) ENDs there,
 			   and barcode_task prints those widths */
 			cap_event = bar_capture_junction(&g_cap);
 			send_bar(cap_event, (BAR_EV_END == cap_event)

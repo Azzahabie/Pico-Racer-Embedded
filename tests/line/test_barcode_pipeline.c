@@ -130,7 +130,9 @@ static void load_table(void)
 
 static void test_all_letters_both_ways(void)
 {
-	static const unsigned narrows[] = { 4u, 10u, 25u };
+	/* narrowest: 8 ticks, above the 6-tick glitch filter (a real bar is
+	   13 ms or more: 1 mm, a 2 mm bar read thin, GP7 20 % fast, C) */
+	static const unsigned narrows[] = { 8u, 13u, 25u };
 	char text[2] = { 'A', '\0' };
 	unsigned k;
 	int reverse;
@@ -409,7 +411,9 @@ static void test_glitch_filter(void)
 	   still the letter */
 	for (g = 1u; g <= BARCODE_GLITCH_TICKS; ++g) {
 		for (reverse = 0; reverse <= 1; ++reverse) {
-			n = elements("M", 10u, 30u, reverse, e);
+			/* 20-tick narrow, 60 wide, so half a bar minus
+			   the glitch stays positive at any filter up to 10 */
+			n = elements("M", 20u, 60u, reverse, e);
 			reset();
 			ticks(100u, false);
 			for (i = 0u; i < n; ++i) {
@@ -419,7 +423,7 @@ static void test_glitch_filter(void)
 				ticks(g, !bar);
 				ticks(e[i] - (e[i] / 2u) - g, bar);
 			}
-			ticks(10u * BARCODE_Q_WIDTH_FACTOR + 10u, false);
+			ticks(20u * BARCODE_Q_WIDTH_FACTOR + 20u, false);
 			CHECK((verdicts == 1u) && verdict.accepted && (verdict.letter == 'M'));
 			CHECK(widths_sent == 29u);
 		}

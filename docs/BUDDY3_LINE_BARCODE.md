@@ -101,7 +101,12 @@ Neither task drives the motors.
   to be a bar of that read ("Not a bar" under Capture below). Without
   that, a crossbar that started inside such a read never fired, armed or
   not (H1, checker, 19 Nov): after a dropout in the crossbar, a speck or
-  sheet edge just before it, or an unreadable sheet close before it. When
+  sheet edge just before it, or a read of equal small bars close before
+  it. **Known limit:** a real course sheet that fails to decode because
+  widths were lost (a space taped over, a bar not seen) still has a 9 mm
+  wide element, so "too long to be a bar" is 22.5 mm, longer than the
+  18 mm crossbar: a crossbar 0-15 mm behind it is swallowed (sim, as
+  before the fix). Armed, the command then runs at the next junction. When
   a junction fires inside an open read, the read ENDs there: `barcode_task`
   prints the widths before the crossbar as a malformed reject (for
   example `2 widths`, `0: B63 w4` for a dropout 3 mm into the crossbar at

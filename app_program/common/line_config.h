@@ -94,14 +94,16 @@
    A black or white run this many samples or shorter counts as the level
    either side of it.  GP7 drops out inside a black run: "B63 w4 B24", 4
    ms of white inside 91 ms of black, on 4 Nov
-   (tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196).  3 is far
+   (tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196).  6 merges
+   that logged 4 ms dropout (3 did not: the checker, 19 Nov) and is still
    below the narrowest real bar or space: 2 mm at base 8 is 31 ms, and
-   1 mm (a 2 mm bar read 1 mm thin) with GP7 20 % fast is 13 ms (C).
-   Every edge is seen this many samples late (0.2 mm at base 8, C); widths
-   are unchanged.  A longer dropout is left to "not a bar" below.  0: no
+   1 mm (a 2 mm bar read 1 mm thin) with GP7 20 % fast is 13 ms (C).  The
+   checker's size envelope decodes the same at 3 and 6.  Every edge is
+   seen this many samples late (0.4 mm at base 8, C); widths are
+   unchanged.  A longer dropout is left to "not a bar" below.  0: no
    filter, as before (-DBARCODE_GLITCH_TICKS=0). */
 #ifndef BARCODE_GLITCH_TICKS
-#define BARCODE_GLITCH_TICKS                      (3u)
+#define BARCODE_GLITCH_TICKS                      (6u)
 #endif
 
 /* Not a bar (bar_capture.c; it matters with LINE_JUNCTION_RULE 1).
@@ -118,6 +120,14 @@
    junction fires the read ENDs there: barcode_task judges and prints the
    widths before the crossbar (malformed), and the rest of the crossbar
    opens no read.
+   Known limit (checker, 19 Nov): a real course sheet that fails to
+   decode because widths were lost (a space taped over, a bar not seen,
+   bars merged by blur) still has a 9 mm wide element, so the threshold
+   is 2.5 x 9 = 22.5 mm, longer than the 18 mm crossbar: a crossbar 0-15
+   mm behind such a sheet is swallowed (0 of 26 letters fire in the sim,
+   as before this fix; rule 0 fires).  Armed, the command then runs at
+   the next junction; unarmed there is no junction event.  Fixed only for
+   reads of equal-width bars (a speck, a dropout, merged small bars).
    2.5 (the checker's figure) from a read's 11th width on: by then the
    widths before the last space include a wide one (from any bar of *X*,
    either way round, at most 8 narrow elements come before a wide one, C),
