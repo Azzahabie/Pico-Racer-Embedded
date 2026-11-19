@@ -52,7 +52,11 @@ EXPORT UINT safety_step(BOOL ok, W ax, W ay, W az)
 	g = imu_isqrt((UW)(ax * ax + ay * ay + az * az));
 	if(g < SAFETY_G_LO_MG || g > SAFETY_G_HI_MG) return ev;
 
-	if(tilt_mg > SAFETY_TILT_MG && az < SAFETY_Z_MAX_MG) {
+	/* Past 90 deg (z below SAFETY_FLIP_MG) is tilted too: upside down
+	   the sideways part is ~0 again (sin 180 = 0), so |x, y| alone read
+	   a car resting on its roof as level. */
+	if((tilt_mg > SAFETY_TILT_MG && az < SAFETY_Z_MAX_MG)
+	   || az < SAFETY_FLIP_MG) {
 		tilt_n++;
 		if(tilt_n == SAFETY_TILT_N) ev |= SAFETY_EV_TILT;
 	} else {

@@ -22,6 +22,9 @@
 					   and tripped T for 3 samples twice
 					   (2026-10-28 logs: IMPACT while
 					   paused; pushed onto the ramp)      */
+#define SAFETY_FLIP_MG	0		/* z below this: past 90 deg, on its   */
+					/* roof or rolling over (lifted and   */
+					/* inverted, the demo's stop)         */
 #define SAFETY_BAD_N	5		/* Y = 50 ms with no good sample
 					   (NFR-13)                           */
 #define SAFETY_REINIT_N	2		/* re-set the chip up after this many */

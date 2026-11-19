@@ -133,10 +133,37 @@ int main(void)
 	}
 	expect((ev & SAFETY_EV_TILT) == 0, "ringing knock: no tilt event");
 
-	/* Upside down (|a| 1 g, no x/y): not a tilt by this check. */
+	/* Upside down at rest (|a| 1 g, no x/y): lifted and inverted, the
+	   demo's stop.  A tilt, on sample N, like any tilt past T. */
 	safety_reset();
-	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 0, 0, -1000);
-	expect((ev & SAFETY_EV_TILT) == 0, "flat but flipped: no tilt event");
+	for (i = 1, at = 0; i <= 20 && at == 0; i++) {
+		if (safety_step(TRUE, 0, 0, -1000) & SAFETY_EV_TILT) at = i;
+	}
+	expect(at == SAFETY_TILT_N, "upside down at rest: tilt event on sample N");
+	expect(safety_tilted(), "upside down at rest: tilted");
+	safety_reset();
+	expect(run_tilt(170, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
+	       "170 deg (|x, y| 174 mg): tilt event on sample N");
+
+	/* A fast flip: 0-20 deg in the band, 40-140 deg spun out of it
+	   (|a| 2 g: neither counts nor resets), then 160 deg and resting
+	   inverted.  Before the z check the 160 / 180 deg samples (|x, y|
+	   under T) restarted the run and nothing ever fired. */
+	safety_reset();
+	tilt(0); tilt(20);
+	for (i = 40; i <= 140; i += 20) {
+		safety_step(TRUE, 0, (W)lround(2000 * sin(i * M_PI / 180)),
+			    (W)lround(2000 * cos(i * M_PI / 180)));
+	}
+	tilt(160);
+	expect(run_tilt(180, 5, SAFETY_EV_TILT) == SAFETY_TILT_N - 1,
+	       "fast flip then inverted: tilt event once it rests");
+
+	/* Driving never reads z below 0: a 2 g bump (out of the band) and
+	   a hump at 20 deg do not count. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 300, 0, -1800);
+	expect((ev & SAFETY_EV_TILT) == 0, "2 g downward jolt: no tilt event");
 
 	/* 90 deg on its side: a tilt. */
 	safety_reset();
