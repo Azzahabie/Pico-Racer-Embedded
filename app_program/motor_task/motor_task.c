@@ -3389,7 +3389,10 @@ print_faults (UB *p_line, motion_report_t const *p_rep)
 /* EVT_SM_FAULT (normal image): why the statechart entered Motion Fault,
    with what the stall check judged.  Each wheel's stall window restarts
    whenever it makes progress (MOTION_STALL_MIN_COUNTS the commanded
-   way), so a wheel that kept moving shows 0 ms or close to it. */
+   way), so a wheel that kept moving shows 0 ms or close to it.  It also
+   restarts on a change of direction and on every tick under the dead
+   band (MOTION_DEADBAND_DUTY), so 0 ms can mean not driven.  Right-wheel
+   counts are in left-wheel units (tick_encoders). */
 static void
 print_sm_fault (UB *p_line, motion_report_t const *p_rep)
 {

@@ -115,11 +115,17 @@ and the 10 ms tick: `motor_task_start()` makes the tick before it starts
 motion_task, and if it cannot (for example `er=-34`, E_LIMIT: no free
 cyclic handler) motion_task still starts, brakes and reports init FAILED.
 The watchdog is then not armed, so the car does not reboot over and over
-(with no tick nothing would feed it). nav is told at once: `[nav] MOTION
-fault`, the mission goes to FAULT, and S.faults shows both motion bits
-(`motor_stall|encoder`, which together mean the set-up failed). A fault
-reset (GP20) lets the mission start again, but motion raises the same
-fault within 100 ms of RUNNING, so a mission never runs with no motor.
+(with no tick nothing would feed it). motion tells nav at once
+(MOTION_FAULT on nav_flg), but at boot nav reads it only once its
+calibration has returned (it waits up to `CAL_TIMEOUT_MS`, 10 s, for
+the replies, nav_ctrl.c); then it prints `[nav] MOTION fault` and the
+mission goes to FAULT. S.faults shows both motion bits
+(`motor_stall|encoder`). Both bits usually mean the set-up failed, but a
+run-time fault can set them too (for example a left stall and a right
+encoder fault); a set-up failure has `init FAILED` at boot and no
+`[motion] state ... -> FAULT` line. A fault reset (GP20) lets the
+mission start again, but motion raises the same fault within 100 ms of
+RUNNING, so a mission never runs with no motor.
 
 `last reset` says why the chip started:
 
@@ -457,8 +463,13 @@ The fault byte uses the bits of the bench `FAULT` line (0x01 left stall,
 the stall check judged, the tick before the brake. Each wheel's stall
 window restarts whenever the wheel makes progress (3 counts the
 commanded way), so the stalled wheel shows about 300 ms with fewer than
-3 counts and a wheel that kept moving shows 0 ms or close to it.
-`missed` is the encoder's illegal transitions, as in the status line.
+3 counts and a wheel that kept moving shows 0 ms or close to it. The
+window also restarts when the commanded direction changes, and every
+tick the duty is under the dead band (`MOTION_DEADBAND_DUTY`, 150), so
+0 ms can also mean the wheel was not being driven. Right-wheel counts
+are in left-wheel units when the boot line says `right counts scaled to
+left units`. `missed` is the encoder's illegal transitions, as in the
+status line.
 
 **Test** (normal image, wheels off, Buddy 5's sensor plugged in): press
 GP20 and look for `state IDLE -> LINE_FOLLOW`; put a hand in front of the
