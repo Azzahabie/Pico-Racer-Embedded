@@ -12,10 +12,11 @@ is *detail behind a link* — open one only when you need it.
 
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Last updated:** 2026-10-21 — working notes, test logs and reports moved out
-  of the repo; this folder now holds only the reference and interface docs
+  of the repo; this folder now holds only the reference and interface docs.
+  19 Nov: §8 (reading the stream during a run) and the stale "empty stub" notes
 - **Tasks:** `comms_task` — the application task (in `app_program/comms_task/`,
-  an empty stub); `cyw43_utk_task` — the radio owner, library code that already
-  exists (`lib/libwifi/`)
+  built: intake → `E`, `H` and `S` every second, inbound commands; §7);
+  `cyw43_utk_task` — the radio owner, library code (`lib/libwifi/`)
 - **One line:** turn car events into MQTT telemetry, and apply the laptop's live
   barcode-remap and `snap` commands — without ever touching lwIP directly.
 
@@ -119,8 +120,10 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
   [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md) §2, §8.
 - **Statechart image.** `docs/embedded .md` §6.1's `image3` needs regenerating
   from [`STATECHART1_DIAGRAM_SPEC.md`](STATECHART1_DIAGRAM_SPEC.md) §10.
-- **Code not yet written.** `app_program/comms_task/` is an empty stub. It is
-  compiled, so keep it valid.
+- **"Empty stub" (fixed 19 Nov).** Older notes here called
+  `app_program/comms_task/` an empty stub. It is the built task (§7); the
+  design documents' status tables (`WIFI_SUBSYSTEM_DESIGN.md` §1,
+  `APPLICATION.md` §1) are snapshots from before it was written.
 
 ---
 
@@ -157,11 +160,83 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 | Path | What |
 |---|---|
-| `app_program/comms_task/` | The application task: intake → `E`, `H`/`S` every second, Wi-Fi-loss bit, inbound commands. |
+| `app_program/comms_task/` | The application task: intake → `E`, `H`/`S` every second, Wi-Fi-loss bit, inbound commands. The fold of each event into `S` is plain C in `comms_fold.h`, so `tests/host/test_messages.c` runs it on a PC. |
 | `app_program/common/messages.h` | The shared integration contract: packed records (`H`, `S`, `E`, `D`), the command checks, fault-bit names. |
 | `app_program/race_test/` | Tribunal 1 two-core packed-word race test (off unless `TM_RACE_TEST` is 1). |
 | `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` | The radio driver (exists). |
 | `lib/libnet/lwip/` | lwIP + the MQTT client (**single-threaded** — only the radio task may touch it). |
+
+---
+
+## 8. Reading the stream during a run
+
+**Before pressing start, wait for live `S`.** Until the MQTT session is up,
+records have nowhere to go. The radio's outbound queue holds only 128 B
+(C: 4 slots of 32 B, `cyw43_utk_mqtt_ids.h:33-34`, `cyw43_utk_kernel.c:26-31`),
+about 6 records or 3 s of `H` + `S`; those arrive late, with an old `up`, once
+the car connects, and every record after them is dropped. The drops show only
+on the console (`[mqtt] … drop=N`), not in `drp`. In the 4 Nov car logs the car
+took 11.4–23.8 s from boot to `[wifi] state=ONLINE` (11 boots in
+`tests/scan_bench/logs/`: 6 in `trials_batch1_2026-11-04.txt`, 4 in
+`trials_batch2_2026-11-04.txt`, 1 in `imu_bypass_left_right_2026-11-04.txt`;
+the two over 23 s needed a third join), and one run was started 2.9 s after
+boot, 9.3 s before ONLINE
+(`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`, lines 1202, 1216 and
+1296): its RUNNING E mission and the first E records of the run never reached
+the broker. The mission itself never waits for Wi-Fi (that run drove on); only
+its record is lost. So before pressing GP20 or sending `start`, check on the
+viewer:
+
+- `S` arrives every second, `s` and `up` going up ("last S" under 3 s);
+- no `GAP` once `S` is arriving every second; one or two `GAP`s at the first
+  connect are normal (the retained `D`, below, and the boot records the 128 B
+  queue could not hold);
+- `mis` = READY, `faults` = 0, `drp` = 0.
+
+Allow about 25 s from power-on.
+
+What the `S` fields that are easy to misread really say. The full rows are in
+[`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §4.
+
+- **`lin` comes from E line records, sent only when the line state changes**
+  (`line_task.c`, "telemetry on edges only"); `comms_task` copies each into
+  `S`. So `lin` is current unless that record was dropped (`drp` rises).
+  - `lin` = 1 (lost): GP26 and GP27 have seen no confirmed black for 1500 ms
+    (`LINE_LOST_MS`), or a line sensor is faulty. Lost wins over crossing.
+  - `lin` = 2 (crossing): **any** GP7 black of at least
+    `LINE_JUNCTION_SAMPLES` 1 ms samples in a row (`common/line_config.h`:
+    80 on master, 280 proposed). A crossbar gives it, but so does GP7 sweeping
+    along the line when the car is angled to it, or a barcode bar: at base 6
+    (47.6 mm/s, C) 80 ms is only 3.8 mm of black (a 9 mm bar counts), 280 ms is
+    13.3 mm. It is
+    not proof of a junction event and not proof of a turn; for a turn look for
+    E motion state 2 (TURNING).
+    With the barcode-armed rule (`LINE_JUNCTION_RULE` 1, in
+    proposal/line-barcode-beside-line and on by default there), crossing
+    starts at the armed junction after a valid barcode (GP7 black for
+    `LINE_ARMED_CONFIRM_MM` of travel, 10 mm provisional), and the bars of an
+    open barcode read do not count; a black run too long to be a bar of
+    that read (more than 2.5 times its widest element) does, so a crossbar
+    after a speck or a dropout still fires. The length rule above
+    applies only when nothing is armed (one exception: at base 4, 280 ms is
+    8.9 mm, so it comes before the 10 mm, C).
+- **`dev` is not live.** It is the line error carried by that same E line
+  record, so it is the error at the moment `lin` last changed, frozen until the
+  next change. Its unit is percent,
+  (right − left) normalised darkness / 10, −100 to +100, positive = steer left
+  on this car; not "tenths".
+- **`bar` and `act` are the last accepted barcode.** A rejected read (E barcode
+  `letter=none`), including the crossbar at every junction, leaves them as they
+  were; the E barcode records show every read, good or rejected. They also
+  carry over into the next run until a new barcode is accepted, although
+  `barcode_task` forgets its stored command at a new mission; whether `S`
+  should reset them at each start is open (Buddy 1 to decide).
+- **The first `GAP` after the viewer connects is usually false.** The broker
+  first hands the viewer the retained `D` from the last `snap` (this run or an
+  earlier one), with an old `s` and old fields, so the first live record reads
+  as a gap. Clear it before the run with an empty retained message:
+  `amqtt_pub --url mqtt://<broker>:<port> -t robocar/<id>/state -r -n`
+  ([`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §7).
 
 > **Read this first, then stop here** unless a task sends you into one of the
 > detail documents above.

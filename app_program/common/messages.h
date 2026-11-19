@@ -198,7 +198,7 @@ typedef struct {
 
 /* line (Buddy 3) */
 #define COMM_W_LINE_STATE_BITS     2U   /* 0 on-line, 1 lost, 2 crossing */
-#define COMM_W_LINE_DEV_BITS       8U   /* -128..127 tenths, +128        */
+#define COMM_W_LINE_DEV_BITS       8U   /* -128..127 percent, +128       */
 #define COMM_W_BODY_BITS_LINE     (COMM_W_KIND_BITS + COMM_W_LINE_STATE_BITS \
                                    + COMM_W_LINE_DEV_BITS)                /* 13 */
 
@@ -625,7 +625,9 @@ static inline uint32_t comm_w_pack_motion(uint8_t out[COMM_W_INTAKE_SIZE_MOTION]
     return COMM_W_INTAKE_SIZE_MOTION;
 }
 
-/* state 0 on-line, 1 lost, 2 crossing; deviation in tenths of a sensor unit. */
+/* state 0 on-line, 1 lost, 2 crossing; deviation in percent, -100..+100 used:
+ * (right - left) normalised darkness / 10, line_state's error.  Not tenths,
+ * whatever the parameter name says (MQTT_SCHEMA.md section 5). */
 static inline uint32_t comm_w_pack_line(uint8_t out[COMM_W_INTAKE_SIZE_LINE],
                                         uint32_t state, int32_t deviation_tenths)
 {

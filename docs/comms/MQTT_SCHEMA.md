@@ -141,10 +141,16 @@ for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23) and v5
 > - **`drp` rose** → the car dropped it at its **intake** queue (`tele_mbf`):
 >   a producer sent faster than `comms_task` reads.
 > - **`drp` unchanged** → the car was **not connected** to the broker, so the
->   radio's **outbound** queue (112 B, about 3 s of `H` + `S`) filled and the
->   record was dropped there — every boot before the first connect, and every
->   outage — **or** the laptop was not subscribed at the time. These drops show
+>   radio's **outbound** queue (128 B, about 3 s of `H` + `S`; was given as
+>   112 B before 19 Nov) filled and the record was dropped there — every boot
+>   before the first connect, and every outage — **or** the laptop was not
+>   subscribed at the time. So wait for live `S` before starting a run
+>   (`README.md` §8). These drops show
 >   only on the car's console (`[mqtt] … drop=N`), not on the wire.
+> - **The first gap right after the laptop subscribes** → usually no loss at
+>   all: the broker first hands a new subscriber the **retained `D`** from the
+>   last `snap`, whose `s` is from that moment, so the first live record does
+>   not follow it (§7, "A retained `D` gives a false gap").
 >
 > It is almost never the network: records travel over one TCP connection,
 > which retransmits while it is up. The earlier wording ("`drp` unchanged
@@ -163,8 +169,11 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 > **Built 2026-10-22** (`comm_w_pack_s()`, published by `comms_task` right after
 > each `H`, on the same `s` counter). **`faults`** is copied from Buddy 5's
 > fault flag before each `S`, with the Wi-Fi-loss latch added (§4.1; since
-> 2026-10-29). **`mpv` is 0** until the `map` command (M8) is built. A field no event has reported yet keeps its initial value:
-> `bar` 31 (none), `dev` 128 (0 tenths), `tlt` 63 and `trn` 0 (not
+> 2026-10-29). **`mpv`** is the version of the map `barcode_task` is
+> running (`comms_task.c` reads `barcode_map_version()` before each `S`):
+> 0 until the first `map` command is applied, then that map's `mv` (§8.3;
+> M8b is built). A field no event has reported yet keeps its initial value:
+> `bar` 31 (none), `dev` 128 (0 %), `tlt` 63 and `trn` 0 (not
 > available), everything else 0.
 
 > **Two ways a field reaches `S` (v5).** A field that records **a discrete
@@ -190,10 +199,10 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 6 | `faults` | bitmask | the **shared fault bitmask** — §4.1. *v4: was 5 bits* |
 | 4 | `mot` | 0–15 | motion state, as the motion event's `state` (Buddy 2). *v3: was 2 bits* |
 | 8 | `dst` | 0–255 cm | distance since the last motion change, clamped. `comms_task` derives it from the motion event's wrapping `dist_mm` (Buddy 2) |
-| 2 | `lin` | 0–2 | line state: 0 on-line, 1 lost, 2 crossing (Buddy 3) |
-| 8 | `dev` | −128–127 tenths | line deviation, offset-encoded (Buddy 3) |
-| 5 | `bar` | 0–25, 31 | last barcode **letter index**: 0 = `A` … 25 = `Z`, 31 = none yet. The reader adds 65 for ASCII (Buddy 3) |
-| 2 | `act` | 0–3 | action code the barcode mapped to (Buddy 3). Meaningless while `bar` = 31 |
+| 2 | `lin` | 0–2 | line state from the **last E line** (Buddy 3; `line_task.c` `tele_line_state()`): **0** on-line; **1** lost: GP26 and GP27 have had no confirmed black for `LINE_LOST_MS` (1500 ms), or a line sensor is faulty (stuck at an ADC rail, or the ADC failed); lost wins over crossing; **2** crossing: the barcode sensor GP7 has read black for `LINE_JUNCTION_SAMPLES` 1 ms samples in a row (`common/line_config.h`; 80 on master, 280 proposed so the 9 mm course bars stop counting), so **any GP7 black that long**: a junction crossbar, but also GP7 swept along the line when the car is angled to it, or a barcode bar longer than the car drives in that time (C, base 6 = 600 counts/s = 47.6 mm/s: 80 ms is 3.8 mm, so a 9 mm wide bar counts; 280 ms is 13.3 mm). It is not the junction event (that also needs GP7 white for 20 ms first, and fires once) and stays 2 until GP7 reads white. **With the barcode-armed rule** (`LINE_JUNCTION_RULE` 1, in proposal/line-barcode-beside-line and on by default there): after a valid barcode, crossing starts at the armed junction (GP7 black for `LINE_ARMED_CONFIRM_MM` of travel, 10 mm provisional, so about 10 mm into the crossbar), and the bars of an open barcode read do not count (a black run more than 2.5 times the read's widest element is not a bar and does count, so a crossbar after a speck or a dropout still fires). The length rule above applies only when nothing is armed (one exception: at base 4, 280 ms is 8.9 mm, so it comes before the 10 mm, C) |
+| 8 | `dev` | −128–127, stored + 128 (−100…+100 used) | line error **at the moment `lin` last changed**, so **not live**: `line_task` sends E line only when `lin` changes, and this is that record's `deviation`. Unit: percent, (right − left) normalised darkness (each 0 white … 1000 black) / 10, not tenths; negated by `LINE_STEER_INVERT` (1 on this car), so positive = steer left; 0 while a barcode hold or a sensor fault holds the error. Same value and unit as the E line `deviation` (Buddy 3) |
+| 5 | `bar` | 0–25, 31 | last **accepted** barcode **letter index**: 0 = `A` … 25 = `Z`, 31 = none accepted since boot. The reader adds 65 for ASCII (Buddy 3). A rejected read (E barcode `letter` 31, which includes the crossbar at every junction) leaves `bar` and `act` as they were; only the E record logs it (`comms_fold.h`, 19 Nov; before that a reject reset `bar` to 31, so the letter showed in `S` only until the junction) |
+| 2 | `act` | 0–3 | action code the last accepted barcode mapped to (Buddy 3). Meaningless while `bar` = 31 |
 | 4 | `hum` | 0–15 | humps detected (Buddy 4) |
 | 8 | `hgt` | 0–255 mm | height of the highest hump this mission (FR-12), clamped; 0 = none yet, and again at each mission start (Buddy 4) |
 | 8 | `obs` | 0–255 cm | width of the last obstacle, clamped; 0 = none yet (Buddy 5) |
@@ -238,7 +247,7 @@ six bits:
 | 1 | encoder fault | `FAULT_ENCODER` | Buddy 2, `motion_task` | 1 | yes |
 | 2 | IMU fault | `FAULT_IMU` | Buddy 4, `imu_task` | 1 | yes |
 | 3 | no echo (sensor lost) | `FAULT_SCAN_SENSOR_LOST` | Buddy 5, `scan_task` | 1 | yes |
-| 4 | line sensor | `FAULT_LINE_SENSOR` | Buddy 3, `ir_sense_task` | 1 | yes |
+| 4 | line sensor | `FAULT_LINE_SENSOR` | Buddy 3, `ir_sense_task` (`line_task.c`), when its sensors fault; only on `proposal/line-barcode-beside-line` so far | 1 | **no, report-only**: nav does not stop the mission on it |
 | 5 | **Wi-Fi loss** | `FAULT_WIFI_LOSS` | **Buddy 1, `comms_task`** | 0 | **no — report-only** |
 
 **Agreed 2026-10-23** with Buddy 5 (bits 0–4 as Buddy 5 proposed to the team on
@@ -249,14 +258,22 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 
 > **Wi-Fi loss is report-only (agreed with Buddy 5, 2026-10-23).** The bit is
 > in the shared word because the requirement names it, and it is there for the
-> laptop. `nav_ctrl_task` decides the Fault transition with
-> `FAULT_STOP_MASK` (every bit except `FAULT_WIFI_LOSS`), never with "any bit
-> set", so a Wi-Fi drop never stops the car: a mission never waits on Wi-Fi.
+> laptop. A Wi-Fi drop never stops the car: a mission never waits on Wi-Fi.
+> *(Corrected 19 Nov.)* `nav_ctrl_task` does not read this flag at all, so
+> `FAULT_STOP_MASK` (`messages.h`) has no user yet. Nav goes to Fault on its
+> own `nav_flg` bits, `NAV_FLG_IMU_FAULT` and `NAV_FLG_MOTION_FAULT`
+> (`nav_ctrl.c`, "faults first"), which `imu_task` and `motion_task` set next
+> to their fault bit here.
 
-> **Which bits are wired.** A bit reads 0 until its owner's code sets it, so
-> `faults = 0` means "no fault reported", not "every subsystem checked". As of
-> 2026-10-29 bits **2** (IMU), **3** (scan sensor lost) and **5** (Wi-Fi loss)
-> are wired; bits 0, 1 and 4 are not yet.
+> **Which bits are wired** *(updated 19 Nov)*. A bit reads 0 until its
+> owner's code sets it, so `faults = 0` means "no fault reported", not "every
+> subsystem checked". On `master`, bits **0** and **1** (motion, since
+> 30 Oct: `motor_task.c` `fault_flg_bits()`), **2** (IMU), **3** (scan sensor
+> lost) and **5** (Wi-Fi loss) are wired. Bit **4** is set and cleared by
+> `line_task` when its sensors fault (stuck at an ADC rail, or the ADC
+> failed) only on `proposal/line-barcode-beside-line`, not merged yet. It is
+> report-only: nav does not stop the mission on it. A line sensor fault
+> still pauses a run the old way, as a lost line (`lin` = 1).
 
 > **The Wi-Fi-loss bit and the wire.** An `S` line cannot be published while
 > Wi-Fi is down, so a live "Wi-Fi lost" bit would never reach the laptop.
@@ -342,7 +359,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
 | 2 | `state` | 0–2 | 0 on-line, 1 lost, 2 crossing; also `S.lin` |
-| 8 | `deviation` | −128–127 tenths, stored + 128 | line deviation; also `S.dev` |
+| 8 | `deviation` | −128–127 %, stored + 128 (−100…+100 used) | line error, percent: (right − left) normalised darkness / 10, not tenths; positive = steer left on this car (`LINE_STEER_INVERT` 1). Sent only when `state` changes; also `S.dev` (§4) |
 
 **`k = 2` barcode** (Buddy 3) — `comm_w_pack_barcode()`
 
@@ -445,6 +462,38 @@ turn rate are why the record limit rose to 24).
 > not a live reading; 127 also stands for "unknown". `qd` counts records waiting
 > in the radio's outbound queue.
 
+> **A retained `D` gives a false gap when a viewer connects** *(documented
+> 19 Nov, register C6; the car is not changed)*. `D` goes out with the MQTT
+> retain flag (`lwip_utk_mqtt.c:464-465`) and takes its `s` from the same
+> counter as every other record (`comms_task.c` `send_snapshot()`). The broker
+> keeps the last `D`, across car reboots, until a newer `snap` replaces it, and
+> gives it to every new subscriber first. So a viewer that subscribes after any
+> `snap`, from this run or an earlier one:
+>
+> - shows that old `D` first. Its fields are the state at that `snap`, not now
+>   (its `up` gives it away). The viewer's mission and fault panel read only
+>   `S`, so they are not affected;
+> - prints `GAP: expected s=<the D's s + 1>` on the first live record
+>   (`telemetry_decode.py:194-196` flags any `s` that is not the last + 1), and
+>   its gap counter starts at 1. The viewer re-subscribes after each reconnect
+>   to the broker and keeps its last `s`, so each reconnect gives two false
+>   gaps: the retained `D` itself (its old `s` does not follow the last live
+>   record), then the first live record after it.
+>
+> Reproduced off the car (19 Nov, sim: amqtt 0.12.2 broker, paho-mqtt 2.2.0,
+> this repo's `telemetry_decode.py`): a retained `D s=40`, then a rebooted
+> car's `H s=0`, printed `GAP: expected s=41`.
+>
+> **Before a run, clear it** with an empty retained message on the state
+> topic: `amqtt_pub --url mqtt://<broker>:<port> -t robocar/<id>/state -r -n`
+> (or `mosquitto_pub -h <broker> -p <port> -t robocar/<id>/state -r -n`, the
+> same thing, not tried here). The
+> broker then holds no `D`, and the next viewer starts with no gap (same sim,
+> with `amqtt_pub`). A viewer that is already subscribed gets the empty message
+> once and prints one `REJECT … empty payload` line (its reject counter goes
+> up by 1). Any `snap` during the run retains a new `D`. Otherwise, ignore the
+> first gap after connecting when it follows a `D` line.
+
 ---
 
 ## 8. Inbound — the commands the car accepts
@@ -517,6 +566,18 @@ car echoes** — observe delivery, do not assume it.
 - **The trade-off.** Text could be rejected for a non-digit; in binary every
   2-bit value is a valid action, so a wrong-but-right-length table is accepted.
   The `mv`/`mpv` echo and the publisher script are the defence.
+- **No version gate** *(documented 19 Nov, register C6; not built)*. The
+  prof's Week 6 feedback asked for a rule: the car ignores a version equal to
+  or older than `mpv`, and applies a new map only when the mission is not
+  Running "or between barcodes". The second half is built: the car already
+  applies a map only between barcodes, waiting until no barcode is being
+  read (`comms_task.c` `handle_map()`, `barcode_task.c` `apply_maps()`). Only
+  the version gate is missing: every map that passes the check is applied,
+  whatever its `mv` (the same, older or newer than `mpv`). Today the retained
+  `map` is applied again on every reconnect; as long as nobody publishes a
+  different map during a run, that changes nothing (idempotent, above).
+  **Rule until the gate is built: publish the map before pressing start, and
+  not during a run.**
 
 > **Still open (§12 items 7–9):** what each of the four action codes *means*
 > (Buddy 3 owns the 2-bit action), the A–Z alphabet assumption, and the
@@ -567,8 +628,25 @@ after any schema change, or it rejects every record with `unknown schema v`.*
 It is checked byte for byte against the firmware packer by
 `tests/host/test_decoder.py` and `tests/host/test_messages.c`, which share
 vectors generated from [`Tribunal/packed_size.py`](Tribunal/packed_size.py).
-The `map` publisher is **not written yet** (Tribunal roadmap step 5); it will
-live in the same script, because hand-typing 7 packed bytes is error-prone.
+**Sending the barcode map on the day** *(the letters are only given then;
+added 19 Nov)*. `python3 tools/barcode_map.py A=L B=R C=F D=U --mv 2` turns
+the pairs into the 26-letter table (letters not named are F) and the 7 bytes,
+packed by `telemetry_decode.pack_map`, and prints a `mosquitto_pub` line:
+
+```sh
+printf '\222\014\000\000\000\000\000' | mosquitto_pub -h <broker-ip> -p 1883 -t robocar/pico-racer-01/map -r -q 1 -s
+```
+
+It sends nothing unless given `--publish --broker <broker-ip>` (needs
+`paho-mqtt`). Send the map **before pressing start**, by the viewer's "Send
+map" box, that line, or `--publish`; all three publish retained at QoS 1.
+The car prints `[comms] map mv=2 LRFU… -> barcode_task`, then `[barcode] map
+v2 applied` once no barcode is being read, and `S.mpv` becomes 2. Checked by
+`tests/host/test_barcode_map.py` (in `make -C tests`), and the printed line
+once against a local `eclipse-mosquitto:2` broker (19 Nov): a retained 7-byte
+`920c0000000000` came back. The fallback (a compiled-in table, rebuilt and
+flashed), what each stage prints, and the limits no table fixes are in
+`docs/BUDDY3_LINE_BARCODE.md`, "Commands on the day" (PR #23).
 
 > **What this replaces.** The v1 M10 gate was "a generic client renders the JSON
 > as a tree with no custom parser". The v2 gate is: **a teammate who has never

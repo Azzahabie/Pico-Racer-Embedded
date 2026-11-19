@@ -25,6 +25,7 @@
 #include <tm/tmonitor.h>
 
 #include "comms_task.h"
+#include "comms_fold.h"
 #include "../common/messages.h"
 #include "../imu_task/imu_ts.h"
 #include "../nav_task/nav_ctrl.h"	/* fault_bits: S.faults */
@@ -121,8 +122,7 @@ typedef char comms_s_fits[(COMM_W_S_SIZE <= CYW43_MQTT_RECORD_MAX) ? 1 : -1];
    tilt-state word (FR-29). */
 LOCAL T_COMM_W_S s_cache = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
 			     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
-LOCAL BOOL	have_dist;
-LOCAL UH	dist_at_change;		/* dist_mm when mot last changed */
+LOCAL T_COMMS_FOLD	fold_state;	/* the fold's own memory (comms_fold.h) */
 
 LOCAL UW	malformed;
 
@@ -226,45 +226,6 @@ LOCAL UW now_ms(void)
 	return t.lo;
 }
 
-/* Fold one valid event into the S cache. */
-LOCAL void fold(const T_COMM_W_BODY *b)
-{
-	UW	cm;
-
-	switch(b->kind) {
-	case COMM_W_KIND_MOTION:
-		/* dst is cm since the last motion change, derived from the
-		   wrapping dist_mm counter (handles one wrap), clamped to 8 bits. */
-		if(!have_dist || b->motion_state != s_cache.mot) {
-			dist_at_change = b->dist_mm;
-			have_dist = TRUE;
-		}
-		s_cache.mot = b->motion_state;
-		cm = comm_w_dist_delta_mm(b->dist_mm, dist_at_change) / 10U;
-		s_cache.dst = (UB)((cm > 255U) ? 255U : cm);
-		break;
-	case COMM_W_KIND_LINE:
-		s_cache.lin = b->line_state;
-		s_cache.dev = b->deviation;
-		break;
-	case COMM_W_KIND_BARCODE:
-		s_cache.bar = b->letter;
-		s_cache.act = b->action;
-		break;
-	case COMM_W_KIND_IMU:
-		s_cache.hum = b->hump_count;
-		s_cache.hgt = b->hump_height_mm;
-		break;
-	case COMM_W_KIND_OBSTACLE:
-		s_cache.obs = b->width_cm;
-		s_cache.byp = b->bypass;
-		break;
-	default:	/* COMM_W_KIND_MISSION */
-		s_cache.mis = b->mission_state;
-		break;
-	}
-}
-
 /* Print a record's bytes and fate as one console line. */
 LOCAL void print_record(const char *what, UH seq, UW up, const UB *rec,
 			UW len, ER er)
@@ -309,7 +270,7 @@ LOCAL void handle_intake(const UB *body, INT size, UH *seq)
 		return;
 	}
 
-	fold(&b);
+	comms_fold(&s_cache, &fold_state, &b);
 	up = now_ms();
 	elen = comm_w_copy_body(e, sizeof e, *seq, up, body, (UW)size);
 	er = cyw43_utk_mqtt_send(CYW43_MQTT_TOPIC_TELEMETRY, e, elen);

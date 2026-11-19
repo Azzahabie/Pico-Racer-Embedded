@@ -122,11 +122,13 @@ so an up-to-date tree yields a near-empty database.
   `map`, and the `tele_mbf` intake from the other tasks. The
   `docs/GETTING_STARTED.md` §7 and `docs/PORT_RP2040.md:119` notes predate MQTT.
 - **Every subsystem is built and integrated** (`docs/INTEGRATION.md` §2-§5):
-  motion, line + barcode, IMU, scan, nav. **Not built** (`INTEGRATION.md` §6, §8):
-  an end-of-course trigger (D10: Finished only by an MQTT command), battery
-  sense on GP28 (M4), the RGB LED (M5), and an `E imu` record (M6). **Junction
-  turns are coded but never run on the car**: the GP7 barcode/junction sensor is
-  faulty.
+  motion, line + barcode, IMU, scan, nav, and every task sends its `E` record.
+  **Not built** (`INTEGRATION.md` §6, §8): battery sense on GP28 (M4) and the
+  RGB LED (M5). **No end-of-course trigger, by decision** (D10, settled
+  19 Nov): the run ends when the car is lifted and inverted, which raises the
+  IMU fault (motors braked, mission FAULT); Finished only by an MQTT command.
+  **Junction turns are coded but never run on the car**: the GP7
+  barcode/junction sensor is faulty.
 - The Wi-Fi driver and the MQTT client live in `lib/`, not the app:
   `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` and
   `lib/libnet/lwip/lwip_utk_mqtt.c`. App code publishes only through
