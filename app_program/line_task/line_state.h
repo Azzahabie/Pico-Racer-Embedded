@@ -19,10 +19,13 @@
  *   bits  2-3   steer   which way to correct: 0 none, 1 left, 2 right.
  *                       Already includes LINE_STEER_INVERT; 0 when
  *                       centred (rl 3) or off the line.
- *   bit   4     barcode a barcode is being read (or was, within
- *                       BARCODE_JUNCTION_HOLDOFF_MS).  Its bars cross the line
- *                       sensors, so rl, steer and error are held at 0: hold
- *                       the heading and a constant speed.
+ *   bit   4     barcode rl, steer and error are held at 0 because a
+ *                       barcode is being read (or was, within
+ *                       BARCODE_JUNCTION_HOLDOFF_MS) and its bars cross the
+ *                       line sensors: hold the heading and a constant
+ *                       speed.  Only with LINE_BARCODE_HOLD 1 (barcodes
+ *                       across the line); 0 on the demo course (beside the
+ *                       line), so never set there.
  *   bit   5     lost    no confirmed black for LINE_LOST_MS (noise-filtered)
  *   bit   6     fault   a line sensor is stuck at an ADC rail, or the ADC
  *                       failed: treat the line as lost

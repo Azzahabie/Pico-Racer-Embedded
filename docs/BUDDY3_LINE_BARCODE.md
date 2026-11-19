@@ -58,6 +58,13 @@ Neither task drives the motors.
   It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
   samples running. A barcode read doesn't block it, because the crossbar
   starts a capture of its own.
+- **Barcode hold (`LINE_BARCODE_HOLD`, default 0):** with barcodes printed
+  across the line (1), a read holds rl/steer/error at 0 and sets the word's
+  barcode bit, so motion holds its heading over the bars. On the demo course
+  the barcodes sit beside the line (the prof's course photos, 19 Nov), so the
+  line sensors never see a bar and nothing is held (0). Holding there blinded
+  line following for about 2 s after every junction (the crossbar under GP7
+  opens a read too) and made motion read "line seen" on white.
 - **Mission change:** the junction is disarmed and a partial barcode
   aborted.
 

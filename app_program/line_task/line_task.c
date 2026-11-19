@@ -256,7 +256,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			/* not held */
 		}
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
-				adc_ok ? true : false, 0U < holdoff,
+				adc_ok ? true : false,
+				(0U != LINE_BARCODE_HOLD) && (0U < holdoff),
 				black ? true : false, &out);
 		g_line_state = out.word;			/* one store */
 

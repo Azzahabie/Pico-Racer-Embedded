@@ -57,9 +57,19 @@
 #define BARCODE_DEFAULT_TABLE_SET                 (0)
 #define BARCODE_DEFAULT_TABLE                     ""
 
-/* While a barcode is being read, and this long after, line_state holds
-   rl/steer/error at 0 (the bars cross the line sensors).  It no longer
-   gates junctions: those come from GP7's run length (below). */
+/* Where the barcodes are.  1: printed across the line, so their bars cross
+   the line sensors: while a barcode is being read, and
+   BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds rl/steer/error at 0
+   and sets its barcode bit, and motion_task holds its heading.  0: beside
+   the line, as on the demo course (the prof's course photos, 19 Nov): the
+   line sensors never see a bar, so nothing is held.  Holding there only
+   blinded line following for ~2 s after every junction, because the
+   crossbar under GP7 opens a read too, and made motion read "line seen"
+   with both sensors on white. */
+#define LINE_BARCODE_HOLD                         (0u)
+
+/* How long the hold lasts after a read ends (LINE_BARCODE_HOLD 1 only).
+   It no longer gates junctions: those come from GP7's run length (below). */
 #define BARCODE_JUNCTION_HOLDOFF_MS               (300u)
 
 /* ---- Junction detection (ticks of 1 ms) ----
