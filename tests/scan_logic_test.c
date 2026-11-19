@@ -56,6 +56,27 @@ static void show(const sl_profile_t *p_prof, sl_action_t action)
 	       sl_action_name(action));
 }
 
+/* Car sweeps of the 90 mm demo box, 4 Nov (tests/scan_bench/logs). */
+/* trials_batch2 04:36:17: logged x -135..25, width 160, offset L 383 R 273 */
+static void car_sweep_0436(uint16_t grid[SL_SLOTS])
+{
+	grid_clear(grid);
+	set(grid, -45, 1332); set(grid, -40, 1342); set(grid, -35, 275);
+	set(grid, -25, 252);  set(grid,   0, 253);  set(grid,  10, 261);
+	set(grid,  15, SL_FAR); set(grid, 20, 1540); set(grid, 25, 1451);
+	set(grid,  45, 1138);
+}
+
+/* trials_batch2 04:32:36: logged x -70..112, width 182, offset L 318 R 360 */
+static void car_sweep_0432(uint16_t grid[SL_SLOTS])
+{
+	grid_clear(grid);
+	set(grid, -45, 1353); set(grid, -30, 1339); set(grid, -25, 1315);
+	set(grid, -20, 268);  set(grid, -10, 251);  set(grid,   0, 246);
+	set(grid,  25, 255);  set(grid,  30, 267);  set(grid,  35, 1439);
+	set(grid,  45, 1401);
+}
+
 static sl_action_t run(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 		       bool reverse_tried, sl_profile_t *p_prof)
 {
@@ -87,8 +108,11 @@ int main(void)
 	check("closest is ~192 mm near 0 deg", 192 == prof.d_close_mm && 0 == prof.close_deg);
 	check("edges at -30 and +15", -30 == prof.left_deg && 15 == prof.right_deg);
 	check("both sides open", prof.left_open && prof.right_open);
-	check("width about 10 cm (coarse data underestimates)",
-	      prof.width_mm > 80 && prof.width_mm < 130);
+	/* the bypass edges (SL_BEAM_CORR_PER_1000); the reported width W has
+	 * its own correction (Test 22) */
+	check("edge span about 10 cm (coarse data underestimates)",
+	      (prof.x_right_mm - prof.x_left_mm > 80) &&
+	      (prof.x_right_mm - prof.x_left_mm < 130));
 	check("passes on the right (equal clearance, smaller offset)", SL_BYPASS_RIGHT == act);
 
 	/* 2. Nothing within D_obs -> false alarm */
@@ -408,12 +432,7 @@ int main(void)
 	 * logged offsets exactly (offset L + R = width + 2 C_pass) */
 	printf("Test 21: car sweeps 4 Nov, measured-edge offsets as driven\n");
 	{
-		/* trials_batch2 04:36:17: width 160, offset L 383 R 273, RIGHT */
-		grid_clear(grid);
-		set(grid, -45, 1332); set(grid, -40, 1342); set(grid, -35, 275);
-		set(grid, -25, 252);  set(grid,   0, 253);  set(grid,  10, 261);
-		set(grid,  15, SL_FAR); set(grid, 20, 1540); set(grid, 25, 1451);
-		set(grid,  45, 1138);
+		car_sweep_0436(grid);			/* RIGHT taken */
 		act = run(grid, SL_D_OBS_MM, false, &prof);
 		check("batch2 04:36:17: x -135..25, offsets L 383 R 273 as logged",
 		      (-135 == prof.x_left_mm) && (25 == prof.x_right_mm) &&
@@ -423,12 +442,7 @@ int main(void)
 		      prof.x_right_mm - prof.x_left_mm + 2 * SL_C_PASS_MM);
 		check("batch2 04:36:17: BYPASS RIGHT as logged", SL_BYPASS_RIGHT == act);
 
-		/* trials_batch2 04:32:36: width 182, offset L 318 R 360, LEFT */
-		grid_clear(grid);
-		set(grid, -45, 1353); set(grid, -30, 1339); set(grid, -25, 1315);
-		set(grid, -20, 268);  set(grid, -10, 251);  set(grid,   0, 246);
-		set(grid,  25, 255);  set(grid,  30, 267);  set(grid,  35, 1439);
-		set(grid,  45, 1401);
+		car_sweep_0432(grid);			/* LEFT taken */
 		act = run(grid, SL_D_OBS_MM, false, &prof);
 		check("batch2 04:32:36: x -70..112, offsets L 318 R 360 as logged",
 		      (-70 == prof.x_left_mm) && (112 == prof.x_right_mm) &&
@@ -436,6 +450,42 @@ int main(void)
 		check("batch2 04:32:36: BYPASS LEFT as logged", SL_BYPASS_LEFT == act);
 	}
 #endif
+
+	/* 22. reported width (NFR-20, rubric 7): its own correction; the edges
+	 * the bypass uses keep SL_BEAM_CORR_PER_1000 (Test 21: offsets as
+	 * logged from the same sweeps) */
+	printf("Test 22: reported width W corrected on its own (NFR-20)\n");
+	{
+		int32_t	span;
+		int32_t	expect;
+
+		car_sweep_0436(grid);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		span = prof.x_right_mm - prof.x_left_mm;
+		/* edges at -35 (275 mm) and +10 (261 mm): pulled in by
+		 * (275 + 261) x (report - beam) / 1000 more, +-2 rounding */
+		expect = span - ((275 + 261) * (SL_WIDTH_REPORT_CORR_PER_1000 -
+						SL_BEAM_CORR_PER_1000)) / 1000;
+		check("04:36:17: bypass edges unchanged, x -135..25 (k 80, as logged)",
+		      (-135 == prof.x_left_mm) && (25 == prof.x_right_mm));
+		check("04:36:17: W = edge span less the extra report correction",
+		      (prof.width_mm >= expect - 2) && (prof.width_mm <= expect + 2));
+#if SL_WIDTH_REPORT_CORR_PER_1000 == 240
+		check("04:36:17: W 74 mm, within 30 % of 90 (was 160)",
+		      (74 == prof.width_mm) && (prof.width_mm >= 63) && (prof.width_mm <= 117));
+		car_sweep_0432(grid);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("04:32:36: bypass edges unchanged, x -70..112 (as logged)",
+		      (-70 == prof.x_left_mm) && (112 == prof.x_right_mm));
+		check("04:32:36: W 96 mm, within 30 % of 90 (was 182)",
+		      (96 == prof.width_mm) && (prof.width_mm >= 63) && (prof.width_mm <= 117));
+#endif
+		/* one hit: the cone is wider than the object, W stays 0 */
+		grid_clear(grid);
+		set(grid, -5, SL_FAR); set(grid, 0, 367); set(grid, 5, SL_FAR);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("single hit: W 0, not negative", 0 == prof.width_mm);
+	}
 
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
