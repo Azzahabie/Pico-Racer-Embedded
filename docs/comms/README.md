@@ -163,5 +163,32 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 | `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` | The radio driver (exists). |
 | `lib/libnet/lwip/` | lwIP + the MQTT client (**single-threaded** — only the radio task may touch it). |
 
+---
+
+## 8. Reading the stream during a run
+
+What the `S` fields that are easy to misread really say. The full rows are in
+[`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §4.
+
+- **`lin` comes from E line records, sent only when the line state changes**
+  (`line_task.c`, "telemetry on edges only"); `comms_task` copies each into
+  `S`. So `lin` is current unless that record was dropped (`drp` rises).
+  - `lin` = 1 (lost): GP26 and GP27 have seen no confirmed black for 1500 ms
+    (`LINE_LOST_MS`), or a line sensor is faulty. Lost wins over crossing.
+  - `lin` = 2 (crossing): **any** GP7 black of 80 ms or more
+    (`LINE_JUNCTION_SAMPLES`, 1 ms samples in a row). A crossbar gives it, but
+    so does GP7 sweeping along the line when the car is angled to it, or a
+    barcode bar: at base 6 (47.6 mm/s, C) 80 ms is only 3.8 mm of black. It is
+    not proof of a junction event and not proof of a turn; for a turn look for
+    E motion state 2 (TURNING).
+- **`dev` is not live.** It is the line error carried by that same E line
+  record, so it is the error at the moment `lin` last changed, frozen until the
+  next change. Its unit is percent,
+  (right − left) normalised darkness / 10, −100 to +100, positive = steer left
+  on this car; not "tenths".
+- **`bar` and `act` are the last accepted barcode.** A rejected read (E barcode
+  `letter=none`), including the crossbar at every junction, leaves them as they
+  were; the E barcode records show every read, good or rejected.
+
 > **Read this first, then stop here** unless a task sends you into one of the
 > detail documents above.
