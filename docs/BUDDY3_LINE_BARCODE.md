@@ -130,7 +130,7 @@ Neither task drives the motors.
   | `BARCODE_END_ON_STOP` | 1 | `-DBARCODE_END_ON_STOP=0` (only with rule 0) |
   | `BARCODE_DECODE_SPLIT` | 1 (no wrong letter in 21060 + 42120 sim reads) | `-DBARCODE_DECODE_SPLIT=0` |
   | `BARCODE_Q_WIDTH_FACTOR` | 6 (trade-off under Capture) | `-DBARCODE_Q_WIDTH_FACTOR=4` |
-  | `BARCODE_GLITCH_TICKS` | 3 | `-DBARCODE_GLITCH_TICKS=0` |
+  | `BARCODE_GLITCH_TICKS` | 6 | `-DBARCODE_GLITCH_TICKS=0` |
   | `BARCODE_NOT_BAR_RATIO_X10` | 25 | `-DBARCODE_NOT_BAR_RATIO_X10=0` |
 
   All of them together are `OLD_RULE` in `tests/line/Makefile`. A `-D`
@@ -272,13 +272,14 @@ the course photos (19 Nov):
     last bar. If that bar runs on into a crossbar printed against it, the
     read is tried with the bar taken as narrow (the 21st width) once the
     run is twice that.
-  - **Glitch filter** (`BARCODE_GLITCH_TICKS` 3): a GP7 run of black or
-    white 3 samples or shorter counts as the level either side of it, for
-    the capture and for the junction side, so a 1-3 ms dropout inside the
+  - **Glitch filter** (`BARCODE_GLITCH_TICKS` 6): a GP7 run of black or
+    white 6 samples or shorter counts as the level either side of it, for
+    the capture and for the junction side, so a 1-6 ms dropout inside the
     crossbar neither opens nor splits a read. GP7 has done it: `B63 w4
-    B24` (`tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196`). The
-    narrowest real bar is 31 ms (2 mm at base 8), 13 ms read 1 mm thin
-    with GP7 20 % fast (C). Edges are seen 3 ms late; widths are unchanged.
+    B24` (`tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196`), which
+    6 merges (3 did not). The narrowest real bar is 31 ms (2 mm at base
+    8), 13 ms read 1 mm thin with GP7 20 % fast (C). Edges are seen 6 ms
+    late (0.4 mm at base 8, C); widths are unchanged.
   - **Not a bar** (`BARCODE_NOT_BAR_RATIO_X10` 25): inside an open read, a
     black run longer than 2.5 × the widest width before the space in front
     of it is not a bar; the junction rules apply to it (armed: 10 mm;
@@ -484,7 +485,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, 8.9-10.3 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. H1, at base 4/6/8: a 4 ms dropout 3 mm into the crossbar after an armed sheet (and the next crossroad finds no command), a 2 mm speck 5 and 10 mm before the crossbar, a 1 ms white 0.5 mm in and 2-3 ms at 12 mm in, armed and not, and an unreadable sheet of 17/21/25 widths 5-10 mm before it, each exactly one junction at the crossbar; a second sheet either way round before the junction (288 runs), none inside it. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail; `make -C tests/line junction_h1_off` without the H1 fix: 34 of 150 fail |
 | `test_barcode_decode` (`tests/`) | every letter and 3 strings both ways with ±10-20 % edge bias; A-Z with bars 25-33 % of narrow wider and spaces narrower at wide 2-3 × (needs the bar/space split) |
 | `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), the barcode side's gate (bars arriving block, armed fires, a due junction waits for the verdict), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
-| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks past the glitch filter, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor; the glitch filter (1-3 tick glitches in every bar and space of a sheet merged, 4 ticks kept, a short speck opens no read); not a bar (where a dropout, a speck, a reversed start, 8 narrow widths and an unreadable sheet stop being bars; no bar of any letter, either way, 6 blur and ratio cases, ever is not one); a read ENDed or dropped by a junction |
+| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks past the glitch filter, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor; the glitch filter (1-6 tick glitches in every bar and space of a sheet merged, 7 ticks kept, a short speck opens no read); not a bar (where a dropout, a speck, a reversed start, 8 narrow widths and an unreadable sheet stop being bars; no bar of any letter, either way, 6 blur and ratio cases, ever is not one); a read ENDed or dropped by a junction |
 | `test_barcode_action` | the table, map apply and reject, the command word; every action for every letter from a map; the writeup example as the laptop's 7 bytes; the comms vector; built again with a compiled-in table (`test_barcode_action_table`) |
 | `test_barcode_task` | `barcode_task.c`'s own loop on a fake kernel: the boot table line, a map from comms, each action stored from it, a map sent while a sheet is read (waits for the read), a map between a read and its junction (the stored command stays), a full map queue, a wrong length, a new mission; built three times (no table, a compiled-in table, one with a bad character) |
 | `test_line_state` | the word, and the motion statechart contract |
