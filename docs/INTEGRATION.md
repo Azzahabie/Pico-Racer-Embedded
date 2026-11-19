@@ -18,27 +18,9 @@ its owner can find it and explain it. Stages S0-S8 were tested on the car in
 order. The evidence logs (viewer captures, per stage and attempt) are kept by
 Buddy 1 and available on request.
 
-> **19 Nov fixes in flight** (proposal branches, not on `master` yet; each
-> owner reviews and merges their own; none has run on the car). Until they are
+> **Fixes not on `master` yet** are the open pull requests
+> (<https://github.com/Azzahabie/Pico-Racer-Embedded/pulls>); until one is
 > merged, `master` behaves as this document says.
->
-> - `buddy2/demo-fixes`, **PR #22** (Buddy 2, motion): E motion once a second
->   while moving and a per-mission distance, so `S.dst` is no longer always 0;
->   a refused JUNCTION no longer changes the turn underway.
-> - `proposal/line-barcode-beside-line` (Buddy 3, line): no line hold while
->   GP7 reads a barcode, since the sheets sit beside the line; `J_n` 280 so the
->   9 mm bars no longer fire junctions at base 6 (`S.lin` = 2 then needs
->   280 ms of GP7 black, not 80).
-> - `proposal/nav-barcode-cmd-kept` (Buddy 5, nav): the barcode command is
->   used up only when motion finishes the turn, so a junction refused during a
->   bypass or line search no longer wastes it.
-> - `proposal/imu-upside-down-stop` (Buddy 4, IMU): a car resting upside down
->   counts as tilted (z below 0 mg), so a car lifted and held inverted trips
->   the IMU stop; on `master` it reads as level once it rests upside down (D10).
-> - `proposal/comms-fixes` (Buddy 1, comms): `S` keeps the last accepted
->   barcode after a rejected read; docs for `S.lin`/`S.dev`, the false `GAP`
->   from the retained `D`, waiting for live `S` before a run, and the stale
->   rows below (M6, D10).
 
 ---
 

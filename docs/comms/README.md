@@ -216,7 +216,10 @@ What the `S` fields that are easy to misread really say. The full rows are in
   on this car; not "tenths".
 - **`bar` and `act` are the last accepted barcode.** A rejected read (E barcode
   `letter=none`), including the crossbar at every junction, leaves them as they
-  were; the E barcode records show every read, good or rejected.
+  were; the E barcode records show every read, good or rejected. They also
+  carry over into the next run until a new barcode is accepted, although
+  `barcode_task` forgets its stored command at a new mission; whether `S`
+  should reset them at each start is open (Buddy 1 to decide).
 - **The first `GAP` after the viewer connects is usually false.** The broker
   first hands the viewer the retained `D` from the last `snap` (this run or an
   earlier one), with an old `s` and old fields, so the first live record reads
