@@ -12,10 +12,11 @@ is *detail behind a link* — open one only when you need it.
 
 - **Owner:** Buddy 1 (WiFi + Telemetry)
 - **Last updated:** 2026-10-21 — working notes, test logs and reports moved out
-  of the repo; this folder now holds only the reference and interface docs
+  of the repo; this folder now holds only the reference and interface docs.
+  19 Nov: §8 (reading the stream during a run) and the stale "empty stub" notes
 - **Tasks:** `comms_task` — the application task (in `app_program/comms_task/`,
-  an empty stub); `cyw43_utk_task` — the radio owner, library code that already
-  exists (`lib/libwifi/`)
+  built: intake → `E`, `H` and `S` every second, inbound commands; §7);
+  `cyw43_utk_task` — the radio owner, library code (`lib/libwifi/`)
 - **One line:** turn car events into MQTT telemetry, and apply the laptop's live
   barcode-remap and `snap` commands — without ever touching lwIP directly.
 
@@ -119,8 +120,10 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
   [`TASK_LAYOUT_RECONCILIATION.md`](TASK_LAYOUT_RECONCILIATION.md) §2, §8.
 - **Statechart image.** `docs/embedded .md` §6.1's `image3` needs regenerating
   from [`STATECHART1_DIAGRAM_SPEC.md`](STATECHART1_DIAGRAM_SPEC.md) §10.
-- **Code not yet written.** `app_program/comms_task/` is an empty stub. It is
-  compiled, so keep it valid.
+- **"Empty stub" (fixed 19 Nov).** Older notes here called
+  `app_program/comms_task/` an empty stub. It is the built task (§7); the
+  design documents' status tables (`WIFI_SUBSYSTEM_DESIGN.md` §1,
+  `APPLICATION.md` §1) are snapshots from before it was written.
 
 ---
 

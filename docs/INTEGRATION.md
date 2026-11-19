@@ -18,6 +18,28 @@ its owner can find it and explain it. Stages S0-S8 were tested on the car in
 order. The evidence logs (viewer captures, per stage and attempt) are kept by
 Buddy 1 and available on request.
 
+> **19 Nov fixes in flight** (proposal branches, not on `master` yet; each
+> owner reviews and merges their own; none has run on the car). Until they are
+> merged, `master` behaves as this document says.
+>
+> - `buddy2/demo-fixes`, **PR #22** (Buddy 2, motion): E motion once a second
+>   while moving and a per-mission distance, so `S.dst` is no longer always 0;
+>   a refused JUNCTION no longer changes the turn underway.
+> - `proposal/line-barcode-beside-line` (Buddy 3, line): no line hold while
+>   GP7 reads a barcode, since the sheets sit beside the line; `J_n` 280 so the
+>   9 mm bars no longer fire junctions at base 6 (`S.lin` = 2 then needs
+>   280 ms of GP7 black, not 80).
+> - `proposal/nav-barcode-cmd-kept` (Buddy 5, nav): the barcode command is
+>   used up only when motion finishes the turn, so a junction refused during a
+>   bypass or line search no longer wastes it.
+> - `proposal/imu-upside-down-stop` (Buddy 4, IMU): a car resting upside down
+>   counts as tilted (z below 0 mg), so a car lifted and held inverted trips
+>   the IMU stop; on `master` it reads as level once it rests upside down (D10).
+> - `proposal/comms-fixes` (Buddy 1, comms): `S` keeps the last accepted
+>   barcode after a rejected read; docs for `S.lin`/`S.dev`, the false `GAP`
+>   from the retained `D`, waiting for live `S` before a run, and the stale
+>   rows below (M6, D10).
+
 ---
 
 ## 1. Build and flash
@@ -130,7 +152,7 @@ All are lock-free single-writer words (D1-D3).
 | S5 junction turns | **Built, not run on the car** | Sim only. **Blocked by hardware:** the GP7 KY-033 reads stuck HIGH, and must sit beside the line (D11) |
 | S6 hump | **Partly tested**: 2 of the planned 5 crossings; the hump-close fix not run on the car | Prof's hump (195 mm, 10 mm): 9.7 / 9.6 mm (NFR-05 OK); no IMU fault, no false STOP_SCAN, line not lost. The V_hump cap and 2 × t_lost never fired (speeds under the cap, no LOST). Hump mode should now end ~13 cm after the crest, not ~25 *(host test)* |
 | S7 obstacle | **Works**; NFR-07 not met | Probe bypass passes boxes of unknown depth and rejoins the line (user, attempts 3-4). Side choice by clearance; reverse when < 100 mm. NFR-07's 7 s is out of reach: the scan alone takes 3.9-5.3 s, the bypass ~20-30 s. Sim: 200 mm box 26.4 s, 500 mm box 34.5 s |
-| S8 full mission | **Not started** | D7 done. Missing: end-of-course trigger (D10), ≥ 5 full-course runs, AP/broker outage runs (NFR-09) |
+| S8 full mission | **Not started** | D7 done; the end of the run is settled (D10: lift and invert). Missing: ≥ 5 full-course runs, AP/broker outage runs (NFR-09) |
 
 ## 5. Changes per subsystem
 
@@ -243,7 +265,7 @@ Commit hashes are on `integration`; see section 11 for the full list.
 | D7 | MQTT back-off was 2 → 15 s; the design says fixed 2-5 s | **Fixed:** capped at 5 s |
 | D8 | comms paced by timeouts, not a 1 s cyclic handler | Kept (H spacing 0.989-1.012 s) |
 | D9 | MQTT mission commands (start/pause/resume/reset/finish) | Kept |
-| D10 | **No end-of-course trigger**: Finished only by command | **Open: team decision** |
+| D10 | **No end-of-course trigger**: Finished only by command | **Settled 19 Nov (the prof):** the run ends when the car is lifted and inverted. The IMU fault (`imu_task.c` `raise_fault()`: the tilt check, or in hand 1.2 s with the wheels still) sets STOP_IMU, which brakes, and nav goes to FAULT (`nav_ctrl.c`, 1 × 800 ms beep). So a good run ends with `mis` = FAULT and `faults` = imu, not FINISHED; Finished stays reachable only by the MQTT `finish` command. On `master` a car resting upside down reads as level (see the 19 Nov note at the top) |
 | D11 | Line sensors both inside the line; junction from GP7 only | Kept; **GP7 must sit beside the line** |
 | D12 | C_pass = pivot sweep + margin (218 mm), not half width + margin | Decided 1 Nov |
 | D13 | While bypassing, re-plan below D_rev (not D_stop) while still or pivoting | Decided 1 Nov |
@@ -253,7 +275,7 @@ Commit hashes are on `integration`; see section 11 for the full list.
 | M3 | V_hump cap | Done |
 | M4 | Battery sense on GP28 | **Not built** |
 | M5 | RGB LED (GP18) | **Not built** |
-| M6 | E records from every task | motion, mission, line, barcode, obstacle done; **imu not sending E** |
+| M6 | E records from every task | Done: motion, mission, line, barcode, obstacle, and imu since `6859033` (3 Nov: on each motion class or hump count change, `imu_task.c` `send_imu_record()`) |
 | M7 | Rejected-junction telemetry | Not verified |
 | M8 | Left motor coasts at boot until motion starts | Not measured |
 
@@ -277,12 +299,14 @@ Commit hashes are on `integration`; see section 11 for the full list.
 
 1. **GP7 sensor dead** (stuck HIGH; KY-033 inferred faulty). Junctions and
    barcodes cannot be tested until it is replaced and mounted beside the line.
-2. **End-of-course trigger** (D10): needs a team decision.
+2. **End of the run** (D10): settled 19 Nov, lift and invert → IMU fault → FAULT
+   (section 6). The pick-up fault ran on the car on 4 Nov; the car held upside
+   down has not (see the 19 Nov note at the top).
 3. **NFR-07** (bypass ≤ 7 s) cannot be met at these speeds; report it as a
    measured shortfall.
 4. **NFR-11** tick jitter while driving (worst 11.5 ms); cause not found.
 5. **Barcode decode:** the KY-033 cannot resolve 2 mm bars even once GP7 works.
-6. **IMU:** x = y = z = 5987 mg at some boots (Buddy 4); no E imu record (M6).
+6. **IMU:** x = y = z = 5987 mg at some boots (Buddy 4).
 7. **Not built:** battery sense (M4), RGB LED (M5).
 8. **Not yet run on the car:**
    - the hump close at 120 mm;
