@@ -131,7 +131,9 @@ All are lock-free single-writer words (D1-D3).
 ### 3.4 Telemetry and comms
 
 - **Records:** E records from motion (every statechart change), mission (every
-  state change), line, barcode and obstacle. S.mis is read from nav every second.
+  state change), line, barcode, obstacle and imu (each motion class or hump
+  count change, `imu_task.c` `send_imu_record()`). S.mis is read from nav
+  every second.
 - **Barcode map:** a checked map from MQTT goes to `barcode_task` (M8b).
 - **SCANNING:** a new MQTT session state (5) for broker discovery. It shows on the
   console and is reported as "connecting" in D.

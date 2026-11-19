@@ -169,8 +169,11 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 > **Built 2026-10-22** (`comm_w_pack_s()`, published by `comms_task` right after
 > each `H`, on the same `s` counter). **`faults`** is copied from Buddy 5's
 > fault flag before each `S`, with the Wi-Fi-loss latch added (§4.1; since
-> 2026-10-29). **`mpv` is 0** until the `map` command (M8) is built. A field no event has reported yet keeps its initial value:
-> `bar` 31 (none), `dev` 128 (0 tenths), `tlt` 63 and `trn` 0 (not
+> 2026-10-29). **`mpv`** is the version of the map `barcode_task` is
+> running (`comms_task.c` reads `barcode_map_version()` before each `S`):
+> 0 until the first `map` command is applied, then that map's `mv` (§8.3;
+> M8b is built). A field no event has reported yet keeps its initial value:
+> `bar` 31 (none), `dev` 128 (0 %), `tlt` 63 and `trn` 0 (not
 > available), everything else 0.
 
 > **Two ways a field reaches `S` (v5).** A field that records **a discrete
@@ -346,7 +349,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
 | 2 | `state` | 0–2 | 0 on-line, 1 lost, 2 crossing; also `S.lin` |
-| 8 | `deviation` | −128–127 tenths, stored + 128 | line deviation; also `S.dev` |
+| 8 | `deviation` | −128–127 %, stored + 128 (−100…+100 used) | line error, percent: (right − left) normalised darkness / 10, not tenths; positive = steer left on this car (`LINE_STEER_INVERT` 1). Sent only when `state` changes; also `S.dev` (§4) |
 
 **`k = 2` barcode** (Buddy 3) — `comm_w_pack_barcode()`
 
