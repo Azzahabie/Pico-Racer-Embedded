@@ -1,7 +1,8 @@
 /*
  *  motion_ds.h
  *  distance_state: the word motion_task (Buddy 2) publishes every 10 ms
- *  tick for imu_task (Buddy 4).  "ds" below means distance_state.
+ *  tick for imu_task (Buddy 4) and the other readers named below.  "ds"
+ *  below means distance_state.
  *
  *  This is the only file a reader needs.  Read the word with
  *  motion_ds_read() and take the fields out with the helpers below,
@@ -25,11 +26,24 @@
  *  MOTION_DS_WINDOW_TICKS ticks (motion_cfg.h).
  *
  *  One writer (motion_task, core 1) builds the whole word and publishes
- *  it with one aligned 32-bit store; the reader takes it with one load, so
- *  all four fields always come from the same tick.  No mutex: PostTri1
- *  row 2 allows that for one reader on the writer's core, which is
- *  imu_task on core 1.  Another reader, or one on core 0, needs the team
- *  to agree first (row 2 says such data keeps a mutex).
+ *  it with one aligned 32-bit store; each reader takes it with one load,
+ *  so all four fields always come from the same tick.  No mutex.  Three
+ *  readers, all on core 1, the writer's core:
+ *
+ *    imu_task       Buddy 4: the hump's travel and the turn rate.
+ *                   PostTri1 row 2 allows one reader on the writer's
+ *                   core.
+ *    obstacle_task  Buddy 5 (scan_task): the pivot-aware re-plan while
+ *                   bypassing.  Agreed in integration (INTEGRATION.md
+ *                   3.3, D13).
+ *    ir_sense_task  Buddy 3 (line): the travel that confirms the
+ *                   barcode-armed junction (LINE_JUNCTION_RULE 1).  This
+ *                   read is in proposal/line-barcode-beside-line, not on
+ *                   this branch; the team agrees to it in that pull
+ *                   request.
+ *
+ *  A fourth reader, or any reader on core 0, needs the team to agree
+ *  first (row 2 says such data keeps a mutex).
  *
  *  PROPOSED shared definition: the layout moves to common/messages.h
  *  through the team pull request.  No bit-fields (Barr-C 5.5), and only

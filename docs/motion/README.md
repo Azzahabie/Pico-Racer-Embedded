@@ -570,10 +570,13 @@ Layout agreed with Buddy 4 (PostTri1 Version C row 17):
 | 20-31 | turn | deg/s, counter-clockwise (left) positive, -2048..+2047, stored + 2048 | `motion_ds_turn_dps(w)` |
 
 How a reader uses it (one load, no mutex, the four fields always from the
-same tick). The readers are `imu_task` and `scan_task` (the pivot-aware
-re-plan), both on core 1, the writer's core. PostTri1 row 2 allowed one
+same tick). The readers are `imu_task`, `scan_task` (the pivot-aware
+re-plan) and `ir_sense_task` (the travel that confirms the barcode-armed
+junction), all on core 1, the writer's core. PostTri1 row 2 allowed one
 same-core reader; the second was agreed in integration (INTEGRATION.md
-3.3, D13). A reader on core 0 would still need the team's agreement.
+3.3, D13). The third is in proposal/line-barcode-beside-line, not on this
+branch, and the team agrees to it in that pull request. A fourth reader,
+or a reader on core 0, would still need the team's agreement.
 
 ```c
 #include "../motor_task/motion_ds.h"

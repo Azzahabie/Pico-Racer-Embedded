@@ -188,15 +188,24 @@
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
 
-/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION once GP7 has
-   been on the crossbar LINE_JUNCTION_SAMPLES; the car then drives
+/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION as soon as
+   ir_sense_task flags the junction under GP7.  With the barcode-armed rule
+   (LINE_JUNCTION_RULE 1, the default in
+   proposal/line-barcode-beside-line) that is about 10 mm into the
+   crossbar after a valid barcode (LINE_ARMED_CONFIRM_MM of travel; at
+   base 4 the length rule comes first, 280 samples = 8.9 mm, C).
+   Otherwise (nothing armed, or rule 0) it is once GP7 has been on the
+   crossbar LINE_JUNCTION_SAMPLES (80 here, 280 on that branch: 3.8 or
+   13.3 mm at base 6, C).  From that point the car drives
    MOTION_TURN_FWD_MM straight so the axle is over the crossing ([d_sensor]:
    GP7 to the wheel axle), and pivots on the spot at MOTION_TURN_SPEED
    until each wheel has turned PIVOT_COUNTS(90) (left, right) or (180)
    (U-turn, counter-clockwise).  Straight on drives MOTION_TURN_CROSS_MM
-   ([L_cross]) across the crossing, ignoring the line.  Then MOVE_DONE, and
-   Line Following if the line is under the sensors, else Line Search.
-   PROPOSED: measure d_sensor on the car; turn speed as the line search. */
+   ([L_cross]) from the same point across the crossing, ignoring the line.
+   Then MOVE_DONE, and Line Following if the line is under the sensors,
+   else Line Search.
+   PROPOSED: measure d_sensor (GP7 to the axle) on the car; turn speed as
+   the line search. */
 #define MOTION_TURN_FWD_MM    (50)
 #define MOTION_TURN_CROSS_MM  (40)
 #define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
