@@ -1,9 +1,9 @@
-commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
+commit e47c4d8, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
 
 ==== MOTION_PACKED=1 (0 warnings)
 -- whole image, static RAM (bytes):
   .data 240
-  .bss 32084
+  .bss 32100
 -- motion objects (bytes; RAM = data + bss):
      text	   data	    bss	    dec	    hex	filename
       616	      0	     53	    669	    29d	encoder.o
@@ -11,8 +11,8 @@ commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17495	      4	   9256	  26755	   6883	motor_task.o
-    21461	     36	   9309	  30806	   7856	(TOTALS)
+    17387	      4	   9272	  26663	   6827	motor_task.o
+    21353	     36	   9325	  30714	   77fa	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_edges_l encoder.o
   2 g_edges_la encoder.o
@@ -31,7 +31,7 @@ commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   32 g_motor motor.o
   16 g_avoid_buf motor_task.o
   4 g_avoid_mbfid motor_task.o
-  544 g_ctx motor_task.o
+  560 g_ctx motor_task.o
   4 g_ds_word motor_task.o
   4 g_flgid motor_task.o
   4 g_mbfid motor_task.o
@@ -50,7 +50,7 @@ commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
 ==== MOTION_PACKED=0 (0 warnings)
 -- whole image, static RAM (bytes):
   .data 236
-  .bss 32096
+  .bss 32112
 -- motion objects (bytes; RAM = data + bss):
      text	   data	    bss	    dec	    hex	filename
       612	      0	     57	    669	    29d	encoder.o
@@ -58,8 +58,8 @@ commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17667	      0	   9272	  26939	   693b	motor_task.o
-    21629	     32	   9329	  30990	   790e	(TOTALS)
+    17383	      0	   9288	  26671	   682f	motor_task.o
+    21345	     32	   9345	  30722	   7802	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_count_l encoder.o
   4 g_count_r encoder.o
@@ -79,7 +79,7 @@ commit a817433, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
   32 g_motor motor.o
   16 g_avoid_buf motor_task.o
   4 g_avoid_mbfid motor_task.o
-  544 g_ctx motor_task.o
+  560 g_ctx motor_task.o
   8 g_ds motor_task.o
   4 g_ds_mtxid motor_task.o
   4 g_flgid motor_task.o

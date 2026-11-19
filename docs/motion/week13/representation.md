@@ -8,9 +8,9 @@ final build; the "Week 6 form" column is kept only to show what the
 minimum-bit change replaced.
 
 Legend: M = measured, E = estimated, C = calculated. "nm" = measured with
-`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit a817433, car
+`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit e47c4d8, car
 profile (SMP=1 CONSOLE=usb_cdc), `MOTION_PACKED` 1, 0 warnings; its output
-is in [measure_a817433.txt](measure_a817433.txt). Re-run it on the demo
+is in [measure_e47c4d8.txt](measure_e47c4d8.txt). Re-run it on the demo
 commit.
 
 | # | Field | Owner | Writer -> reader(s), core | Valid range (M/E) | Bits | Week 6 form | Final form, size, sync | RAM (final) | Message bytes (final) | Status |
@@ -38,27 +38,27 @@ commit.
 | 18 | Motor stall fault | flag Buddy 5, set by Buddy 2 | motion_task -> nav_ctrl and comms (S.faults) | 0/1 (OR of left and right) | 1 | MOTION_FAULT bit on nav_flg; cause kept private | fault_flg bit FAULT_MOTOR_STALL; brake first, then set | 0 B (fixed table) | in S.faults | built (5ac5c1b; motor_task.c: fault_flg_bits) |
 | 19 | Encoder fault | as row 18 | as row 18 | 0/1 (OR of left and right) | 1 | as row 18 | fault_flg bit FAULT_ENCODER | 0 B | in S.faults | built |
 | 20 | Private fault byte (stall L/R, tick, init, encoder L/R) | Buddy 2 | motion_task only | 6 flags | 6 | n/a | 6 bits in one uint8 (motor_task.h: MOTION_FAULT_*) | in g_ctx | none | built |
-| 21 | Telemetry: E motion record (whole) | format Buddy 1 (MQTT_SCHEMA.md 5.1), sender Buddy 2 | motion_task -> comms_task (core 0) via tele_mbf | one on every statechart change (events only, as Buddy 1 asked; no periodic record); send never waits, refused records counted on the 5 s timing line | 51 | v1 T_TELEMETRY_EVENT 16 B (20 B in mbf); JSON E line about 55 B (C) | packed body: comm_w_pack_motion | n/a (Buddy 1's buffer) | 7 B payload, 12 B in tele_mbf, 13 B record E (M, compiler: tests/week13/sizes.c) | built (754fdf7; window speeds and drop count a817433) |
+| 21 | Telemetry: E motion record (whole) | format Buddy 1 (MQTT_SCHEMA.md 5.1), sender Buddy 2 | motion_task -> comms_task (core 0) via tele_mbf | one on every statechart change and one a second while a wheel moves (without it comms_task's S.dst, cm since the last motion change, stays 0); send never waits, refused records counted on the 5 s timing line | 51 | v1 T_TELEMETRY_EVENT 16 B (20 B in mbf); JSON E line about 55 B (C) | packed body: comm_w_pack_motion | n/a (Buddy 1's buffer) | 7 B payload, 12 B in tele_mbf, 13 B record E (M, compiler: tests/week13/sizes.c) | built (754fdf7; extended 19 Nov: window speeds, drop count, once a second while moving, mission distance) |
 | 22 | Telemetry kind | Buddy 1 | as row 21 | 0 = motion | 3 | INT kind | 3 bits | in row 21 | in row 21 | built |
 | 23 | Telemetry state | Buddy 1 / 2 | as row 21 | 0..8 used (motion_state_t), 0..15 room | 4 | a = 0..3 (INT) | 4 bits | in row 21 | in row 21 | built |
 | 24 | Telemetry speed_l, speed_r | Buddy 1 / 2 | as row 21 | -128..127 cm/s, stored +128 (confirmed by Buddy 2); far inside it: about 27 cm/s at 35 % power with no load (M/C, 24 Oct), about 4.7 cm/s line following (C, INTEGRATION.md S4); each wheel over the 50 ms distance_state window, rounded | 8 + 8 | not in v1 | offset 8 bits each | in row 21 | in row 21 | built |
-| 25 | Telemetry dist_mm | Buddy 1 / 2 | as row 21 | 0..32767, wraps (distance_state's net mm) | 15 | b = cm since last event (INT) | 15 bits | in row 21 | in row 21 | built |
+| 25 | Telemetry dist_mm | Buddy 1 / 2 | as row 21 | 0..32767, wraps: net mm in this mission (0 at a new mission, kept on a resume; Section 4), from distance_state minus its value at the mission's start | 15 | b = cm since last event (INT) | 15 bits | in row 21 | in row 21 | built |
 | 26 | Telemetry turn_rate | Buddy 1 / 2 | as row 21 | -512..511 deg/s, stored +512 | 10 | not in v1 | 10 bits | in row 21 | in row 21 | built |
 | 27 | Telemetry fault, ovf | Buddy 1 / 2 | as row 21 | 2 fault bits (stall, encoder); ovf 0/1 = a field was clamped | 2 + 1 | not in v1 | 3 bits | in row 21 | in row 21 | built |
 | 28 | FR-23 encoder counts in telemetry | Buddy 1 / 2 | as row 21 | n/a | proposal: 0 | n/a | proposal: not sent separately; dist_mm, speed_l and speed_r are computed from them (needs Buddy 2's approval as a deviation) | n/a | n/a | open (MQTT_SCHEMA.md item 16) |
 | 29 | line_state as read by motion | Buddy 3 | ir_sense_task (1 ms, core 1) -> motion_task (10 ms) | rl 0..3, steer 0..2, barcode/lost/fault/cal flags, counter 0..255, error -100..+100 (+128), dark 0..255 x 10 ms | 32 | struct + priority-inheritance mutex | one uint32 word, one store, one load per tick, no mutex (line_task/line_state.h) | Buddy 3's; motion keeps a copy in g_ctx | none | built |
 | 30 | hump_state as read by motion | Buddy 4 | imu_task -> motion_task | NONE / CLIMBING / DESCENDING | 2 | enum (1 B) + priority-inheritance mutex | 2-bit field in one word, no mutex (imu_task.h, INTEGRATION.md D1) | Buddy 4's | none | built; the hump speed cap has not fired on the car yet |
 | 31 | PID working variables (motion_pid_t x2) | Buddy 2 | motion_task only | int32 Q8 | n/a | n/a | 28 B each; working variables, kept unpacked | in g_ctx | none | built (motion_lib.h) |
-| 32 | motion_ctx_t g_ctx: every working field (positions, speeds, timing, distance_state window, statechart, line following, turn, reverse, bypass) | Buddy 2 (with integration fields from Buddies 1, 3, 5) | motion_task only | n/a | n/a | n/a | one static struct | 544 B (M, nm) | none | built |
+| 32 | motion_ctx_t g_ctx: every working field (positions, speeds, timing, distance_state window, statechart, line following, turn, reverse, bypass) | Buddy 2 (with integration fields from Buddies 1, 3, 5) | motion_task only | n/a | n/a | n/a | one static struct | 560 B (M, nm) | none | built |
 | 33 | Motor driver table g_motor | Buddy 2 | motor.c | pin and slice configuration | n/a | n/a | 32 B .data | 32 B (M, nm) | none | built |
 | 34 | Tunables (motion_cfg.h) | Buddy 2 | compile time | n/a | n/a | n/a | #define constants | 0 B | none | built |
 | 35 | Motion print record (console channel) | Buddy 2 | motion_task -> motion_report (core 0) | n/a | n/a | n/a | 52 B record; 8 slots x 56 B; carries the timing evidence | 448 B (M, nm: g_report_buf) | 52 / 56 B (console only) | built |
 | 36 | Task stacks motion_task, motion_report | Buddy 2 | n/a | n/a | n/a | n/a | 2 x 4096 B static | 8192 B (M, nm) | none | built |
 | 37 | Kernel objects | Buddy 2 | n/a | n/a | n/a | n/a | 2 TCB, 1 FLGCB, 3 MBFCB (report, nav_cmd, avoid_cmd), 1 CYCCB; fixed tables (config/config.h CNF_MAX_*) | 0 B beyond the tables; IDs 4 B each in .bss | none | built |
 
-**Motion's static RAM, final build (M, nm, a817433):** 36 B .data + 9309 B
-.bss = 9345 B, of which 8192 B are the two task stacks. Whole image: 240 B
-.data + 32084 B .bss.
+**Motion's static RAM, final build (M, nm, e47c4d8):** 36 B .data + 9325 B
+.bss = 9361 B, of which 8192 B are the two task stacks and 560 B the
+motion_task context. Whole image: 240 B .data + 32100 B .bss.
 
 **Kept unpacked on purpose.** Working variables used only inside one task
 (PID state, positions, timing, the decoder state) stay in natural C types:
@@ -77,5 +77,3 @@ Week 13 write-up):
   keeps every published word a single store.
 - Nav commands are 2 raw bytes, not a packed 16-bit word (row 10a,
   INTEGRATION.md D4). Same 2 B payload; the bit-packing is not done.
-- Motion telemetry is sent on state changes only, not also once a second
-  (row 21), as Buddy 1 asked.
