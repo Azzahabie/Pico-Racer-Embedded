@@ -52,12 +52,22 @@
 
 /* ---- Barcode capture in ir_sense_task, in 1 ms sampling ticks ----
    Q: a read ends after this many white ticks, or BARCODE_Q_WIDTH_FACTOR x
-   the narrowest width seen, whichever is longer (the existing 50 ms /
-   4x-narrowest rule).  W_max: widths per read (32 letters).  W_long: any
-   single bar or space longer than this aborts the read.  PROVISIONAL until
-   measured on the car. */
+   the narrowest width seen, whichever is longer.  W_max: widths per read
+   (32 letters).  W_long: any single bar or space longer than this aborts
+   the read.  PROVISIONAL until measured on the car.
+   Factor 6 (was 4): a wide space is 2-3 narrow modules, and a sensor that
+   reads bars 0.5 mm wide (spaces 0.5 mm short) with GP7's speed 10 % off
+   makes the course's 9 mm wide space 4.2 times its 2.5 mm narrow space
+   (C), so 4 x narrowest ended the read inside the barcode (J3).  Sim, the
+   course sheet (3 mm, 3:1) at base 6 with GP7's speed +/-10 % and the
+   bars 0.5 mm off: 4 decodes 7 and 58 of 104 reads, 6 all 104.  A valid
+   read no longer waits for Q (BARCODE_END_ON_STOP), so the longer Q only
+   delays the end of a read that does not decode.  -DBARCODE_Q_WIDTH_FACTOR=4
+   builds the old value. */
 #define BARCODE_Q_TICKS                (BARCODE_SCAN_END_GAP_US / 1000u)
-#define BARCODE_Q_WIDTH_FACTOR                    (4u)
+#ifndef BARCODE_Q_WIDTH_FACTOR
+#define BARCODE_Q_WIDTH_FACTOR                    (6u)
+#endif
 #define BARCODE_W_MAX                             BARCODE_MAX_ELEMENTS
 #define BARCODE_W_LONG_TICKS                      (2000u)
 #define BARCODE_READ_MAX_TICKS         (BARCODE_SCAN_MAX_US / 1000u)
@@ -146,6 +156,17 @@
 #endif
 #define LINE_JUNCTION_REARM_SAMPLES               (20u)
 
+/* 1 (default): a one-letter read ENDs as soon as the stop character's
+   last bar ends, if its 29 widths decode as a valid *X*, instead of
+   after the quiet zone.  A crossbar closer behind the sheet than the
+   quiet zone (BARCODE_Q_WIDTH_FACTOR x the narrowest width: 18 mm for
+   the 3 mm bars, C) no longer joins the read and spoils it, and the
+   command is stored before the car reaches the crossbar.  0: always wait
+   for the quiet zone. */
+#ifndef BARCODE_END_ON_STOP
+#define BARCODE_END_ON_STOP                       (1u)
+#endif
+
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
 #define LINE_LOST_MS                              (1500u)
 
@@ -226,6 +247,9 @@
 #endif
 #if (BARCODE_DECODE_SPLIT != 0u) && (BARCODE_DECODE_SPLIT != 1u)
 #error "BARCODE_DECODE_SPLIT must be 0 or 1"
+#endif
+#if (BARCODE_END_ON_STOP != 0u) && (BARCODE_END_ON_STOP != 1u)
+#error "BARCODE_END_ON_STOP must be 0 or 1"
 #endif
 
 #endif

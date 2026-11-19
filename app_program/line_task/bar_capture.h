@@ -11,12 +11,23 @@
  * Every read gets a new read_id, carried on each message to barcode_task,
  * so widths left over from an aborted or partly delivered read can never
  * join the next one.
+ *
+ * A one-letter Code 39 read (start, letter, stop) is 29 widths.  With
+ * BARCODE_END_ON_STOP 1 the capture decodes them the moment the stop
+ * character's last bar ends and, if they are a valid *X* (either way
+ * round), ENDs the read on the next sample instead of after the quiet
+ * zone, so a crossbar close behind the sheet cannot join the read.  If
+ * the last bar runs on into a crossbar printed against it, the read is
+ * tried with that bar taken as narrow, and ENDs the same way.
  */
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "../common/robot_config.h"
+
+/* Widths in a one-letter Code 39 read: 3 symbols of 9, 2 gaps. */
+#define BAR_ONE_LETTER_WIDTHS (29u)
 
 typedef enum {
 	BAR_EV_NONE = 0,
@@ -49,6 +60,10 @@ typedef struct {
 	uint32_t ticks;		/* ticks since the read started           */
 	uint8_t read_id;
 	bar_abort_t reason;	/* of the last abort                      */
+	uint32_t first[BAR_ONE_LETTER_WIDTHS];	/* this read's first widths */
+	bool end_due;		/* complete: END on the next sample        */
+	bool complete;		/* this read ended as a valid *X*          */
+	char letter;		/* its letter, when complete               */
 } bar_capture_t;
 
 /* Message to barcode_task: 4 bytes on bar_mbf. */
@@ -73,6 +88,16 @@ bool bar_capture_busy(const bar_capture_t *cap);
    sit on black indefinitely after width_too_long, and that must not hold
    line_state or silence the console. */
 bool bar_capture_reading(const bar_capture_t *cap);
+
+/* Bars of a read are arriving: reading, past its first black run and
+   short of the 29 widths of a one-letter barcode.  The first run is not
+   counted, because a crossbar opens a read of its own (and every Code 39
+   barcode starts with a narrow bar).  Nor is anything after the 29th
+   width of a read that did not end there: that barcode is over (it was
+   not a valid *X*), so a long black after it is the crossbar.  A read
+   that is complete counts until its END (the sample after), so the
+   junction side sees the END before any junction can fall due. */
+bool bar_capture_in_read(const bar_capture_t *cap);
 
 /* Build the 4-byte message for an event. */
 void bar_msg_pack(uint8_t msg[BAR_MSG_SIZE], bar_event_t event,

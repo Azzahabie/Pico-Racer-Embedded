@@ -177,7 +177,7 @@ static void test_rejects(void)
 	reset();
 	ticks(100u, false);
 	ticks(150u, true);
-	ticks(800u, false);
+	ticks((150u * BARCODE_Q_WIDTH_FACTOR) + 10u, false);	/* its quiet zone */
 	CHECK((verdicts == 1u) && (verdict.reject == BARCODE_REJECT_DECODE));
 	CHECK(verdict.decode.error == BARCODE_DECODE_BAD_LENGTH);
 
@@ -252,6 +252,132 @@ static void test_aborts(void)
 	CHECK(bar_capture_abort(&cap, BAR_ABORT_CANCELLED) == BAR_EV_NONE);	/* idle */
 }
 
+/* Elements in ticks, bars and spaces apart (blur: bars wider, spaces
+   narrower by the same amount). */
+static unsigned elements_bs(const char *text, unsigned bar_n, unsigned bar_w,
+			    unsigned sp_n, unsigned sp_w, int reverse,
+			    uint16_t out[MAX_ELEMS])
+{
+	unsigned n = elements(text, 1u, 2u, reverse, out);	/* 1 = N, 2 = W */
+	unsigned i;
+
+	for (i = 0u; i < n; ++i) {
+		bool bar = (i % 2u) == 0u;
+
+		out[i] = (uint16_t)((out[i] == 2u) ? (bar ? bar_w : sp_w)
+						   : (bar ? bar_n : sp_n));
+	}
+	return n;
+}
+
+/* BARCODE_END_ON_STOP: a valid *X* ENDs on the sample after its stop
+   character's last bar, not after the quiet zone, so a crossbar close
+   behind it cannot join it (31 widths: malformed), even one printed
+   against the last bar.  A read that is not valid at 29 widths carries
+   on to the quiet zone as before. */
+static void test_end_on_stop(void)
+{
+	uint16_t e[MAX_ELEMS];
+	unsigned n;
+	unsigned i;
+	int reverse;
+
+	load_table();
+	for (reverse = 0; reverse <= 1; ++reverse) {
+		n = elements("L", 10u, 30u, reverse, e);
+
+		/* the first white sample ends the last bar (its width), the
+		   next one ENDs the read */
+		reset();
+		ticks(100u, false);
+		for (i = 0u; i < n; ++i) {
+			ticks(e[i], (i % 2u) == 0u);
+		}
+		ticks(1u, false);
+		CHECK(verdicts == 0u);
+		CHECK(bar_capture_in_read(&cap));	/* until its END */
+		ticks(1u, false);
+		CHECK((verdicts == 1u) && verdict.accepted && (verdict.letter == 'L'));
+		CHECK(cap.complete && (cap.letter == 'L'));
+		CHECK(!bar_capture_busy(&cap));
+
+		/* a crossbar 2 ticks after: read alone; the crossbar opens its own */
+		reset();
+		ticks(100u, false);
+		for (i = 0u; i < n; ++i) {
+			ticks(e[i], (i % 2u) == 0u);
+		}
+		ticks(2u, false);
+		ticks(300u, true);
+		CHECK((verdicts == 1u) && verdict.accepted && (verdict.letter == 'L'));
+		CHECK(bar_capture_reading(&cap) && (cap.count == 0u));
+		CHECK(!bar_capture_in_read(&cap));	/* its first run: may be a junction */
+
+		/* printed against the crossbar: the last bar runs on */
+		reset();
+		ticks(100u, false);
+		for (i = 0u; (i + 1u) < n; ++i) {
+			ticks(e[i], (i % 2u) == 0u);
+			if ((i > 0u) && ((i + 1u) < n)) {
+				CHECK(bar_capture_in_read(&cap));	/* bars arriving */
+			}
+		}
+		ticks(e[n - 1u] + 300u, true);
+		CHECK((verdicts == 1u) && verdict.accepted && (verdict.letter == 'L'));
+		CHECK(widths_sent == 29u);
+		CHECK(bar_capture_reading(&cap) && (cap.count == 0u));
+	}
+
+	/* 29 equal widths (not valid), 2 ticks, a black: the read goes on,
+	   31 widths, malformed once quiet */
+	reset();
+	ticks(100u, false);
+	for (i = 0u; i < 29u; ++i) {
+		ticks(10u, (i % 2u) == 0u);
+	}
+	ticks(1u, false);			/* the 29th width ends */
+	CHECK(!cap.complete && bar_capture_reading(&cap));
+	CHECK(!bar_capture_in_read(&cap));	/* past 29: that barcode is over */
+	ticks(1u, false);
+	ticks(20u, true);
+	ticks(10u * BARCODE_Q_WIDTH_FACTOR + 50u, false);
+	CHECK((verdicts == 1u) && (verdict.reject == BARCODE_REJECT_DECODE));
+	CHECK(rx.count == 31u);
+}
+
+/* Blur and steering: bars read 0.5 mm wide, spaces 0.5 mm short, and
+   GP7's speed 10 % off (the wide space slow, the narrow ones fast) on the
+   course's 3 mm / 9 mm sheet at base 6 (63 / 189 ticks, C): bar N 74,
+   W 200, space N 48, W 198 ticks.  The wide space is 4.1 times the
+   narrowest width, so a quiet zone of 4 x narrowest ended the read
+   inside the barcode (J3); 6 x does not. */
+static void test_blur_quiet(void)
+{
+	uint16_t e[MAX_ELEMS];
+	char text[2] = { 'A', '\0' };
+	unsigned ok = 0u;
+	unsigned n;
+	unsigned i;
+	int reverse;
+
+	load_table();
+	for (reverse = 0; reverse <= 1; ++reverse) {
+		for (text[0] = 'A'; text[0] <= 'Z'; ++text[0]) {
+			n = elements_bs(text, 74u, 200u, 48u, 198u, reverse, e);
+			reset();
+			ticks(100u, false);
+			for (i = 0u; i < n; ++i) {
+				ticks(e[i], (i % 2u) == 0u);
+			}
+			ticks(48u * BARCODE_Q_WIDTH_FACTOR + 10u, false);
+			if ((verdicts == 1u) && verdict.accepted && (verdict.letter == text[0])) {
+				ok++;
+			}
+		}
+	}
+	CHECK(ok == 52u);
+}
+
 static void test_stale_and_overflow(void)
 {
 	uint16_t e[MAX_ELEMS];
@@ -308,6 +434,8 @@ int main(void)
 	test_all_letters_both_ways();
 	test_rejects();
 	test_aborts();
+	test_end_on_stop();
+	test_blur_quiet();
 	test_stale_and_overflow();
 	return check_report("barcode pipeline");
 }
