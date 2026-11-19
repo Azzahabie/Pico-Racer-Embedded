@@ -157,7 +157,7 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 | Path | What |
 |---|---|
-| `app_program/comms_task/` | The application task: intake → `E`, `H`/`S` every second, Wi-Fi-loss bit, inbound commands. |
+| `app_program/comms_task/` | The application task: intake → `E`, `H`/`S` every second, Wi-Fi-loss bit, inbound commands. The fold of each event into `S` is plain C in `comms_fold.h`, so `tests/host/test_messages.c` runs it on a PC. |
 | `app_program/common/messages.h` | The shared integration contract: packed records (`H`, `S`, `E`, `D`), the command checks, fault-bit names. |
 | `app_program/race_test/` | Tribunal 1 two-core packed-word race test (off unless `TM_RACE_TEST` is 1). |
 | `lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c` | The radio driver (exists). |

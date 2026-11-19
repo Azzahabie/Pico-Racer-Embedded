@@ -192,8 +192,8 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 8 | `dst` | 0–255 cm | distance since the last motion change, clamped. `comms_task` derives it from the motion event's wrapping `dist_mm` (Buddy 2) |
 | 2 | `lin` | 0–2 | line state: 0 on-line, 1 lost, 2 crossing (Buddy 3) |
 | 8 | `dev` | −128–127 tenths | line deviation, offset-encoded (Buddy 3) |
-| 5 | `bar` | 0–25, 31 | last barcode **letter index**: 0 = `A` … 25 = `Z`, 31 = none yet. The reader adds 65 for ASCII (Buddy 3) |
-| 2 | `act` | 0–3 | action code the barcode mapped to (Buddy 3). Meaningless while `bar` = 31 |
+| 5 | `bar` | 0–25, 31 | last **accepted** barcode **letter index**: 0 = `A` … 25 = `Z`, 31 = none accepted since boot. The reader adds 65 for ASCII (Buddy 3). A rejected read (E barcode `letter` 31, which includes the crossbar at every junction) leaves `bar` and `act` as they were; only the E record logs it (`comms_fold.h`, 19 Nov; before that a reject reset `bar` to 31, so the letter showed in `S` only until the junction) |
+| 2 | `act` | 0–3 | action code the last accepted barcode mapped to (Buddy 3). Meaningless while `bar` = 31 |
 | 4 | `hum` | 0–15 | humps detected (Buddy 4) |
 | 8 | `hgt` | 0–255 mm | height of the last hump, clamped; 0 = none yet (Buddy 4) |
 | 8 | `obs` | 0–255 cm | width of the last obstacle, clamped; 0 = none yet (Buddy 5) |

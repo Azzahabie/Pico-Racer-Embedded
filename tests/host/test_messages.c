@@ -18,6 +18,7 @@
 #include "../../app_program/common/messages.h"
 #include "vectors.h"
 #include "../../app_program/imu_task/imu_ts.h"
+#include "../../app_program/comms_task/comms_fold.h"
 
 static int failures;
 static int passes;
@@ -476,6 +477,70 @@ static void test_commands(void)
     ok(!comm_w_check_map(long_map, sizeof long_map, &mv, act), "8 bytes rejected", "map length");
 }
 
+/* Unpack a packed body and fold it, as comms_task's handle_intake does. */
+static void fold_body(T_COMM_W_S *s, T_COMMS_FOLD *f, const uint8_t *body,
+                      uint32_t len, const char *name)
+{
+    T_COMM_W_BODY b;
+
+    memset(&b, 0, sizeof b);
+    ok(comm_w_unpack_body(body, len, &b) == COMM_W_OK, "body unpacks", name);
+    comms_fold(s, f, &b);
+}
+
+/* 7. comms_task's fold into the S cache (comms_fold.h). */
+static void test_fold(void)
+{
+    T_COMM_W_S s = { .dev = 128, .bar = COMM_W_BARCODE_UNREADABLE,
+                     .tlt = COMM_W_S_TLT_NA, .trn = COMM_W_S_TRN_NA };
+    T_COMMS_FOLD f = { false, 0 };
+    uint8_t body[COMM_W_INTAKE_SIZE_MAX];
+
+    /* J9: a rejected read (letter 31, action 0) keeps the last good letter
+       and action in S; the crossbar at every junction is such a read. */
+    fold_body(&s, &f, body, comm_w_pack_barcode(body, COMM_W_BARCODE_UNREADABLE, 0U),
+              "fold reject before any read");
+    ok(s.bar == COMM_W_BARCODE_UNREADABLE && s.act == 0U,
+       "a reject before any good read leaves bar 31 (none)", "fold barcode none");
+    fold_body(&s, &f, body, comm_w_pack_barcode(body, 4U, 1U), "fold E LEFT");
+    ok(s.bar == 4U && s.act == 1U, "'E' LEFT -> bar 4 act 1", "fold barcode accepted");
+    fold_body(&s, &f, body, comm_w_pack_barcode(body, COMM_W_BARCODE_UNREADABLE, 0U),
+              "fold crossbar reject");
+    ok(s.bar == 4U && s.act == 1U, "the crossbar reject keeps bar 4 act 1",
+       "fold barcode J9");
+    fold_body(&s, &f, body, comm_w_pack_barcode(body, 30U, 0U), "fold letter 30");
+    ok(s.bar == 4U && s.act == 1U, "a letter above 25 packs as 31 and is kept out",
+       "fold barcode clamp");
+    fold_body(&s, &f, body, comm_w_pack_barcode(body, 1U, 2U), "fold B RIGHT");
+    ok(s.bar == 1U && s.act == 2U, "the next good read replaces it", "fold barcode next");
+
+    /* The other kinds, unchanged from before the move to comms_fold.h. */
+    fold_body(&s, &f, body, comm_w_pack_line(body, 2U, -12), "fold line");
+    ok(s.lin == 2U && s.dev == 116U, "lin and dev copied as stored", "fold line");
+    fold_body(&s, &f, body, comm_w_pack_imu(body, 2U, 1U, 10U), "fold imu");
+    ok(s.hum == 1U && s.hgt == 10U, "hum and hgt copied", "fold imu");
+    fold_body(&s, &f, body, comm_w_pack_obstacle(body, 18U, 2U), "fold obstacle");
+    ok(s.obs == 18U && s.byp == 2U, "obs and byp copied", "fold obstacle");
+    fold_body(&s, &f, body, comm_w_pack_mission(body, 3U), "fold mission");
+    ok(s.mis == 3U, "mis copied", "fold mission");
+
+    /* dst: cm since the last motion change, across one wrap, clamped. */
+    fold_body(&s, &f, body, comm_w_pack_motion(body, 1U, 0, 0, 32000U, 0, 0U, 0U),
+              "fold motion first");
+    ok(s.mot == 1U && s.dst == 0U, "first motion event: dst 0", "fold dst");
+    fold_body(&s, &f, body, comm_w_pack_motion(body, 1U, 0, 0, 500U, 0, 0U, 0U),
+              "fold motion wrap");
+    ok(s.dst == 126U, "same state across the wrap: 1268 mm -> 126 cm", "fold dst wrap");
+    fold_body(&s, &f, body, comm_w_pack_motion(body, 1U, 0, 0, 3500U, 0, 0U, 0U),
+              "fold motion clamp");
+    ok(s.dst == 255U, "4268 mm -> clamped 255", "fold dst clamp");
+    fold_body(&s, &f, body, comm_w_pack_motion(body, 2U, 0, 0, 3600U, 0, 0U, 0U),
+              "fold motion change");
+    ok(s.mot == 2U && s.dst == 0U, "a state change restarts dst", "fold dst change");
+    ok(s.bar == 1U && s.act == 2U && s.lin == 2U && s.mis == 3U,
+       "each kind touches only its own fields", "fold isolation");
+}
+
 int main(void)
 {
     test_s_v2_sanity();
@@ -490,6 +555,7 @@ int main(void)
     test_avoid_command();
     test_pack_d();
     test_commands();
+    test_fold();
 
     printf("%d checks passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;
