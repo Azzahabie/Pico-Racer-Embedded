@@ -65,7 +65,44 @@ Neither task drives the motors.
     (`FAULT_STOP_MASK` has no user), so a line fault still stops the car
     the old way: motion treats it as the line missing, LINE_SEARCH, then
     LINE_LOST pauses the mission.
-- **Junction:** GP26 and GP27 are closer together than the 18 mm line, so
+- **Junction, barcode-armed (`LINE_JUNCTION_RULE` 1, default; the team's
+  rule, 19 Nov).** The course has a barcode sheet before or at each
+  junction, in sizes not known in advance, so no single GP7 black length
+  can tell every bar from the crossbar. Instead (`junction_arm.c`):
+  1. The capture ENDs a read as soon as its 29 widths (start, letter,
+     stop) decode as a valid `*X*`, either way round
+     (`BARCODE_END_ON_STOP`), so a crossbar close behind the sheet can no
+     longer join the read.
+  2. `barcode_task` judges the read, stores the command, and only then
+     stores its judged word (`barcode_judged_word()`).
+  3. `ir_sense_task` sees the read judged with a new command stored: the
+     junction is **armed** (`[line] junction armed: ...`).
+  4. The next black run GP7 sees is the junction, once it has lasted
+     `LINE_ARMED_MIN_SAMPLES` (5 ms, noise) and `LINE_ARMED_CONFIRM_MM`
+     (10 mm, provisional) of travel from `distance_state`. 10 mm is longer
+     than the first bar of any barcode in the size range (every Code 39
+     barcode starts with a narrow bar, at most 6 mm), so a second sheet
+     before the same junction does not fire, and shorter than the 18 mm
+     crossbar. The car turns from about 10 mm into the crossbar at any
+     speed (with J_n 280: 13.3 mm at base 6, 17.8 mm at base 8, C), which
+     `MOTION_TURN_FWD_MM` counts from.
+  5. nav reads the stored command at the flag, so the command is always
+     there first. A junction that falls due while a complete read waits
+     for its verdict waits up to `LINE_ARMED_VERDICT_WAIT_MS` (50 ms).
+
+  While the bars of a read arrive (past its first black run and short of
+  29 widths), no black run is a junction, however long. A rejected read
+  (malformed, unknown letter, no table) does not arm. The arming ends at
+  the junction, after `LINE_ARMED_HOLD_MM` (150 mm, a guess: D_hold,
+  week6_design_review.md assumption 2) of travel with no junction (the
+  stored command stays for nav), and on any mission change. With nothing
+  armed, the length rule below is the fallback. When the junction fires,
+  the crossbar's own read is dropped (`aborted (junction)`, printed by
+  nobody), so it neither holds `line_state` for its quiet zone nor sends a
+  reject. Host test `test_junction_arm` (the envelope below);
+  `-DLINE_JUNCTION_RULE=0` builds the length rule alone for an A/B.
+- **Junction, length rule (the fallback; alone with `LINE_JUNCTION_RULE`
+  0):** GP26 and GP27 are closer together than the 18 mm line, so
   both read black (rl 11) whenever the car is centred. That is normal
   following, never a junction, and those two sensors cannot see a
   crossing. The junction comes from the barcode sensor: GP7 black for
@@ -114,8 +151,9 @@ Neither task drives the motors.
   - `-DLINE_JUNCTION_SAMPLES=80` builds the old value for an A/B run.
 
   It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
-  samples running. A barcode read doesn't block it, because the crossbar
-  starts a capture of its own.
+  samples running. A read's first black run is not blocked, because the
+  crossbar starts a capture of its own; with `LINE_JUNCTION_RULE` 1 a run
+  while the bars of a read arrive is.
 - **Barcode hold (`LINE_BARCODE_HOLD`, default 1, today's behaviour):**
   while a barcode is being read, and `BARCODE_JUNCTION_HOLDOFF_MS` after, the
   word's rl/steer/error are held at 0 and its barcode bit is set, so motion
@@ -159,15 +197,45 @@ the course photos (19 Nov):
   3.0 mm, wide = 3 × narrow).
 - At base 6 GP7 sees a narrow bar for 63 ms and a wide bar for 189 ms (C).
   That sets J_n (above).
+- **On the day the sizes differ** (team, 19 Nov), and sheets sit before or
+  AT the junction. Host sim over narrow 2-6 mm, wide 2-3 × narrow, base
+  4/6/8, GP7's speed ±0/10/20 % (steering), bars read −1..+1 mm off
+  (sensor blur), all 26 letters, crossbar 40 mm after (63180 reads):
+
+  | | before (branch tip e4a904e) | now |
+  |---|---|---|
+  | reads decoded | 25696 | 49217 |
+  | junction events inside a barcode | 88913 | 0 |
+  | decoded reads with the command at the crossbar junction | 22268 | 49217 (all) |
+  | crossbar missed | 9516 (base 8) | 2374 (base 8, undecoded reads only) |
+
+  Gap from the last bar to the crossbar that works for all 26 letters:
+  before, about 4 × narrow (10 mm for 2 mm bars, 12 for 3, 20 for 4, 25
+  for 6); now 0 (a sheet printed right up to the crossbar), except 2 mm
+  bars read 1 mm thin, which never decode.
+  What still fails: 2 mm bars read 1 mm off, 2.5-3 mm bars read 1 mm thin
+  with steering, and wide 2 × narrow with GP7's speed ±20 % (6-15 % of
+  reads decode). The hold (`LINE_BARCODE_HOLD` 1) keeps GP7's speed
+  steady over the bars.
 - The 3 mm sheet has never been read on the car. The "KY-033 cannot resolve
-  2 mm bars" result (INTEGRATION.md S3) does not cover it.
+  2 mm bars" result (INTEGRATION.md S3) does not cover it, and no code can
+  fix a sensor that does not resolve a bar: a 2 mm sheet may not be
+  readable at all with the KY-033.
 
 ## Barcode
 
 - **Capture** (`bar_capture.c`): widths are counted in 1 ms ticks, so there
   are no timestamps and no wraparound.
-  - `END` after the quiet zone Q = max(`BARCODE_Q_TICKS`,
-    4 × the narrowest width).
+  - `END` as soon as the first 29 widths decode as a valid `*X*`
+    (`BARCODE_END_ON_STOP` 1), on the sample after the stop character's
+    last bar. If that bar runs on into a crossbar printed against it, the
+    read is tried with the bar taken as narrow (the 21st width) once the
+    run is twice that.
+  - Otherwise `END` after the quiet zone Q = max(`BARCODE_Q_TICKS`,
+    `BARCODE_Q_WIDTH_FACTOR` 6 × the narrowest width). 6 (was 4): with
+    the bars 0.5 mm wide and GP7's speed 10 % off, the course's 9 mm wide
+    space is 4.2 × its narrowest width (C), so 4 × ended reads inside the
+    barcode.
   - `ABORT` on more than `BARCODE_W_MAX` widths, a width over
     `BARCODE_W_LONG_TICKS`, a read over `BARCODE_READ_MAX_TICKS`, a full
     `bar_mbf`, or a mission change.
@@ -177,7 +245,11 @@ the course photos (19 Nov):
 - **Decode** (`barcode_rx.c`, `barcode_decode.c`): Code 39 with `*`, read
   forwards or backwards.
   - Narrow and wide are split per symbol by the relative ratio R
-    (`BARCODE_WIDE_NARROW_MIN_RATIO_X100`).
+    (`BARCODE_WIDE_NARROW_MIN_RATIO_X100`). If that fails, bars and spaces
+    are split apart (`BARCODE_DECODE_SPLIT` 1): the two widest bars and the
+    widest space are wide. Sensor blur reads every bar wider and every
+    space narrower by the same amount, which the one split cannot take
+    past about a quarter of the narrow width.
   - The element count, start/stop, the gaps and the pattern are all checked.
 - **Rejected reads** (malformed, more than one letter, an unknown letter,
   aborted, widths lost) issue no command, keep any stored one, print the
@@ -207,15 +279,19 @@ reflash: the table goes to the car over MQTT before the run.
 |---|---|---|
 | 1. The map arrives (comms checks the length, `barcode_task` applies it between reads) | `[comms] map mv=2 LRFUFF... -> barcode_task`, then `[barcode] map v2 applied: LRFUFF...` | `test_barcode_task`, `tests/host` |
 | 2. A sheet is read; the letter is looked up; the command is stored for the next junction | `[barcode] 'B' -> RIGHT (dir=fwd), stored for the next junction` | `test_barcode_task`, `test_barcode_action` |
-| 3. GP7 sees the crossbar | `[line] junction (GP7 black 280 ms) -> nav` | `test_line_track` |
+| 3. The read ends at its stop character and arms the junction; GP7 reaches the crossbar | `[line] junction armed: barcode 'B' -> RIGHT, the next black under GP7 is the junction`, then `[line] junction (armed by barcode 'B' RIGHT, GP7 black 10 mm) -> nav` | `test_junction_arm`, `test_line_track` |
 | 4. nav sends the stored action to motion | `[nav] -> motion: JUNCTION(RIGHT)` | `tests/nav` (PR #24) |
 | 5. motion turns: F drives `MOTION_TURN_CROSS_MM` across; L and R drive `MOTION_TURN_FWD_MM`, then pivot 90 deg; U pivots 180 deg counter-clockwise | `[motion] nav_cmd JUNCTION (raw 0x2002): accepted, TURNING`, `[motion] state LINE_FOLLOW -> TURNING` | `tests/motion_task_sim` (PR #22) |
 | 6. The turn ends on an arm (or not) | `[motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE` (or `-> LINE_SEARCH, sent MOVE_DONE`), `[nav] motion: MOVE_DONE` | `tests/motion_task_sim` |
 
 The raw value in step 5 is `0x20` followed by the action: 00 F, 01 L,
-02 R, 03 U. The crossbar also opens a barcode read of its own, so each
-junction adds `[barcode] REJECTED: malformed (bad_length)` and a width
-dump; the stored command is not touched by it.
+02 R, 03 U. The crossbar also opens a barcode read of its own; with the
+barcode-armed junction that read is dropped silently at the junction.
+With `LINE_JUNCTION_RULE` 0 (or a junction by the length rule with no
+barcode) the line reads `[line] junction (GP7 black 280 ms, length rule)
+-> nav` (`... 280 ms) -> nav` with rule 0), and rule 0 adds `[barcode]
+REJECTED: malformed (bad_length)` and a width dump for the crossbar; the
+stored command is not touched by it.
 
 **Loading the table (the normal way, no reflash).** Needs the MQTT car
 image (the USB-only image has no `comms_task`).
@@ -296,9 +372,18 @@ stays: publish before start (MQTT_SCHEMA.md 8.3).
 [barcode] decoder ready, table: none until a map arrives
 [barcode] map v2 applied: LRFUFFFFFFFFFFFFFFFFFFFFFF
 [barcode] 'C' -> RIGHT (dir=rev), stored for the next junction
+[line] junction armed: barcode 'C' -> RIGHT, the next black under GP7 is the junction
+[line] junction (armed by barcode 'C' RIGHT, GP7 black 10 mm) -> nav
+[line] junction (GP7 black 280 ms, length rule) -> nav
+[line] barcode 'C' read, no command stored: junction by length only
+[line] barcode 'C' read, no verdict from barcode_task in 50 ms: junction by length only
+[line] junction disarmed: no junction within 150 mm of barcode 'C' (command kept for nav)
+[line] junction disarmed: mission PAUSED
 [barcode] REJECTED: malformed (bad_length)
-[line] junction (GP7 black 280 ms) -> nav
 ```
+
+The `[line] junction armed` and `disarmed` lines print even while a
+barcode is read (as the junction line does).
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
 2 s. Nothing prints while a barcode is under the car.
@@ -323,8 +408,10 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
-| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
+| `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, about 9-10 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail |
+| `test_barcode_decode` (`tests/`) | every letter and 3 strings both ways with ±10-20 % edge bias; A-Z with bars 25-33 % of narrow wider and spaces narrower at wide 2-3 × (needs the bar/space split) |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), the barcode side's gate (bars arriving block, armed fires, a due junction waits for the verdict), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
+| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks after, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor |
 | `test_barcode_action` | the table, map apply and reject, the command word; every action for every letter from a map; the writeup example as the laptop's 7 bytes; the comms vector; built again with a compiled-in table (`test_barcode_action_table`) |
 | `test_barcode_task` | `barcode_task.c`'s own loop on a fake kernel: the boot table line, a map from comms, each action stored from it, a map sent while a sheet is read (waits for the read), a map between a read and its junction (the stored command stays), a full map queue, a wrong length, a new mission; built three times (no table, a compiled-in table, one with a bad character) |
 | `test_line_state` | the word, and the motion statechart contract |
