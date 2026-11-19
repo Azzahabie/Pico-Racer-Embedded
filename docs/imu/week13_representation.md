@@ -15,7 +15,7 @@ build of commit `1081a5f` (`arm-none-eabi-size -B` and `nm -S` on the
 |---|---|---|---|---|---|---|---|
 | 1 | `hump_state` word (rows 2-8) | imu_task (core 1) -> any task on core 1 | — | 32 | one aligned `UW`, rebuilt in a local and stored once per 10 ms; one load to read; no mutex (Tribunal Version C row 2: one writer, one word). Masks and shifts, not bit-fields (`imu_task.h`: `IMU_W_*`, `imu_w_pack`, `IMU_W_GET`) | 4 B RAM (M, nm: `imu_word`) | built |
 | 2 | hump state | as row 1 | 0 none, 1 climbing, 2 descending (3 unused) | 2 | bits 0-1 | in row 1 | built |
-| 3 | motion event class (FR-27) | as row 1 | 0 still, 1 turning, 2 climbing, 3 descending, 4 impact, 5 accelerating, 6 moving | 3 | bits 2-4 | in row 1 | built |
+| 3 | motion event class (FR-27) | as row 1 | 0 still, 1 turning, 2 climbing, 3 descending, 4 impact (report only: never stops the car; IMU collision detection removed, the prof, 19 Nov), 5 accelerating, 6 moving | 3 | bits 2-4 | in row 1 | built |
 | 4 | hump height now | as row 1 | 0-255 mm, clamped (reference humps 10-24 mm, M) | 8 | bits 5-12, whole mm | in row 1 | built |
 | 5 | hump count, this mission | as row 1 | 0-15, clamped | 4 | bits 13-16 | in row 1 | built |
 | 6 | highest hump, this mission (FR-12) | as row 1 | 0-255 mm, clamped | 8 | bits 17-24; reset on Ready -> Running | in row 1 | built |

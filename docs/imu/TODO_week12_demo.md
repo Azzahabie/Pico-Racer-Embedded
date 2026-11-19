@@ -130,7 +130,10 @@ Target ±2 mm or 20 %, limit ±5 mm.
 - [x] Normal driving never shows **impact** (1.5 g) *(3 Nov: it did, 1.5–2.0
       g on the hump's edge, the bend, braking out of a pivot. A raised to
       **2.5 g** (`MC_IMPACT_MG`); host test: 1.5–2.0 g knocks are not
-      impacts. To confirm on one run: no `BUMP` in normal driving)*
+      impacts. To confirm on one run: no `BUMP` in normal driving)*.
+      Since 19 Nov impact is report-only: IMU collision detection was
+      removed from the requirements (the prof), and `BUMP` never stopped
+      the car
 - [ ] Retune the thresholds from the CSV logs if the classes are wrong
 
 ### Turns (turn rate from the encoders, no gyro)
@@ -175,6 +178,16 @@ Target ±2 mm or 20 %, limit ±5 mm.
       lifted while driving → tipped 26° on the way up → tilt fault 21.2 ms;
       `cmd reset` → cal ok → new mission drove)*
 - [ ] No false lift fault in normal runs (obstacle stops, scans, end of line)
+
+### Lifted and inverted → IMU fault, the end of the run (the prof, 19 Nov)
+
+- [x] Built: tilt past T, or z below 0 (upside down, commit `d5f0120`), for
+      3 samples in Running or Paused → `STOPPING` + STOP_IMU + FAULT
+      (terrain report §5.2). Host tests only
+- [ ] Bench, wheels off the floor, motors running: lift and invert slow
+      (~1 s), fast (~0.2 s), and set down on its roof. Every time:
+      `STOPPING`, wheels stop and stay stopped, `S faults=imu mis=6`
+- [ ] Course: end a full run by lifting and inverting the car
 
 ### FR-28 / NFR-19: tilt fault (limit 40 ms)
 
