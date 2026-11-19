@@ -7,7 +7,8 @@
  * junction, and is used up only when motion turns (MOVE_DONE); a refusal
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
  * it for the next junction.  Calibration: a GP20 fault reset waits
- * NAV_CAL_SETTLE_MS before CAL_REQ; boot and an MQTT reset do not. */
+ * NAV_CAL_SETTLE_MS before CAL_REQ; boot and an MQTT reset do not; an
+ * MQTT command sent while calibrating is dropped, not applied at Ready. */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -43,12 +44,18 @@ static long g_cal_req_ms;		/* g_slept_ms at the first CAL_REQ, -1 = none */
 static int  g_cal_fail;			/* the tasks answer CAL_FAIL */
 static jmp_buf g_main_loop;		/* nav_ctrl_task reached its main wait */
 static int  g_in_task;
+static UB   g_mq_during_cal;		/* MQTT command sent mid-calibration, 0 = none */
+static void mq_put(UB cmd);
 
 /* ir_sense_task and imu_task answer a CAL_REQ at once. */
 static void cal_answer(ID id)
 {
 	if (g_cal_req_ms < 0) {
 		g_cal_req_ms = g_slept_ms;
+	}
+	if (0U != g_mq_during_cal) {
+		mq_put(g_mq_during_cal);	/* comms_task, while nav calibrates */
+		g_mq_during_cal = 0U;
 	}
 	g_flg[g_nav_flgid] |= g_cal_fail ? NAV_FLG_CAL_FAIL
 					 : ((IR_FLG_ID == id) ? NAV_FLG_CAL_OK_IR
@@ -181,6 +188,7 @@ static void reset(void)
 	g_pins_low = 0U;
 	g_mq_head = 0;
 	g_mq_n = 0;
+	g_mq_during_cal = 0U;
 	g_bar_word = BARCODE_CMD_NONE;
 	g_cmd_taken = 0U;
 	g_move_open = false;
@@ -337,6 +345,71 @@ static void reset_and_boot_no_wait(void)
 	CHECK(log_before("CALIBRATING -> READY", "GP20 = start/resume/reset"));
 }
 
+/* text appears in the log exactly once */
+static bool log_once(const char *text)
+{
+	const char *p_at = strstr(g_log, text);
+
+	return (NULL != p_at) && (NULL == strstr(p_at + 1, text));
+}
+
+/* N6: an MQTT command sent while calibrating is dropped, not applied the
+   moment Ready is reached (the car drove off with nobody at GP20). */
+static void cmd_during_cal_dropped(void)
+{
+	/* boot: a START sent during the boot calibration */
+	reset();
+	g_mq_during_cal = (UB)MCMD_START;
+	run_boot();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(0 == g_mq_n);
+	CHECK(0U == (g_flg[g_nav_flgid] & NAV_FLG_MISSION_CMD));
+	CHECK(log_before("MQTT command 1 sent while CALIBRATING: dropped",
+			 "mission CALIBRATING -> READY"));
+	on_mission_cmd();			/* the main loop: nothing left */
+	CHECK(MS_READY == nav_mission_state());
+
+	/* GP20 fault reset, START sent during the hands-off wait/calibration */
+	reset();
+	g_mission = (uint32_t)MS_FAULT;
+	g_pins_low = 1U << BTN_START_PIN;
+	g_mq_during_cal = (UB)MCMD_START;
+	on_button();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(0 == g_mq_n);
+	CHECK(log_once("sent while CALIBRATING: dropped"));
+
+	/* MQTT RESET from Fault: the START sent mid-calibration is not read
+	   by the same loop once Ready is reached */
+	reset();
+	g_mission = (uint32_t)MS_FAULT;
+	mq_put((UB)MCMD_RESET);
+	g_mq_during_cal = (UB)MCMD_START;
+	on_mission_cmd();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(NULL == strstr(g_log, "READY -> RUNNING"));
+	CHECK(log_once("MQTT command 1 sent while CALIBRATING: dropped"));
+
+	/* calibration fails: a RESET sent meanwhile does not start another */
+	reset();
+	g_mission = (uint32_t)MS_FAULT;
+	g_cal_fail = 1;
+	mq_put((UB)MCMD_RESET);
+	g_mq_during_cal = (UB)MCMD_RESET;
+	on_mission_cmd();
+	CHECK(MS_FAULT == nav_mission_state());
+	CHECK(log_once("mission FAULT -> CALIBRATING"));
+	CHECK(log_once("MQTT command 4 sent while CALIBRATING: dropped"));
+
+	/* a START sent in Ready still starts the run */
+	reset();
+	g_mission = (uint32_t)MS_READY;
+	mq_put((UB)MCMD_START);
+	on_mission_cmd();
+	CHECK(MS_RUNNING == nav_mission_state());
+	CHECK(NULL == strstr(g_log, "dropped"));
+}
+
 int main(void)
 {
 	refused_keeps_command();
@@ -345,6 +418,7 @@ int main(void)
 	edges();
 	fault_reset_waits();
 	reset_and_boot_no_wait();
+	cmd_during_cal_dropped();
 	printf("nav junctions and calibration: %d checks, %d failures\n", g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 }

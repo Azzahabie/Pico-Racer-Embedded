@@ -22,6 +22,7 @@
  *	calibration is SKIPPED and says so on the console. After a fault,
  *	FAULT_CLEAR is sent only after both calibrations pass.  A GP20 fault
  *	reset first waits NAV_CAL_SETTLE_MS, hands off (the press rocks the car).
+ *	MQTT commands sent while calibrating are dropped, never applied later.
  *
  *	JUNCTION (ir_sense_task, FR-08): barcode_task's stored command goes to
  *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf; no stored command means
@@ -364,16 +365,38 @@ LOCAL bool calibrate(void)
 	return ok;
 }
 
+/* MQTT commands that queued while calibrating are dropped, not applied
+   later: a START sent during calibration used to start the run the moment
+   Ready was reached, with nobody at the car.  The flag is cleared first,
+   so a command placed during the drain is never left behind unseen. */
+LOCAL void drop_mission_cmds(void)
+{
+	UB	cmd = 0U;
+
+	if(0 >= g_nav_bind.mission_cmd_mbfid) {
+		return;
+	}
+	(void)tk_clr_flg(g_nav_flgid, ~NAV_FLG_MISSION_CMD);
+	while(0 < tk_rcv_mbf(g_nav_bind.mission_cmd_mbfid, &cmd, TMO_POL)) {
+		tm_printf((UB *)"[nav] MQTT command %d sent while CALIBRATING: dropped\n",
+			  (INT)cmd);
+	}
+}
+
 /* settle_ms: wait this long before CAL_REQ (a GP20 press moved the car) */
 LOCAL void enter_calibrating(bool after_fault, INT settle_ms)
 {
+	bool	cal_ok;
+
 	set_state(MS_CALIBRATING);
 	if(0 < settle_ms) {
 		tm_printf((UB *)"[nav] hands off the car: calibration starts in %d ms\n",
 			  settle_ms);
 		tk_dly_tsk(settle_ms);
 	}
-	if(calibrate()) {
+	cal_ok = calibrate();
+	drop_mission_cmds();
+	if(cal_ok) {
 		if(after_fault) {
 			send_fault_clear(FAULT_CLEAR_IMU);	/* only after both pass */
 			send_fault_clear(FAULT_CLEAR_MOTION);
