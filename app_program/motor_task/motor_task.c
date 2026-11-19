@@ -320,7 +320,8 @@ typedef struct
     bool    b_search_over;  /* both sweeps done, no line            */
 
     /* turning: the junction's action and how far the turn has got */
-    uint8_t turn_action;    /* barcode_action_t from nav            */
+    uint8_t turn_action;    /* barcode_action_t of the turn now     */
+    uint8_t turn_req;       /* ... of the last JUNCTION received     */
     uint8_t turn_phase;     /* TURN_PH_*                            */
     int32_t turn_start_l;   /* positions at the phase's start, kept */
     int32_t turn_start_r;   /* while Braked so a resume carries on  */
@@ -2690,8 +2691,9 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         else if ((NAV_CMD_JUNCTION == msg[0])
                  && (msg[1] <= (UB)BARCODE_ACT_UTURN))
         {
-            p_in->nav          = MOTION_SM_NAV_JUNCTION;
-            p_ctx->turn_action = msg[1];
+            p_in->nav       = MOTION_SM_NAV_JUNCTION;
+            p_ctx->turn_req = msg[1]; /* the turn's, if the statechart
+                                         takes it (tick_statechart) */
         }
         else
         {
@@ -2827,6 +2829,15 @@ tick_statechart (motion_ctx_t *p_ctx)
     hd_tick(p_ctx, motion_sm_state(&p_ctx->sm));
     if (out.b_changed)
     {
+        /* A new turn takes the JUNCTION's action.  A refused JUNCTION (any
+           state but Line Following, a turn braked half way included)
+           never changes the turn underway, and a resumed turn keeps its
+           own. */
+        if ((MOTION_ST_TURNING == motion_sm_state(&p_ctx->sm))
+            && !out.b_resumed)
+        {
+            p_ctx->turn_action = p_ctx->turn_req;
+        }
         man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));

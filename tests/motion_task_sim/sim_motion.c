@@ -1577,6 +1577,47 @@ scenario_turn_resume (void)
 	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + PIVOT_COUNTS(5));
 }
 
+/* A JUNCTION while a turn is braked half way is refused, and does not
+   change the turn: the LEFT still ends as a LEFT. */
+static void
+scenario_turn_refused_keeps (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int	n = 0;
+
+	sim_reset("turning: a JUNCTION refused mid-turn leaves the turn as it was");
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	l0 = g_ctx.pos_l;
+	r0 = g_ctx.pos_r;
+	while ((g_ctx.turn_phase != 1u) && (n++ < 3000)) {	/* TURN_PH_PIVOT */
+		sim_tick();
+	}
+	sim_ticks(60);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_RIGHT));
+	sim_tick();
+	CHECK((g_nav_flag & NAV_FLG_CMD_REJECTED) != 0u);	/* refused */
+	CHECK(g_ctx.turn_action == (uint8_t)BARCODE_ACT_LEFT);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	g_nav_flag = 0u;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK((g_ctx.pos_l - l0 < 0) && (g_ctx.pos_r - r0 > 0));	/* turned left */
+	CHECK(TURNED(g_ctx.pos_l - l0, g_ctx.pos_r - r0) >= PIVOT_COUNTS(90));
+}
+
 /* Start a bypass the way scan_task does: STOP_SCAN, the command, then
    STOP_SCAN cleared (Section 4 order). */
 static void
@@ -3107,6 +3148,7 @@ main (int argc, char **argv)
 	scenario_turns();
 	scenario_turn_no_line();
 	scenario_turn_resume();
+	scenario_turn_refused_keeps();
 #if MOTION_BYPASS_KNOWN
 	scenario_bypass_known();
 #else
