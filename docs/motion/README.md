@@ -1,12 +1,14 @@
 # Motion control (Buddy 2): bring-up guide
 
-`motion_task` owns the two motors and the two wheel encoders. This first
-version proves the hardware on the bench: PWM on the H-bridge, both
-encoders counting the right way, the 10 ms tick on core 1, the FR-30
-stall check, the hardware watchdog and the emergency stop (STOP_SCAN and
-STOP_IMU). It also publishes `distance_state`, the distance and turn rate
-`imu_task` needs. The command interface from `nav_ctrl_task` and
-`scan_task` comes next.
+`motion_task` owns the two motors and the two wheel encoders: PWM on the
+H-bridge, both encoders, the 10 ms tick on core 1, the FR-30 stall check,
+the hardware watchdog, the emergency stop (STOP_SCAN and STOP_IMU),
+`distance_state` for `imu_task`, statechart 6.2 and what each state
+drives (line following, junction turns, reverse, bypass, line search),
+the commands from `nav_ctrl_task` and `scan_task`, and the E motion
+telemetry record. This guide covers the bench bring-up and motion's own
+parts; how the integrated car was built and tested (stages S0-S8) is in
+`docs/INTEGRATION.md`, which wins where the two disagree.
 
 ## What is in the code
 
@@ -338,11 +340,12 @@ Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 | T19 | REVERSING | FAULT | stall or encoder fault: MOTION_FAULT, REVERSE_DONE |
 | T20 | FAULT | IDLE | FAULT_CLEAR(MOTION) |
 
-**Built so far:** the states, the transitions, the replies, the mission
-and STOP inputs, the stall check in every driving state, and the
-**reverse** (below). **Not yet:** the commands (step 1.7) and the other
-manoeuvres (line following needs Avani's line state, turns, bypass,
-search), so those states keep the wheels braked for now.
+**Built:** the states, the transitions, the replies, the mission and STOP
+inputs, the stall check in every driving state, the commands, and what
+every state drives: line following, junction turns, the **reverse**
+(below), the bypass and the line search (integration, 29 Oct to 4 Nov;
+see `docs/INTEGRATION.md`). Junction turns (TURNING) have not run on the
+car yet.
 
 **Reverse.** On scan_task's REVERSE command (in BRAKED, STOP_IMU clear)
 both wheels drive backwards under the PID at `MOTION_REV_TARGET` (10
@@ -614,26 +617,37 @@ Found while writing this; each needs its owner.
 
 ## Not done yet
 
-- avoid_cmd_mbf and nav_cmd_mbf are not created or bound yet, so
-  scan_task still simulates motion's replies to its commands. motion_flg
-  is bound, so its STOP_SCAN does brake the car.
-- Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
-  STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
-  FAULT_CLEAR(MOTION).
-- What each statechart state drives: line following (needs Avani's
-  line state), turns, bypass and line search. Reverse is built, and
-  waits for the command buffer to be triggered on the car.
-- The shared 1 MHz timer helper in `messages.h` that Buddy 4 agreed to
-  (`motion_stop_stamp()` is motion's half of it, for now).
-- Straight-line correction, encoder turns.
-- Week 13 RAM numbers for `distance_state` (`tests/week13/measure.sh`,
-  after the commit).
-- PostTri1 row 2 stress test for the lock-free words: a core 1 reader
-  checks the `distance_state` counter and field ranges while motion_task
-  publishes, for 10 minutes on the car.
-- Minimum-bit command and telemetry formats, once `common/messages.h` is
-  agreed with Buddy 1. The 52-byte print record here is motion's console
-  channel, in every build and the same in both MOTION_PACKED settings; it
-  is not the Week 13 "before" (see week13/baseline.md).
-- Watchdog tests 2 and 3 on the car, and the feed gap with Wi-Fi on.
-- Stop tests 1 and 2 on the car, and test 1 again with Wi-Fi.
+Checked against master on 19 Nov (52b707d). Car results so far are in
+`results.md` and `docs/INTEGRATION.md`.
+
+**Needs the car**
+- Junction turns (FR-08): built (3580c38), never run on the car.
+  `MOTION_TURN_FWD_MM` (50) is still proposed: measure GP7 to the axle.
+  Re-check the 90 % pivot scale.
+- Right wheel counts per turn: `MOTION_COUNTS_PER_REV_R` is 1590
+  (4 Nov), but the right wheel measured 2533 and 2536.8 on 23-24 Oct
+  (`results.md`). Settle it with a 10-turn count; it scales distances,
+  turns, the bypass and imu_task's hump heights.
+- The final bypass settings (7c7d669) have not been counted on the car.
+- NFR-04 accuracy trials (straight and 90/180 degree pivots), which also
+  need a test entry that commands one move. The straight trials double
+  as the FR-09 check: the distance motion reports against a tape
+  measure. (FR-09 needs no reset: every E motion record carries the
+  running distance, and a mission's distance is the difference from the
+  mission's first record, modulo 32768; resetting it would show
+  imu_task and comms_task a jump.)
+- PID step responses on the floor and the tuning report (the gains are
+  the no-load bench values).
+- Watchdog tests 2 and 3 and the feed gap with Wi-Fi on; stop tests 1
+  and 2 with Wi-Fi; FR-30 with one encoder wire unplugged; NFR-11 (36 of
+  39 windows within 10 +/- 1 ms, worst 11.5 ms, INTEGRATION.md).
+- PostTri1 row 2 stress test for the lock-free words on the car.
+
+**Code or decisions**
+- Straight-line correction from the left-right difference.
+- Motion API functions (move forward, turn, stop): the writeup's
+  examples. nav_ctrl_task and scan_task use the command buffers instead.
+- FR-23 encoder counts in telemetry (week13/representation.md row 28).
+- The shared 1 MHz timer helper in `messages.h` (`motion_stop_stamp()`
+  is motion's half).
+- Week 13: re-run `tests/week13/measure.sh` on the demo commit.
