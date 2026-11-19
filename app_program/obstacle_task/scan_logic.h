@@ -88,6 +88,19 @@
  * still builds it (PC Test 20); MOTION_BYPASS_ARC and SL_KNOWN_STRAIGHT
  * need it (checked in obstacle_task.c).
  *
+ * Owner decision, margin: measured-edge offsets run close to
+ * SL_MAX_OFFSET_MM (400), and a side over it is not passable.  Logged:
+ * batch1 04:15:29 had its far side at 398.  Sim: the five 3 Nov bench
+ * sweeps of the 90 mm box at 334 mm (cluttered bench, logs/dwell_334mm_*)
+ * give offset L 451, R 400-406 with today's C_pass, so 3 of 5 are
+ * BLOCKED; with 90 all 5 are BYPASS RIGHT (R 268-271).  So a scan from
+ * further out than the tested 200-250 mm (after a REVERSE, or a late
+ * stop) can end in Blocked and a mission pause where 90 would bypass.
+ * The 4 Nov trial images had this same sizing and limit, so this is not
+ * new against the car-tested build.  But today's motion (7c7d669: IMU
+ * heading trusted after 100 mm of Line Following, was 300) has not run on
+ * the car with this sizing.
+ *
  * SL_KNOWN_STRAIGHT picks the clearance and must equal MOTION_BYPASS_KNOWN:
  *   0 (default): motion's zig-zag probing bypass pivots beside the box, so
  *     C_pass (248): offset = |centre| + 45 + 248 = ~293 mm for a centred
