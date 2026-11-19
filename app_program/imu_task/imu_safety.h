@@ -44,6 +44,9 @@ IMPORT void safety_reset(void);
 IMPORT UINT safety_step(BOOL ok, W ax, W ay, W az);
 
 IMPORT UW safety_tilt_mg(void);		/* tilt of the last good sample */
+IMPORT W safety_z_mg(void);		/* its z: under SAFETY_FLIP_MG it is
+					   upside down, and the tilt above
+					   is ~0 again (no angle to print) */
 IMPORT BOOL safety_tilted(void);	/* over T for N samples, now    */
 IMPORT INT safety_tilt_run(void);	/* samples in a row over T: 1 on
 					   the first one (NFR-19 timing)  */

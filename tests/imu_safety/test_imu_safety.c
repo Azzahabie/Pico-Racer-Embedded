@@ -141,9 +141,18 @@ int main(void)
 	}
 	expect(at == SAFETY_TILT_N, "upside down at rest: tilt event on sample N");
 	expect(safety_tilted(), "upside down at rest: tilted");
+	/* The stop message says "upside down" from z, not an angle from
+	   |x, y| (which reads 0.0 deg here). */
+	expect(safety_z_mg() < SAFETY_FLIP_MG && safety_tilt_mg() == 0,
+	       "upside down at rest: message from z, |x, y| is 0");
 	safety_reset();
 	expect(run_tilt(170, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
 	       "170 deg (|x, y| 174 mg): tilt event on sample N");
+	expect(safety_z_mg() < SAFETY_FLIP_MG, "170 deg: message says upside down");
+	safety_reset();
+	run_tilt(30, 10, SAFETY_EV_TILT);
+	expect(safety_z_mg() >= SAFETY_FLIP_MG,
+	       "30 deg: message keeps the angle and side");
 
 	/* A fast flip: 0-20 deg in the band, 40-140 deg spun out of it
 	   (|a| 2 g: neither counts nor resets), then 160 deg and resting
@@ -169,6 +178,8 @@ int main(void)
 	safety_reset();
 	expect(run_tilt(90, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
 	       "on its side: tilt event");
+	expect(safety_z_mg() >= SAFETY_FLIP_MG,
+	       "on its side: message keeps the angle (90 deg)");
 
 	/* Reads failing: re-init after 2, no data after 5 (50 ms). */
 	safety_reset();

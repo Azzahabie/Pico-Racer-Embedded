@@ -14,15 +14,18 @@
 LOCAL INT	tilt_n;			/* samples in a row over T           */
 LOCAL INT	bad_n;			/* samples in a row with no data     */
 LOCAL UW	tilt_mg;
+LOCAL W		tilt_z;			/* z of the last good sample, mg     */
 
 EXPORT void safety_reset(void)
 {
 	tilt_n = 0;
 	bad_n = 0;
 	tilt_mg = 0;
+	tilt_z = 0;
 }
 
 EXPORT UW safety_tilt_mg(void)	{ return tilt_mg; }
+EXPORT W safety_z_mg(void)	{ return tilt_z; }
 EXPORT BOOL safety_tilted(void)	{ return tilt_n >= SAFETY_TILT_N; }
 EXPORT INT safety_tilt_run(void)	{ return tilt_n; }
 EXPORT BOOL safety_no_data(void)	{ return bad_n >= SAFETY_BAD_N; }
@@ -49,6 +52,7 @@ EXPORT UINT safety_step(BOOL ok, W ax, W ay, W az)
 	bad_n = 0;
 
 	tilt_mg = imu_isqrt((UW)(ax * ax + ay * ay));
+	tilt_z = az;
 	g = imu_isqrt((UW)(ax * ax + ay * ay + az * az));
 	if(g < SAFETY_G_LO_MG || g > SAFETY_G_HI_MG) return ev;
 

@@ -193,7 +193,12 @@ LOCAL void raise_fault(INT why, UW t_first, const W a[3])
 	   the first offending sample to here, on the 1 MHz timer. */
 	us = in_w(TIMER_TIMERAWL) - t_first;
 	t10 = imu_deg10(safety_tilt_mg());
-	if(tilt) {
+	if(tilt && safety_z_mg() < SAFETY_FLIP_MG) {
+		/* Past 90 deg: on its roof |x, y| is ~0 again, so the angle
+		   and side read "0.0 deg to the , " (lifted and inverted). */
+		tm_sprintf(what, (UB *)"car tipped over (upside down, z %d mg)",
+			   safety_z_mg());
+	} else if(tilt) {
 		/* Which way it went over: the larger of side and nose. */
 		side = IMU_LEFT_SIGN * a[IMU_LEFT_AXIS];
 		nose = IMU_NOSE_SIGN * a[IMU_NOSE_AXIS];
@@ -698,8 +703,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		  (chip == CHIP_ADXL345 || chip == CHIP_MMA845X || acc_only)
 		  ? " (accel only, no magnetometer)" : "");
 	/* The fault thresholds in force, so a log shows which build ran. */
-	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg for %d samples (in a"
-		       " mission), no data for %d ms\n",
+	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg or upside down for %d"
+		       " samples (in a mission), no data for %d ms\n",
 		  imu_deg10(SAFETY_TILT_MG) / 10, imu_deg10(SAFETY_TILT_MG) % 10,
 		  SAFETY_TILT_N, SAFETY_BAD_N * SAMPLE_MS);
 
