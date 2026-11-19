@@ -708,6 +708,14 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		       " samples (in a mission), no data for %d ms\n",
 		  imu_deg10(SAFETY_TILT_MG) / 10, imu_deg10(SAFETY_TILT_MG) % 10,
 		  SAFETY_TILT_N, SAFETY_BAD_N * SAMPLE_MS);
+#if HUMP_ENTER_MG != HUMP_ENTER_MG_CAR || HUMP_WAY_DOWN
+	/* A long-ramp build (hump.h switches): say which, as above.  The
+	   car build as driven prints nothing here. */
+	tm_printf((UB *)"[imu] humps: start at %d mg (%u.%u deg), way-down"
+		       " rule %s\n", HUMP_ENTER_MG,
+		  imu_deg10(HUMP_ENTER_MG) / 10, imu_deg10(HUMP_ENTER_MG) % 10,
+		  HUMP_WAY_DOWN ? "on" : "off");
+#endif
 
 	er = start_ticks();
 	if(er < E_OK) {
