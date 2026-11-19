@@ -237,6 +237,12 @@ waits, so a full queue costs a send, never a tick. Without MQTT nothing
 empties the queue, so in a non-MQTT build it climbs once the queue fills;
 only the MQTT car build's number is evidence.
 
+- `lost ticks` counts waits with no tick within 20 ms
+  (`MOTION_TICK_TIMEOUT_MS`); each one brakes the motors. The timeout is
+  below the 30 ms watchdog, so this brake comes first (it was 50 ms and
+  could never run while the watchdog was armed). It runs on the same
+  kernel timer as the tick, so it only catches a stopped cyclic handler;
+  a stopped timer resets the chip through the watchdog instead.
 - `encoder irq N/s` counts GPIO interrupts that reached the encoder
   callback. Callbacks from one interrupt share the dispatcher's entry
   timestamp, so two pins changing together count once.

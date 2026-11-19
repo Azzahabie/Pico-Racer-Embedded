@@ -2740,6 +2740,8 @@ scenario_hand_turn (void)
 static void
 scenario_watchdog_feed (void)
 {
+	int brakes;
+
 	sim_reset("watchdog: armed at start-up, fed every completed tick");
 	CHECK(g_wdt_starts == 1);
 	CHECK(g_wdt_feeds_at_start == 0);
@@ -2749,11 +2751,15 @@ scenario_watchdog_feed (void)
 	CHECK(g_wdt_feeds == 600);
 	CHECK(strstr(g_log, "longest gap between feeds 10000 us, resets at 30000 us") != NULL);
 
-	/* No tick, no feed.  On the car the chip resets 30 ms after the
-	   last feed, before this 50 ms timeout could ever fire. */
+	/* No tick, no feed, and each timed-out wait brakes.  On the car the
+	   20 ms timeout (MOTION_TICK_TIMEOUT_MS) brakes once before the chip
+	   resets 30 ms after the last feed (W8: it was 50 ms, after it). */
+	brakes = g_brake_calls;
 	g_fail_ticks = 3;
 	sim_ticks(3);
 	CHECK(g_wdt_feeds == 600);
+	CHECK(g_ctx.lost_ticks == 3u);
+	CHECK(g_brake_calls == brakes + 3);
 	sim_tick();
 	CHECK(g_wdt_feeds == 601);
 }

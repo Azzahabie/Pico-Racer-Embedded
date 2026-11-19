@@ -56,6 +56,12 @@
 #include "motion_sm.h"
 #include "motor_task.h"
 
+/* A lost tick is braked before the watchdog resets the chip (W8). */
+_Static_assert(((uint32_t)MOTION_TICK_TIMEOUT_MS > MOTION_TICK_MS)
+                   && ((uint32_t)MOTION_TICK_TIMEOUT_MS < MOTION_WDT_MS),
+               "MOTION_TICK_TIMEOUT_MS must lie between a tick and the"
+               " watchdog timeout");
+
 /* The motion_flg bits (common/messages.h) are four different bits. */
 _Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
                 | MOTION_EVT_STOP_IMU)
@@ -3146,9 +3152,10 @@ motion_start_up (motion_ctx_t *p_ctx, INT prc)
 }
 
 /* Wait for one tick and run it.  No tick within MOTION_TICK_TIMEOUT_MS
-   means the cyclic handler stopped: brake.  This timeout runs on the
-   same kernel timer as the tick, so if that timer stops (core 0 stalled)
-   it never fires.  The watchdog covers that case: no tick, no feed. */
+   (20 ms, below the 30 ms watchdog) means the cyclic handler stopped:
+   brake.  This timeout runs on the same kernel timer as the tick, so if
+   that timer stops (core 0 stalled) it never fires.  The watchdog covers
+   that case: no tick, no feed. */
 static void
 motion_cycle (motion_ctx_t *p_ctx)
 {

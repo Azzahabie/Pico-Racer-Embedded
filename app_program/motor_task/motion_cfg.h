@@ -82,9 +82,14 @@
 #define MOTION_TASK_STACK (4096) /* same as every other task (SMP) */
 #define MOTION_TICK_MS    (10u)
 
-/* No tick for this long means the cyclic handler or the kernel timer has
-   stopped: brake. */
-#define MOTION_TICK_TIMEOUT_MS (50)
+/* No tick for this long means the cyclic handler has stopped while the
+   kernel timer still runs: brake and count a lost tick.  It must stay
+   below MOTION_WDT_MS, or the watchdog resets the chip first and this
+   brake never runs (it was 50 ms, W8; checked in motor_task.c).  Two
+   tick periods: the longest period seen on the car is 11.5 ms
+   (docs/INTEGRATION.md, NFR-11).  If the kernel timer itself stops, this
+   timeout stops with it and only the watchdog acts. */
+#define MOTION_TICK_TIMEOUT_MS (20)
 
 #define MOTION_REPORT_TICKS (20u) /* status line every 200 ms */
 
