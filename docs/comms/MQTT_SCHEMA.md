@@ -247,7 +247,7 @@ six bits:
 | 1 | encoder fault | `FAULT_ENCODER` | Buddy 2, `motion_task` | 1 | yes |
 | 2 | IMU fault | `FAULT_IMU` | Buddy 4, `imu_task` | 1 | yes |
 | 3 | no echo (sensor lost) | `FAULT_SCAN_SENSOR_LOST` | Buddy 5, `scan_task` | 1 | yes |
-| 4 | line sensor | `FAULT_LINE_SENSOR` | Buddy 3, `ir_sense_task` | 1 | yes |
+| 4 | line sensor | `FAULT_LINE_SENSOR` | Buddy 3, `ir_sense_task` (`line_task.c`), when its sensors fault; only on `proposal/line-barcode-beside-line` so far | 1 | **no, report-only**: nav does not stop the mission on it |
 | 5 | **Wi-Fi loss** | `FAULT_WIFI_LOSS` | **Buddy 1, `comms_task`** | 0 | **no — report-only** |
 
 **Agreed 2026-10-23** with Buddy 5 (bits 0–4 as Buddy 5 proposed to the team on
@@ -258,14 +258,22 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 
 > **Wi-Fi loss is report-only (agreed with Buddy 5, 2026-10-23).** The bit is
 > in the shared word because the requirement names it, and it is there for the
-> laptop. `nav_ctrl_task` decides the Fault transition with
-> `FAULT_STOP_MASK` (every bit except `FAULT_WIFI_LOSS`), never with "any bit
-> set", so a Wi-Fi drop never stops the car: a mission never waits on Wi-Fi.
+> laptop. A Wi-Fi drop never stops the car: a mission never waits on Wi-Fi.
+> *(Corrected 19 Nov.)* `nav_ctrl_task` does not read this flag at all, so
+> `FAULT_STOP_MASK` (`messages.h`) has no user yet. Nav goes to Fault on its
+> own `nav_flg` bits, `NAV_FLG_IMU_FAULT` and `NAV_FLG_MOTION_FAULT`
+> (`nav_ctrl.c`, "faults first"), which `imu_task` and `motion_task` set next
+> to their fault bit here.
 
-> **Which bits are wired.** A bit reads 0 until its owner's code sets it, so
-> `faults = 0` means "no fault reported", not "every subsystem checked". As of
-> 2026-10-29 bits **2** (IMU), **3** (scan sensor lost) and **5** (Wi-Fi loss)
-> are wired; bits 0, 1 and 4 are not yet.
+> **Which bits are wired** *(updated 19 Nov)*. A bit reads 0 until its
+> owner's code sets it, so `faults = 0` means "no fault reported", not "every
+> subsystem checked". On `master`, bits **0** and **1** (motion, since
+> 30 Oct: `motor_task.c` `fault_flg_bits()`), **2** (IMU), **3** (scan sensor
+> lost) and **5** (Wi-Fi loss) are wired. Bit **4** is set and cleared by
+> `line_task` when its sensors fault (stuck at an ADC rail, or the ADC
+> failed) only on `proposal/line-barcode-beside-line`, not merged yet. It is
+> report-only: nav does not stop the mission on it. A line sensor fault
+> still pauses a run the old way, as a lost line (`lin` = 1).
 
 > **The Wi-Fi-loss bit and the wire.** An `S` line cannot be published while
 > Wi-Fi is down, so a live "Wi-Fi lost" bit would never reach the laptop.
