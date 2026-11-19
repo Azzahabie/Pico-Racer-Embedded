@@ -32,6 +32,19 @@
 #define BARCODE_MAX_ELEMENTS                      ((BARCODE_MAX_CHARACTERS * 10u) + 19u)
 #define BARCODE_MAX_WIDTHS                        (512u)
 #define BARCODE_WIDE_NARROW_MIN_RATIO_X100        (150u)
+/* 1 (default): when one narrow/wide split for all nine elements of a
+   symbol fails, the decoder tries again with bars and spaces split apart
+   (barcode_decode.c).  A sensor that reads every bar wider reads every
+   space narrower by the same amount.  The one split fails with wide 2 x
+   narrow from about a quarter of the narrow width (0.75 mm on 3 mm
+   bars), and with 3 x from about a third (1 mm); split apart, they decode
+   (tests/test_barcode_decode.c, up to a third).  BARCODE_SPLIT_MAX_RATIO:
+   the widest bar (space) at most this many times the narrowest bar
+   (space) of the symbol.  0: the one split only, as before. */
+#ifndef BARCODE_DECODE_SPLIT
+#define BARCODE_DECODE_SPLIT                      (1u)
+#endif
+#define BARCODE_SPLIT_MAX_RATIO                   (8u)
 #define BARCODE_GAP_MAX_NARROW_RATIO_X100         (300u)
 #define BARCODE_SCAN_END_GAP_US                   (50000u)
 #define BARCODE_SCAN_IDLE_US                      BARCODE_SCAN_END_GAP_US
@@ -210,6 +223,9 @@
 #endif
 #if (LINE_BARCODE_HOLD != 0u) && (LINE_BARCODE_HOLD != 1u)
 #error "LINE_BARCODE_HOLD must be 0 or 1"
+#endif
+#if (BARCODE_DECODE_SPLIT != 0u) && (BARCODE_DECODE_SPLIT != 1u)
+#error "BARCODE_DECODE_SPLIT must be 0 or 1"
 #endif
 
 #endif

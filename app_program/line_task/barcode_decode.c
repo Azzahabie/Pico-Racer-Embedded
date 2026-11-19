@@ -17,6 +17,87 @@ static const char code39_patterns[27][BARCODE_PATTERN_ELEMENTS + 1u] = {
 
 static const char code39_characters[28] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
+/* The pattern (N/W per element, in reading order) to its character. */
+static bool lookup_pattern(const char *pattern, char *symbol)
+{
+	uint8_t i;
+
+	for (i = 0u; i < 27u; ++i) {
+		if (strcmp(pattern, code39_patterns[i]) == 0) {
+			*symbol = code39_characters[i];
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Insertion sort of n widths taken every step from widths. */
+static void sort_every(const uint32_t *widths, uint8_t first, uint8_t step,
+		       uint8_t n, uint32_t *sorted)
+{
+	uint8_t i;
+	uint8_t j;
+
+	for (i = 0u; i < n; ++i) {
+		uint32_t width = widths[first + (i * step)];
+		j = i;
+		while ((j > 0u) && (sorted[j - 1u] > width)) {
+			sorted[j] = sorted[j - 1u];
+			--j;
+		}
+		sorted[j] = width;
+	}
+}
+
+#if BARCODE_DECODE_SPLIT
+/* Fallback: bars and spaces classified apart.  A sensor spot or threshold
+   that reads every bar wider reads every space narrower by the same
+   amount, so a narrow bar can come out as wide as a wide space is short
+   and one split for all nine fails.  Every letter and '*' has exactly 2
+   wide bars of its 5 and 1 wide space of its 4: the two widest bars and
+   the widest space are wide, if each stands clear of its narrow ones by
+   BARCODE_WIDE_NARROW_MIN_RATIO_X100.  (Only '$', '/', '+' and '%' differ,
+   and they never decode here.) */
+static bool classify_split(const uint32_t *widths, bool reversed,
+			   char *pattern, uint32_t *sum_narrow)
+{
+	uint32_t bars[5];
+	uint32_t spaces[4];
+	uint32_t bar_split;
+	uint32_t space_split;
+	uint8_t i;
+
+	sort_every(widths, 0u, 2u, 5u, bars);
+	sort_every(widths, 1u, 2u, 4u, spaces);
+	if ((bars[0] == 0u) || (spaces[0] == 0u) ||
+	    ((uint64_t)bars[3] * 100u <
+	     (uint64_t)bars[2] * BARCODE_WIDE_NARROW_MIN_RATIO_X100) ||
+	    ((uint64_t)spaces[3] * 100u <
+	     (uint64_t)spaces[2] * BARCODE_WIDE_NARROW_MIN_RATIO_X100) ||
+	    ((uint64_t)bars[4] > (uint64_t)bars[0] * BARCODE_SPLIT_MAX_RATIO) ||
+	    ((uint64_t)spaces[3] > (uint64_t)spaces[0] * BARCODE_SPLIT_MAX_RATIO)) {
+		return false;
+	}
+	bar_split = bars[2] + (bars[3] - bars[2]) / 2u;
+	space_split = spaces[2] + (spaces[3] - spaces[2]) / 2u;
+	*sum_narrow = 0u;
+	for (i = 0u; i < BARCODE_PATTERN_ELEMENTS; ++i) {
+		uint8_t position = reversed
+			? (uint8_t)(BARCODE_PATTERN_ELEMENTS - 1u - i) : i;
+		uint32_t split = ((i & 1u) == 0u) ? bar_split : space_split;
+
+		if (widths[i] > split) {
+			pattern[position] = 'W';
+		} else {
+			pattern[position] = 'N';
+			*sum_narrow += widths[i];
+		}
+	}
+	pattern[BARCODE_PATTERN_ELEMENTS] = '\0';
+	return true;
+}
+#endif
+
 static bool decode_symbol(const uint32_t *widths, bool reversed,
 			  char *symbol, uint32_t *narrow_width)
 {
@@ -26,50 +107,41 @@ static bool decode_symbol(const uint32_t *widths, bool reversed,
 	uint32_t split;
 	uint8_t wide_count = 0u;
 	uint8_t i;
-	uint8_t j;
+	bool ok;
 
-	for (i = 0u; i < BARCODE_PATTERN_ELEMENTS; ++i) {
-		uint32_t width = widths[i];
-		j = i;
-		while ((j > 0u) && (sorted[j - 1u] > width)) {
-			sorted[j] = sorted[j - 1u];
-			--j;
+	sort_every(widths, 0u, 1u, (uint8_t)BARCODE_PATTERN_ELEMENTS, sorted);
+
+	/* one split for all nine elements */
+	ok = !((sorted[5] == 0u) ||
+	       ((uint64_t)sorted[6] * 100u <
+		(uint64_t)sorted[5] * BARCODE_WIDE_NARROW_MIN_RATIO_X100) ||
+	       ((uint64_t)sorted[8] > (uint64_t)sorted[0] * 5u));
+	if (ok) {
+		split = sorted[5] + (sorted[6] - sorted[5]) / 2u;
+		for (i = 0u; i < BARCODE_PATTERN_ELEMENTS; ++i) {
+			uint8_t position = reversed
+				? (uint8_t)(BARCODE_PATTERN_ELEMENTS - 1u - i) : i;
+			if (widths[i] > split) {
+				pattern[position] = 'W';
+				++wide_count;
+			} else {
+				pattern[position] = 'N';
+				sum_narrow += widths[i];
+			}
 		}
-		sorted[j] = width;
+		pattern[BARCODE_PATTERN_ELEMENTS] = '\0';
+		ok = (wide_count == 3u) && lookup_pattern(pattern, symbol);
 	}
-
-	if ((sorted[5] == 0u) ||
-	    ((uint64_t)sorted[6] * 100u <
-	     (uint64_t)sorted[5] * BARCODE_WIDE_NARROW_MIN_RATIO_X100) ||
-	    ((uint64_t)sorted[8] > (uint64_t)sorted[0] * 5u)) {
-		return false;
+#if BARCODE_DECODE_SPLIT
+	if (!ok) {
+		ok = classify_split(widths, reversed, pattern, &sum_narrow) &&
+		     lookup_pattern(pattern, symbol);
 	}
-
-	split = sorted[5] + (sorted[6] - sorted[5]) / 2u;
-	for (i = 0u; i < BARCODE_PATTERN_ELEMENTS; ++i) {
-		uint8_t position = reversed
-			? (uint8_t)(BARCODE_PATTERN_ELEMENTS - 1u - i) : i;
-		if (widths[i] > split) {
-			pattern[position] = 'W';
-			++wide_count;
-		} else {
-			pattern[position] = 'N';
-			sum_narrow += widths[i];
-		}
+#endif
+	if (ok) {
+		*narrow_width = sum_narrow / 6u;
 	}
-	pattern[BARCODE_PATTERN_ELEMENTS] = '\0';
-	if (wide_count != 3u) {
-		return false;
-	}
-
-	*narrow_width = sum_narrow / 6u;
-	for (i = 0u; i < 27u; ++i) {
-		if (strcmp(pattern, code39_patterns[i]) == 0) {
-			*symbol = code39_characters[i];
-			return true;
-		}
-	}
-	return false;
+	return ok;
 }
 
 static bool decode_orientation(const uint32_t *widths, uint16_t width_count,

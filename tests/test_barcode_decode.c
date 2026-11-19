@@ -107,10 +107,36 @@ static int synthesize(const char *text, uint32_t ratio_x100,
 	return 1;
 }
 
+static int run_cases_with(const char *text, const uint32_t *ratios,
+			  uint32_t ratio_count, const uint32_t *biases,
+			  uint32_t bias_count);
+
 static int run_cases(const char *text)
 {
 	static const uint32_t ratios[] = { 250u, 300u };
 	static const uint32_t biases[] = { 10u, 15u, 20u };
+
+	return run_cases_with(text, ratios, 2u, biases, 3u);
+}
+
+/* Blur: every bar wider and every space narrower by 25-33 % of the
+   narrow width (0.75-1 mm on the course's 3 mm bars), wide 2.0 to 3.0
+   times narrow.  One split for all nine elements fails (a narrow bar
+   reads as wide as a wide space is short, at 2:1 from about 25 %; at 3:1
+   the widest element passes 5 x the narrowest near 33 %); with bars and
+   spaces split apart (BARCODE_DECODE_SPLIT) they decode. */
+static int run_blur_cases(const char *text)
+{
+	static const uint32_t ratios[] = { 200u, 250u, 300u };
+	static const uint32_t biases[] = { 25u, 30u, 33u };
+
+	return run_cases_with(text, ratios, 3u, biases, 3u);
+}
+
+static int run_cases_with(const char *text, const uint32_t *ratios,
+			  uint32_t ratio_count, const uint32_t *biases,
+			  uint32_t bias_count)
+{
 	uint32_t widths[MAX_TEST_WIDTHS];
 	barcode_decode_result_t result;
 	uint16_t width_count;
@@ -118,13 +144,10 @@ static int run_cases(const char *text)
 	uint32_t direction;
 	uint32_t trial;
 
-	for (ratio_index = 0u;
-	     ratio_index < sizeof(ratios) / sizeof(ratios[0]);
-	     ++ratio_index) {
+	for (ratio_index = 0u; ratio_index < ratio_count; ++ratio_index) {
 		for (direction = 0u; direction < 2u; ++direction) {
 			for (trial = 0u; trial < TRIALS_PER_CASE; ++trial) {
-				int32_t bias = (int32_t)biases[trial %
-					(sizeof(biases) / sizeof(biases[0]))];
+				int32_t bias = (int32_t)biases[trial % bias_count];
 
 				if ((random_next() & 1u) != 0u) {
 					bias = -bias;
@@ -176,7 +199,13 @@ int main(void)
 			return EXIT_FAILURE;
 		}
 	}
+	for (letter[0] = 'A'; letter[0] <= 'Z'; ++letter[0]) {
+		if (!run_blur_cases(letter)) {
+			return EXIT_FAILURE;
+		}
+	}
 	(void)puts("barcode decoder: PASS (A-Z singly and 3 strings, "
-		   "fwd + rev, 800 trials each)");
+		   "fwd + rev, 800 trials each; A-Z with bars 25-33 % of narrow "
+		   "wider and spaces narrower, wide 2-3 x narrow, 1200 trials each)");
 	return EXIT_SUCCESS;
 }
