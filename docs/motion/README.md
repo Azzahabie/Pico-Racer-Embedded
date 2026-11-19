@@ -102,8 +102,12 @@ your car's numbers will differ.
 ```
 
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
-nothing else runs: report the `er` value. The watchdog is then not armed,
-so the car does not reboot over and over.
+nothing else runs: report the `er` value. It covers the hardware set-up
+and the 10 ms tick: `motor_task_start()` makes the tick before it starts
+motion_task, and if it cannot (for example `er=-34`, E_LIMIT: no free
+cyclic handler) motion_task still starts, brakes and reports init FAILED.
+The watchdog is then not armed, so the car does not reboot over and over
+(with no tick nothing would feed it).
 
 `last reset` says why the chip started:
 
@@ -244,7 +248,8 @@ only the MQTT car build's number is evidence.
 ### Watchdog (PreTri1 row 2, PostTri1 row 9)
 
 `motion_task` arms the RP2040 hardware watchdog once its set-up has passed
-and feeds it as the last thing in every completed tick. If the task hangs,
+and the 10 ms tick exists, and feeds it as the last thing in every
+completed tick. If the task hangs,
 or its tick stops (core 0 stalled, kernel timer stopped, a fault handler
 spinning), the chip resets 30 ms after the last feed (`MOTION_WDT_MS`,
 proposed). The reset puts GP8 to GP11 back to inputs with pull-downs, so

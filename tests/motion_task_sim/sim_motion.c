@@ -471,12 +471,18 @@ INT tk_rcv_mbf(ID id, void *msg, TMO tmo)
 	g_cmd_n[q]--;
 	return 2;
 }
+/* The tick must exist before motion_task starts, which arms the watchdog
+   (W9).  g_fail_cyc makes tk_cre_cyc fail, as a full handler table would. */
+static int		g_fail_cyc;
+static int		g_cyc_calls;
+static int		g_cyc_calls_at_motion = -1;	/* when motion_task was made */
 ID tk_cre_tsk(CONST T_CTSK *p)
 {
 	CHECK((p->tskatr & TA_USERBUF) != 0u);	/* stack is ours, not the heap */
 	CHECK((p->bufptr != NULL) && (((uintptr_t)p->bufptr % 8u) == 0u));
 	CHECK((p->stksz % 8) == 0);
 	if (p->task == (FP)motor_task) {
+		g_cyc_calls_at_motion = g_cyc_calls;
 		CHECK(p->itskpri == 11);
 		CHECK((p->tskatr & TA_ASSPRC) != 0u);
 		CHECK(p->assprc == TP_PRC2);	/* core 1 */
@@ -491,7 +497,13 @@ ID tk_cre_tsk(CONST T_CTSK *p)
 	return 3;
 }
 ER tk_sta_tsk(ID id, INT stacd) { (void)id; (void)stacd; return E_OK; }
-ID tk_cre_cyc(CONST T_CCYC *p) { CHECK(p->cyctim == 10u); return 4; }
+
+ID tk_cre_cyc(CONST T_CCYC *p)
+{
+	CHECK(p->cyctim == 10u);
+	g_cyc_calls++;
+	return g_fail_cyc ? E_LIMIT : 4;
+}
 
 /* distance_state mutex (MOTION_PACKED 0 only).  g_mtx_held = 1 plays a
    reader that holds it. */
@@ -2784,6 +2796,36 @@ scenario_init_fail_not_armed (void)
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 }
 
+/* No tick (tk_cre_cyc failed): motion_task still starts and brakes, but
+   never arms the watchdog, which nothing would feed (W9). */
+static void
+scenario_no_tick_not_armed (void)
+{
+	printf("-- no tick: motion_task brakes, watchdog not armed\n");
+	memset(&g_ctx, 0, sizeof g_ctx);
+	g_n_seen = 0; g_q_count = 0; g_log_len = 0; g_log[0] = '\0';
+	g_wdt_starts = 0;
+	g_cyc_calls = 0;
+	g_cyc_calls_at_motion = -1;
+	g_fail_cyc = 1;
+	CHECK(motor_task_start() == E_LIMIT);
+	g_fail_cyc = 0;
+	CHECK(g_cyc_calls_at_motion == 1);	/* motion_task made all the same */
+	CHECK(g_tick_ercd == E_LIMIT);
+	g_brake_calls = 0;
+	CHECK(motion_start_up(&g_ctx, 2) == E_LIMIT);
+	drain_reports();
+	CHECK(g_wdt_starts == 0);
+	CHECK(g_brake_calls >= 1);
+	CHECK((g_ctx.faults & MOTION_FAULT_INIT) != 0u);
+	CHECK(strstr(g_log, "init FAILED (er=-34)") != NULL);
+	CHECK(strstr(g_log, "watchdog NOT armed") != NULL);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+
+	CHECK(motor_task_start() == E_OK);	/* the tick back for the rest */
+	CHECK(g_tick_ercd == E_OK);
+}
+
 #if !MOTION_BENCH
 /* Integration build: GP20 is Buddy 5's start button, so motion must
    never configure or read it, and no press may drive a motor. */
@@ -3114,6 +3156,7 @@ main (int argc, char **argv)
 	g_verbose = (argc > 1) && (strcmp(argv[1], "-v") == 0);
 
 	CHECK(motor_task_start() == E_OK);
+	CHECK(g_cyc_calls_at_motion == 1);	/* the tick before motion_task */
 	CHECK(sizeof(motion_report_t) == 52u);
 
 #if MOTION_TEST_WDT
@@ -3124,6 +3167,7 @@ main (int argc, char **argv)
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
+	scenario_no_tick_not_armed();
 	scenario_bench_off();
 	scenario_ds_straight();
 	scenario_ds_turn_and_reverse();
@@ -3178,6 +3222,7 @@ main (int argc, char **argv)
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
+	scenario_no_tick_not_armed();
 	scenario_button_held_at_boot();
 	scenario_open_loop();
 	scenario_dead_encoder();

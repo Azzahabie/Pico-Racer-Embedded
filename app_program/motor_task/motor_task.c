@@ -419,6 +419,10 @@ static ID g_mbfid;
 static ID g_nav_mbfid;   /* nav_cmd_mbf:   nav_ctrl_task -> motion */
 static ID g_avoid_mbfid; /* avoid_cmd_mbf: scan_task -> motion     */
 
+/* What tk_cre_cyc gave for the tick.  Set by motor_task_start() before
+   motion_task starts; motion_task arms the watchdog only if it is E_OK. */
+static ER g_tick_ercd = E_NOEXS;
+
 /* NFR-18 request times, one word per STOP source.  Each is written only
    by its own sender (motion_stop_stamp) and read only by motion_task. */
 static volatile uint32_t g_stop_req_us[STOP_SOURCES];
@@ -3096,8 +3100,9 @@ motion_init (motion_ctx_t *p_ctx)
 /* Everything before the first tick, in this order: why the chip last
    started (read before arming, which rewrites the marker it uses), the
    hardware set-up, then the watchdog.  It is armed only if the set-up
-   passed, so a car that cannot run stays braked instead of rebooting
-   over and over. */
+   passed and the tick exists (motor_task_start), so a car that cannot run
+   stays braked instead of rebooting over and over: with no tick nothing
+   would feed it, and the chip would reset every MOTION_WDT_MS. */
 static ER
 motion_start_up (motion_ctx_t *p_ctx, INT prc)
 {
@@ -3116,6 +3121,12 @@ motion_start_up (motion_ctx_t *p_ctx, INT prc)
 #endif
 
     ercd = motion_init(p_ctx);
+    if ((E_OK == ercd) && (E_OK != g_tick_ercd))
+    {
+        ercd = g_tick_ercd; /* no tick: a set-up failure too */
+        p_ctx->faults |= MOTION_FAULT_INIT;
+        motor_brake_all();
+    }
     if (E_OK == ercd)
     {
         p_ctx->wdt_fed_us = now_us();
@@ -3846,6 +3857,17 @@ motor_task_start (void)
         ercd   = (obj_id < E_OK) ? obj_id : tk_sta_tsk(obj_id, 0);
     }
 
+    /* The tick before motion_task, which arms the watchdog only once the
+       tick that feeds it exists.  The handler only sets TICK, which
+       motion_task clears before its first wait.  If the tick cannot be
+       made, motion_task still starts, to brake the motors, and reports
+       init FAILED without arming; this function returns the error. */
+    if (E_OK == ercd)
+    {
+        obj_id      = tk_cre_cyc(&g_ccyc);
+        g_tick_ercd = (obj_id < E_OK) ? obj_id : E_OK;
+    }
+
     if (E_OK == ercd)
     {
         obj_id = tk_cre_tsk(&g_ctsk_motion);
@@ -3862,8 +3884,7 @@ motor_task_start (void)
 
     if (E_OK == ercd)
     {
-        obj_id = tk_cre_cyc(&g_ccyc);
-        ercd   = (obj_id < E_OK) ? obj_id : E_OK;
+        ercd = g_tick_ercd;
     }
 
     return ercd;

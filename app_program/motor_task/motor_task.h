@@ -79,7 +79,10 @@ void motor_task(INT stacd, void *exinf);
 /* Create and start everything motion needs: its event flag, the 10 ms
    cyclic handler, motion_task (priority 11, pinned to core 1 under SMP)
    and a low-priority report task on core 0 that does all the printing,
-   so core 1 never sits in tm_printf.  Call once from usermain(). */
+   so core 1 never sits in tm_printf.  Call once from usermain().
+   The cyclic handler is made before motion_task starts.  If it cannot
+   be made, motion_task still starts to brake the motors, reports init
+   FAILED and never arms the watchdog, and the error is returned. */
 ER motor_task_start(void);
 
 #endif /* MOTOR_TASK_H */
