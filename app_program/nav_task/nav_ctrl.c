@@ -33,7 +33,10 @@
  *	With 0 it is used up at the junction where it is sent, as before.
  *
  *	End of the run: the demo ends by lifting and inverting the car
- *	(the prof, 19 Nov), which imu_task turns into an IMU fault.
+ *	(the prof, 19 Nov).  imu_task turns that into an IMU fault only with
+ *	the upside-down fix on branch proposal/imu-upside-down-stop: without
+ *	it a car resting upside down reads level, and the pick-up check
+ *	cannot fire while driving.
  *	NOT YET: RGB LED on GP18 (WS2812, needs PIO).
  *
  *	Barr-C (safety subset): braces on every body, constant on the left of

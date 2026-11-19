@@ -82,6 +82,7 @@ uint16_t	before_scan_grid[B_SL_SLOTS];
 typedef struct {		/* copy of obstacle_task.c's private scan_ctx_t */
 	uint32_t	state_us;
 	uint32_t	scan_us;
+	uint32_t	blocked_us;
 	uint32_t	no_echo_slots;
 	sl_profile_t	prof;
 	uint16_t	grid[SL_SLOTS];
@@ -91,6 +92,8 @@ typedef struct {		/* copy of obstacle_task.c's private scan_ctx_t */
 	int8_t		left_hit;
 	int8_t		right_hit;
 	int8_t		look_deg;
+	uint8_t		bypass_plans;
+	uint32_t	ds_prev;
 } a_scan_ctx_t;
 
 a_scan_ctx_t	after_scan_ctx;
