@@ -18,7 +18,7 @@ final numbers, measured with `tests/week13/measure.sh` on commit e47c4d8
 | Motion static RAM | 9361 B (36 B .data + 9325 B .bss), of which 8192 B are the two task stacks and 560 B the motion_task context g_ctx | M, `arm-none-eabi-size` and `nm` |
 | Whole image static RAM | 240 B .data + 32100 B .bss | M, `arm-none-eabi-size -A` |
 | Command buffers | nav_cmd_mbf 32 B (room 4), avoid_cmd_mbf 16 B (room 2) | M, nm |
-| E motion record | 7 B payload, 12 B in tele_mbf, 13 B record E | M, compiler (`tests/week13/sizes.c`) |
+| E motion record | 7 B payload, 12 B in tele_mbf, 13 B record E | C, messages.h (`COMM_W_INTAKE_SIZE_MOTION`, `COMM_W_E_SIZE_MOTION`) and the 4 B header + round-to-4 rule; cross-checked by the car's ARM compiler in `tests/week13/sizes.c` |
 | Avoid command | 2 B payload (packed uint16) | C, messages.h |
 | Nav command | 2 B payload (2 raw bytes, INTEGRATION.md D4) | C, nav_ctrl.h |
 
@@ -109,7 +109,7 @@ stacks (C: 2 x (4096 B stack + 128 B system stack + 8 B heap block
 header), kernel/tkernel/task_manage.c and memory.c); the map could not
 show those.
 
-**Messages (October; the E motion record has existed since 754fdf7, 1 Nov).**
+**Messages (October; the E motion record has existed since 754fdf7, 31 Oct; on master 1 Nov via PR #18).**
 
 | Message | Before | After |
 |---|---|---|

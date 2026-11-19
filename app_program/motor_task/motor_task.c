@@ -142,7 +142,7 @@ typedef enum
     REP_EVENT,      /* code = EVT_*, val/rate = arguments     */
     REP_TIMING,     /* timing of the last 5 s; rate_l = longest
                        gap between watchdog feeds, us; rate_r
-                       = E motion records dropped so far      */
+                       = E motion sends refused so far        */
     REP_DIST        /* distance_state: code = state, val_l =
                        net mm, val_r = turn deg/s, rate_l =
                        accel mm/s^2, rate_r = counter         */
@@ -290,11 +290,13 @@ typedef struct
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
     uint8_t     avoid_side; /* MOTION_AVOID_SIDE_* of a BYPASS     */
-    uint32_t    tele_dropped; /* E motion records tele_mbf refused */
-    uint32_t    tele_ticks;   /* ticks since the last E motion       */
-    int32_t     tele_pos_l;   /* positions at the last E motion      */
+    uint32_t    tele_dropped; /* E motion sends tele_mbf refused   */
+    uint32_t    tele_ticks;   /* ticks since the last E motion try   */
+    int32_t     tele_pos_l;   /* positions at the last E motion sent */
     int32_t     tele_pos_r;
-    int32_t     mission_mm0;  /* ds_mm when this mission began       */
+    bool        b_tele_retry; /* the last E motion was refused       */
+    uint32_t    mission_counts; /* |change of pos_l + pos_r|, mission */
+    int32_t     odo_prev;     /* pos_l + pos_r at the last tick      */
     uint8_t     mission_prev; /* mission_state_t at the last tick    */
 
     /* line_state (line_state.h), read once per tick */
@@ -2717,36 +2719,46 @@ fault_flg_bits (uint8_t faults)
     return bits;
 }
 
+/* A refused E motion is tried again this many ticks later (100 ms). */
+#define TELE_RETRY_TICKS (10u)
+
 /* E motion (MQTT_SCHEMA.md 5, k = 0), on every statechart change and once
    a second while a wheel moves (tick_telemetry): the state, each wheel's
    speed over the distance_state window (50 ms, to the nearest cm/s; one
    tick's counts would truncate 6 counts to 4 cm/s instead of ~4.8), the
-   distance in this mission (packed modulo 32768), the turn rate and the
-   motion faults now.  comms_tele_send() polls, so the tick never waits; a
-   record tele_mbf has no room for is dropped and counted (timing line,
-   NFR-10). */
+   distance travelled in this mission, the turn rate and the motion faults
+   now.  The distance counts forward and backward travel alike, so it
+   never goes down: comms_task takes S.dst as an unsigned difference, and
+   a reverse would otherwise read as ~32 m.  comms_tele_send() polls, so
+   the tick never waits; a send tele_mbf refuses is counted (timing line,
+   NFR-10) and tried again TELE_RETRY_TICKS later with the values then. */
 static void
 tele_motion (motion_ctx_t *p_ctx)
 {
-    UB       body[COMM_W_INTAKE_SIZE_MOTION];
-    int32_t  speed_l;
-    int32_t  speed_r;
-    uint32_t mission_mm; /* modulo 2^32; the packer keeps 15 bits */
+    UB      body[COMM_W_INTAKE_SIZE_MOTION];
+    int32_t speed_l;
+    int32_t speed_r;
+    int32_t mission_mm; /* the packer keeps 15 bits, modulo 32768 */
 
     motion_ds_win_speed_cms(&p_ctx->ds_win, &speed_l, &speed_r);
-    mission_mm = (uint32_t)p_ctx->ds_mm - (uint32_t)p_ctx->mission_mm0;
+    mission_mm = motion_ds_dist_mm((int32_t)p_ctx->mission_counts, 0);
     if (E_OK
-        != comms_tele_send(
+        == comms_tele_send(
             body, (INT)comm_w_pack_motion(
                       body, (uint32_t)motion_sm_state(&p_ctx->sm), speed_l,
-                      speed_r, mission_mm, p_ctx->ds_turn,
+                      speed_r, (uint32_t)mission_mm, p_ctx->ds_turn,
                       (uint32_t)fault_flg_bits(p_ctx->faults), 0u)))
     {
+        p_ctx->b_tele_retry = false;
+        p_ctx->tele_pos_l   = p_ctx->pos_l;
+        p_ctx->tele_pos_r   = p_ctx->pos_r;
+    }
+    else
+    {
+        p_ctx->b_tele_retry = true;
         p_ctx->tele_dropped++;
     }
     p_ctx->tele_ticks = 0u;
-    p_ctx->tele_pos_l = p_ctx->pos_l;
-    p_ctx->tele_pos_r = p_ctx->pos_r;
 }
 
 /* One statechart step per tick, after the stall check.  The mission state
@@ -2755,9 +2767,10 @@ tele_motion (motion_ctx_t *p_ctx)
    line search, the turn, the reverse and the bypass.
    distance_state is never reset: imu_task works from differences, and a
    jump would read as a fake movement.  The distance motion reports in
-   telemetry starts again at a new mission (Section 4: Ready -> Running;
-   Paused -> Running is a resume and keeps it), so it is kept as an
-   offset, mission_mm0. */
+   telemetry (mission_counts) starts again at a new mission (Section 4:
+   Ready -> Running; Paused -> Running is a resume and keeps it).  nav
+   enters Running only from those two, so any other way in is a new
+   mission too: a Ready shorter than one tick is not missed. */
 static void
 tick_statechart (motion_ctx_t *p_ctx)
 {
@@ -2768,10 +2781,11 @@ tick_statechart (motion_ctx_t *p_ctx)
     motion_report_t rep;
 
     take_commands(p_ctx, &in);
-    if ((MS_READY == (mission_state_t)p_ctx->mission_prev)
-        && (MS_RUNNING == mission))
+    if ((MS_RUNNING == mission)
+        && (MS_RUNNING != (mission_state_t)p_ctx->mission_prev)
+        && (MS_PAUSED != (mission_state_t)p_ctx->mission_prev))
     {
-        p_ctx->mission_mm0 = p_ctx->ds_mm; /* a new mission */
+        p_ctx->mission_counts = 0u; /* a new mission */
     }
     p_ctx->mission_prev = (uint8_t)mission;
     in.b_running        = (MS_RUNNING == mission);
@@ -2828,18 +2842,25 @@ tick_statechart (motion_ctx_t *p_ctx)
     }
 }
 
-/* The E motion record once a second while a wheel moves (plan 1.8), after
-   tick_distance, so the speeds and distance are this tick's.  Between
-   state changes this is what lets the laptop, and comms_task's S.dst (cm
-   since the last motion change), see the distance grow.  Nothing while
-   the car stands still. */
+/* After tick_distance: add this tick's travel to the mission distance
+   (both wheels' counts, forward or back), then send the E motion record
+   once a second while a wheel moves (plan 1.8), or again after a refused
+   send.  Between state changes this is what lets the laptop, and
+   comms_task's S.dst (cm since the last motion change), see the distance
+   grow.  Nothing while the car stands still. */
 static void
 tick_telemetry (motion_ctx_t *p_ctx)
 {
+    int32_t sum = p_ctx->pos_l + p_ctx->pos_r;
+
+    p_ctx->mission_counts += (uint32_t)motion_abs(sum - p_ctx->odo_prev);
+    p_ctx->odo_prev = sum;
+
     p_ctx->tele_ticks++;
-    if ((p_ctx->tele_ticks >= (uint32_t)TICKS_PER_S)
-        && ((p_ctx->pos_l != p_ctx->tele_pos_l)
-            || (p_ctx->pos_r != p_ctx->tele_pos_r)))
+    if ((p_ctx->b_tele_retry && (p_ctx->tele_ticks >= TELE_RETRY_TICKS))
+        || ((p_ctx->tele_ticks >= (uint32_t)TICKS_PER_S)
+            && ((p_ctx->pos_l != p_ctx->tele_pos_l)
+                || (p_ctx->pos_r != p_ctx->tele_pos_r))))
     {
         tele_motion(p_ctx);
     }
@@ -3676,7 +3697,7 @@ print_report (motion_report_t const *p_rep)
             (void)tm_sprintf(line,
                              (UB *)"[motion] watchdog (5 s): longest gap"
                                    " between feeds %d us, resets at %u us;"
-                                   " E motion records dropped %d",
+                                   " E motion sends refused %d",
                              (INT)p_rep->rate_l,
                              (UINT)(MOTION_WDT_MS * US_PER_MS),
                              (INT)p_rep->rate_r);

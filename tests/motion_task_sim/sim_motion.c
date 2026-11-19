@@ -316,14 +316,22 @@ void fault_clear(UINT bits) { g_fault_bits &= ~bits; }
 
 /* comms_task.h (Buddy 1): every E body motion sends, unpacked as the laptop
    would.  g_tele_count counts motion bodies; g_tele_last is the newest.
-   g_tele_full: tele_mbf has no room, so the send returns E_TMOUT. */
+   g_tele_full: tele_mbf has no room, so the send returns E_TMOUT.
+   g_tele_dst is S.dst as comms_task's fold() works it out (cm since the
+   last motion state change, rebased on a new state, unsigned difference
+   modulo 32768, clamped to 255); g_tele_dst_max is its largest value. */
 static int		g_tele_count;
 static int		g_tele_bad;
 static int		g_tele_full;
 static T_COMM_W_BODY	g_tele_last;
+static int		g_fold_have;
+static uint16_t		g_fold_base;
+static uint32_t		g_tele_dst;
+static uint32_t		g_tele_dst_max;
 ER comms_tele_send(const UB *body, INT length)
 {
 	T_COMM_W_BODY	b;
+	uint32_t	cm;
 
 	if (g_tele_full) {
 		return E_TMOUT;
@@ -333,6 +341,13 @@ ER comms_tele_send(const UB *body, INT length)
 		g_tele_bad++;
 		return E_PAR;
 	}
+	if (!g_fold_have || (b.motion_state != g_tele_last.motion_state)) {
+		g_fold_base = b.dist_mm;
+		g_fold_have = 1;
+	}
+	cm = comm_w_dist_delta_mm(b.dist_mm, g_fold_base) / 10u;
+	g_tele_dst = (cm > 255u) ? 255u : cm;
+	if (g_tele_dst > g_tele_dst_max) { g_tele_dst_max = g_tele_dst; }
 	g_tele_last = b;
 	g_tele_count++;
 	return E_OK;
@@ -626,6 +641,10 @@ sim_reset (const char *p_name)
 	g_tele_count = 0;
 	g_tele_bad = 0;
 	g_tele_full = 0;
+	g_fold_have = 0;
+	g_fold_base = 0u;
+	g_tele_dst = 0u;
+	g_tele_dst_max = 0u;
 	(void)memset(&g_tele_last, 0, sizeof(g_tele_last));
 	g_cmd_n[0] = g_cmd_n[1] = 0;
 	memset(&g_line, 0, sizeof g_line);
@@ -1138,8 +1157,10 @@ scenario_statechart (void)
 	CHECK(g_ctx.tele_dropped == 1u);
 	CHECK(g_tele_bad == 0);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
-	CHECK(g_tele_last.dist_mm	/* a resume keeps the mission's distance */
-	      == (uint16_t)((uint32_t)(d_paused - d_ready) & 0x7FFFu));
+	/* a resume keeps the mission's distance: its travel, at least the net
+	   distance (the sim car rocks a little under the PID) */
+	CHECK((g_tele_last.dist_mm >= (uint16_t)(d_paused - d_ready))
+	      && (g_tele_last.dist_mm <= (uint16_t)(d_paused - d_ready + 2)));
 }
 
 /* Line Following steering (S4, 30 Oct).  A small error, below one count
@@ -1276,12 +1297,14 @@ scenario_line_follow_soft (void)
 /* A stall while driving: the statechart goes to Motion Fault, the brake
    is written before MOTION_FAULT reaches nav, and the line says so. */
 /* E motion once a second while a wheel moves, nothing while still; the
-   distance it carries starts again at a new mission (Section 4) and is
-   kept on a resume. */
+   distance it carries is the travel in this mission, forward or back, so
+   comms_task's S.dst grows and never jumps; it starts again at a new
+   mission (Section 4) and is kept on a resume; a refused send is tried
+   again. */
 static void
 scenario_telemetry (void)
 {
-	int32_t d_start;
+	uint16_t d_paused;
 	int i;
 
 	sim_reset("telemetry: E motion once a second while moving, mission distance");
@@ -1296,8 +1319,8 @@ scenario_telemetry (void)
 	sim_ticks(300);					/* standing still */
 	CHECK(g_tele_count == 3);	/* one more for the last push, then nothing */
 	CHECK(g_tele_last.speed_l == 128u);		/* stopped */
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)g_ctx.ds_mm & 0x7FFFu));
-	d_start = g_ctx.ds_mm;
+	CHECK(labs((long)g_tele_last.dist_mm - lround(250.0 * 4.0 * DS_MM_PER_COUNT)) <= 1);
+	CHECK((g_tele_dst > 0u) && (g_tele_dst < 255u));	/* S.dst grew in Idle */
 
 	g_mission = MS_RUNNING;				/* a new mission */
 	sim_tick();
@@ -1307,25 +1330,46 @@ scenario_telemetry (void)
 	g_mission = MS_PAUSED;				/* stops, Idle */
 	sim_tick();
 	CHECK(g_tele_count == 5);
-	for (i = 0; i < 120; i++) { ds_move_tick(4.0, 4.0); }	/* pushed while paused */
+	d_paused = g_tele_last.dist_mm;
+	for (i = 0; i < 120; i++) { ds_move_tick(-4.0, -4.0); }	/* pushed back */
 	sim_ticks(150);
 	CHECK(g_tele_count == 7);
-	CHECK(g_ctx.ds_mm > d_start);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)(g_ctx.ds_mm - d_start) & 0x7FFFu));
+	CHECK(labs((long)g_tele_last.dist_mm
+		   - ((long)d_paused + lround(120.0 * 4.0 * DS_MM_PER_COUNT))) <= 1);
+	CHECK(labs((long)g_tele_dst - lround(120.0 * 4.0 * DS_MM_PER_COUNT) / 10) <= 1);
+	CHECK(g_tele_dst_max < 255u);			/* backwards adds, never wraps */
 	g_mission = MS_RUNNING;				/* a resume */
 	sim_tick();
 	CHECK(g_tele_count == 8);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)(g_ctx.ds_mm - d_start) & 0x7FFFu));
+	CHECK(labs((long)g_tele_last.dist_mm
+		   - ((long)d_paused + lround(120.0 * 4.0 * DS_MM_PER_COUNT))) <= 2);
+
+	g_tele_full = 1;				/* tele_mbf full */
 	g_mission = MS_PAUSED;
 	sim_tick();
+	CHECK(g_tele_count == 8);			/* LINE_FOLLOW -> IDLE refused */
+	CHECK(g_ctx.tele_dropped == 1u);
+	g_tele_full = 0;
+	sim_ticks(20);
+	CHECK(g_tele_count == 9);			/* tried again, 100 ms on */
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
+	sim_ticks(300);
+	CHECK(g_tele_count == 9);			/* once */
+
 	g_mission = MS_READY;				/* reset button */
 	sim_tick();
 	g_mission = MS_RUNNING;				/* the next mission */
 	sim_tick();
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
 	CHECK(g_tele_last.dist_mm == 0u);
+	g_mission = MS_FINISHED;
+	sim_tick();
+	for (i = 0; i < 50; i++) { ds_move_tick(4.0, 4.0); }
+	g_mission = MS_RUNNING;		/* a Ready shorter than a tick: still new */
+	sim_tick();
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);
 	CHECK(g_tele_bad == 0);
-	CHECK(g_ctx.tele_dropped == 0u);
 }
 
 static void
@@ -2312,6 +2356,9 @@ scenario_reverse (void)
 	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
 	CHECK(g_ctx.faults == 0u);
 	CHECK(t < 300);					/* inside scan's 5 s */
+	/* S.dst grew through the reverse (records 1 s and 2 s in), never the
+	   ~32 m a falling distance would give */
+	CHECK((g_tele_dst_max >= 6u) && (g_tele_dst_max <= 18u));
 
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);	/* false alarm */
 	sim_tick();
