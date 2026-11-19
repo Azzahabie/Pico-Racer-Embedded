@@ -30,6 +30,18 @@ EXPORT BOOL safety_tilted(void)	{ return tilt_n >= SAFETY_TILT_N; }
 EXPORT INT safety_tilt_run(void)	{ return tilt_n; }
 EXPORT BOOL safety_no_data(void)	{ return bad_n >= SAFETY_BAD_N; }
 
+/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0, and the
+   5987 mg glitch (4 Nov 04:41:36, "raw mean x=5987 y=5987 z=5987") reads
+   the same on all three axes.  Neither is a reading.  Counted as good,
+   the glitch's ~10 g is outside the jolt band, so safety_step() ignored
+   it and no stop could fire while it lasted; as a bad read it ends in
+   the no-data fault after SAFETY_BAD_N.  A real reading with all three
+   axes equal to the mg needs the car ~55 deg over, already past T. */
+EXPORT BOOL safety_read_ok(W x, W y, W z)
+{
+	return !(x == y && y == z);
+}
+
 /* Tilt is the sideways part of gravity, |x, y|, so it works whichever
    way the car leans.  A jolt also pushes x and y, but it pulls |a| away
    from 1 g, so samples outside SAFETY_G_LO_MG..SAFETY_G_HI_MG neither

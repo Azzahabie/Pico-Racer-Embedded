@@ -200,6 +200,38 @@ int main(void)
 	safety_step(TRUE, 0, 0, 1000);
 	expect(!safety_no_data(), "a good read: data again");
 
+	/* What counts as a reading (raw mg, before the offsets). */
+	expect(!safety_read_ok(0, 0, 0), "read: 0, 0, 0 (chip reset) is bad");
+	expect(!safety_read_ok(5987, 5987, 5987),
+	       "read: x = y = z = 5987 (the glitch) is bad");
+	expect(safety_read_ok(30, -10, 1070), "read: level car is good");
+	expect(safety_read_ok(0, 0, 1000), "read: 0, 0, 1000 is good");
+	expect(safety_read_ok(577, 577, 578), "read: one mg apart is good");
+
+	/* The glitch mid-run (offsets x 30, y -10, z 70 removed, as
+	   imu_task does).  Counted as a read it is ~10 g, outside the jolt
+	   band: no event ever, so no stop could fire while it lasted. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 1000; i++) {
+		ev |= safety_step(TRUE, 5987 - 30, 5987 + 10, 5987 - 70);
+	}
+	expect(ev == 0 && !safety_no_data(),
+	       "glitch as a read: silent (why it is a bad read now)");
+	/* As a bad read: re-init on the 2nd, the no-data fault on the 5th
+	   (50 ms, NFR-13), after a level car. */
+	safety_reset();
+	for (i = 0; i < 10; i++) safety_step(safety_read_ok(30, -10, 1070),
+					      0, 0, 1000);
+	for (i = 1, at = 0, ev = 0; i <= 20; i++) {
+		UINT e = safety_step(safety_read_ok(5987, 5987, 5987),
+				     5987 - 30, 5987 + 10, 5987 - 70);
+		if ((e & SAFETY_EV_NO_DATA) != 0 && at == 0) at = i;
+		ev |= e;
+	}
+	expect(at == SAFETY_BAD_N && (ev & SAFETY_EV_REINIT) != 0,
+	       "glitch as a bad read: re-init, then no data at 50 ms");
+	expect(safety_no_data(), "glitch lasting: no data (IMU fault)");
+
 	/* 4 bad, 1 good, 4 bad: never 5 in a row (rderr 31/s on the car). */
 	safety_reset();
 	for (i = 0, ev = 0; i < 50; i++) {

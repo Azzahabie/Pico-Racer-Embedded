@@ -502,8 +502,21 @@ time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake unde
    uses it.
 14. **The 5987 mg boot glitch** (x = y = z = 5987 mg at some boots, Week 10): cause
    not found; **0 of 4** logged boots on 2–3 Nov (plus ~8 unlogged reboots after
-   flashing). Demo day: after power-on check the `[imu] cal ok` line; if it shows
-   5987, power off and on, then recalibrate.
+   flashing). Seen again on 4 Nov at a GP20 recalibration (`trials_batch2`
+   04:41:36, `raw mean x=5987 y=5987 z=5987`). Demo day: after power-on check the
+   `[imu] cal ok` line; if it shows 5987, power off and on, then recalibrate.
+   **Mid-run:** the reads used to count as good, and their ~10 g is outside the
+   jolt band (0.7–1.3 g), so every IMU stop (tilt, upside down, no data) was
+   silent while it lasted. Now a sample with x = y = z counts as a bad read
+   (`safety_read_ok()`, as 0, 0, 0 already did): the chip is set up again after
+   2, and a glitch that lasts 50 ms ends in the NFR-13 no-data fault, which stops
+   the car in a mission. Trade-off: a stop for a glitch instead of a car that
+   drives on with no IMU stop; a real reading with all three axes equal to the
+   mg needs the car ~55° over (calculated), already past T. Calibration does not
+   use the check, so the `not level, raw mean x=5987 ...` line still shows it.
+   Host tests only; it is only known that the 100-sample means were equal (the
+   spread passed), not each sample, so a glitch whose axes differ by a mg would
+   still pass as a reading (an `IMU_VERBOSE` or `IMU_CSV` log of it would tell).
 15. **A probable false tilt fault mid-run** (4 Nov, `trials_batch1` 04:12:15,
    trial 4, contact "no"): the status lines before it read `turning LEFT 16 / 39
    deg/s, 48 mm/s, level` (04:12:13.6, 04:12:14.6; line following on a curve),

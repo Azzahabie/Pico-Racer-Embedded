@@ -771,10 +771,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		dmm = motion_ds_delta_mm(ds, ds_prev);	/* this sample */
 		ds_prev = ds;
 
-		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0:
-		   powered down, not a reading. */
+		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0,
+		   and the 5987 mg glitch x = y = z: not readings, so a glitch
+		   that lasts ends in the no-data fault (safety_read_ok). */
 		er = read_sample(a, m, &got_mag, (k % MAG_EVERY) == 0);
-		ok = er >= E_OK && (a[0] != 0 || a[1] != 0 || a[2] != 0);
+		ok = er >= E_OK && safety_read_ok(a[0], a[1], a[2]);
 		if(ok) {
 			for(i = 0; i < 3; i++) a[i] -= acc_ofs[i];
 		}

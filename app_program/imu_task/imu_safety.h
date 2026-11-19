@@ -36,8 +36,13 @@
 
 IMPORT void safety_reset(void);
 
-/* One sample.  ok: the read succeeded and was not all zeros (a chip that
- * reset reads 0, 0, 0).  ax, ay, az: acceleration in mg, offsets
+/* Is a raw sample (mg, offsets not yet removed) a reading at all?  FALSE
+ * for 0, 0, 0 (a chip that reset) and for x == y == z (the 5987 mg
+ * glitch): pass the answer to safety_step() as ok. */
+IMPORT BOOL safety_read_ok(W x, W y, W z);
+
+/* One sample.  ok: the read succeeded and safety_read_ok() passed it
+ * (not 0, 0, 0, not x == y == z).  ax, ay, az: acceleration in mg, offsets
  * removed, so a level car reads 0, 0, 1000.  Each event is returned
  * once, when it first happens; it is returned again only after a good
  * (or level) sample in between. */
