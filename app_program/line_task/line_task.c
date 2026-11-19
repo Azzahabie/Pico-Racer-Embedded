@@ -15,6 +15,8 @@
  * (barcode_judged_word, barcode_cmd_word), the next black under GP7 is
  * the junction (junction_arm.h).  The travel for that comes from
  * distance_state (motion_ds.h, one aligned load, core 1 like imu_task).
+ * The junction side counts GP7's runs after the capture's glitch filter
+ * (bar_capture_black), so both see the same runs.
  */
 
 #include <tk/tkernel.h>
@@ -252,6 +254,8 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	line_junction_gate_t	gate;
 	jarm_event_t	arm_event;
 	jarm_event_t	cancel_event;
+	bar_event_t	cap_event;
+	BOOL		seen;		/* GP7 after the glitch filter */
 	uint32_t	judged;
 	uint32_t	cmd_now;
 	uint32_t	ds_now;
@@ -344,8 +348,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		ds_prev = ds_now;
 		judged = barcode_judged_word();
 		cmd_now = barcode_cmd_word();
+		seen = bar_capture_black(&g_cap) ? TRUE : FALSE;
 		arm_event = junction_arm_step(&g_arm, judged, cmd_now,
-					      black ? true : false,
+					      seen ? true : false,
 					      (uint32_t)((moved < 0) ? -moved : moved),
 					      bar_capture_in_read(&g_cap), &gate);
 #endif
@@ -363,7 +368,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
 				     adc_ok ? true : false,
 				     (0U != LINE_BARCODE_HOLD) && (0U < holdoff),
-				     black ? true : false, &gate, &out);
+				     seen ? true : false, &gate, &out);
 #else
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
 				adc_ok ? true : false,
@@ -375,14 +380,14 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		if(out.junction) {
 #if LINE_JUNCTION_RULE
 			armed_junction = junction_arm_used(&g_arm) ? TRUE : FALSE;
-			/* the crossbar opened a read of its own: drop it, so it
-			   neither holds line_state for its quiet zone nor prints
-			   a reject (a read past a sheet's 29 widths is kept, for
-			   its width dump) */
-			if(bar_capture_reading(&g_cap) && (0U == g_cap.count)) {
-				send_bar(bar_capture_abort(&g_cap, BAR_ABORT_JUNCTION),
-					 (uint16_t)BAR_ABORT_JUNCTION);
-			}
+			/* the crossbar is not a bar: a read it opened itself is
+			   dropped, so it neither holds line_state for its quiet
+			   zone nor prints a reject; a read with widths before it
+			   (a speck, a dropout, an unreadable sheet) ENDs there,
+			   and barcode_task prints those widths */
+			cap_event = bar_capture_junction(&g_cap);
+			send_bar(cap_event, (BAR_EV_END == cap_event)
+				 ? g_cap.count : (uint16_t)BAR_ABORT_JUNCTION);
 #endif
 			tell_nav(NAV_FLG_JUNCTION);
 		}

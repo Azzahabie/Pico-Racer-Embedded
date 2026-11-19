@@ -53,7 +53,8 @@ typedef struct {
  * What the barcode side tells the junction detector, every sample
  * (LINE_JUNCTION_RULE 1, from junction_arm_step()):
  *   in_read   bars of an open barcode read are arriving: GP7's black run
- *             is a bar, never a junction, however long;
+ *             is a bar, never a junction, unless it is too long to be a
+ *             bar of that read (bar_capture_in_read());
  *   armed_due a complete barcode armed the junction and GP7's black run
  *             has confirmed it (LINE_ARMED_CONFIRM_MM): fire now;
  *   wait      a complete read is waiting for barcode_task's verdict: a
@@ -86,7 +87,8 @@ void line_track_disarm_junction(line_track_t *trk);
  * One sample.  adc_ok false = the ADC read failed (counts as a fault).
  * barcode_hold true = a barcode is under the car: rl/steer/error held at 0;
  * the dark time and the lost bit still follow the real sensors.
- * mark_black = the barcode sensor (GP7) reads black; a long enough run of
+ * mark_black = the barcode sensor (GP7) reads black (with a gate, after
+ * the capture's glitch filter, bar_capture_black()); a long enough run of
  * it is the junction (LINE_JUNCTION_SAMPLES).  rl 11 is never a junction:
  * both sensors are inside the line whenever the car is centred.
  */

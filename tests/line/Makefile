@@ -36,12 +36,17 @@ JA_DEPS := test_junction_arm.c check.h $(JA_SRC) $(SRC_DIR)/bar_capture.h \
            $(SRC_DIR)/barcode_rx.h $(SRC_DIR)/junction_arm.h $(SRC_DIR)/line_track.h \
            ../../app_program/common/line_config.h
 # The branch's rule before the barcode-armed junction: length only, END
-# after the quiet zone, quiet factor 4, one split in the decoder.  Not in
-# the default run: it is expected to FAIL the envelope checks.
+# after the quiet zone, quiet factor 4, one split in the decoder, no glitch
+# filter.  Not in the default run: it is expected to FAIL the envelope
+# checks.
 OLD_RULE := -DLINE_JUNCTION_RULE=0 -DBARCODE_END_ON_STOP=0 \
-            -DBARCODE_Q_WIDTH_FACTOR=4 -DBARCODE_DECODE_SPLIT=0
+            -DBARCODE_Q_WIDTH_FACTOR=4 -DBARCODE_DECODE_SPLIT=0 \
+            -DBARCODE_GLITCH_TICKS=0 -DBARCODE_NOT_BAR_RATIO_X10=0
+# The barcode-armed junction without the H1 fix (no glitch filter, no
+# "not a bar" inside a read): expected to FAIL the H1 checks.
+H1_OFF := -DBARCODE_GLITCH_TICKS=0 -DBARCODE_NOT_BAR_RATIO_X10=0
 
-.PHONY: test clean junction_old
+.PHONY: test clean junction_old junction_h1_off
 test: $(BINS)
 	@for t in $(BINS); do ./$$t || exit 1; done
 
@@ -81,11 +86,18 @@ test_junction_arm: $(JA_DEPS)
 test_junction_old: $(JA_DEPS)
 	$(CC) $(BASE) $(OLD_RULE) -o $@ test_junction_arm.c $(JA_SRC)
 
+test_junction_h1_off: $(JA_DEPS)
+	$(CC) $(BASE) $(H1_OFF) -o $@ test_junction_arm.c $(JA_SRC)
+
 # make -C tests/line junction_old: shows what the old rule gets wrong
 junction_old: test_junction_old
 	-./test_junction_old
 
+# make -C tests/line junction_h1_off: shows what the H1 fix fixes
+junction_h1_off: test_junction_h1_off
+	-./test_junction_h1_off
+
 clean:
-	rm -f $(BINS) test_junction_old
+	rm -f $(BINS) test_junction_old test_junction_h1_off
 
 .DEFAULT_GOAL := test

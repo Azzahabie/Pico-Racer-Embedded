@@ -72,6 +72,70 @@
 #define BARCODE_W_LONG_TICKS                      (2000u)
 #define BARCODE_READ_MAX_TICKS         (BARCODE_SCAN_MAX_US / 1000u)
 
+/* Glitch filter (bar_capture.c): every GP7 sample goes through it before
+   the capture and, with LINE_JUNCTION_RULE 1, before the junction side.
+   A black or white run this many samples or shorter counts as the level
+   either side of it.  GP7 drops out inside a black run: "B63 w4 B24", 4
+   ms of white inside 91 ms of black, on 4 Nov
+   (tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196).  3 is far
+   below the narrowest real bar or space: 2 mm at base 8 is 31 ms, and
+   1 mm (a 2 mm bar read 1 mm thin) with GP7 20 % fast is 13 ms (C).
+   Every edge is seen this many samples late (0.2 mm at base 8, C); widths
+   are unchanged.  A longer dropout is left to "not a bar" below.  0: no
+   filter, as before (-DBARCODE_GLITCH_TICKS=0). */
+#ifndef BARCODE_GLITCH_TICKS
+#define BARCODE_GLITCH_TICKS                      (3u)
+#endif
+
+/* Not a bar (bar_capture.c; it matters with LINE_JUNCTION_RULE 1).
+   Before, no black run inside an open read with 1-28 widths was a
+   junction, so a crossbar that started inside one never fired, armed or
+   not (H1, checker, 19 Nov): after a dropout inside the crossbar longer
+   than the filter, a speck or sheet edge in the quiet zone before it, or
+   an unreadable sheet close before it.  Now a black run inside an open
+   read is not a bar once it is longer than BARCODE_NOT_BAR_RATIO_X10 / 10
+   times the widest width of the read before the space in front of it
+   (that space may be the gap to the crossbar, any length up to the quiet
+   zone, so it is left out).  The junction rules then apply to the run as
+   to any other (armed: LINE_ARMED_CONFIRM_MM; otherwise J_n), and when a
+   junction fires the read ENDs there: barcode_task judges and prints the
+   widths before the crossbar (malformed), and the rest of the crossbar
+   opens no read.
+   2.5 (the checker's figure) from a read's 11th width on: by then the
+   widths before the last space include a wide one (from any bar of *X*,
+   either way round, at most 8 narrow elements come before a wide one, C),
+   and no bar long enough for either rule (7.1 mm: J_n at base 4 with GP7
+   20 % slow, C) is more than 2.1 times a wide element (wide bar 1 mm
+   wider, wide space 1 mm narrower, GP7's speed +/-20 %, C).
+   Before the 11th width, BARCODE_NOT_BAR_EARLY_X10, 7: the widest width
+   so far may be a narrow one and the run a wide bar (the reversed start
+   character's wide bar is its 3rd width), up to 6.3 times a narrow bar
+   (3 x, the bars 1 mm thin, GP7 +/-20 %, C).  So a speck before the
+   crossbar must be under 18 / 7 = 2.6 mm (C), and the junction then
+   fires 7 x the speck into the crossbar: 14 mm for a 2 mm speck (host
+   test).  Except the 3rd width after a dropout, a space under
+   1 / BARCODE_DROPOUT_DIV of the bar before it, which no barcode's space
+   is (at least 0.22 of it: a 2 mm bar read 3 mm wide, its space 1 mm,
+   GP7 +/-20 %, C): there the ratio is 2.5.  Armed, a 4 ms dropout up to
+   5 mm into the crossbar fires (sim, base 4/6/8); later ones leave less
+   than 10 mm after them.  By the length rule, up to 4-5 mm at base 4 and
+   6, and never at base 8, where J_n is the whole crossbar (C).
+   Sim, the size envelope (63180 reads: narrow 2-6 mm, wide 2-3 x, base
+   4/6/8, GP7's speed +/-0/10/20 %, blur -1..+1 mm, 26 letters), 42120
+   more with half of them read backwards, and two sheets before one
+   junction: the same reads decode and 0 junctions fire inside barcodes,
+   with and without it.  0: off, as before
+   (-DBARCODE_NOT_BAR_RATIO_X10=0). */
+#ifndef BARCODE_NOT_BAR_RATIO_X10
+#define BARCODE_NOT_BAR_RATIO_X10                 (25u)
+#endif
+#ifndef BARCODE_NOT_BAR_EARLY_X10
+#define BARCODE_NOT_BAR_EARLY_X10                 (70u)
+#endif
+#ifndef BARCODE_DROPOUT_DIV
+#define BARCODE_DROPOUT_DIV                       (5u)
+#endif
+
 /* Compiled-in letter -> movement table, used until a valid map arrives
    (MQTT_SCHEMA.md 8.3).  The letters are only given on the day, so it is
    off: until a map is loaded every letter is rejected as unknown and no
@@ -307,6 +371,14 @@
 #endif
 #if (LINE_ARMED_MIN_SAMPLES < 1u) || (LINE_ARMED_VERDICT_WAIT_MS < 1u)
 #error "LINE_ARMED_MIN_SAMPLES and LINE_ARMED_VERDICT_WAIT_MS must be at least 1"
+#endif
+#if BARCODE_GLITCH_TICKS > 10u
+#error "BARCODE_GLITCH_TICKS must be 0..10: the narrowest real bar is about 13 ms"
+#endif
+#if (BARCODE_NOT_BAR_RATIO_X10 != 0u) && \
+    ((BARCODE_NOT_BAR_RATIO_X10 < 20u) || (BARCODE_NOT_BAR_EARLY_X10 < BARCODE_NOT_BAR_RATIO_X10) || \
+     (BARCODE_DROPOUT_DIV < 1u))
+#error "BARCODE_NOT_BAR_RATIO_X10 must be 0 or at least 20, _EARLY_X10 at least as big, BARCODE_DROPOUT_DIV at least 1"
 #endif
 
 #endif

@@ -8,6 +8,12 @@
 #ifndef BARCODE_END_ON_STOP
 #error "BARCODE_END_ON_STOP must come from line_config.h"
 #endif
+#ifndef BARCODE_GLITCH_TICKS
+#error "BARCODE_GLITCH_TICKS must come from line_config.h"
+#endif
+#ifndef BARCODE_NOT_BAR_RATIO_X10
+#error "BARCODE_NOT_BAR_RATIO_X10 must come from line_config.h"
+#endif
 
 void bar_capture_init(bar_capture_t *cap)
 {
@@ -22,6 +28,10 @@ void bar_capture_init(bar_capture_t *cap)
 	cap->end_due = false;
 	cap->complete = false;
 	cap->letter = '\0';
+	cap->seen = false;
+	cap->pending = 0u;
+	cap->widest = 0u;
+	cap->widest_before = 0u;
 }
 
 bool bar_capture_busy(const bar_capture_t *cap)
@@ -34,10 +44,47 @@ bool bar_capture_reading(const bar_capture_t *cap)
 	return cap->phase == BAR_ACTIVE;
 }
 
+bool bar_capture_black(const bar_capture_t *cap)
+{
+	return cap->seen;
+}
+
+/* From any bar of a one-letter read, either way round, at most 8 narrow
+   elements come before a wide one (C, from the Code 39 patterns), so from
+   a read's 11th width on, its widths before the last space include a
+   wide one, even in a read that started part way through a barcode. */
+#define NOT_BAR_LATE_COUNT (10u)
+
+/* The current black run is too long to be a bar of this read
+   (line_config.h, BARCODE_NOT_BAR_RATIO_X10): longer than a ratio times
+   the widest width before the space in front of it.  That space is left
+   out because it may be the gap to the crossbar, any length up to the
+   quiet zone.  Before the 11th width that widest width may be a narrow
+   one and the run a wide bar, so the ratio is BARCODE_NOT_BAR_EARLY_X10;
+   from the 11th width on it is BARCODE_NOT_BAR_RATIO_X10, and also at
+   the 3rd width when the space before it was a dropout: under
+   1 / BARCODE_DROPOUT_DIV of the bar before it, which no space of a
+   barcode is. */
+static bool not_a_bar(const bar_capture_t *cap)
+{
+	uint32_t ratio = BARCODE_NOT_BAR_RATIO_X10;
+
+	if ((ratio == 0u) || !cap->level || (cap->count < 2u)) {
+		return false;
+	}
+	if ((cap->count < NOT_BAR_LATE_COUNT) &&
+	    ((cap->count != 2u) ||
+	     ((cap->first[1] * BARCODE_DROPOUT_DIV) >= cap->first[0]))) {
+		ratio = BARCODE_NOT_BAR_EARLY_X10;
+	}
+	return ((uint32_t)cap->run * 10u) > (ratio * (uint32_t)cap->widest_before);
+}
+
 bool bar_capture_in_read(const bar_capture_t *cap)
 {
 	return (cap->phase == BAR_ACTIVE) && (cap->count > 0u) &&
-	       ((cap->count < BAR_ONE_LETTER_WIDTHS) || cap->end_due);
+	       (cap->end_due ||
+		((cap->count < BAR_ONE_LETTER_WIDTHS) && !not_a_bar(cap)));
 }
 
 /* The first 29 widths decode as one valid *X* (either way round). */
@@ -125,11 +172,44 @@ bar_event_t bar_capture_abort(bar_capture_t *cap, bar_abort_t reason)
 	return abort_read(cap, reason);
 }
 
+bar_event_t bar_capture_junction(bar_capture_t *cap)
+{
+	if ((cap->phase != BAR_ACTIVE) || cap->end_due) {
+		return BAR_EV_NONE;
+	}
+	if (cap->count == 0u) {
+		return abort_read(cap, BAR_ABORT_JUNCTION);
+	}
+	/* the widths before the crossbar go to barcode_task; wait for quiet */
+	cap->phase = BAR_DISCARD;
+	cap->run = 0u;
+	return BAR_EV_END;
+}
+
+/* The glitch filter: the capture sees an edge only once GP7 has read the
+   other way for more than BARCODE_GLITCH_TICKS samples running.  A
+   shorter run counts as the level around it; a longer one is seen that
+   many samples late at both ends, so its width is unchanged. */
+static bool deglitch(bar_capture_t *cap, bool black)
+{
+	if (black == cap->seen) {
+		cap->pending = 0u;
+	} else if (++cap->pending > BARCODE_GLITCH_TICKS) {
+		cap->seen = black;
+		cap->pending = 0u;
+	} else {
+		/* not yet: still the level before */
+	}
+	return cap->seen;
+}
+
 bar_event_t bar_capture_step(bar_capture_t *cap, bool black, uint16_t *width)
 {
+	bool seen = deglitch(cap, black);
+
 	switch (cap->phase) {
 	case BAR_IDLE:
-		if (black) {
+		if (seen) {
 			cap->phase = BAR_ACTIVE;
 			cap->level = true;
 			cap->run = 1u;
@@ -141,12 +221,14 @@ bar_event_t bar_capture_step(bar_capture_t *cap, bool black, uint16_t *width)
 			cap->end_due = false;
 			cap->complete = false;
 			cap->letter = '\0';
+			cap->widest = 0u;
+			cap->widest_before = 0u;
 		}
 		return BAR_EV_NONE;
 
 	case BAR_DISCARD:
 		/* the rest of the abandoned barcode must not start a new read */
-		if (black) {
+		if (seen) {
 			cap->run = 0u;
 		} else if (++cap->run >= BARCODE_Q_TICKS) {
 			cap->phase = BAR_IDLE;
@@ -169,11 +251,11 @@ bar_event_t bar_capture_step(bar_capture_t *cap, bool black, uint16_t *width)
 	if (++cap->ticks > BARCODE_READ_MAX_TICKS) {
 		return abort_read(cap, BAR_ABORT_TIMEOUT);
 	}
-	if (black == cap->level) {
+	if (seen == cap->level) {
 		if (cap->run < UINT16_MAX) {
 			cap->run++;
 		}
-		if (!black && (cap->run >= quiet_ticks(cap))) {
+		if (!seen && (cap->run >= quiet_ticks(cap))) {
 			cap->phase = BAR_IDLE;	/* trailing white is not a width */
 			return BAR_EV_END;
 		}
@@ -198,7 +280,11 @@ bar_event_t bar_capture_step(bar_capture_t *cap, bool black, uint16_t *width)
 	if (cap->run < cap->narrowest) {
 		cap->narrowest = cap->run;
 	}
-	cap->level = black;
+	cap->widest_before = cap->widest;
+	if (cap->run > cap->widest) {
+		cap->widest = cap->run;
+	}
+	cap->level = seen;
 	cap->run = 1u;
 	check_complete(cap);
 	return BAR_EV_WIDTH;

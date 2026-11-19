@@ -34,6 +34,7 @@ line/test_barcode_pipeline
 line/test_line_state
 line/test_junction_arm
 line/test_junction_old
+line/test_junction_h1_off
 scan_logic_test
 host/test_messages
 # macOS clang debug folders, if the tests are run outside Docker

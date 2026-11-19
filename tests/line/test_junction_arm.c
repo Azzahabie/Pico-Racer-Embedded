@@ -142,6 +142,7 @@ static unsigned ev_armed;
 static unsigned ev_rejected;
 static unsigned ev_no_verdict;
 static unsigned ev_disarm_dist;
+static unsigned junction_ends;	/* reads ENDed by a junction (widths before it) */
 
 static void chain_reset(bool table_loaded)
 {
@@ -186,6 +187,7 @@ static void chain_reset(bool table_loaded)
 	ev_rejected = 0u;
 	ev_no_verdict = 0u;
 	ev_disarm_dist = 0u;
+	junction_ends = 0u;
 	nsegs = 0u;
 	crossbar_a = -1.0;
 	crossbar_b = -1.0;
@@ -257,7 +259,9 @@ static void sample(bool black)
 	barcode_task_model();
 #if LINE_JUNCTION_RULE
 	{
-		jarm_event_t je = junction_arm_step(&arm, judged, cmd_word, black,
+		/* the junction side counts GP7 after the capture's filter */
+		bool seen = bar_capture_black(&cap);
+		jarm_event_t je = junction_arm_step(&arm, judged, cmd_word, seen,
 						    ds_mm - ds_prev,
 						    bar_capture_in_read(&cap), &gate);
 
@@ -266,8 +270,8 @@ static void sample(bool black)
 		ev_rejected += (je == JARM_EV_REJECTED) ? 1u : 0u;
 		ev_no_verdict += (je == JARM_EV_NO_VERDICT) ? 1u : 0u;
 		ev_disarm_dist += (je == JARM_EV_DISARM_DISTANCE) ? 1u : 0u;
+		line_track_step_gate(&trk, RAW_B, RAW_B, true, false, seen, &gate, &out);
 	}
-	line_track_step_gate(&trk, RAW_B, RAW_B, true, false, black, &gate, &out);
 #else
 	line_track_step(&trk, RAW_B, RAW_B, true, false, black, &out);
 #endif
@@ -275,10 +279,14 @@ static void sample(bool black)
 		bool pending = barcode_cmd_pending(cmd_word, nav_taken);
 
 #if LINE_JUNCTION_RULE
+		bar_event_t jev;
+
 		(void)junction_arm_used(&arm);
-		if (bar_capture_reading(&cap) && (cap.count == 0u)) {	/* the crossbar's read */
-			q_send(bar_capture_abort(&cap, BAR_ABORT_JUNCTION),
-			       (uint16_t)BAR_ABORT_JUNCTION);
+		jev = bar_capture_junction(&cap);	/* the crossbar is not a bar */
+		if (jev != BAR_EV_NONE) {
+			q_send(jev, (jev == BAR_EV_END) ? cap.count
+						      : (uint16_t)BAR_ABORT_JUNCTION);
+			junction_ends += (jev == BAR_EV_END) ? 1u : 0u;
 		}
 #endif
 		junctions++;
@@ -666,6 +674,224 @@ static void test_fallback(void)
 }
 #endif
 
+#if LINE_JUNCTION_RULE
+/* H1 (checker, 19 Nov): a crossbar that starts inside an open read with
+   1-28 widths fired nothing, armed or not, because no black run inside a
+   read was a junction.  Each case below must give exactly one junction,
+   at the crossbar, and none before it. */
+typedef struct {
+	unsigned runs;
+	unsigned once;		/* one junction, at the crossbar, none before */
+	unsigned letter_ok;	/* nav found the expected command (or none) */
+	double into_max;
+} h1_tally_t;
+
+/* A white gap of exactly n samples at about x on GP7's path (drive()
+   from -40 mm at a steady base): it starts half a sample past a sample,
+   so the n samples it covers do not depend on rounding. */
+static void white_gap(double c1, double x, unsigned n, unsigned base)
+{
+	double v = (double)base * 100.0 * MM_PER_COUNT / 1000.0;
+	double a = -40.0 + ((double)(unsigned long)((x + 40.0) / v) + 0.5) * v;
+
+	black_run(c1, a, 0.0);
+	black_run(a + (double)n * v, c1 + CROSSBAR_MM, 0.0);
+	crossbar_a = c1;
+	crossbar_b = c1 + CROSSBAR_MM;
+}
+
+static void h1_count(h1_tally_t *t)
+{
+	t->runs++;
+	t->once += ((junctions == 1u) && (j_cross == 1u) && (j_before == 0u)) ? 1u : 0u;
+	t->letter_ok += (j_letter == want) ? 1u : 0u;
+	if (j_into > t->into_max) {
+		t->into_max = j_into;
+	}
+}
+
+/* Sheet B (LEFT in this table) to arm the junction, or none; returns
+   where the crossbar starts: 40 mm after the sheet, or at 60 mm. */
+static double h1_start(bool armed)
+{
+	chain_reset(true);
+	want = armed ? 'B' : '-';
+	return armed ? sheet('B', 3.0, 3.0, 0.0, 0.0) + 40.0 : 60.0;
+}
+
+static void test_h1_crossbar_in_read(void)
+{
+	static const unsigned bases[] = { 4u, 6u, 8u };
+	static const unsigned blip_ms[] = { 1u, 2u, 3u };
+	static const double blip_at[] = { 0.5, 12.0, 12.0 };
+	h1_tally_t drop, speck, blip, unread;
+	double into = 0.0;
+	unsigned b;
+	unsigned k;
+	int armed;
+	double c1;
+
+	(void)memset(&drop, 0, sizeof(drop));
+	(void)memset(&speck, 0, sizeof(speck));
+	(void)memset(&blip, 0, sizeof(blip));
+	(void)memset(&unread, 0, sizeof(unread));
+
+	/* 1. armed sheet, a 4 ms white dropout 3 mm into the crossbar (the
+	   GP7 log has one: trials_batch2_2026-11-04.txt:196, B63 w4 B24),
+	   one sample longer than a glitch the filter merges.  Then a second
+	   crossroad 300 mm on, no sheet: the command was used at the first,
+	   so nav finds none there. */
+	for (b = 0u; b < 3u; ++b) {
+		c1 = h1_start(true);
+		white_gap(c1, c1 + 3.0, 4u, bases[b]);
+		drive(-40.0, c1 + 100.0, bases[b], 0.0);
+		h1_count(&drop);
+		CHECK(junction_ends == 1u);	/* the 2-width read ENDed there */
+		CHECK(verdicts == 2u);		/* the sheet, then that read */
+		crossbar(c1 + 300.0, 0.0);
+		j_cross = 0u;
+		j_letter = '?';
+		drive(gp7_x, c1 + 400.0, bases[b], 0.0);
+		CHECK((j_cross == 1u) && (j_letter == '-'));
+	}
+
+	/* 2. a 2 mm speck (a brush of the line, a sheet edge) 5 and 10 mm
+	   before the crossbar, armed and not */
+	for (armed = 1; armed >= 0; --armed) {
+		for (k = 0u; k < 2u; ++k) {
+			double gap = (k == 0u) ? 5.0 : 10.0;
+
+			for (b = 0u; b < 3u; ++b) {
+				c1 = h1_start(armed != 0);
+				black_run(c1 - gap - 2.0, c1 - gap, 0.0);
+				crossbar(c1, 0.0);
+				drive(-40.0, c1 + 100.0, bases[b], 0.0);
+				h1_count(&speck);
+				CHECK(junction_ends == 1u);
+			}
+		}
+	}
+
+	/* 3. a 1 ms white blip 0.5 mm into the crossbar, armed and not; and
+	   2 or 3 ms at 12 mm in, where the rest of the crossbar is shorter
+	   than either rule: the junction side counts GP7 after the filter */
+	for (armed = 1; armed >= 0; --armed) {
+		for (k = 0u; k < 3u; ++k) {
+			for (b = 0u; b < 3u; ++b) {
+				c1 = h1_start(armed != 0);
+				white_gap(c1, c1 + blip_at[k], blip_ms[k], bases[b]);
+				drive(-40.0, c1 + 100.0, bases[b], 0.0);
+				h1_count(&blip);
+				CHECK(junction_ends == 0u);	/* one run: the crossbar's own read */
+			}
+		}
+	}
+
+	/* 4. an unreadable sheet (tape over it, merged bars): 9, 11 or 13
+	   equal 3 mm bars (17, 21, 25 widths), the crossbar 5 or 10 mm
+	   after, inside the read's quiet zone (6 x 3 mm) */
+	for (k = 0u; k < 6u; ++k) {
+		unsigned nb = 9u + 2u * (k % 3u);
+		double gap = (k < 3u) ? 5.0 : 10.0;
+		unsigned i;
+
+		for (b = 0u; b < 3u; ++b) {
+			chain_reset(true);
+			want = '-';
+			for (i = 0u; i < nb; ++i) {
+				black_run((double)i * 6.0, (double)i * 6.0 + 3.0, 0.0);
+			}
+			crossbar((double)(nb - 1u) * 6.0 + 3.0 + gap, 0.0);
+			drive(-40.0, crossbar_b + 100.0, bases[b], 0.0);
+			/* base 8: the length rule's J_n 280 is 17.8 mm, at the
+			   crossbar's very end (C); it fires there or not at all */
+			if (bases[b] != 8u) {
+				h1_count(&unread);
+				CHECK(junction_ends == 1u);
+				CHECK((verdicts == 1u) && (first_verdict.reject == BARCODE_REJECT_DECODE));
+			} else {
+				CHECK((j_before == 0u) && (junctions <= 1u));
+			}
+		}
+	}
+
+	into = (drop.into_max > into) ? drop.into_max : into;
+	into = (speck.into_max > into) ? speck.into_max : into;
+	into = (blip.into_max > into) ? blip.into_max : into;
+	into = (unread.into_max > into) ? unread.into_max : into;
+	(void)printf("  H1, crossbar inside an open read (base 4/6/8): dropout %u/%u, speck %u/%u, "
+		     "blip %u/%u, unreadable sheet %u/%u fire once at the crossbar "
+		     "(the latest %.1f mm in)\n",
+		     drop.once, drop.runs, speck.once, speck.runs, blip.once, blip.runs,
+		     unread.once, unread.runs, into);
+	CHECK((drop.once == drop.runs) && (drop.letter_ok == drop.runs));
+	CHECK((speck.once == speck.runs) && (speck.letter_ok == speck.runs));
+	CHECK((blip.once == blip.runs) && (blip.letter_ok == blip.runs));
+	CHECK(unread.once == unread.runs);
+}
+
+/* What the H1 fix must not do: fire inside a barcode.  A second sheet
+   before the same junction, read either way round, at 2-6 mm bars, 2-3 x,
+   base 4/6/8, blur -1..+1 mm, GP7's speed steady and +/-20 %: no
+   junction before the crossbar, and the second sheet's command is used
+   wherever it decoded.  Its first black runs are where a bar can be
+   several times every width before it (the reversed start character's
+   wide bar is its 3rd width, and a read that began part way through a
+   barcode can have 8 narrow widths before a wide bar). */
+static void test_h1_no_junction_in_barcodes(void)
+{
+	static const double ns[] = { 2.0, 3.0, 4.0, 6.0 };
+	static const double rs[] = { 2.0, 3.0 };
+	static const unsigned bases[] = { 4u, 6u, 8u };
+	static const double es[] = { -1.0, 0.0, 1.0 };
+	static const double amps[] = { 0.0, 0.2 };
+	unsigned runs = 0u;
+	unsigned inside = 0u;
+	unsigned a, b, c, d, f;
+	int rev;
+
+	for (rev = 0; rev <= 1; ++rev)
+	for (a = 0u; a < 4u; ++a) for (b = 0u; b < 2u; ++b) for (c = 0u; c < 3u; ++c)
+	for (d = 0u; d < 3u; ++d) for (f = 0u; f < 2u; ++f) {
+		double x;
+		uint16_t w[29];
+		unsigned m = 0u;
+		unsigned i;
+		unsigned s;
+		char text[3] = { '*', 'H', '*' };
+
+		chain_reset(true);
+		want = 'H';
+		x = sheet('A', 3.0, 3.0, 0.0, 0.0) + 20.0;
+		for (s = 0u; s < 3u; ++s) {
+			const char *p = patterns[(text[s] == '*') ? 26 : (text[s] - 'A')];
+
+			for (i = 0u; i < 9u; ++i) {
+				w[m++] = (uint16_t)((p[i] == 'W') ? 2u : 1u);
+			}
+			if (s < 2u) {
+				w[m++] = 1u;
+			}
+		}
+		for (i = 0u; i < 29u; ++i) {
+			double wi = ((rev ? w[28u - i] : w[i]) == 2u) ? ns[a] * rs[b] : ns[a];
+
+			if ((i % 2u) == 0u) {
+				black_run(x, x + wi, es[d]);
+			}
+			x += wi;
+		}
+		crossbar(x + 30.0, es[d]);
+		drive(-40.0, crossbar_b + 60.0, bases[c], amps[f]);
+		runs++;
+		inside += j_before;
+	}
+	(void)printf("  a second sheet either way round before the junction: %u runs, "
+		     "junctions inside a barcode %u\n", runs, inside);
+	CHECK(inside == 0u);
+}
+#endif
+
 /* While the bars of a read arrive, a long bar is never a junction: the
    6 mm sheet's 18 mm wide bars at base 4 (567 ms of black, C) under the
    length rule alone fired one per wide bar. */
@@ -707,6 +933,8 @@ int main(void)
 	test_disarm();
 	test_two_sheets();
 	test_fallback();
+	test_h1_crossbar_in_read();
+	test_h1_no_junction_in_barcodes();
 #endif
 	return check_report("barcode-armed junction");
 }

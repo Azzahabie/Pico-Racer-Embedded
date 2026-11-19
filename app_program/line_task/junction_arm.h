@@ -73,7 +73,8 @@ void junction_arm_read_done(junction_arm_t *arm, uint8_t read_id, char letter,
 /*
  * One sample.  judged = barcode_task's judged word (barcode_rx.h), cmd =
  * barcode_cmd_word(), loaded in that order (barcode_task stores the
- * command first), black = GP7, moved_mm = travel since the last call,
+ * command first), black = GP7 after the capture's glitch filter
+ * (bar_capture_black()), moved_mm = travel since the last call,
  * in_read = bar_capture_in_read() (bars of an open read are arriving).
  * Fills the gate for line_track_step_gate() and returns what to print.
  */

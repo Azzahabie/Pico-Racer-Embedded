@@ -91,7 +91,15 @@ Neither task drives the motors.
      for its verdict waits up to `LINE_ARMED_VERDICT_WAIT_MS` (50 ms).
 
   While the bars of a read arrive (past its first black run and short of
-  29 widths), no black run is a junction, however long. A rejected read
+  29 widths), a black run is a bar, not a junction, unless it is too long
+  to be a bar of that read ("Not a bar" under Capture below). Without
+  that, a crossbar that started inside such a read never fired, armed or
+  not (H1, checker, 19 Nov): after a dropout in the crossbar, a speck or
+  sheet edge just before it, or an unreadable sheet close before it. When
+  a junction fires inside an open read, the read ENDs there: `barcode_task`
+  prints the widths before the crossbar as a malformed reject (for
+  example `2 widths`, `0: B63 w4` for a dropout 3 mm into the crossbar at
+  base 6), and the rest of the crossbar opens no read. A rejected read
   (malformed, unknown letter, no table) does not arm. The arming ends at
   the junction, after `LINE_ARMED_HOLD_MM` (150 mm, a guess: D_hold,
   week6_design_review.md assumption 2) of travel with no junction (the
@@ -153,7 +161,9 @@ Neither task drives the motors.
   It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
   samples running. A read's first black run is not blocked, because the
   crossbar starts a capture of its own; with `LINE_JUNCTION_RULE` 1 a run
-  while the bars of a read arrive is.
+  while the bars of a read arrive is, unless it is too long to be a bar.
+  With rule 1 the junction side counts GP7's runs after the capture's
+  glitch filter.
 - **Barcode hold (`LINE_BARCODE_HOLD`, default 1, today's behaviour):**
   while a barcode is being read, and `BARCODE_JUNCTION_HOLDOFF_MS` after, the
   word's rl/steer/error are held at 0 and its barcode bit is set, so motion
@@ -209,6 +219,10 @@ the course photos (19 Nov):
   | decoded reads with the command at the crossbar junction | 22268 | 49217 (all) |
   | crossbar missed | 9516 (base 8) | 2374 (base 8, undecoded reads only) |
 
+  The H1 fix (glitch filter, "not a bar") leaves every number in the "now"
+  column the same (sim, re-run 19 Nov), and so does reading half of 42120
+  reads backwards: 0 junctions inside a barcode, 0 wrong letters.
+
   Gap from the last bar to the crossbar that works for all 26 letters:
   before, about 4 × narrow (10 mm for 2 mm bars, 12 for 3, 20 for 4, 25
   for 6); now 0 (a sheet printed right up to the crossbar), except 2 mm
@@ -231,6 +245,30 @@ the course photos (19 Nov):
     last bar. If that bar runs on into a crossbar printed against it, the
     read is tried with the bar taken as narrow (the 21st width) once the
     run is twice that.
+  - **Glitch filter** (`BARCODE_GLITCH_TICKS` 3): a GP7 run of black or
+    white 3 samples or shorter counts as the level either side of it, for
+    the capture and for the junction side, so a 1-3 ms dropout inside the
+    crossbar neither opens nor splits a read. GP7 has done it: `B63 w4
+    B24` (`tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196`). The
+    narrowest real bar is 31 ms (2 mm at base 8), 13 ms read 1 mm thin
+    with GP7 20 % fast (C). Edges are seen 3 ms late; widths are unchanged.
+  - **Not a bar** (`BARCODE_NOT_BAR_RATIO_X10` 25): inside an open read, a
+    black run longer than 2.5 × the widest width before the space in front
+    of it is not a bar; the junction rules apply to it (armed: 10 mm;
+    otherwise J_n). That space is left out because it may be the gap to
+    the crossbar. 2.5 holds from the read's 11th width on: by then a wide
+    element has gone by (from any bar of `*X*`, at most 8 narrow elements
+    come before a wide one, C), and no bar long enough for either rule is
+    over 2.1 × a wide element (C). Before that the ratio is 7
+    (`BARCODE_NOT_BAR_EARLY_X10`): a reversed start character's 3rd width
+    is a wide bar, up to 6.3 × the narrow bar before it (C). So a speck in
+    front of the crossbar must be under 2.6 mm, and the junction fires 7 ×
+    the speck into the crossbar (14 mm for 2 mm, host test). After a
+    dropout (a first space under 1/5 of the first bar, which no barcode
+    space is, C) the ratio is 2.5 again: armed, a 4 ms dropout up to 5 mm
+    into the crossbar still fires (sim, base 4/6/8). Sim: the envelope
+    above and 42120 reads with half read backwards decode the same and
+    fire 0 junctions inside barcodes, with and without it.
   - Otherwise `END` after the quiet zone Q = max(`BARCODE_Q_TICKS`,
     `BARCODE_Q_WIDTH_FACTOR` 6 × the narrowest width). 6 (was 4): with
     the bars 0.5 mm wide and GP7's speed 10 % off, the course's 9 mm wide
@@ -253,7 +291,8 @@ the course photos (19 Nov):
   - The element count, start/stop, the gaps and the pattern are all checked.
 - **Rejected reads** (malformed, more than one letter, an unknown letter,
   aborted, widths lost) issue no command, keep any stored one, print the
-  reason (with the widths for malformed reads) and send letter 31.
+  reason (with the widths for malformed reads) and send letter 31. A read
+  ENDed by a junction is one of these: the widths before the crossbar.
 - **Action codes:** 0 FORWARD (straight), 1 LEFT, 2 RIGHT, 3 U_TURN.
 - **Table:**
   - **The letters are only given on the day**, so no table is compiled in
@@ -408,10 +447,10 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, about 9-10 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail |
+| `test_junction_arm` | the barcode-armed junction end to end, 1 ms samples through capture, messages, `barcode_task`'s store (modelled, with a latency), `junction_arm` and the gate: every size (narrow 2-6 mm, wide 2-3 ×, base 4/6/8, blur ±0.5 mm) decodes, fires exactly one junction at the crossbar with the command and none inside the barcode, 8.9-10.3 mm into the crossbar; the course sheet with GP7's speed ±10-20 % and blur ±1 mm; the crossbar 0-80 mm after the sheet; the command stored before the flag with `barcode_task` up to 40 ms late, and a dead `barcode_task`; noise, a malformed read and an unknown letter do not arm; D_hold and a mission change disarm; two sheets before one junction; the length-rule fallback, and its crossbar read dropped. H1, at base 4/6/8: a 4 ms dropout 3 mm into the crossbar after an armed sheet (and the next crossroad finds no command), a 2 mm speck 5 and 10 mm before the crossbar, a 1 ms white 0.5 mm in and 2-3 ms at 12 mm in, armed and not, and an unreadable sheet of 17/21/25 widths 5-10 mm before it, each exactly one junction at the crossbar; a second sheet either way round before the junction (288 runs), none inside it. `make -C tests/line junction_old` builds it on the old rule: 11 of 13 checks fail; `make -C tests/line junction_h1_off` without the H1 fix: 34 of 150 fail |
 | `test_barcode_decode` (`tests/`) | every letter and 3 strings both ways with ±10-20 % edge bias; A-Z with bars 25-33 % of narrow wider and spaces narrower at wide 2-3 × (needs the bar/space split) |
 | `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), the barcode side's gate (bars arriving block, armed fires, a due junction waits for the verdict), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (`line_state`'s fault bit starts and ends, also under a barcode hold; the S.faults bit 4 glue in `line_task.c` is not host-tested) |
-| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks after, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor |
+| `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths; END at the stop character, a crossbar 2 ticks past the glitch filter, a sheet printed against the crossbar, 29 invalid widths; blur with steering against the quiet factor; the glitch filter (1-3 tick glitches in every bar and space of a sheet merged, 4 ticks kept, a short speck opens no read); not a bar (where a dropout, a speck, a reversed start, 8 narrow widths and an unreadable sheet stop being bars; no bar of any letter, either way, 6 blur and ratio cases, ever is not one); a read ENDed or dropped by a junction |
 | `test_barcode_action` | the table, map apply and reject, the command word; every action for every letter from a map; the writeup example as the laptop's 7 bytes; the comms vector; built again with a compiled-in table (`test_barcode_action_table`) |
 | `test_barcode_task` | `barcode_task.c`'s own loop on a fake kernel: the boot table line, a map from comms, each action stored from it, a map sent while a sheet is read (waits for the read), a map between a read and its junction (the stored command stays), a full map queue, a wrong length, a new mission; built three times (no table, a compiled-in table, one with a bad character) |
 | `test_line_state` | the word, and the motion statechart contract |

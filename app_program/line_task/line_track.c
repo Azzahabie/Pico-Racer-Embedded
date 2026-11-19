@@ -83,10 +83,11 @@ static uint32_t debounce(line_track_t *trk, uint32_t raw_rl)
 
 /* J_n GP7-black samples running = one event; then nothing until GP7 has
    been off the crossbar LINE_JUNCTION_REARM_SAMPLES running.  With a gate
-   (LINE_JUNCTION_RULE 1): never inside an open barcode read, an armed
-   junction fires once confirmed, and a due junction waits for the verdict
-   of a complete read.  With none, in_read, armed_due and wait are false
-   and this is the length rule alone. */
+   (LINE_JUNCTION_RULE 1): never on a bar of an open barcode read (a run
+   too long to be one is not), an armed junction fires once confirmed, and
+   a due junction waits for the verdict of a complete read.  With none,
+   in_read, armed_due and wait are false and this is the length rule
+   alone. */
 static bool junction_step(line_track_t *trk, bool mark_black,
 			  const line_junction_gate_t *gate)
 {
