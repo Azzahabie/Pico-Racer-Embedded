@@ -26,7 +26,7 @@ the integrated car, 1–3 Nov 2026, on branch `imu_task` (commits `1551f7d`,
 |---|---|---|---|
 | NFR-05 hump height | ±2 mm or 20 % (limit ±5 mm) | Demo hump (10 mm), self-driven: **14/14 within target**, mean 9.96 mm (−0.04), range 8.9–11.3 mm (§4.5). 23 mm, no longer required: target 3/4, limit 4/4 | ✅ |
 | FR-10 count each hump once | — | 18 self-driven crossings; two humps in one mission twice (10 + 23 mm; two 10 mm humps ~19 cm apart); obstacle stop on the hump, reversed off it, no second hump; 3 flat runs, 0 humps | ✅ |
-| FR-12 highest hump per mission | — | `humps: 2 (highest 28 mm)`; in `E imu` and `S.hgt` | ✅ |
+| FR-12 highest hump per mission | — | `humps: 2 (highest 28 mm)`; in `E imu` and `S.hgt` (correction, 19 Nov: these carried the hump in progress, else the last one; they carry the highest since then) | ✅ |
 | FR-23 IMU events in telemetry | — | **`E imu`** on every class change and hump-count change: class, count, height. `S.hum` / `S.hgt` now filled from it (read 0 before) | ✅ (new) |
 | FR-29 tilt and turn rate, 1 s | — | `S.tlt` from the 100 ms mean (0 on flat, 4–7 on the hump); `S.trn` left +, right − | ✅ |
 | FR-27 motion classes | — | moving, turning, climbing, descending, stopped match the car; impact A raised 1.5 → **2.5 g** (normal driving reached 2.0 g) | ✅ (impact not driven into a real obstacle; report-only since 19 Nov, see the update above) |

@@ -195,7 +195,7 @@ for a complete picture. Header (53 bits, §3) with `t = 0`, then:
 | 5 | `bar` | 0–25, 31 | last barcode **letter index**: 0 = `A` … 25 = `Z`, 31 = none yet. The reader adds 65 for ASCII (Buddy 3) |
 | 2 | `act` | 0–3 | action code the barcode mapped to (Buddy 3). Meaningless while `bar` = 31 |
 | 4 | `hum` | 0–15 | humps detected (Buddy 4) |
-| 8 | `hgt` | 0–255 mm | height of the last hump, clamped; 0 = none yet (Buddy 4) |
+| 8 | `hgt` | 0–255 mm | height of the highest hump this mission (FR-12), clamped; 0 = none yet, and again at each mission start (Buddy 4) |
 | 8 | `obs` | 0–255 cm | width of the last obstacle, clamped; 0 = none yet (Buddy 5) |
 | 2 | `byp` | 0–2 | bypass taken: 1 left, 2 right; 0 = none (Buddy 5) |
 | 3 | `mis` | 0–6 | mission state, 7 states (Vehicle Controller) |

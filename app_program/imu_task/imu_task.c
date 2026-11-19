@@ -563,17 +563,17 @@ LOCAL UW mg_deg(W mg)
 /* The E imu record (M6, FR-23): queued for comms_task on every motion
    class change and every change of the hump count (a hump counted, or the
    reset at mission start).  comms_task also fills S.hum and S.hgt from it,
-   so without it they read 0.  Height: the hump in progress, else the last
-   one.  comms_tele_send() never waits; a full queue counts a drop. */
+   so without it they read 0.  Height: the highest hump this mission
+   (FR-12), 0 until one is counted; it was the hump in progress, else the
+   last one, so a lower second hump replaced the highest in S.hgt.
+   comms_tele_send() never waits; a full queue counts a drop. */
 LOCAL void send_imu_record(void)
 {
 	UB	body[COMM_W_INTAKE_SIZE_IMU];
-	UW	hgt;
 
-	hgt = (hump_get_state() != HUMP_NONE && hump_height_mm() > 0)
-	      ? (UW)hump_height_mm() : hump_get_last_mm();
 	(void)comms_tele_send(body, (INT)comm_w_pack_imu(body,
-				(uint32_t)mclass_get(), hump_get_count(), hgt));
+				(uint32_t)mclass_get(), hump_get_count(),
+				hump_get_max_mm()));
 }
 
 /* Print what imu_events.c reported, one line per event, in words. */

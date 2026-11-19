@@ -170,11 +170,12 @@ none of it feeds the hump height or the safety check.
 | Lean / nose labels | `IMU_LEFT_SIGN` −1, `IMU_NOSE_SIGN` +1; lines say which side is up, e.g. `leaning LEFT 5 deg (right side up)` | book under the front wheels: `nose UP 15`; under the left wheels: `leaning RIGHT 10 (left side up)`; each on one axis only, so the board is square to the car |
 | Picked up / put down | 100 ms mean leaves the resting value by > 30 mg for 200 ms, wheels still; not for 500 ms after the wheels stop (`EV_SETTLE_WIN`) | every stop used to print a false `picked up` (braking rock); none after 3 stops in one run with the settle time |
 | Turns | MC_TURNING (> 20 °/s), **or a slow bend**: smoothed rate > 4 °/s held one way for 1 s; angle summed from 3 °/s; ends after 400 ms under 3 °/s; under 15° is a wiggle, not counted | the course bend (~45–50° right at 5–10 °/s) first counted as no turn ("1 left, 0 right" on a right-only course); now 1 right turn, 40° for a 44° heading change |
-| `S.tlt` (FR-29) | tilt of the last 100 ms mean of x and y | a single 10 ms sample read 8–18° on flat floor (motor vibration); now 0–1 on flat, 4–5 on the hump. The safety check still uses each sample |
+| `S.tlt` (FR-29) | tilt of the last 100 ms mean of x and y | a single 10 ms sample read 8–18° on flat floor (motor vibration); now 0–1 on flat, 4–5 on the hump. The safety check still uses each sample. Upside down it reads ~0 again (\|x, y\| is ~0 on its roof), so `S.tlt` is no evidence of the lift stop; `S faults=imu mis=6` is |
+| `E imu` height, `S.hgt` (FR-12) | the **highest** hump this mission, 0 until one is counted and again at each mission start. Until 19 Nov it was the hump in progress, else the last one, so a lower second hump replaced the highest | the two 10 mm humps gave `S.hum=2 S.hgt=10` (§4.5); higher-then-lower not driven, host test only (`tests/imu_hump`) |
 | `S.trn` (FR-29) | encoder turn rate, left positive | `turning LEFT 27 deg/s` → `trn=24`, right bend `trn=-47`, still `0`, at boot `n/a` |
 
-All of these cases are replayed on a PC: `tests/imu_hump` (29 scenarios, each one a
-pass that went wrong on the car) and `tests/imu_safety` (94 checks). Both pass.
+All of these cases are replayed on a PC: `tests/imu_hump` (30 scenarios, most of them
+a pass that went wrong on the car) and `tests/imu_safety` (114 checks). Both pass.
 
 ## 4. Results
 
@@ -536,7 +537,7 @@ time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake unde
 | FR-02 | ✅ nav waits for CAL_OK_IMU; CAL_FAIL → FAULT |
 | FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested); self-driven: 18 crossings, two humps in one mission (twice: 10 + 23 mm, and two 10 mm humps ~19 cm apart, each counted once), an obstacle stop on the hump with reversing off it, three flat runs with 0 humps (§4.5) |
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
-| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count and height in `E imu` and `S.hum` / `S.hgt` |
+| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count in `E imu` and `S.hum`, the highest in `E imu` and `S.hgt` (until 19 Nov `S.hgt` carried the last hump; the change is host-tested only, §3.6) |
 | FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
 | FR-27 | ✅ classifier running on the car under motor power: moving, turning, climbing, descending, stopped as expected. Impact (class 4, A = 2.5 g) is **report-only**: IMU collision detection was removed from the requirements (the prof, 19 Nov; §3.4) |
 | FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6). z below 0 (upside down) counts as tilted too (`d5f0120`, §5.2): host tests only |

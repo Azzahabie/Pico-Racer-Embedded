@@ -100,6 +100,11 @@ static const PT TWO[] = {
 	{ 0, 0 }, { 200, 0 }, { 310, 9 }, { 420, 0 }, { 720, 0 },
 	{ 900, 23 }, { 1080, 0 }, { 2000, 0 },
 };
+/* The same, the higher one first. */
+static const PT TWO_HIGH_FIRST[] = {
+	{ 0, 0 }, { 200, 0 }, { 380, 23 }, { 560, 0 }, { 860, 0 },
+	{ 970, 9 }, { 1080, 0 }, { 2000, 0 },
+};
 
 #define USE(t)	(trk = (t), ntrk = (int)(sizeof (t) / sizeof (t)[0]))
 
@@ -251,6 +256,18 @@ static void pivot_up_stop_back(void)
 static void two_humps(void)
 {
 	USE(TWO); stop(2); drive(1300, 50); stop(2);
+}
+
+/* The higher hump first: the highest (FR-12, what E imu and S.hgt carry)
+   stays 23 mm after the lower one, which is only the last. */
+static void two_humps_high_first(void)
+{
+	USE(TWO_HIGH_FIRST); stop(2); drive(1300, 50); stop(2);
+	if (hump_get_max_mm() < 21 || hump_get_max_mm() > 25
+	    || hump_get_last_mm() < 7 || hump_get_last_mm() > 11) _exit(3);
+	hump_mission_reset();
+	if (hump_get_max_mm() != 0) _exit(3);	/* a new mission: 0 again */
+	stop(2); drive(1800, 50); stop(2);	/* flat after the humps */
 }
 
 /* Up, stop, back, then on over the hump: the climbs are one hump each. */
@@ -407,6 +424,7 @@ static const SCENARIO scenarios[] = {
 	{ "reverse over",			reverse_over,		1 },
 	{ "pivot up, stop, back down",		pivot_up_stop_back,	1 },
 	{ "two course humps",			two_humps,		2 },
+	{ "higher first: highest kept, reset",	two_humps_high_first,	0 },
 	{ "up/stop/back, then over",		mixed,			2 },
 	{ "long top, straight over",		long_top_over,		1 },
 	{ "long top, nudge, back down",		long_top_nudge_back,	1 },
