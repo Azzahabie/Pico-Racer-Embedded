@@ -109,6 +109,22 @@ Neither task drives the motors.
   nobody), so it neither holds `line_state` for its quiet zone nor sends a
   reject. Host test `test_junction_arm` (the envelope below);
   `-DLINE_JUNCTION_RULE=0` builds the length rule alone for an A/B.
+
+  **Defaults that changed without car data** (each a guess until the car
+  session; each switch's `-D` builds the behaviour before it):
+
+  | Switch | Default | Before |
+  |---|---|---|
+  | `LINE_JUNCTION_RULE` (Hanis's decision) | 1, with 10 mm `LINE_ARMED_CONFIRM_MM`, 150 mm `LINE_ARMED_HOLD_MM`, 50 ms `LINE_ARMED_VERDICT_WAIT_MS`, all three guesses, none measured | `-DLINE_JUNCTION_RULE=0` |
+  | `BARCODE_END_ON_STOP` | 1 | `-DBARCODE_END_ON_STOP=0` (only with rule 0) |
+  | `BARCODE_DECODE_SPLIT` | 1 (no wrong letter in 21060 + 42120 sim reads) | `-DBARCODE_DECODE_SPLIT=0` |
+  | `BARCODE_Q_WIDTH_FACTOR` | 6 (trade-off under Capture) | `-DBARCODE_Q_WIDTH_FACTOR=4` |
+  | `BARCODE_GLITCH_TICKS` | 3 | `-DBARCODE_GLITCH_TICKS=0` |
+  | `BARCODE_NOT_BAR_RATIO_X10` | 25 | `-DBARCODE_NOT_BAR_RATIO_X10=0` |
+
+  All of them together are `OLD_RULE` in `tests/line/Makefile`. A `-D`
+  car image needs a clean tree and `make GCC="arm-none-eabi-gcc -D..."`:
+  `CFLAGS` is set with `:=` (`build_make/pico_rp2040.mk:257`).
 - **Junction, length rule (the fallback; alone with `LINE_JUNCTION_RULE`
   0):** GP26 and GP27 are closer together than the 18 mm line, so
   both read black (rl 11) whenever the car is centred. That is normal
@@ -273,7 +289,14 @@ the course photos (19 Nov):
     `BARCODE_Q_WIDTH_FACTOR` 6 × the narrowest width). 6 (was 4): with
     the bars 0.5 mm wide and GP7's speed 10 % off, the course's 9 mm wide
     space is 4.2 × its narrowest width (C), so 4 × ended reads inside the
-    barcode.
+    barcode. **The cost:** a GP7 black that does not decode (a brush of
+    the line, a seam, a failed sheet, the crossbar in a rule 0 image)
+    keeps its read open 6 × its width instead of 4 ×, and with
+    `LINE_BARCODE_HOLD` 1 the steering hold lasts as long (width + Q +
+    300 ms): the 124 ms blip of 4 Nov holds 1168 ms instead of 920 ms,
+    about 250 ms or 12 mm more blind at base 6 (C). Re-run with the H1
+    fix (sim, 63180 reads): factor 4 decodes 33679 and fires 1132
+    junctions inside barcodes, 6 decodes 49217 with none, so 6 stays.
   - `ABORT` on more than `BARCODE_W_MAX` widths, a width over
     `BARCODE_W_LONG_TICKS`, a read over `BARCODE_READ_MAX_TICKS`, a full
     `bar_mbf`, or a mission change.

@@ -38,9 +38,12 @@
    space narrower by the same amount.  The one split fails with wide 2 x
    narrow from about a quarter of the narrow width (0.75 mm on 3 mm
    bars), and with 3 x from about a third (1 mm); split apart, they decode
-   (tests/test_barcode_decode.c, up to a third).  BARCODE_SPLIT_MAX_RATIO:
-   the widest bar (space) at most this many times the narrowest bar
-   (space) of the symbol.  0: the one split only, as before. */
+   (tests/test_barcode_decode.c, up to a third).  No wrong letter in the
+   sim sweeps (the checker's 21060 reads; 42120 more, half read
+   backwards).  BARCODE_SPLIT_MAX_RATIO: the widest bar (space) at most
+   this many times the narrowest bar (space) of the symbol.  This default
+   changed without car data.  0: the one split only, as before
+   (-DBARCODE_DECODE_SPLIT=0). */
 #ifndef BARCODE_DECODE_SPLIT
 #define BARCODE_DECODE_SPLIT                      (1u)
 #endif
@@ -62,8 +65,22 @@
    course sheet (3 mm, 3:1) at base 6 with GP7's speed +/-10 % and the
    bars 0.5 mm off: 4 decodes 7 and 58 of 104 reads, 6 all 104.  A valid
    read no longer waits for Q (BARCODE_END_ON_STOP), so the longer Q only
-   delays the end of a read that does not decode.  -DBARCODE_Q_WIDTH_FACTOR=4
-   builds the old value. */
+   delays the end of a read that does not decode.
+   The cost of 6: a GP7 black that does not decode (a brush of the line,
+   a seam, a sheet that fails, the crossbar in a rule 0 image) keeps its
+   read open 6 x its width instead of 4 x, and with LINE_BARCODE_HOLD 1
+   the steering hold lasts as long (the width, Q, then
+   BARCODE_JUNCTION_HOLDOFF_MS 300): for the 124 ms blip of 4 Nov
+   (trials_batch1_2026-11-04.txt:2559) 1168 ms blind instead of 920 ms,
+   about 250 ms or 12 mm more at base 6 (C).  Before the H1 fix it also
+   widened the stretch in which a failed read swallowed the crossbar (18
+   mm instead of 12 for 3 mm bars, C); now that crossbar still fires
+   (BARCODE_NOT_BAR_RATIO_X10).  Re-run with the H1 fix (sim, the 63180
+   reads of the size envelope there): factor 4 decodes 33679 and fires 1132 junctions inside barcodes
+   (reads end at a wide space, and the rest of the barcode opens a read
+   of its own); 6 decodes 49217 with none.  So 6 stays.  This default
+   changed without car data.  -DBARCODE_Q_WIDTH_FACTOR=4 builds the old
+   value. */
 #define BARCODE_Q_TICKS                (BARCODE_SCAN_END_GAP_US / 1000u)
 #ifndef BARCODE_Q_WIDTH_FACTOR
 #define BARCODE_Q_WIDTH_FACTOR                    (6u)
@@ -227,8 +244,18 @@
    barcode_task has stored its command, the next black run GP7 sees is the
    junction, whatever its length (junction_arm.h).  While the bars of a
    read arrive, nothing is a junction.  With no barcode armed, the length
-   rule above is the fallback.  0: the length rule alone, as before (A/B).
-   The rule needs BARCODE_END_ON_STOP 1. */
+   rule above is the fallback.  This default changed without car data
+   (Hanis's decision, 19 Nov), and its three values below are guesses,
+   none measured, to confirm on the car: 10 mm (LINE_ARMED_CONFIRM_MM),
+   150 mm (LINE_ARMED_HOLD_MM) and 50 ms (LINE_ARMED_VERDICT_WAIT_MS).
+   0: the length rule alone, as before (-DLINE_JUNCTION_RULE=0, for the
+   A/B).  The rule needs BARCODE_END_ON_STOP 1.
+   Every switch back to the behaviour before these changes:
+   -DLINE_JUNCTION_RULE=0 -DBARCODE_END_ON_STOP=0 -DBARCODE_Q_WIDTH_FACTOR=4
+   -DBARCODE_DECODE_SPLIT=0 -DBARCODE_GLITCH_TICKS=0
+   -DBARCODE_NOT_BAR_RATIO_X10=0 (tests/line OLD_RULE).
+   A -D car image needs a clean tree and make GCC="arm-none-eabi-gcc
+   -D...": CFLAGS is set with := (build_make/pico_rp2040.mk:257). */
 #ifndef LINE_JUNCTION_RULE
 #define LINE_JUNCTION_RULE                        (1u)
 #endif
@@ -238,8 +265,9 @@
    after the quiet zone.  A crossbar closer behind the sheet than the
    quiet zone (BARCODE_Q_WIDTH_FACTOR x the narrowest width: 18 mm for
    the 3 mm bars, C) no longer joins the read and spoils it, and the
-   command is stored before the car reaches the crossbar.  0: always wait
-   for the quiet zone. */
+   command is stored before the car reaches the crossbar.  This default
+   changed without car data.  0: always wait for the quiet zone, as before
+   (-DBARCODE_END_ON_STOP=0, with -DLINE_JUNCTION_RULE=0). */
 #ifndef BARCODE_END_ON_STOP
 #define BARCODE_END_ON_STOP                       (1u)
 #endif
@@ -265,8 +293,8 @@
 /* D_hold (week6_design_review.md, assumption 2): an armed junction is
    disarmed after this much travel with no junction (the stored command
    stays for nav; only the junction falls back to the length rule).
-   150 mm is a GUESS to confirm on the car: it must be longer than the
-   gap from the last bar to the crossbar on the course. */
+   150 mm is a GUESS, not measured, to confirm on the car: it must be
+   longer than the gap from the last bar to the crossbar on the course. */
 #ifndef LINE_ARMED_HOLD_MM
 #define LINE_ARMED_HOLD_MM                        (150u)
 #endif
@@ -274,7 +302,8 @@
 /* After a complete read, a junction that is due waits at most this long
    (ms) for barcode_task (core 0) to judge the read and store its command,
    so nav finds it.  barcode_task wakes on the message; 50 ms is 2.4 mm at
-   base 6 (C). */
+   base 6 (C).  50 ms is a GUESS (barcode_task's real latency on the car
+   is not measured), to confirm on the car. */
 #ifndef LINE_ARMED_VERDICT_WAIT_MS
 #define LINE_ARMED_VERDICT_WAIT_MS                (50u)
 #endif
