@@ -164,10 +164,15 @@
  * W (sl_profile_t.width_mm: the [scan] profile line and E obstacle) gets
  * its own correction, and nothing plans with W.  240 = the fit to the car
  * scans (sim on the logged sweeps): 11 of the 13 trial sweeps of the box
- * read within 30 % of 90 mm.  Fitted to the 90 mm box only: the 3 Nov
- * bench scans of it at 250 mm still read high, and a 200 mm box now reads
- * low (sim on the logged bench scans; see docs/obstacle/requirements_status.md
- * section 7).  -DSL_WIDTH_REPORT_CORR_PER_1000=80 reports as before. */
+ * read within 30 % of 90 mm.  Fitted and checked on the same 13 sweeps:
+ * no held-out scan has checked it yet.  Fitted to the 90 mm box only: the
+ * 3 Nov bench scans of it at 250 mm still read high (0/5), and the 200 mm
+ * box at 200 mm goes from 5/5 within 30 % to 0/5 (78-123 mm; sim on the
+ * logged bench scans; see docs/obstacle/requirements_status.md section 7).
+ * W = k 80 edge span - 0.16 x (left + right edge distance), floored at 0,
+ * so a span under about 64 mm at 200 mm (C) reports width_cm 0, which the
+ * MQTT schema reads as "not reported yet" (docs/comms/MQTT_SCHEMA.md).
+ * -DSL_WIDTH_REPORT_CORR_PER_1000=80 reports as before. */
 #ifndef SL_WIDTH_REPORT_CORR_PER_1000
 #define SL_WIDTH_REPORT_CORR_PER_1000	240
 #endif

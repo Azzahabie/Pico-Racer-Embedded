@@ -200,6 +200,14 @@ through `tools/telemetry_viewer.py`). Logs in `logs/`.
   bypass swings wider (demo box: offset 261-306 mm vs 263 needed). A larger
   k would under-read wide boxes and shorten the offset (contact, as in S7).
   Cost: the reported width (`E obstacle`, `S.obs`) is 15-29 cm for a 9 cm box.
+  *(19 Nov proposal, `SL_WIDTH_REPORT_CORR_PER_1000` 240 for the reported
+  width only, the bypass keeps k = 0.080; sim on the logged scans, not yet
+  run on the car: the 9 cm box reports 8-9 cm at 200 mm (5/5) but still
+  17-20 cm at 250 mm, and 7-15 cm in the 4 Nov trial sweeps (11 of 13
+  within 30 %); the 200 mm box then reports 8-12 cm (0/5, was 5/5). k 240
+  was fitted and checked on those same 13 trial sweeps. An edge span under
+  about 64 mm at 200 mm reports 0 cm, which MQTT reads as "not reported
+  yet". See `docs/obstacle/requirements_status.md` §7, O1.)*
 - Margin to `SL_MAX_OFFSET_MM` (400) shrinks with distance: ~95 mm at
   200 mm, 34-67 mm at 250 mm; a cluttered run at 334 mm went over (421).
 
