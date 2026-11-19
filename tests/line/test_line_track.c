@@ -42,7 +42,7 @@ static unsigned feed_mark(unsigned n, uint16_t left, uint16_t right, bool hold,
 static unsigned feed_gate(unsigned n, bool mark, bool in_read, bool armed_due,
 			  bool wait)
 {
-	line_junction_gate_t gate = { in_read, armed_due, wait };
+	line_junction_gate_t gate = { in_read, armed_due, wait, false };
 	unsigned events = 0u;
 	unsigned i;
 

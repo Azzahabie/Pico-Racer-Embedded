@@ -17,6 +17,12 @@
  * distance_state (motion_ds.h, one aligned load, core 1 like imu_task).
  * The junction side counts GP7's runs after the capture's glitch filter
  * (bar_capture_black), so both see the same runs.
+ *
+ * The scan gate (LINE_SCAN_GATE 1, scan_gate.h): barcodes are only on
+ * straight segments (the prof's tip, 19 Nov), so a GP7 black that starts
+ * while motion's averaged turn rate is at or above LINE_SCAN_MAX_TURN_DPS
+ * opens no read and fires no junction by the length rule.  The armed
+ * junction is not gated.  Without distance_state it fails open.
  */
 
 #include <tk/tkernel.h>
@@ -37,10 +43,19 @@
 #include "barcode_task.h"
 #include "barcode_action.h"
 #include "junction_arm.h"
+#include "scan_gate.h"
 #include "../motor_task/motion_ds.h"
+#include "../motor_task/motor_task.h"
 
 #define IR_SAMPLE_MS		1	/* the 1 ms cadence (CNF_TIMER_PERIOD 1) */
 #define IR_COMMISSION_MS	100	/* print period with LINE_COMMISSIONING_MODE */
+#define IR_GATE_PRINT_MS	1000	/* at most one "ignored" line this often */
+
+#if LINE_JUNCTION_RULE
+#define IR_RULE_TEXT	"barcode-armed, length rule as fallback (LINE_JUNCTION_RULE 1)"
+#else
+#define IR_RULE_TEXT	"length only (LINE_JUNCTION_RULE 0)"
+#endif
 
 /* COMM_W_KIND_LINE states */
 #define TELE_LINE_ON		0U
@@ -56,6 +71,9 @@ LOCAL line_track_t	g_trk;
 LOCAL bar_capture_t	g_cap;
 #if LINE_JUNCTION_RULE
 LOCAL junction_arm_t	g_arm;
+#endif
+#if LINE_SCAN_GATE
+LOCAL scan_gate_t	g_gate;
 #endif
 
 EXPORT ID ir_sense_init(void)
@@ -214,6 +232,31 @@ LOCAL void print_arm(jarm_event_t event, mission_state_t mission)
 }
 #endif
 
+#if LINE_SCAN_GATE
+/* A GP7 black the scan gate turned away; more = others since the last
+   such line, not printed (IR_GATE_PRINT_MS). */
+LOCAL void print_ignored(UINT more)
+{
+	INT	avg = (INT)scan_gate_avg_x10(&g_gate);
+	UINT	size = (UINT)((avg < 0) ? -avg : avg);
+
+	tm_printf((UB *)"[line] GP7 black ignored: turning %u.%u deg/s %s (scan gate, limit %u): no read, no length-rule junction (%u more since the last line)\n",
+		  size / 10U, size % 10U, (avg < 0) ? "right" : "left",
+		  (UINT)LINE_SCAN_MAX_TURN_DPS, more);
+}
+
+/* distance_state lost or back: the gate fails open without it. */
+LOCAL void print_ds(BOOL available, BOOL motion_up)
+{
+	if(available) {
+		tm_printf((UB *)"[line] scan gate: distance_state back, no read starts while turning\n");
+	} else {
+		tm_printf((UB *)"[line] scan gate: no distance_state (%s): GP7 scans while turning too (fails open)\n",
+			  motion_up ? "counter stopped" : "motor_task_flag 0, bench image?");
+	}
+}
+#endif
+
 /* rl 11 is the centred car (both sensors inside the line): ON, not
    CROSSING.  CROSSING is GP7 on a junction's crossbar. */
 LOCAL UINT tele_line_state(const line_track_out_t *o)
@@ -250,18 +293,29 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	UINT		print_ms = 0U;
 	UINT		tele_state = TELE_LINE_UNSENT;	/* S.lin defaults to ON */
 	UINT		last_rl = LINE_RL_CENTRED;
-#if LINE_JUNCTION_RULE
+#if LINE_JUNCTION_RULE || LINE_SCAN_GATE
 	line_junction_gate_t	gate;
+	uint32_t	ds_now;
+#endif
+#if LINE_JUNCTION_RULE
 	jarm_event_t	arm_event;
 	jarm_event_t	cancel_event;
 	bar_event_t	cap_event;
 	BOOL		seen;		/* GP7 after the glitch filter */
 	uint32_t	judged;
 	uint32_t	cmd_now;
-	uint32_t	ds_now;
 	uint32_t	ds_prev = motion_ds_read();
 	int32_t		moved;
 	BOOL		armed_junction = FALSE;
+#endif
+#if LINE_SCAN_GATE
+	BOOL		scan_open;	/* a GP7 black may open a read */
+	BOOL		motion_up;
+	BOOL		ds_reported = TRUE;	/* distance_state as last printed */
+	uint16_t	ignored_seen = 0U;	/* g_cap.ignored as last counted */
+	UINT		ignored_more = 0U;	/* turned away, not yet printed */
+	UINT		gate_quiet = 0U;	/* ms until the next such line */
+	UINT		elapsed;
 #endif
 	BOOL		black;
 	BOOL		adc_ok;
@@ -282,6 +336,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	bar_capture_init(&g_cap);
 #if LINE_JUNCTION_RULE
 	junction_arm_init(&g_arm);
+#endif
+#if LINE_SCAN_GATE
+	scan_gate_init(&g_gate, motion_ds_read());
 #endif
 	ercd = line_reader_init(NULL);
 	if(E_OK > ercd) {
@@ -305,16 +362,37 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	tm_printf((UB *)"[line] ir_sense_task: line ADC GP%d/GP%d, barcode DO GP%d, 1 ms\n",
 		  (INT)LINE_SENSOR_LEFT_GPIO, (INT)LINE_SENSOR_RIGHT_GPIO,
 		  (INT)BARCODE_SENSOR_GPIO);
+#if LINE_SCAN_GATE
+	tm_printf((UB *)"[line] junction rule: " IR_RULE_TEXT " | scan gate on: GP7 black opens no read and no length-rule junction while the averaged turn rate is %u deg/s or more (LINE_SCAN_GATE 1)\n",
+		  (UINT)LINE_SCAN_MAX_TURN_DPS);
+#else
+	tm_printf((UB *)"[line] junction rule: " IR_RULE_TEXT " | scan gate off (LINE_SCAN_GATE 0)\n");
+#endif
 
 	while(1) {
 		missed = wait_tick();
 		missed_beat += missed;
 		missed_total += missed;
+#if LINE_SCAN_GATE
+		elapsed = 1U + missed;
+#endif
 
 		/* sample first, so the 1 ms cadence does not depend on the work */
 		raw = line_reader_read_raw();
 		adc_ok = (E_OK <= line_reader_last_error()) ? TRUE : FALSE;
 		black = barcode_scanner_read_black() ? TRUE : FALSE;
+#if LINE_JUNCTION_RULE || LINE_SCAN_GATE
+		/* distance_state, one load: the scan gate's turn rate and the
+		   armed junction's travel */
+		ds_now = motion_ds_read();
+#endif
+#if LINE_SCAN_GATE
+		/* before the capture: no read starts while the car turns */
+		motion_up = (0 < motor_task_flag()) ? TRUE : FALSE;
+		scan_open = scan_gate_step(&g_gate, ds_now, motion_up ? true : false,
+					   (uint32_t)elapsed) ? TRUE : FALSE;
+		bar_capture_set_gate(&g_cap, scan_open ? true : false);
+#endif
 
 		/* barcode: ticks missed (a long console line) still count as time */
 		capture_step(black);
@@ -343,7 +421,6 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		   0) stores them the other way round, so a read judged here
 		   always comes with its command (as function arguments the
 		   two loads would have no order) */
-		ds_now = motion_ds_read();
 		moved = motion_ds_delta_mm(ds_now, ds_prev);
 		ds_prev = ds_now;
 		judged = barcode_judged_word();
@@ -365,10 +442,25 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 			/* not held */
 		}
 #if LINE_JUNCTION_RULE
+		/* the scan gate shuts the length rule, never the armed junction */
+#if LINE_SCAN_GATE
+		gate.turning = scan_open ? false : true;
+#else
+		gate.turning = false;
+#endif
 		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
 				     adc_ok ? true : false,
 				     (0U != LINE_BARCODE_HOLD) && (0U < holdoff),
 				     seen ? true : false, &gate, &out);
+#elif LINE_SCAN_GATE
+		gate.in_read = false;
+		gate.armed_due = false;
+		gate.wait = false;
+		gate.turning = scan_open ? false : true;
+		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
+				     adc_ok ? true : false,
+				     (0U != LINE_BARCODE_HOLD) && (0U < holdoff),
+				     black ? true : false, &gate, &out);
 #else
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
 				adc_ok ? true : false,
@@ -465,6 +557,25 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		if(out.junction) {
 			tm_printf((UB *)"[line] junction (GP7 black %u ms) -> nav\n",
 				  (UINT)LINE_JUNCTION_SAMPLES);
+		}
+#endif
+
+#if LINE_SCAN_GATE
+		/* the scan gate's lines: a GP7 black turned away (at most one a
+		   second, counting the rest), and distance_state lost or back */
+		gate_quiet = (gate_quiet > elapsed) ? (gate_quiet - elapsed) : 0U;
+		if(g_cap.ignored != ignored_seen) {
+			ignored_more += (UINT)(uint16_t)(g_cap.ignored - ignored_seen);
+			ignored_seen = g_cap.ignored;
+			if(0U == gate_quiet) {
+				print_ignored(ignored_more - 1U);
+				ignored_more = 0U;
+				gate_quiet = IR_GATE_PRINT_MS;
+			}
+		}
+		if((g_gate.available ? TRUE : FALSE) != ds_reported) {
+			ds_reported = g_gate.available ? TRUE : FALSE;
+			print_ds(ds_reported, motion_up);
 		}
 #endif
 

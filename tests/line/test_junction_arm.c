@@ -15,8 +15,18 @@
    Built twice: the real rule, and, as test_junction_old (not in the
    default run), the branch's rule before it (length only, END after the
    quiet zone, quiet factor 4, one split in the decoder), which fails the
-   envelope checks: that is what the new rule fixes. */
+   envelope checks: that is what the new rule fixes.
 
+   The scan gate (LINE_SCAN_GATE, scan_gate.c) runs in line_task.c's
+   place, on distance_state built as motion publishes it (every 10 ms,
+   the counter +1, the turn rate of the model below in whole deg/s).  It
+   is also built with -DLINE_SCAN_GATE=0 (test_junction_arm_nogate, in the
+   default run): every test before the gate passes unchanged, and the
+   gate tests check the behaviour before it.  junction_scan_off (not in
+   the default run) builds the gate out but expects it: those tests
+   fail. */
+
+#include <math.h>
 #include <string.h>
 
 #include "check.h"
@@ -24,6 +34,13 @@
 #include "../../app_program/line_task/barcode_rx.h"
 #include "../../app_program/line_task/junction_arm.h"
 #include "../../app_program/line_task/line_track.h"
+#include "../../app_program/line_task/scan_gate.h"
+#include "../../app_program/motor_task/motion_ds.h"
+
+/* The gate tests expect what the build has, unless told otherwise. */
+#ifndef TEST_EXPECT_GATE
+#define TEST_EXPECT_GATE LINE_SCAN_GATE
+#endif
 
 #define RAW_B (3500u)		/* line sensors: both on the line */
 #define MM_PER_COUNT (3.14159265358979 * 64.0 / 2535.0)
@@ -126,6 +143,21 @@ static uint32_t ds_mm;		/* distance_state, whole mm */
 static uint32_t ds_prev;
 static double gp7_x;		/* mm */
 
+/* distance_state as motion_task publishes it, and the turn rate model:
+   curve_dps from GP7 at curve_x on, plus a weave of weave_amp deg/s at
+   weave_hz (sine, phase weave_ph) */
+static scan_gate_t sg;
+static uint32_t ds_word;
+static uint32_t ds_ctr;
+static bool motion_up;		/* motor_task_flag() > 0 */
+static bool ds_frozen;		/* motion_task stopped publishing */
+static double curve_x;
+static double curve_dps;
+static double weave_amp;
+static double weave_hz;
+static double weave_ph;
+static unsigned held_ms;	/* samples with a read open (the hold) */
+
 /* results */
 static unsigned verdicts;
 static barcode_verdict_t first_verdict;
@@ -191,6 +223,17 @@ static void chain_reset(bool table_loaded)
 	nsegs = 0u;
 	crossbar_a = -1.0;
 	crossbar_b = -1.0;
+	ds_ctr = 0u;
+	ds_word = motion_ds_pack(0, MOTION_DS_STEADY, 0u, 0);
+	scan_gate_init(&sg, ds_word);
+	motion_up = true;
+	ds_frozen = false;
+	curve_x = 1.0e9;
+	curve_dps = 0.0;
+	weave_amp = 0.0;
+	weave_hz = 1.0;
+	weave_ph = 0.0;
+	held_ms = 0u;
 	for (i = 0u; i < 300u; ++i) {		/* on the line, GP7 white */
 		line_track_step(&trk, RAW_B, RAW_B, true, false, false, &out);
 	}
@@ -236,7 +279,14 @@ static void barcode_task_model(void)
 static void sample(bool black)
 {
 	uint16_t width = 0u;
-	bar_event_t ev = bar_capture_step(&cap, black, &width);
+	bar_event_t ev;
+#if LINE_SCAN_GATE
+	/* the scan gate, before the capture */
+	bool scan_open = scan_gate_step(&sg, ds_word, motion_up, 1u);
+
+	bar_capture_set_gate(&cap, scan_open);
+#endif
+	ev = bar_capture_step(&cap, black, &width);
 
 	if (ev == BAR_EV_WIDTH) {
 		q_send(ev, width);
@@ -270,11 +320,21 @@ static void sample(bool black)
 		ev_rejected += (je == JARM_EV_REJECTED) ? 1u : 0u;
 		ev_no_verdict += (je == JARM_EV_NO_VERDICT) ? 1u : 0u;
 		ev_disarm_dist += (je == JARM_EV_DISARM_DISTANCE) ? 1u : 0u;
+#if LINE_SCAN_GATE
+		gate.turning = !scan_open;
+#endif
 		line_track_step_gate(&trk, RAW_B, RAW_B, true, false, seen, &gate, &out);
+	}
+#elif LINE_SCAN_GATE
+	{
+		line_junction_gate_t g0 = { false, false, false, !scan_open };
+
+		line_track_step_gate(&trk, RAW_B, RAW_B, true, false, black, &g0, &out);
 	}
 #else
 	line_track_step(&trk, RAW_B, RAW_B, true, false, black, &out);
 #endif
+	held_ms += bar_capture_reading(&cap) ? 1u : 0u;
 	if (out.junction) {
 		bool pending = barcode_cmd_pending(cmd_word, nav_taken);
 
@@ -311,6 +371,23 @@ static void sample(bool black)
 	}
 }
 
+/* motion_task's 10 ms publish of distance_state, with this turn rate */
+static void publish(double dps)
+{
+	if (!ds_frozen) {
+		ds_ctr++;
+		ds_word = motion_ds_pack((int32_t)ds_mm, MOTION_DS_STEADY, ds_ctr,
+					 (int32_t)lround(dps));
+	}
+}
+
+static double turn_model(void)
+{
+	return ((gp7_x >= curve_x) ? curve_dps : 0.0) +
+	       weave_amp * sin(2.0 * 3.14159265358979 * weave_hz * (double)now / 1000.0 +
+			       weave_ph);
+}
+
 /* Drive GP7 from x0 to x1 at the base speed; amp: GP7's speed varies
    +/-amp (a triangle wave of period 700 ms) while the car's does not. */
 static void drive(double x0, double x1, unsigned base, double amp)
@@ -326,6 +403,7 @@ static void drive(double x0, double x1, unsigned base, double amp)
 
 		if ((now % 10u) == 0u) {
 			ds_mm = (uint32_t)(v * (double)now);
+			publish(turn_model());
 		}
 		sample(black_at(gp7_x));
 		gp7_x += v * (1.0 + amp * tri);
@@ -907,6 +985,302 @@ static void test_h1_no_junction_in_barcodes(void)
 }
 #endif
 
+#if LINE_JUNCTION_RULE
+/* ---- The scan gate (the prof's tip, 19 Nov: barcodes are only on
+   straight segments) ---- */
+
+/* base 6: v / R in deg/s (C) */
+static double curve_rate(double radius_mm)
+{
+	double v = 6.0 * 100.0 * MM_PER_COUNT;	/* mm/s */
+
+	return v / radius_mm * 180.0 / 3.14159265358979;
+}
+
+/* The course sheet, the crossbar 40 mm after, from x0 at base 6. */
+static void sheet_run(char letter, double x0)
+{
+	double end;
+
+	want = letter;
+	end = sheet(letter, 3.0, 3.0, 0.0, 0.0);
+	crossbar(end + 40.0, 0.0);
+	drive(x0, crossbar_b + 100.0, 6u, 0.0);
+}
+
+/* A sheet on a straight, and on a straight where the car weaves +/-45
+   deg/s at 0.8, 1 and 1.25 Hz, 8 phases, after 300 mm of line
+   following: every read decodes, arms, and the crossbar fires with its
+   command; the gate never turns a black away. */
+static void test_scan_straight(void)
+{
+	static const double hzs[] = { 0.8, 1.0, 1.25 };
+	static const char letters[] = "ABEKMRUZ";
+	unsigned runs = 0u;
+	unsigned ok = 0u;
+	unsigned ignored = 0u;
+	unsigned f;
+	unsigned k;
+	unsigned l;
+
+	chain_reset(true);
+	sheet_run('C', -300.0);
+	CHECK((ev_armed == 1u) && (j_cross == 1u) && j_cmd_ok);
+	CHECK(sg.available && sg.open && (cap.ignored == 0u));
+
+	for (f = 0u; f < 3u; ++f) {
+		for (k = 0u; k < 8u; ++k) {
+			for (l = 0u; l < 8u; ++l) {
+				chain_reset(true);
+				weave_amp = 45.0;
+				weave_hz = hzs[f];
+				weave_ph = 2.0 * 3.14159265358979 * (double)k / 8.0;
+				sheet_run(letters[l], -300.0);
+				runs++;
+				ok += ((ev_armed == 1u) && (j_cross == 1u) && (junctions == 1u) &&
+				       j_cmd_ok) ? 1u : 0u;
+				ignored += cap.ignored;
+			}
+		}
+	}
+	(void)printf("  scan gate, weaving straight (+/-45 deg/s, 0.8-1.25 Hz): %u runs, "
+		     "decoded, armed and fired with the command %u, blacks turned away %u\n",
+		     runs, ok, ignored);
+	CHECK(ok == runs);
+	CHECK(ignored == 0u);
+}
+
+typedef struct {
+	unsigned opened;	/* reads opened */
+	unsigned fired;		/* junction events */
+	unsigned held;		/* ms with a read open (the steering hold) */
+	unsigned judged;	/* verdicts (rejects printed) */
+} sweep_t;
+
+/* GP7 sweeps the line on a curve: one black run of 3, 9, 15, 25 or
+   50 mm (63 ms to 1.05 s at base 6, C; 15 mm and more is past J_n 280),
+   each in a run of its own, d0 mm into the curve.  The curve (turn rate
+   dps) begins at x = 100 after 400 mm of straight line following.  Where
+   GP7 meets the line on a curve depends on its mount, not measured (S3);
+   the gate needs the averaged rate to rise first.  amp, hz, ph: a weave
+   on top (amp 0: none).  sweep_ds: 0 distance_state as usual, 1
+   motor_task_flag() 0, 2 motion_task not publishing. */
+static unsigned sweep_ds;
+
+static void curve_sweeps(double dps, double d0, double amp, double hz,
+			 double ph, sweep_t *r)
+{
+	static const double lens[] = { 3.0, 9.0, 15.0, 25.0, 50.0 };
+	unsigned i;
+
+	(void)memset(r, 0, sizeof(*r));
+	for (i = 0u; i < 5u; ++i) {
+		uint8_t id0;
+		double x = 100.0 + d0;
+
+		chain_reset(true);
+		want = '-';
+		weave_amp = amp;
+		weave_hz = hz;
+		weave_ph = ph;
+		motion_up = (sweep_ds != 1u);
+		ds_frozen = (sweep_ds == 2u);
+		curve_x = 100.0;
+		curve_dps = dps;
+		black_run(x, x + lens[i], 0.0);
+		id0 = cap.read_id;
+		drive(-300.0, x + lens[i] + 80.0, 6u, 0.0);
+		r->opened += (uint8_t)(cap.read_id - id0);
+		r->fired += junctions;
+		r->held += held_ms;
+		r->judged += verdicts;
+	}
+}
+
+static void test_scan_curves(void)
+{
+	static const double radii[] = { 150.0, 300.0 };
+	sweep_t r;
+	double from[2] = { 0.0, 0.0 };	/* the larger of the two directions */
+	unsigned c;
+	int dir;
+	unsigned k;
+
+	for (c = 0u; c < 2u; ++c) {
+		for (dir = -1; dir <= 1; dir += 2) {
+			double dps = (double)dir * curve_rate(radii[c]);
+			double d0;
+			double clear = -1.0;
+
+			/* from 100 mm into the curve (2.1 s at base 6) */
+			for (d0 = 100.0; d0 <= 160.0; d0 += 20.0) {
+				curve_sweeps(dps, d0, 0.0, 1.0, 0.0, &r);
+				if (TEST_EXPECT_GATE) {
+					CHECK((r.opened == 0u) && (r.fired == 0u));
+					CHECK((r.held == 0u) && (r.judged == 0u));
+				} else {
+					/* before the gate: every black opens a read, and
+					   the three past J_n fire junctions */
+					CHECK((r.opened == 5u) && (r.fired == 3u));
+					CHECK(r.held > 0u);
+				}
+			}
+			/* report: from how far in (5 mm steps) nothing opens */
+			for (d0 = 0.0; d0 <= 100.0; d0 += 5.0) {
+				curve_sweeps(dps, d0, 0.0, 1.0, 0.0, &r);
+				if ((r.opened == 0u) && (r.fired == 0u) && (clear < 0.0)) {
+					clear = d0;
+				} else if ((r.opened != 0u) || (r.fired != 0u)) {
+					clear = -1.0;
+				} else {
+					/* still nothing */
+				}
+			}
+			if ((clear < 0.0) || (from[c] < 0.0)) {
+				from[c] = -1.0;
+			} else if (clear > from[c]) {
+				from[c] = clear;
+			} else {
+				/* the other direction cleared later */
+			}
+		}
+	}
+	(void)printf("  scan gate, GP7 sweeping the line in a curve, both ways: nothing opens from "
+		     "%.0f mm into a 150 mm curve (%.1f deg/s), %.0f mm into a 300 mm curve "
+		     "(%.1f deg/s) (-1: something opens up to 100 mm in)\n",
+		     from[0], curve_rate(150.0), from[1], curve_rate(300.0));
+
+	/* a curve with the +/-45 deg/s weave on top, 8 phases, from 100 mm:
+	   the 150 mm curve stays shut; the 300 mm one (9.1 deg/s) is near
+	   the limit, so it is reported, not checked */
+	{
+		unsigned bad150 = 0u;
+		unsigned bad300 = 0u;
+		unsigned bad300_08 = 0u;
+
+		for (k = 0u; k < 8u; ++k) {
+			double phs = 2.0 * 3.14159265358979 * (double)k / 8.0;
+
+			curve_sweeps(curve_rate(150.0), 100.0, 45.0, 1.0, phs, &r);
+			bad150 += r.opened + r.fired;
+			curve_sweeps(curve_rate(300.0), 100.0, 45.0, 1.0, phs, &r);
+			bad300 += r.opened + r.fired;
+			curve_sweeps(curve_rate(300.0), 100.0, 45.0, 0.8, phs, &r);
+			bad300_08 += r.opened + r.fired;
+		}
+		(void)printf("  scan gate, curve plus the +/-45 deg/s weave, 8 phases, from 100 mm "
+			     "(64 without the gate: 40 reads, 24 junctions): reads opened + junctions "
+			     "150 mm 1 Hz %u, 300 mm 1 Hz %u, 300 mm 0.8 Hz %u\n",
+			     bad150, bad300, bad300_08);
+		if (TEST_EXPECT_GATE) {
+			CHECK(bad150 == 0u);
+		} else {
+			CHECK(bad150 > 0u);
+		}
+	}
+}
+/* The car turning on the spot at dps for ms (distance_state's distance
+   stays, its turn rate is dps); GP7 black from on[i] for len[i] ms. */
+static void spin(unsigned ms, double dps, const unsigned *on,
+		 const unsigned *len, unsigned n)
+{
+	unsigned t0 = now;
+
+	while ((now - t0) < ms) {
+		unsigned t = now - t0;
+		bool b = false;
+		unsigned i;
+
+		for (i = 0u; i < n; ++i) {
+			b = b || ((t >= on[i]) && (t < on[i] + len[i]));
+		}
+		if ((now % 10u) == 0u) {
+			publish(dps);
+		}
+		sample(b);
+		now++;
+	}
+}
+
+/* A U-turn pivot after 400 mm of line following, at the junction pivot's
+   43 deg/s (C, MOTION_TURN_SPEED 6) and at 90 deg/s.  GP7 (assumed 50 mm
+   ahead of the axle and 45 mm aside: 67 mm from it) crosses the lines of
+   a cross junction 42 and 132 deg into the pivot, for 18 mm / (67 mm x
+   the rate) each: 358 ms at 43 deg/s, past J_n 280; 171 ms at 90 (C).
+   Nothing opens and nothing fires. */
+static void test_scan_pivot(void)
+{
+	static const double rates[] = { 43.0, 90.0 };
+	unsigned k;
+
+	for (k = 0u; k < 2u; ++k) {
+		double w = rates[k] * 3.14159265358979 / 180.0;	/* rad/s */
+		unsigned on[2];
+		unsigned len[2];
+		uint8_t id0;
+
+		on[0] = (unsigned)(42.0 / rates[k] * 1000.0);
+		on[1] = (unsigned)(132.0 / rates[k] * 1000.0);
+		len[0] = (unsigned)(18.0 / (67.0 * w) * 1000.0);
+		len[1] = len[0];
+		chain_reset(true);
+		want = '-';
+		drive(-400.0, 0.0, 6u, 0.0);
+		id0 = cap.read_id;
+		held_ms = 0u;
+		spin((unsigned)(180.0 / rates[k] * 1000.0) + 200u, rates[k], on, len, 2u);
+		if (TEST_EXPECT_GATE) {
+			CHECK((uint8_t)(cap.read_id - id0) == 0u);
+			CHECK((junctions == 0u) && (held_ms == 0u) && (verdicts == 0u));
+			CHECK(cap.ignored == 2u);
+		} else {
+			/* before the gate: reads open (and hold the steering);
+			   at 43 deg/s both crossings fire junctions */
+			CHECK((uint8_t)(cap.read_id - id0) >= 1u);
+			CHECK(held_ms > 0u);
+			CHECK(junctions == ((k == 0u) ? 2u : 0u));
+		}
+	}
+}
+
+/* The armed junction is not gated: a sheet read on a straight, then the
+   car turns (20 deg/s from 5 mm after the sheet), and the crossbar
+   80 mm after the sheet still fires with the command.  The crossbar's
+   own read is turned away. */
+static void test_scan_armed_turning(void)
+{
+	double end;
+
+	chain_reset(true);
+	want = 'B';
+	end = sheet('B', 3.0, 3.0, 0.0, 0.0);
+	crossbar(end + 80.0, 0.0);
+	curve_x = end + 5.0;
+	curve_dps = 20.0;
+	drive(-300.0, crossbar_b + 60.0, 6u, 0.0);
+	CHECK(ev_armed == 1u);
+	CHECK((j_cross == 1u) && (junctions == 1u) && j_cmd_ok && (j_letter == 'B'));
+	CHECK((cap.ignored == 1u) == (TEST_EXPECT_GATE != 0));
+}
+
+/* No distance_state: the gate fails open, so the curve sweeps behave as
+   before the gate.  motor_task_flag() 0 (a bench image), and motion_task
+   not publishing (the counter never moves). */
+static void test_scan_fail_open(void)
+{
+	sweep_t r;
+
+	for (sweep_ds = 1u; sweep_ds <= 2u; ++sweep_ds) {
+		curve_sweeps(curve_rate(150.0), 100.0, 0.0, 1.0, 0.0, &r);
+		CHECK((r.opened == 5u) && (r.fired == 3u) && (r.held > 0u));
+		if (LINE_SCAN_GATE) {
+			CHECK(!sg.available && sg.open);
+		}
+	}
+	sweep_ds = 0u;
+}
+#endif
+
 /* While the bars of a read arrive, a long bar is never a junction: the
    6 mm sheet's 18 mm wide bars at base 4 (567 ms of black, C) under the
    length rule alone fired one per wide bar. */
@@ -927,6 +1301,10 @@ static void test_big_bars(void)
 
 int main(void)
 {
+	(void)printf("scan gate: LINE_SCAN_GATE %u (tests expect %u), limit %u deg/s, "
+		     "average 2 x 1/%u every 10 ms\n", (unsigned)LINE_SCAN_GATE,
+		     (unsigned)TEST_EXPECT_GATE, (unsigned)LINE_SCAN_MAX_TURN_DPS,
+		     (unsigned)LINE_SCAN_AVG_DIV);
 #if LINE_JUNCTION_RULE
 	(void)printf("junction rule: barcode-armed (LINE_JUNCTION_RULE 1), confirm %u mm, "
 		     "D_hold %u mm, quiet factor %u, decoder split %u\n",
@@ -950,6 +1328,11 @@ int main(void)
 	test_fallback();
 	test_h1_crossbar_in_read();
 	test_h1_no_junction_in_barcodes();
+	test_scan_straight();
+	test_scan_curves();
+	test_scan_pivot();
+	test_scan_armed_turning();
+	test_scan_fail_open();
 #endif
 	return check_report("barcode-armed junction");
 }

@@ -185,24 +185,22 @@
 #error "BARCODE_DEFAULT_TABLE_SET must be 0 or 1"
 #endif
 
-/* Barcode hold.  1 (default, today's behaviour): while a barcode is being
-   read, and BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds
-   rl/steer/error at 0 and sets its barcode bit, and motion_task holds its
-   heading.  0: nothing is held.  The hold was written for bars that cross
-   the line sensors; on the demo course the sheets sit beside the line (the
-   prof's course photos, 19 Nov), so GP26/GP27 never see a bar.  Which
-   setting is better there is NOT decided yet:
-   - holding keeps the heading, so GP7 passes the bars at a constant
-     speed, which the decoder needs: with GP7's speed varying +/-20 %
-     today's decoder decodes 79-91 of 208 reads, with +/-10 % all 208
-     (sim);
-   - not holding avoids blind straight driving: up to ~3.4 s (~158 mm) per
-     sheet, and ~2.2 s per crossbar, because the crossbar under GP7 opens a
-     read too (sim).
-   Avani and Hanis choose after the car session C1 A/B; build the other
-   side with -DLINE_BARCODE_HOLD=0.  Held or not, the dark time and the
-   lost bit follow the real line sensors (line_track.c), so a held car on
-   white is not "line seen" and is lost after LINE_LOST_MS. */
+/* Barcode hold.  1 (default): while a barcode is being read, and
+   BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds rl/steer/error at 0
+   and sets its barcode bit, and motion_task holds its heading: the car
+   drives straight while it reads.  0: nothing is held.  The prof's tip
+   (19 Nov) settles it: barcodes are always on straight segments and the
+   car should not steer while reading, so 1 stays.  What it costs: blind
+   straight driving, up to ~3.4 s (~158 mm) per sheet and ~2.2 s per
+   crossbar, because the crossbar under GP7 opens a read too (sim); what
+   it buys: GP7 passes the bars at a constant speed (with GP7's speed
+   varying +/-20 % today's decoder decodes 79-91 of 208 reads, with
+   +/-10 % all 208, sim).  The scan gate below stops curves and pivots
+   from opening a read, so they no longer hold the steering.
+   -DLINE_BARCODE_HOLD=0 still builds the other side.  Held or not, the
+   dark time and the lost bit follow the real line sensors (line_track.c),
+   so a held car on white is not "line seen" and is lost after
+   LINE_LOST_MS. */
 #ifndef LINE_BARCODE_HOLD
 #define LINE_BARCODE_HOLD                         (1u)
 #endif
@@ -263,7 +261,7 @@
    Every switch back to the behaviour before these changes:
    -DLINE_JUNCTION_RULE=0 -DBARCODE_END_ON_STOP=0 -DBARCODE_Q_WIDTH_FACTOR=4
    -DBARCODE_DECODE_SPLIT=0 -DBARCODE_GLITCH_TICKS=0
-   -DBARCODE_NOT_BAR_RATIO_X10=0 (tests/line OLD_RULE).
+   -DBARCODE_NOT_BAR_RATIO_X10=0 -DLINE_SCAN_GATE=0 (tests/line OLD_RULE).
    A -D car image needs a clean tree and make GCC="arm-none-eabi-gcc
    -D...": CFLAGS is set with := (build_make/pico_rp2040.mk:257). */
 #ifndef LINE_JUNCTION_RULE
@@ -323,6 +321,68 @@
    is not measured), to confirm on the car. */
 #ifndef LINE_ARMED_VERDICT_WAIT_MS
 #define LINE_ARMED_VERDICT_WAIT_MS                (50u)
+#endif
+
+/* ---- The scan gate (scan_gate.h) ----
+   The prof's tip (19 Nov): barcodes are always on straight segments,
+   never on curves, so the car should drive straight while it reads one
+   and should not scan while turning.  1 (default, the team's decision
+   from the tip): a GP7 black that starts while the car is turning opens
+   no barcode read (so no steering hold and no reject) and never fires a
+   junction by the length rule.  A read already open goes on, and the
+   barcode-armed junction is not gated (a barcode and its junction are on
+   a straight).  "Turning" is motion's turn rate (distance_state,
+   motion_ds.h) averaged by two low-pass stages, each 1/LINE_SCAN_AVG_DIV
+   of the way every 10 ms, at or above LINE_SCAN_MAX_TURN_DPS.  Without
+   distance_state (motor_task_flag() 0, as in a bench image, or its
+   counter unchanged for LINE_SCAN_STALE_MS) the gate stays open (fails
+   open).  0: no gate, as before (-DLINE_SCAN_GATE=0).
+   On curves and in pivots GP7 sweeps across the line itself (register L5
+   and S3, _handover/diag_plan_v2.md): seven junction lines in one bypass
+   (tests/scan_bench/logs/fr20_bypass_rejoin_2026-11-04.txt:42-133), and
+   a false junction while line following
+   (trials_batch1_2026-11-04.txt:2553-2563). */
+#ifndef LINE_SCAN_GATE
+#define LINE_SCAN_GATE                            (1u)
+#endif
+
+/* Going straight: |averaged turn rate| below this (deg/s).  A curve's
+   turn rate is at least v / R: 18 deg/s at 150 mm radius and 9 deg/s at
+   300 mm at base 6 (47.6 mm/s, C), and more with the line sensors
+   125 mm ahead of the axle (33 and 10 deg/s, C).  A junction pivot is
+   about 43 deg/s and a bypass pivot about 72 deg/s (C, from
+   MOTION_TURN_SPEED and MOTION_BYPASS_TURN_SPEED; the IMU logged 70 deg/s
+   in a bypass, fr20_bypass_rejoin_2026-11-04.txt:48).  6 is a GUESS, not
+   measured, to confirm on the car.  Line following's slow wander (2 deg
+   right to 28 deg left over 8 s, motion_cfg.h above MOTION_HD_LINE_MM) is
+   about 4 deg/s on average (C); with what is left of the weave (below) on
+   top it can reach 6, and a sheet met then is not read. */
+#ifndef LINE_SCAN_MAX_TURN_DPS
+#define LINE_SCAN_MAX_TURN_DPS                    (6u)
+#endif
+
+/* The average: two low-pass stages, each moving 1/LINE_SCAN_AVG_DIV of
+   the way to its input every 10 ms (64: a time constant of 640 ms each).
+   On a straight the car weaves: 41 deg/s logged in line following
+   (trials_batch1_2026-11-04.txt:2554), roughly 1 Hz from the side
+   changes in the RL lines before it (2540-2552).  A plain 500 ms average
+   leaves +/-29 deg/s of a +/-45 deg/s 1 Hz weave (C: 45 x sin(pi/2) /
+   (pi/2)), far above 6, so a sheet met at the wrong moment would be
+   ignored; these two stages leave 2.6 deg/s at 1 Hz and 5.1 at 0.7 Hz
+   (sim, tests/line test_scan_gate); a weave slower than about 0.65 Hz at
+   that size would shut the gate (C).  The cost is time: the gate shuts
+   about 0.8 s into a 150 mm curve, 1.5 s into a 300 mm curve, 0.4 s into
+   a 43 deg/s pivot and 0.3 s into a 90 deg/s one, and opens again about
+   2.1 s after a 90 deg junction pivot (sim, steady turn rates from the
+   start of the turn).  A GUESS, not measured. */
+#ifndef LINE_SCAN_AVG_DIV
+#define LINE_SCAN_AVG_DIV                         (64u)
+#endif
+
+/* distance_state is stale when its counter (+1 every 10 ms publish) has
+   not changed for this long (ms): then the gate fails open. */
+#ifndef LINE_SCAN_STALE_MS
+#define LINE_SCAN_STALE_MS                        (100u)
 #endif
 
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
@@ -417,6 +477,14 @@
 #endif
 #if (LINE_ARMED_MIN_SAMPLES < 1u) || (LINE_ARMED_VERDICT_WAIT_MS < 1u)
 #error "LINE_ARMED_MIN_SAMPLES and LINE_ARMED_VERDICT_WAIT_MS must be at least 1"
+#endif
+#if (LINE_SCAN_GATE != 0u) && (LINE_SCAN_GATE != 1u)
+#error "LINE_SCAN_GATE must be 0 or 1"
+#endif
+#if (LINE_SCAN_MAX_TURN_DPS < 1u) || (LINE_SCAN_MAX_TURN_DPS > 2000u) || \
+    (LINE_SCAN_AVG_DIV < 1u) || (LINE_SCAN_AVG_DIV > 1000u) || \
+    (LINE_SCAN_STALE_MS < 20u) || (LINE_SCAN_STALE_MS > 10000u)
+#error "LINE_SCAN_MAX_TURN_DPS must be 1..2000, LINE_SCAN_AVG_DIV 1..1000, LINE_SCAN_STALE_MS 20..10000"
 #endif
 #if BARCODE_GLITCH_TICKS > 10u
 #error "BARCODE_GLITCH_TICKS must be 0..10: the narrowest real bar is about 13 ms"

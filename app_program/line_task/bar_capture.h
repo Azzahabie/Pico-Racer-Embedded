@@ -29,6 +29,11 @@
  * Inside an open read, a black run far longer than the read's widths so
  * far is not a bar (BARCODE_NOT_BAR_RATIO_X10): the junction side may fire
  * on it, and when it does the read ENDs there (bar_capture_junction()).
+ *
+ * The scan gate (LINE_SCAN_GATE 1, scan_gate.h) shuts the capture while
+ * the car is turning (bar_capture_set_gate()): a black that would open a
+ * read opens none, and neither does the rest of it (the capture waits for
+ * a quiet zone, as after an abort).  A read already open goes on.
  */
 
 #include <stdbool.h>
@@ -79,6 +84,9 @@ typedef struct {
 	uint8_t pending;	/* samples GP7 has read the other way      */
 	uint16_t widest;	/* widest width of this read so far       */
 	uint16_t widest_before;	/* the same, before the last width        */
+	bool gate_open;		/* the scan gate: a read may open          */
+	uint16_t ignored;	/* blacks the shut gate opened no read on,
+				   modulo 65536                            */
 } bar_capture_t;
 
 /* Message to barcode_task: 4 bytes on bar_mbf. */
@@ -132,6 +140,14 @@ bool bar_capture_black(const bar_capture_t *cap);
    after an abort).  A complete read due to END is left to END, and
    nothing happens when no read is open: BAR_EV_NONE. */
 bar_event_t bar_capture_junction(bar_capture_t *cap);
+
+/* The scan gate for the samples that follow (open after init).  Shut: a
+   black that would open a read opens none and adds one to
+   bar_capture_t.ignored; the capture then waits for a quiet zone
+   (BARCODE_Q_TICKS of white), so the rest of that black never opens one
+   either, even if the gate opens meanwhile.  A read already open is not
+   touched. */
+void bar_capture_set_gate(bar_capture_t *cap, bool open);
 
 /* Build the 4-byte message for an event. */
 void bar_msg_pack(uint8_t msg[BAR_MSG_SIZE], bar_event_t event,

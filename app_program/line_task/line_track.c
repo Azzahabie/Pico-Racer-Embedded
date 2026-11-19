@@ -21,6 +21,7 @@ void line_track_disarm_junction(line_track_t *trk)
 	trk->junction_armed = false;
 	trk->junction_due = false;
 	trk->on_crossbar = false;
+	trk->run_turning = false;
 }
 
 static void track_reset(line_track_t *trk)
@@ -35,6 +36,7 @@ static void track_reset(line_track_t *trk)
 	trk->junction_armed = false;	/* rearm after the sensors leave it */
 	trk->junction_due = false;
 	trk->on_crossbar = false;
+	trk->run_turning = false;
 	trk->dark_ms = LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS;
 	trk->left_rail_run = 0u;
 	trk->right_rail_run = 0u;
@@ -85,9 +87,10 @@ static uint32_t debounce(line_track_t *trk, uint32_t raw_rl)
    been off the crossbar LINE_JUNCTION_REARM_SAMPLES running.  With a gate
    (LINE_JUNCTION_RULE 1): never on a bar of an open barcode read (a run
    too long to be one is not), an armed junction fires once confirmed, and
-   a due junction waits for the verdict of a complete read.  With none,
-   in_read, armed_due and wait are false and this is the length rule
-   alone. */
+   a due junction waits for the verdict of a complete read.  A run that
+   began while the scan gate was shut (turning) never fires by length.
+   With none, in_read, armed_due, wait and turning are false and this is
+   the length rule alone. */
 static bool junction_step(line_track_t *trk, bool mark_black,
 			  const line_junction_gate_t *gate)
 {
@@ -97,18 +100,25 @@ static bool junction_step(line_track_t *trk, bool mark_black,
 	bool event = false;
 
 	if (mark_black) {
+		if (trk->both_black_run == 0u) {
+			/* the run's first sample: the scan gate now holds for
+			   all of it */
+			trk->run_turning = (gate != NULL) && gate->turning;
+		}
 		trk->clear_run = 0u;
 		if (trk->both_black_run < CANDIDATE_COUNT_MAX) {
 			trk->both_black_run++;
 		}
 		if (trk->junction_armed && !in_read &&
-		    ((trk->both_black_run >= LINE_JUNCTION_SAMPLES) || armed_due)) {
+		    (((trk->both_black_run >= LINE_JUNCTION_SAMPLES) &&
+		      !trk->run_turning) || armed_due)) {
 			trk->junction_armed = false;
 			trk->junction_due = true;
 		}
 	} else {
 		trk->both_black_run = 0u;
 		trk->on_crossbar = false;
+		trk->run_turning = false;
 		if (trk->clear_run < CANDIDATE_COUNT_MAX) {
 			trk->clear_run++;
 		}
@@ -183,10 +193,11 @@ void line_track_step_gate(line_track_t *trk, uint16_t left_raw,
 
 	/* GP7 only: rl 11 is the centred car, not a junction.  Not held by a
 	   barcode read's start, because the crossbar under GP7 starts one
-	   itself; with a gate, held while the bars of a read arrive. */
+	   itself; with a gate, held while the bars of a read arrive, and a
+	   run that began while turning is not a crossbar. */
 	out->junction = junction_step(trk, mark_black, gate);
 	out->crossing = trk->on_crossbar ||
-			(((gate == NULL) || !gate->in_read) &&
+			(((gate == NULL) || !gate->in_read) && !trk->run_turning &&
 			 (trk->both_black_run >= LINE_JUNCTION_SAMPLES));
 
 	/* noise-filtered: only a confirmed (debounced) black counts as seeing

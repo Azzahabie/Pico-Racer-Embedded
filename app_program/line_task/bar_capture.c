@@ -32,6 +32,13 @@ void bar_capture_init(bar_capture_t *cap)
 	cap->pending = 0u;
 	cap->widest = 0u;
 	cap->widest_before = 0u;
+	cap->gate_open = true;
+	cap->ignored = 0u;
+}
+
+void bar_capture_set_gate(bar_capture_t *cap, bool open)
+{
+	cap->gate_open = open;
 }
 
 bool bar_capture_busy(const bar_capture_t *cap)
@@ -209,7 +216,13 @@ bar_event_t bar_capture_step(bar_capture_t *cap, bool black, uint16_t *width)
 
 	switch (cap->phase) {
 	case BAR_IDLE:
-		if (seen) {
+		if (seen && !cap->gate_open) {
+			/* the scan gate: turning, so no read, and none on the
+			   rest of this black (wait for quiet, as after an abort) */
+			cap->phase = BAR_DISCARD;
+			cap->run = 0u;
+			cap->ignored++;
+		} else if (seen) {
 			cap->phase = BAR_ACTIVE;
 			cap->level = true;
 			cap->run = 1u;

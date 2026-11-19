@@ -33,6 +33,8 @@ typedef struct {
 	bool junction_armed;
 	bool junction_due;		/* fires once the gate's wait ends */
 	bool on_crossbar;		/* fired, GP7 still on that black */
+	bool run_turning;		/* this GP7 black run began while
+					   the scan gate was shut */
 
 	uint32_t dark_ms;		/* since the last confirmed black */
 	uint32_t left_rail_run;
@@ -59,7 +61,10 @@ typedef struct {
  *             has confirmed it (LINE_ARMED_CONFIRM_MM): fire now;
  *   wait      a complete read is waiting for barcode_task's verdict: a
  *             junction that is due waits (at most
- *             LINE_ARMED_VERDICT_WAIT_MS), so nav finds the command.
+ *             LINE_ARMED_VERDICT_WAIT_MS), so nav finds the command;
+ *   turning   the scan gate is shut (LINE_SCAN_GATE 1, scan_gate.h): a GP7
+ *             black run that begins now never fires by the length rule,
+ *             however long it lasts.  armed_due still fires.
  * Outside a read, GP7 black LINE_JUNCTION_SAMPLES running still fires (the
  * length rule, the fallback when no barcode armed it).
  */
@@ -67,6 +72,7 @@ typedef struct {
 	bool in_read;
 	bool armed_due;
 	bool wait;
+	bool turning;
 } line_junction_gate_t;
 
 /* Start from the configured thresholds, uncalibrated, junction armed. */

@@ -35,6 +35,11 @@ line/test_line_state
 line/test_junction_arm
 line/test_junction_old
 line/test_junction_h1_off
+line/test_junction_arm_nogate
+line/test_junction_scan_off
+line/test_junction_scan_short
+line/test_scan_gate
+line/test_scan_gate_short
 scan_logic_test
 host/test_messages
 # macOS clang debug folders, if the tests are run outside Docker
