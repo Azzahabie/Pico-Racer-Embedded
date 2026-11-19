@@ -556,17 +556,18 @@ car echoes** — observe delivery, do not assume it.
 - **The trade-off.** Text could be rejected for a non-digit; in binary every
   2-bit value is a valid action, so a wrong-but-right-length table is accepted.
   The `mv`/`mpv` echo and the publisher script are the defence.
-- **No version gate** *(documented 19 Nov, register C6; not built)*. The car
-  applies every map that passes the check, whatever its `mv` (the same, older
-  or newer than `mpv`), and in any mission state, Running included, only
-  waiting until no barcode is being read (`comms_task.c` `handle_map()`,
-  `barcode_task.c` `apply_maps()`). The prof's Week 6 feedback asked for a
-  rule: ignore a version equal to or older than `mpv`, and apply a new map
-  only when the mission is not Running, so a Wi-Fi drop mid-run cannot swap
-  the table. Today the retained `map` is applied again on every reconnect; as
-  long as nobody publishes a different map during a run, that changes
-  nothing (idempotent, above). **Rule until it is built: publish the map
-  before pressing start, and not during a run.**
+- **No version gate** *(documented 19 Nov, register C6; not built)*. The
+  prof's Week 6 feedback asked for a rule: the car ignores a version equal to
+  or older than `mpv`, and applies a new map only when the mission is not
+  Running "or between barcodes". The second half is built: the car already
+  applies a map only between barcodes, waiting until no barcode is being
+  read (`comms_task.c` `handle_map()`, `barcode_task.c` `apply_maps()`). Only
+  the version gate is missing: every map that passes the check is applied,
+  whatever its `mv` (the same, older or newer than `mpv`). Today the retained
+  `map` is applied again on every reconnect; as long as nobody publishes a
+  different map during a run, that changes nothing (idempotent, above).
+  **Rule until the gate is built: publish the map before pressing start, and
+  not during a run.**
 
 > **Still open (§12 items 7–9):** what each of the four action codes *means*
 > (Buddy 3 owns the 2-bit action), the A–Z alphabet assumption, and the
