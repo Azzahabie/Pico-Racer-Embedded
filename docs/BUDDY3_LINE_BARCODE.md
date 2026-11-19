@@ -48,7 +48,11 @@ Neither task drives the motors.
   - hysteresis classification and the 6/8-sample 0bRL debounce;
   - the error `(right − left)/10`, −100..+100. **Positive = correct left**
     (counter-clockwise, the same sign as `S.trn`);
-  - lost after `LINE_LOST_MS` without a confirmed black;
+  - lost after `LINE_LOST_MS` without a confirmed black. This task only
+    reports it; motion decides what to do (LINE_SEARCH, then LINE_LOST
+    pauses the mission). `LINE_STOP_ON_LOST` (`robot_config.h`) is unused:
+    no code reads it, so 0 and 1 build the same car. It is kept so a build
+    that passes `-DLINE_STOP_ON_LOST` still compiles;
   - a sensor fault after `IR_RAIL_FAULT_SAMPLES` at a rail, or for a sample
     whose ADC read failed. The fault sets `line_state`'s fault bit, and
     `ir_sense_task` sets `FAULT_LINE_SENSOR` (`S.faults` bit 4,
