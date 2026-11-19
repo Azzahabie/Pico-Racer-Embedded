@@ -133,15 +133,80 @@ int main(void)
 	}
 	expect((ev & SAFETY_EV_TILT) == 0, "ringing knock: no tilt event");
 
-	/* Upside down (|a| 1 g, no x/y): not a tilt by this check. */
+	/* Upside down at rest (|a| 1 g, no x/y): lifted and inverted, the
+	   demo's stop.  A tilt, on sample N, like any tilt past T. */
 	safety_reset();
-	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 0, 0, -1000);
-	expect((ev & SAFETY_EV_TILT) == 0, "flat but flipped: no tilt event");
+	for (i = 1, at = 0; i <= 20 && at == 0; i++) {
+		if (safety_step(TRUE, 0, 0, -1000) & SAFETY_EV_TILT) at = i;
+	}
+	expect(at == SAFETY_TILT_N, "upside down at rest: tilt event on sample N");
+	expect(safety_tilted(), "upside down at rest: tilted");
+	/* The stop message says "upside down" from z, not an angle from
+	   |x, y| (which reads 0.0 deg here). */
+	expect(safety_upside_down() && safety_tilt_mg() == 0,
+	       "upside down at rest: message from z, |x, y| is 0");
+	safety_reset();
+	expect(run_tilt(170, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
+	       "170 deg (|x, y| 174 mg): tilt event on sample N");
+	expect(safety_upside_down(), "170 deg: message says upside down");
+	safety_reset();
+	run_tilt(30, 10, SAFETY_EV_TILT);
+	expect(!safety_upside_down(),
+	       "30 deg: message keeps the angle and side");
+
+	/* A fast flip: 0-20 deg in the band, 40-140 deg spun out of it
+	   (|a| 2 g: neither counts nor resets), then 160 deg and resting
+	   inverted.  Before the z check the 160 / 180 deg samples (|x, y|
+	   under T) restarted the run and nothing ever fired. */
+	safety_reset();
+	tilt(0); tilt(20);
+	for (i = 40; i <= 140; i += 20) {
+		safety_step(TRUE, 0, (W)lround(2000 * sin(i * M_PI / 180)),
+			    (W)lround(2000 * cos(i * M_PI / 180)));
+	}
+	tilt(160);
+	expect(run_tilt(180, 5, SAFETY_EV_TILT) == SAFETY_TILT_N - 1,
+	       "fast flip then inverted: tilt event once it rests");
+
+	/* Driving never reads z below 0: a 2 g bump (out of the band) and
+	   a hump at 20 deg do not count. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 20; i++) ev |= safety_step(TRUE, 300, 0, -1800);
+	expect((ev & SAFETY_EV_TILT) == 0, "2 g downward jolt: no tilt event");
 
 	/* 90 deg on its side: a tilt. */
 	safety_reset();
 	expect(run_tilt(90, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
 	       "on its side: tilt event");
+	expect(!safety_upside_down(),
+	       "on its side: message keeps the angle (90 deg)");
+
+	/* On its side with z a little below 0 (z reads near 0, either
+	   sign): it trips as before (SAFETY_FLIP_MG stays 0), but the
+	   message gives the angle.  While the message used SAFETY_FLIP_MG
+	   it said "upside down" here. */
+	safety_reset();
+	for (i = 1, at = 0; i <= 20 && at == 0; i++) {
+		if (safety_step(TRUE, 1000, 0, -20) & SAFETY_EV_TILT) at = i;
+	}
+	expect(at == SAFETY_TILT_N,
+	       "on its side, z -20 mg: tilt event on sample N");
+	expect(!safety_upside_down(),
+	       "on its side, z -20 mg: message keeps the angle");
+	safety_reset();
+	expect(run_tilt(110, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
+	       "110 deg (z -342 mg): tilt event on sample N");
+	expect(!safety_upside_down(), "110 deg: message keeps the angle");
+	safety_reset();
+	run_tilt(130, 10, SAFETY_EV_TILT);
+	expect(safety_upside_down(),
+	       "130 deg (z -643 mg): message says upside down");
+	/* The message limit: SAFETY_UPSIDE_MSG_MG, -500 mg (120 deg). */
+	safety_reset();
+	safety_step(TRUE, 866, 0, SAFETY_UPSIDE_MSG_MG);
+	expect(!safety_upside_down(), "z at the message limit: the angle");
+	safety_step(TRUE, 866, 0, SAFETY_UPSIDE_MSG_MG - 1);
+	expect(safety_upside_down(), "z 1 mg below the limit: upside down");
 
 	/* Reads failing: re-init after 2, no data after 5 (50 ms). */
 	safety_reset();
@@ -161,6 +226,38 @@ int main(void)
 	expect(safety_no_data(), "still failing: no data");
 	safety_step(TRUE, 0, 0, 1000);
 	expect(!safety_no_data(), "a good read: data again");
+
+	/* What counts as a reading (raw mg, before the offsets). */
+	expect(!safety_read_ok(0, 0, 0), "read: 0, 0, 0 (chip reset) is bad");
+	expect(!safety_read_ok(5987, 5987, 5987),
+	       "read: x = y = z = 5987 (the glitch) is bad");
+	expect(safety_read_ok(30, -10, 1070), "read: level car is good");
+	expect(safety_read_ok(0, 0, 1000), "read: 0, 0, 1000 is good");
+	expect(safety_read_ok(577, 577, 578), "read: one mg apart is good");
+
+	/* The glitch mid-run (offsets x 30, y -10, z 70 removed, as
+	   imu_task does).  Counted as a read it is ~10 g, outside the jolt
+	   band: no event ever, so no stop could fire while it lasted. */
+	safety_reset();
+	for (i = 0, ev = 0; i < 1000; i++) {
+		ev |= safety_step(TRUE, 5987 - 30, 5987 + 10, 5987 - 70);
+	}
+	expect(ev == 0 && !safety_no_data(),
+	       "glitch as a read: silent (why it is a bad read now)");
+	/* As a bad read: re-init on the 2nd, the no-data fault on the 5th
+	   (50 ms, NFR-13), after a level car. */
+	safety_reset();
+	for (i = 0; i < 10; i++) safety_step(safety_read_ok(30, -10, 1070),
+					      0, 0, 1000);
+	for (i = 1, at = 0, ev = 0; i <= 20; i++) {
+		UINT e = safety_step(safety_read_ok(5987, 5987, 5987),
+				     5987 - 30, 5987 + 10, 5987 - 70);
+		if ((e & SAFETY_EV_NO_DATA) != 0 && at == 0) at = i;
+		ev |= e;
+	}
+	expect(at == SAFETY_BAD_N && (ev & SAFETY_EV_REINIT) != 0,
+	       "glitch as a bad read: re-init, then no data at 50 ms");
+	expect(safety_no_data(), "glitch lasting: no data (IMU fault)");
 
 	/* 4 bad, 1 good, 4 bad: never 5 in a row (rderr 31/s on the car). */
 	safety_reset();

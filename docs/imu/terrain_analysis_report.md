@@ -9,9 +9,11 @@ Data representation (Week 13): [`week13_representation.md`](week13_representatio
 
 This report covers the hump detection and height method (FR-10, FR-11, FR-12), its
 accuracy against NFR-05, the thresholds chosen from measured data, and the IMU fault
-behaviour (FR-02, FR-28, NFR-13, NFR-18/19). Every number below comes from the
-serial logs of the runs listed in §5; nothing is presented as validated that was not
-measured.
+behaviour (FR-02, FR-28, NFR-13, NFR-18/19), including the stop when the car is lifted
+and inverted, which ends the demo run (§5.2, the prof's requirement change of 19 Nov).
+Every number below comes from the serial logs of the runs listed in §5, except those
+labelled calculated (C) or simulated (sim: host tests or a host model), which are not
+from the logs. Nothing is presented as validated that was not measured.
 
 ---
 
@@ -95,11 +97,12 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 
 | Rule | Value | Why |
 |---|---|---|
-| Onset | tilt ≥ 50 mg (~2.9°) for 3 windows (300 ms), moving, motion STEADY | a single jolting window once set "uphill" backwards and lost a 23 mm hump |
+| Onset | tilt ≥ 50 mg (~2.9°) for 3 windows (300 ms), moving, motion STEADY. 50 is `HUMP_ENTER_MG`, a build switch in `hump.h` (40 for a long ramp, §4.8) | a single jolting window once set "uphill" backwards and lost a 23 mm hump |
 | Uphill direction | sum of the 3 onset windows | mounting angle does not matter |
 | Level | tilt < 35 mg (~2.0°) | floor spots differ by up to 30 mg |
 | End, driven over | back within 2 mm of start height, or level for 40 mm **once on the way down** | a level top longer than 40 mm otherwise ended the hump on the top and counted the way down as a second hump |
-| End, safety cap | level for **120 mm** (was 250, `698d48b`) | far side that drops off too fast to read as a slope. On the demo hump (195 mm long, 10 mm) the car's body is as long as the hump and never reads the way down, so this is how that hump closes: 250 mm kept it open ~25 cm past the crest (1 Nov), 120 mm closes it **~14–15 cm** past (§4.5) |
+| End, safety cap | level for **120 mm** (was 250, `698d48b`) | far side that drops off too fast to read as a slope. On the demo hump (195 mm long, 10 mm) the car's body is as long as the hump and never reads the way down, so this is how that hump closes: 250 mm kept it open ~25 cm past the crest (1 Nov), 120 mm closes it **~14–15 cm** past (§4.5). A level top longer than 120 mm closes the hump on the top, and the way down then counts as a second hump (sim, §4.8) |
+| Way down after a close | off by default; `HUMP_WAY_DOWN` 1 (`hump.h`): once a hump closes while driving, downhill is its way down until the next climb, not a new hump | a long level top, or a gentle climb seen late, counted the ramp twice (sim, §4.8). Not driven |
 | End, mission paused or ended | past the top (read the way down, or level since the climb): **counted now**, then followed "on top"; still climbing: dropped | a stop ~80 mm after the hump, before the 120 mm close, dropped an 11 mm hump (3 Nov); the hump may be near the end of the line, where the car stops that soon (`hump_end_early()`) |
 | End, stopped | still for 1 s: hump counted, then the car is followed "on top" until it is back down | backing off a ramp once counted as a new hump |
 | Stopped on the slope | still, tilt ≥ 65 mg and under the 4 mm minimum: the climb stays open for the next push | stopped 2.4 mm up the 10 mm ramp, the climb was ignored and the rest of the ramp was never counted (2026-10-28) |
@@ -134,7 +137,7 @@ printed (`[imu] motion: …`) once it has held 100 ms, an impact at once.
 | 0 | still | no encoder mm for 100 ms and \|turn\| < 5 °/s |
 | 1 | turning | \|turn\| > 20 °/s, until < 12 °/s (hysteresis) |
 | 2 / 3 | climbing / descending | from the hump detector |
-| 4 | impact | \|a\| > 1.5 g on one sample, held 500 ms; only within 1 s of the wheels turning |
+| 4 | impact | \|a\| > 2.5 g (was 1.5, §4.7) on one sample, held 500 ms; only within 1 s of the wheels turning. Report-only (below) |
 | 5 | accelerating | `distance_state` says ACCELERATING |
 | 6 | moving | straight, steady speed |
 
@@ -143,6 +146,14 @@ Choices from the car logs: "still" needs 100 ms, not the proposed 50 ms, because
 hysteresis because a turn rate wandering 17–21 °/s flipped moving/turning every
 ~50 ms; impact is gated on motion because carrying the car by hand reached 2.4 g.
 Turn rate comes from the encoders, so a skidding wheel also reads as turning.
+
+**Impact is report-only (the prof, 19 Nov).** IMU collision detection is removed from
+the requirements: the prof found it conflicted with collision avoidance (the sonar
+stop). The IMU's only stop requirement now is the lift-and-invert stop (§5.2). Class 4
+stays as an informational event: the console prints `!! BUMP x.x g (car keeps going)`,
+`E imu` carries class 4, and the mission summary counts bumps. It never stopped the
+car, and it counts toward no requirement. A lift may itself print a BUMP (a hand jerk
+with the wheels spinning), so a class 4 at the end of the demo is not a fault.
 
 ### 3.5 Shared state: the `hump_state` word
 
@@ -161,11 +172,13 @@ none of it feeds the hump height or the safety check.
 | Lean / nose labels | `IMU_LEFT_SIGN` −1, `IMU_NOSE_SIGN` +1; lines say which side is up, e.g. `leaning LEFT 5 deg (right side up)` | book under the front wheels: `nose UP 15`; under the left wheels: `leaning RIGHT 10 (left side up)`; each on one axis only, so the board is square to the car |
 | Picked up / put down | 100 ms mean leaves the resting value by > 30 mg for 200 ms, wheels still; not for 500 ms after the wheels stop (`EV_SETTLE_WIN`) | every stop used to print a false `picked up` (braking rock); none after 3 stops in one run with the settle time |
 | Turns | MC_TURNING (> 20 °/s), **or a slow bend**: smoothed rate > 4 °/s held one way for 1 s; angle summed from 3 °/s; ends after 400 ms under 3 °/s; under 15° is a wiggle, not counted | the course bend (~45–50° right at 5–10 °/s) first counted as no turn ("1 left, 0 right" on a right-only course); now 1 right turn, 40° for a 44° heading change |
-| `S.tlt` (FR-29) | tilt of the last 100 ms mean of x and y | a single 10 ms sample read 8–18° on flat floor (motor vibration); now 0–1 on flat, 4–5 on the hump. The safety check still uses each sample |
+| `S.tlt` (FR-29) | tilt of the last 100 ms mean of x and y | a single 10 ms sample read 8–18° on flat floor (motor vibration); now 0–1 on flat, 4–5 on the hump. The safety check still uses each sample. Upside down it reads ~0 again (\|x, y\| is ~0 on its roof), so `S.tlt` is no evidence of the lift stop; `S faults=imu mis=6` is |
+| `E imu` height, `S.hgt` (FR-12) | the **highest** hump this mission, 0 until one is counted and again at each mission start. Until 19 Nov it was the hump in progress, else the last one, so a lower second hump replaced the highest | the two 10 mm humps gave `S.hum=2 S.hgt=10` (§4.5); higher-then-lower not driven, host test only (`tests/imu_hump`) |
 | `S.trn` (FR-29) | encoder turn rate, left positive | `turning LEFT 27 deg/s` → `trn=24`, right bend `trn=-47`, still `0`, at boot `n/a` |
 
-All of these cases are replayed on a PC: `tests/imu_hump` (29 scenarios, each one a
-pass that went wrong on the car) and `tests/imu_safety` (94 checks). Both pass.
+All of these cases are replayed on a PC: `tests/imu_hump` (47 scenarios, most of them
+a pass that went wrong on the car, run against each `hump.h` switch setting) and
+`tests/imu_safety` (121 checks). Both pass.
 
 ## 4. Results
 
@@ -336,7 +349,7 @@ two passes are too few to fit anything to, and the demo uses only the 10 mm hump
 | θ_on | 5° for 3 samples | **2.9° (50 mg) for 3 × 100 ms windows** | a 10 mm ramp peaks at only 6–10°, so a lower onset catches more of the climb; windows (not single samples) keep it above the 1.7° floor variation |
 | θ_off | 3° | **2.0° (35 mg)**, plus 40 mm on the way down | floor spots differ by up to 1.7° |
 | Level close (cap) | — | **120 mm** (was 250) | demo hump never reads the way down; 250 mm kept it open ~25 cm past the crest (§4.5) |
-| A (impact) | 1.5 g | **2.5 g** (was 1.5), gated on motion (§3.4) | carrying the car reached 2.4 g, so impact is gated on motion. Under motor power (3 Nov) normal driving reached 1.5–2.0 g: a wheel onto the hump's edge, the bend, braking out of a pivot, the car catching on the 23 mm ramp. At 1.5 g those printed `BUMP`, so A was raised above them; host test: 1.5–2.0 g knocks are not impacts |
+| A (impact) | 1.5 g | **2.5 g** (was 1.5), gated on motion (§3.4) | carrying the car reached 2.4 g, so impact is gated on motion. Under motor power (3 Nov) normal driving reached 1.5–2.0 g: a wheel onto the hump's edge, the bend, braking out of a pivot, the car catching on the 23 mm ramp. At 1.5 g those printed `BUMP`, so A was raised above them; host test: 1.5–2.0 g knocks are not impacts. **Report-only since 19 Nov:** IMU collision detection was removed from the requirements (§3.4) |
 
 Peak tilt of the reference humps: 10 mm ramp 5.6…10°, 23.5 mm ramp 12.5…15.7°. With
 T = 25° the lower (demo) ramp has a 15° margin.
@@ -344,6 +357,30 @@ T = 25° the lower (demo) ramp has a 15° margin.
 **Verified on the car with T = 25°** (2026-10-28 01:47): pushes over the 23.5 mm ramp
 in RUNNING, jerky ones included, gave no fault; a hand tilt in RUNNING faulted at
 26.3°.
+
+### 4.8 The final ramp: same height, a different width (19 Nov; sim, not driven)
+
+The final ramp is the same height (about 10 mm) but a different width. Across the
+track the width does not matter while both wheels ride up together. Along the track
+a longer ramp is gentler, and the onset threshold (50 mg for 3 windows) sets the
+limit. Host model with the real `hump.c` (as `tests/imu_hump`, 20 noise seeds per
+case, 48 mm/s), 10 mm, up half way and down the other half:
+
+| Length (way up) | Slope | Default build | `HUMP_ENTER_MG=40`, `HUMP_WAY_DOWN=1` |
+|---|---|---|---|
+| 195 mm (98), the demo hump | 103 mg | 20/20 in target | 20/20 |
+| 360 mm (180) | 55 mg | 20/20 | 20/20 |
+| 400 mm (200) | 50 mg | 13/20 in target, 5 counted twice | 20/20 |
+| 440 mm (220) | 45 mg | 0/20 seen | 20/20 |
+| 500 mm (250) | 40 mg | 0/20 | 14/20 |
+| 560 mm and longer | 36 mg and less | 0/20 | 0/20 |
+
+A level top longer than 120 mm (`HUMP_TOP_MAX_MM`) counts the ramp twice in the
+default build (sim, every top from 120 to 800 mm), once with `HUMP_WAY_DOWN=1`. A
+ramp crossed at an angle reads high by 1/cos(angle) (C; 30° +15 %), whatever its
+length. The defaults are unchanged: a fresh default build is byte-identical to the
+one before the switches. The envelope, the switch choice from a ruler measurement
+of the real ramp, and the car test matrix: [`ramp_width_test_matrix.md`](ramp_width_test_matrix.md).
 
 ## 5. Fault behaviour (FR-02, FR-28, NFR-13, NFR-18)
 
@@ -401,6 +438,49 @@ adds load itself. It does not affect the results: the hump height is tilt ×
 of §4.5 were measured with this jitter), and the tilt fault stays at 20.5–21.2 ms
 of its 40 ms limit.
 
+### 5.2 Lifted and inverted: the end of the run (the prof, 19 Nov)
+
+The prof's change of 19 Nov replaces IMU collision detection with one requirement:
+when the car is lifted or overturned, the motors stop at once. On demo day lifting
+the car ends the run, and the car will be lifted **and inverted**, fast or slow.
+
+What the code does:
+
+| Step | Rule (`imu_safety.c`, `imu_task.c`) |
+|---|---|
+| Detect | every 10 ms sample: tilt \|x, y\| over T = 25° with z under 950 mg, **or z under 0 mg** (`SAFETY_FLIP_MG`, past 90°: upside down), for N = 3 samples in a row. Samples with \|a\| outside 0.7–1.3 g neither count nor reset the run (jolt filter, §4.7). The z rule is the upside-down fix (branch `proposal/imu-upside-down-stop`) |
+| Stop | in Running or Paused: STOP_IMU to motion_task, which brakes and holds both wheels at 0 until FAULT_CLEAR(IMU); FAULT_IMU on the shared fault flag; IMU_FAULT to nav_ctrl_task, which goes to FAULT and beeps |
+| Other paths | in hand 1.2 s with the wheels still (`EV_LIFT_FAULT_MS`, §5) and no good reading for 50 ms (NFR-13) raise the same fault |
+| After | the run ends in **FAULT**, not FINISHED (`S` `mis=6`, `faults=imu`). GP20 recalibrates on flat floor and clears the fault |
+| Hump | a hump still open when the fault comes is dropped, past its top or not (§3.2, Statechart 6.4): `hump discarded (fault or abnormal tilt)`, no `===== HUMP` line, `S.hum` one short. The demo hump stays open ~14–15 cm past its crest (§4.5), about 3 s at 48 mm/s (calculated). **Operator rule: wait for the `===== HUMP` line before lifting the car** |
+| Console | `[imu] !!! STOPPING: car tipped over (upside down, z <z> mg) !!!` when z is below −500 mg at the trip (past 120°, `SAFETY_UPSIDE_MSG_MG`, used for the message only; the trip stays at z under 0); otherwise the angle line as before (`... (26.5 deg to the LEFT, right side up)`), so a car on its side, z near 0 either way, prints its angle. Before this message fix an upside-down trip printed `(0.0 deg to the , )`, as \|x, y\| is ~0 on its roof. The boot line `[imu] faults: tilt > 24.9 deg or upside down for 3 samples ...` shows the image has the z rule |
+
+Why z as well: resting on its roof the sideways part of gravity is about 0 again
+(sin 180° = 0), so \|x, y\| alone read an upside-down car as level, and a fast flip
+could leave fewer than 3 in-band samples past T before the car came to rest (flip
+model, a calculation, not measured).
+
+Evidence so far: the upside-down rule has passed the host tests only
+(`tests/imu_safety`); **it has not been run on the car.** The \|x, y\| rule has: a
+lift while driving tipped 26° on the way up and faulted in 21.2 ms (§5, 3 Nov). The
+pick-up path cannot fire while the wheels turn, and a lifted car's line sensors read
+black, so line following keeps the wheels turning (4 Nov, `trials_batch2` 04:33,
+`RL=11` while held; item 10 of §6). The inversion is what stops a lifted car.
+
+Why the fault does not count a hump past its top, as a pause does (§3.3): the wheels
+keep driving while the car is lifted, so the tilt of the lift itself, on flat floor,
+can start a "climb" and set it past its top before the fault comes, and a nose-down
+lift part way up the hump can read as the way down. Counting on the fault would then
+add a fake hump or a part height (host model, not a car log). Every demo run ends
+with a lift, so the hump is kept safe by the operator rule above instead: lift only
+after the `===== HUMP` line.
+
+To run (bench, wheels off the floor): calibrate on the floor, put the car on a box,
+start with GP20 (the motors run, as the sensors read black), then lift and invert:
+slow (~1 s), fast (~0.2 s), and set down on its roof. Pass: a `STOPPING` line every
+time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake under
+20 ms.
+
 ## 6. Limitations and error sources
 
 1. **Wheel skid is the main error.** In every session the left wheel stalled on the
@@ -435,13 +515,15 @@ of its 40 ms limit.
 9. **Self-driven runs: done for the demo hump, not finished elsewhere.** NFR-05 on
    the demo hump and flat-floor runs are done driving (§4.5); the higher ramp is
    out of the demo (prof, 3 Nov). Still from hand pushes or too few: the "still"
-   threshold, and impact A = 2.5 g (raised from 1.5 g, which normal driving
-   reached, §4.7), not yet driven into a real obstacle.
+   threshold. Impact A = 2.5 g (raised from 1.5 g, which normal driving reached,
+   §4.7) was never driven into a real obstacle; since 19 Nov impact is report-only
+   and no longer a requirement (§3.4).
 10. **The pick-up detector needs the wheels still.** Lifted while driving, the
    wheels spin in the air and it reads as driving; the fault comes once the car
    loses the line and stops (~2 s after the wheels stop), unless the lift tilts
    it past T first. A free-spinning-wheel cue from motion_task would make it
-   immediate (Buddy 2).
+   immediate (Buddy 2). On demo day the car is lifted **and inverted**, and the
+   inversion trips the tilt check (z below 0, §5.2) whether the wheels turn or not.
 11. **Magnetometer** is read but unused. It works: turned flat by hand through 4 ×
    90° (3 Nov, `IMU_VERBOSE`), x and y swung ±400 mG and gave 87/89/89/95° steps,
    z stayed 245–270 mG, |B| ≈ 455 mG, a hard-iron offset of about (−66, +29) mG
@@ -457,8 +539,38 @@ of its 40 ms limit.
    uses it.
 14. **The 5987 mg boot glitch** (x = y = z = 5987 mg at some boots, Week 10): cause
    not found; **0 of 4** logged boots on 2–3 Nov (plus ~8 unlogged reboots after
-   flashing). Demo day: after power-on check the `[imu] cal ok` line; if it shows
-   5987, power off and on, then recalibrate.
+   flashing). Seen again on 4 Nov at a GP20 recalibration (`trials_batch2`
+   04:41:36, `raw mean x=5987 y=5987 z=5987`). Demo day: after power-on check the
+   `[imu] cal ok` line; if it shows 5987, power off and on, then recalibrate.
+   **Mid-run:** the reads used to count as good, and their ~10 g is outside the
+   jolt band (0.7–1.3 g), so every IMU stop (tilt, upside down, no data) was
+   silent while it lasted. Now a sample with x = y = z counts as a bad read
+   (`safety_read_ok()`, as 0, 0, 0 already did): the chip is set up again after
+   2, and a glitch that lasts 50 ms ends in the NFR-13 no-data fault, which stops
+   the car in a mission. Trade-off: a stop for a glitch instead of a car that
+   drives on with no IMU stop; a real reading with all three axes equal to the
+   mg needs the car ~55° over (calculated), already past T. Calibration does not
+   use the check, so the `not level, raw mean x=5987 ...` line still shows it.
+   Host tests only; it is only known that the 100-sample means were equal (the
+   spread passed), not each sample, so a glitch whose axes differ by a mg would
+   still pass as a reading (an `IMU_VERBOSE` or `IMU_CSV` log of it would tell).
+15. **A probable false tilt fault mid-run** (4 Nov, `trials_batch1` 04:12:15,
+   trial 4, contact "no"): the status lines before it read `turning LEFT 16 / 39
+   deg/s, 48 mm/s, level` (04:12:13.6, 04:12:14.6; line following on a curve),
+   then `car tipped over (39.9 deg nose DOWN)`,
+   `caught 61.3 ms`, with no nose event and no BUMP before or after. Cause not
+   known: hard braking read as nose-down tilt, or a wrong but valid I2C read
+   (item 7). The tilt stop now ends the run (§5.2), so a repeat would end the
+   demo early. **Open question for Buddy 4:** raise T? FR-28 sets only a lower
+   bound (steepest hump + 5°, about 13° for the demo ramp), and the inversion is
+   caught by z below 0, not by T, so a higher T would not weaken the end-of-run
+   stop. That reading would need T over 40°. T stays 25° until car runs decide.
+16. **Long, gentle or rounded ramps (sim only, §4.8).** A climb gentler than the
+   onset threshold is never seen: in the default build a 10 mm ramp needs its way
+   up at most ~180 mm long. A level top longer than 120 mm counts twice. A rounded
+   ramp reads low, as its toe and foot are under the threshold. Floor tilt around
+   the ramp adds to the height (sim: 15 mg of tilt, 1.5 to 3.5 mm). The
+   `hump.h` switches cover part of this; neither has been driven.
 
 ## 7. Requirements status
 
@@ -467,10 +579,11 @@ of its 40 ms limit.
 | FR-02 | ✅ nav waits for CAL_OK_IMU; CAL_FAIL → FAULT |
 | FR-10 | ✅ every traversal counted once (flat-top, back-off, pick-up cases tested); self-driven: 18 crossings, two humps in one mission (twice: 10 + 23 mm, and two 10 mm humps ~19 cm apart, each counted once), an obstacle stop on the hump with reversing off it, three flat runs with 0 humps (§4.5) |
 | FR-11 | ✅ Σ tilt·Δs method, §3.1 |
-| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count and height in `E imu` and `S.hum` / `S.hgt` |
+| FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count in `E imu` and `S.hum`, the highest in `E imu` and `S.hgt` (until 19 Nov `S.hgt` carried the last hump; the change is host-tested only, §3.6) |
 | FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
-| FR-27 | ✅ classifier running on the car under motor power: moving, turning, climbing, descending, stopped as expected; impact A raised to 2.5 g after normal driving reached 1.5–2.0 g (§4.7). 🟡 not yet driven into a real obstacle |
-| FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6) |
+| FR-27 | ✅ classifier running on the car under motor power: moving, turning, climbing, descending, stopped as expected. Impact (class 4, A = 2.5 g) is **report-only**: IMU collision detection was removed from the requirements (the prof, 19 Nov; §3.4) |
+| FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6). z below 0 (upside down) counts as tilted too since the upside-down fix (branch `proposal/imu-upside-down-stop`, §5.2): host tests only |
+| Lift and invert (the prof, 19 Nov; demo point 10) | 🟡 built: tilt past T or upside down for 3 samples → IMU fault + STOP_IMU, the run ends in FAULT (§5.2). Host tests pass; not yet run on the car |
 | NFR-05 | ✅ demo hump (10 mm), self-driven: **14/14 within target**, mean −0.04 mm, range 8.9–11.3 mm (§4.5). The final ramp is about this height (prof, 3 Nov). 23 mm hump, no longer required: target 3/4, limit 4/4. Hand pushes: every clean pass within target |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |
 | NFR-18 | ✅ brake 47–61 µs after STOP_IMU (limit 20 ms) |

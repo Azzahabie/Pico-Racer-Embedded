@@ -10,18 +10,30 @@ the integrated car, 1–3 Nov 2026, on branch `imu_task` (commits `1551f7d`,
 **The demo ramp** is about the height of the smaller practice ramp (the prof,
 3 Nov); the higher ramp is out of the demo.
 
+> **Update, 19 Nov (the prof's requirement change).** IMU collision detection is
+> removed from the requirements. The IMU's only stop requirement is now: when the
+> car is lifted or overturned, stop the motors at once. On demo day the car is
+> lifted **and inverted** to end the run. What the code does: tilt past T = 25°,
+> or z below 0 (upside down), for 3 samples in a row raises the IMU fault and
+> STOP_IMU, and the run ends in FAULT (terrain report §5.2). The z rule is the
+> upside-down fix (branch `proposal/imu-upside-down-stop`). Impact
+> (class 4, `!! BUMP`) never stopped the car; it stays only as an informational
+> event and counts toward no requirement. The FR-27 row below is as of the
+> check-in; the upside-down rule has passed the host tests only, not the car.
+
 ## 1. Against the requirements
 
 | Requirement | Limit | What we have | Status |
 |---|---|---|---|
 | NFR-05 hump height | ±2 mm or 20 % (limit ±5 mm) | Demo hump (10 mm), self-driven: **14/14 within target**, mean 9.96 mm (−0.04), range 8.9–11.3 mm (§4.5). 23 mm, no longer required: target 3/4, limit 4/4 | ✅ |
 | FR-10 count each hump once | — | 18 self-driven crossings; two humps in one mission twice (10 + 23 mm; two 10 mm humps ~19 cm apart); obstacle stop on the hump, reversed off it, no second hump; 3 flat runs, 0 humps | ✅ |
-| FR-12 highest hump per mission | — | `humps: 2 (highest 28 mm)`; in `E imu` and `S.hgt` | ✅ |
+| FR-12 highest hump per mission | — | `humps: 2 (highest 28 mm)`; in `E imu` and `S.hgt` (correction, 19 Nov: these carried the hump in progress, else the last one; they carry the highest since then) | ✅ |
 | FR-23 IMU events in telemetry | — | **`E imu`** on every class change and hump-count change: class, count, height. `S.hum` / `S.hgt` now filled from it (read 0 before) | ✅ (new) |
 | FR-29 tilt and turn rate, 1 s | — | `S.tlt` from the 100 ms mean (0 on flat, 4–7 on the hump); `S.trn` left +, right − | ✅ |
-| FR-27 motion classes | — | moving, turning, climbing, descending, stopped match the car; impact A raised 1.5 → **2.5 g** (normal driving reached 2.0 g) | ✅ (impact not driven into a real obstacle) |
+| FR-27 motion classes | — | moving, turning, climbing, descending, stopped match the car; impact A raised 1.5 → **2.5 g** (normal driving reached 2.0 g) | ✅ (impact not driven into a real obstacle; report-only since 19 Nov, see the update above) |
 | FR-28 abnormal tilt | T ≥ steepest + 5° | T = 25°; demo ramp peaks ~7°; 23 mm ramp 20°; tip-over faults 4/4 | ✅ |
 | **Picked up in a mission** | the prof's request | in hand 1.2 s in Running / Paused → IMU fault; not in Ready. On the car: fault 1.1 s after `picked up` | ✅ (new) |
+| **Lifted and inverted** (added 19 Nov) | the prof, 19 Nov: ends the demo | tilt past T or z below 0 for 3 samples → IMU fault + STOP_IMU (terrain report §5.2) | 🟡 host tests only, not run on the car |
 | NFR-19 tilt → STOP_IMU | 40 ms | **20.5–21.2 ms**, 10 trials, 4 on the integrated car | ✅ |
 | NFR-18 STOP_IMU → brake | 20 ms | 47–61 µs | ✅ |
 | NFR-13 IMU fault | no data 50 ms | cal fail, tilt, read failure, pick-up; recovery by GP20 / `cmd reset`, then a new mission drives | ✅ (init failure not run) |
@@ -73,3 +85,7 @@ the integrated car, 1–3 Nov 2026, on branch `imu_task` (commits `1551f7d`,
 - Car across the line, flat and still, at power-on (IMU and line calibration).
 - Check `[imu] cal ok` (no 5987).
 - Lift it onto the start in Ready, not during a mission.
+- (19 Nov) The run ends by lifting and inverting the car: expect `STOPPING`,
+  the wheels stop, `S faults=imu mis=6`. GP20 on flat floor recalibrates.
+  Wait for the `===== HUMP` line before lifting: a lift while the hump is
+  still open (~14–15 cm past the crest) drops it (terrain report §5.2).

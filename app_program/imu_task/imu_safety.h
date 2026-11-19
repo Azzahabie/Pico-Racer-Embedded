@@ -22,6 +22,14 @@
 					   and tripped T for 3 samples twice
 					   (2026-10-28 logs: IMPACT while
 					   paused; pushed onto the ramp)      */
+#define SAFETY_FLIP_MG	0		/* z below this: past 90 deg, on its
+					   roof or rolling over (lifted and
+					   inverted, the demo's stop)         */
+#define SAFETY_UPSIDE_MSG_MG (-500)	/* stop message only, not the trip: z
+					   below this (past 120 deg) prints
+					   "upside down"; above it, on its
+					   side, z reads near 0 either way
+					   and the angle is printed           */
 #define SAFETY_BAD_N	5		/* Y = 50 ms with no good sample
 					   (NFR-13)                           */
 #define SAFETY_REINIT_N	2		/* re-set the chip up after this many */
@@ -33,17 +41,29 @@
 
 IMPORT void safety_reset(void);
 
-/* One sample.  ok: the read succeeded and was not all zeros (a chip that
- * reset reads 0, 0, 0).  ax, ay, az: acceleration in mg, offsets
+/* Is a raw sample (mg, offsets not yet removed) a reading at all?  FALSE
+ * for 0, 0, 0 (a chip that reset) and for x == y == z (the 5987 mg
+ * glitch): pass the answer to safety_step() as ok. */
+IMPORT BOOL safety_read_ok(W x, W y, W z);
+
+/* One sample.  ok: the read succeeded and safety_read_ok() passed it
+ * (not 0, 0, 0, not x == y == z).  ax, ay, az: acceleration in mg, offsets
  * removed, so a level car reads 0, 0, 1000.  Each event is returned
  * once, when it first happens; it is returned again only after a good
  * (or level) sample in between. */
 IMPORT UINT safety_step(BOOL ok, W ax, W ay, W az);
 
 IMPORT UW safety_tilt_mg(void);		/* tilt of the last good sample */
+IMPORT W safety_z_mg(void);		/* its z, mg                    */
 IMPORT BOOL safety_tilted(void);	/* over T for N samples, now    */
 IMPORT INT safety_tilt_run(void);	/* samples in a row over T: 1 on
 					   the first one (NFR-19 timing)  */
 IMPORT BOOL safety_no_data(void);	/* no good sample for Y, now    */
+
+/* For the tilt stop message only: was the last good sample clearly
+ * upside down (z below SAFETY_UPSIDE_MSG_MG)?  Then imu_task prints
+ * "upside down", as the angle from |x, y| folds back past 90 deg and is
+ * ~0 on its roof.  The trip itself uses SAFETY_FLIP_MG. */
+IMPORT BOOL safety_upside_down(void);
 
 #endif /* IMU_SAFETY_H */

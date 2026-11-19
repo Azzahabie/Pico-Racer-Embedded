@@ -17,9 +17,13 @@
    car rises sin(t) mm per mm driven, and sin(t) is the tilt in mg / 1000,
    so tilt mg * distance mm = rise in um.  Checked against the course
    humps (9 mm, 23 mm): the 500 ms logs summed to 10 mm and 24 mm. */
-#define HUMP_ENTER_MG	50		/* ~3 deg: a hump starts (while moving)*/
+/* HUMP_ENTER_MG (50, ~3 deg: a hump starts, while moving) is in hump.h,
+   a build switch for a long ramp. */
 #define HUMP_EXIT_MG	35		/* below this the car counts as level;
 					   floor spots differ by up to ~30   */
+#if HUMP_ENTER_MG <= HUMP_EXIT_MG
+#error "HUMP_ENTER_MG must be above HUMP_EXIT_MG (35)"
+#endif
 #define HUMP_GROUND_UM	2000		/* back within 2 mm of the start      */
 #define HUMP_END_MM	40		/* level this far, once on the way
 					   down: the hump is over            */
@@ -49,9 +53,9 @@
 LOCAL const char * const hump_name[] = { "none", "climbing", "descending" };
 
 LOCAL HUMP_STATE hump_state = HUMP_NONE;
-LOCAL UW	hump_count;		/* humps finished since boot         */
+LOCAL UW	hump_count;		/* humps finished this mission       */
 LOCAL UW	hump_last_mm;		/* height of the last one            */
-LOCAL UW	hump_max_mm;		/* highest since boot                */
+LOCAL UW	hump_max_mm;		/* highest this mission (FR-12)      */
 LOCAL W		base[2];		/* level x, y: the floor's own tilt  */
 LOCAL W		onset[2];		/* tilt as the hump began = uphill   */
 LOCAL W		h_um, peak_um, trough_um; /* height now / highest / lowest, um */
@@ -70,6 +74,12 @@ LOCAL W		top_level;		/* level distance since, mm          */
 LOCAL BOOL	top_down;		/* has come down some since          */
 LOCAL BOOL	top_still;		/* last window was stopped           */
 LOCAL W		top_last[2];		/* its tilt                          */
+#if HUMP_WAY_DOWN
+LOCAL INT	way_down;		/* 1: the last hump closed while
+					   driving; 2: on the rest of its way
+					   down (said once); 0: neither      */
+LOCAL W		wd_onset[2];		/* that hump's uphill                */
+#endif
 
 EXPORT UW imu_isqrt(UW v)
 {
@@ -124,6 +134,9 @@ EXPORT void hump_abort(void)
 	hump_state = HUMP_NONE;
 	on_top = FALSE;
 	pend_win = 0;
+#if HUMP_WAY_DOWN
+	way_down = 0;
+#endif
 }
 
 LOCAL void hump_finish(void);
@@ -269,6 +282,21 @@ LOCAL BOOL top_step(W dx, W dy, UW tilt, W dmm, W ad)
 	return TRUE;
 }
 
+#if HUMP_WAY_DOWN
+/* The hump in progress closes while driving.  It may close before the
+   foot of its way down: by the level cap on a level top longer than
+   HUMP_TOP_MAX_MM, or back within 2 mm (or level 40 mm) part way down
+   when a gentle climb was seen late and reads low.  A hump starts with a
+   climb, so downhill from here is the rest of that way down until the
+   next climb (hump_step()).  Closed at the foot, nothing changes. */
+LOCAL void way_down_arm(void)
+{
+	way_down = 1;
+	wd_onset[0] = onset[0];
+	wd_onset[1] = onset[1];
+}
+#endif
+
 /* One 100 ms step of hump detection.  ax, ay: mean tilt in mg; dmm:
    distance driven in the window (- reversing); steady: motion_task
    reports neither ACCELERATING nor DECELERATING.
@@ -321,6 +349,28 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 			return;
 		}
 		if(!steady) return;	/* lurching: neither count nor reset */
+
+#if HUMP_WAY_DOWN
+		/* The last hump closed while driving (way_down_arm()):
+		   downhill now is the rest of its way down, not a new climb.
+		   At HUMP_WAY_DOWN 0 it is taken as a climb and counts as a
+		   second hump, or "ignored" if short (sim).  Reversing down
+		   the way up is downhill too.  A climb ends this, so the next
+		   hump still counts. */
+		if(way_down != 0) {
+			if(fx * wd_onset[0] + fy * wd_onset[1] < 0) {
+				if(way_down == 1) {
+					way_down = 2;
+					tm_printf((UB *)"[imu] hump: the rest of"
+						       " its way down, not a"
+						       " new hump\n");
+				}
+				pend_win = 0;
+				return;
+			}
+			way_down = 0;
+		}
+#endif
 
 		/* Pending: restart if this window points the other way. */
 		if(pend_win > 0
@@ -418,6 +468,9 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 	if(h_um < HUMP_GROUND_UM && h_um > -HUMP_GROUND_UM
 	   && (peak_um >= HUMP_MIN_MM * 1000
 	       || -trough_um >= HUMP_MIN_MM * 1000)) {
+#if HUMP_WAY_DOWN
+		way_down_arm();
+#endif
 		hump_finish();
 		return;
 	}
@@ -429,6 +482,9 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 		level_mm += ad;
 		if((hump_state == HUMP_DESCENDING && level_mm >= HUMP_END_MM)
 		   || level_mm >= HUMP_TOP_MAX_MM) {
+#if HUMP_WAY_DOWN
+			way_down_arm();
+#endif
 			hump_finish();
 		}
 	}

@@ -193,7 +193,13 @@ LOCAL void raise_fault(INT why, UW t_first, const W a[3])
 	   the first offending sample to here, on the 1 MHz timer. */
 	us = in_w(TIMER_TIMERAWL) - t_first;
 	t10 = imu_deg10(safety_tilt_mg());
-	if(tilt) {
+	if(tilt && safety_upside_down()) {
+		/* Well past 90 deg: on its roof |x, y| is ~0 again, so the
+		   angle and side read "0.0 deg to the , " (lifted and
+		   inverted).  On its side, z near 0, the angle is printed. */
+		tm_sprintf(what, (UB *)"car tipped over (upside down, z %d mg)",
+			   safety_z_mg());
+	} else if(tilt) {
 		/* Which way it went over: the larger of side and nose. */
 		side = IMU_LEFT_SIGN * a[IMU_LEFT_AXIS];
 		nose = IMU_NOSE_SIGN * a[IMU_NOSE_AXIS];
@@ -558,17 +564,17 @@ LOCAL UW mg_deg(W mg)
 /* The E imu record (M6, FR-23): queued for comms_task on every motion
    class change and every change of the hump count (a hump counted, or the
    reset at mission start).  comms_task also fills S.hum and S.hgt from it,
-   so without it they read 0.  Height: the hump in progress, else the last
-   one.  comms_tele_send() never waits; a full queue counts a drop. */
+   so without it they read 0.  Height: the highest hump this mission
+   (FR-12), 0 until one is counted; it was the hump in progress, else the
+   last one, so a lower second hump replaced the highest in S.hgt.
+   comms_tele_send() never waits; a full queue counts a drop. */
 LOCAL void send_imu_record(void)
 {
 	UB	body[COMM_W_INTAKE_SIZE_IMU];
-	UW	hgt;
 
-	hgt = (hump_get_state() != HUMP_NONE && hump_height_mm() > 0)
-	      ? (UW)hump_height_mm() : hump_get_last_mm();
 	(void)comms_tele_send(body, (INT)comm_w_pack_imu(body,
-				(uint32_t)mclass_get(), hump_get_count(), hgt));
+				(uint32_t)mclass_get(), hump_get_count(),
+				hump_get_max_mm()));
 }
 
 /* Print what imu_events.c reported, one line per event, in words. */
@@ -698,10 +704,18 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		  (chip == CHIP_ADXL345 || chip == CHIP_MMA845X || acc_only)
 		  ? " (accel only, no magnetometer)" : "");
 	/* The fault thresholds in force, so a log shows which build ran. */
-	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg for %d samples (in a"
-		       " mission), no data for %d ms\n",
+	tm_printf((UB *)"[imu] faults: tilt > %u.%u deg or upside down for %d"
+		       " samples (in a mission), no data for %d ms\n",
 		  imu_deg10(SAFETY_TILT_MG) / 10, imu_deg10(SAFETY_TILT_MG) % 10,
 		  SAFETY_TILT_N, SAFETY_BAD_N * SAMPLE_MS);
+#if HUMP_ENTER_MG != HUMP_ENTER_MG_CAR || HUMP_WAY_DOWN
+	/* A long-ramp build (hump.h switches): say which, as above.  The
+	   car build as driven prints nothing here. */
+	tm_printf((UB *)"[imu] humps: start at %d mg (%u.%u deg), way-down"
+		       " rule %s\n", HUMP_ENTER_MG,
+		  imu_deg10(HUMP_ENTER_MG) / 10, imu_deg10(HUMP_ENTER_MG) % 10,
+		  HUMP_WAY_DOWN ? "on" : "off");
+#endif
 
 	er = start_ticks();
 	if(er < E_OK) {
@@ -766,10 +780,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		dmm = motion_ds_delta_mm(ds, ds_prev);	/* this sample */
 		ds_prev = ds;
 
-		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0:
-		   powered down, not a reading. */
+		/* A chip that reset (brown-out, a loose wire) answers 0, 0, 0,
+		   and the 5987 mg glitch x = y = z: not readings, so a glitch
+		   that lasts ends in the no-data fault (safety_read_ok). */
 		er = read_sample(a, m, &got_mag, (k % MAG_EVERY) == 0);
-		ok = er >= E_OK && (a[0] != 0 || a[1] != 0 || a[2] != 0);
+		ok = er >= E_OK && safety_read_ok(a[0], a[1], a[2]);
 		if(ok) {
 			for(i = 0; i < 3; i++) a[i] -= acc_ofs[i];
 		}

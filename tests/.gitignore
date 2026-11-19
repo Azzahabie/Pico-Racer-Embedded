@@ -22,6 +22,9 @@ motion_task_sim/sim_wdt
 motion_task_sim/sim_stop
 motion_wdt/test_motion_wdt
 imu_hump/test_imu_hump
+imu_hump/test_imu_hump_enter40
+imu_hump/test_imu_hump_waydown
+imu_hump/test_imu_hump_long
 imu_safety/test_imu_safety
 line/test_barcode_decode
 line/test_barcode_action
