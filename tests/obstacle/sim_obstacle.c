@@ -8,7 +8,10 @@
  * each angle (g_world_mm, the same 5 deg slots as the scan grid).
  *
  * What it checks: switch_side() sends a new E obstacle with the side it
- * now drives (S.byp). */
+ * now drives (S.byp); t_block runs over Blocked and its rescans, so a box
+ * that reads D_stop or more at rest still pauses the mission.
+ * The whole Statechart runs in scan_task_run(); every scan_if_wait()
+ * calls the scenario's hook, and the run ends at a fake time. */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -104,6 +107,7 @@ static void world_all(uint16_t mm)
 /* ---- fakes: scan_if (motion_task, nav_ctrl_task, comms_task) --------- */
 static UINT	g_scan_flg;		/* bits motion_task has set */
 static bool	g_stop;			/* STOP_SCAN */
+static bool	g_running;		/* mission Running (nav_ctrl_task) */
 static int	g_blocked_n;		/* BLOCKED raised to nav */
 static UW	g_blocked_at_us;	/* ... first time */
 static avoid_cmd_t g_cmds[32];		/* commands placed */
@@ -134,6 +138,7 @@ void scan_if_set_blocked(void)
 		g_blocked_at_us = g_now_us;
 	}
 	g_blocked_n++;
+	g_running = false;			/* nav_ctrl_task pauses the mission */
 }
 void scan_if_send_profile(uint32_t width_mm, uint32_t bypass)
 {
@@ -142,9 +147,16 @@ void scan_if_send_profile(uint32_t width_mm, uint32_t bypass)
 	g_tele_n++;
 }
 void scan_if_sensor_lost(bool lost) { (void)lost; }
-bool scan_if_mission_running(void) { return true; }
+bool scan_if_mission_running(void) { return g_running; }
 bool scan_if_hump_active(void) { return false; }
 bool scan_if_standalone(void) { return false; }
+
+/* scan_task_run() is endless: it runs until the fake clock reaches
+   g_end_us, calling the scenario's hook on every wait. */
+static jmp_buf	g_task_out;
+static int	g_in_task;		/* inside run_task() */
+static UW	g_end_us;
+static void	(*g_hook)(void);
 
 /* scan_task's waits: one 60 ms TICK each, or a bit motion_task set. */
 UINT scan_if_wait(UINT bits, TMO tmout)
@@ -152,6 +164,12 @@ UINT scan_if_wait(UINT bits, TMO tmout)
 	UINT seen;
 
 	(void)tmout;
+	if (NULL != g_hook) {
+		g_hook();
+	}
+	if ((0 != g_in_task) && (g_now_us >= g_end_us)) {
+		longjmp(g_task_out, 1);
+	}
 	seen = g_scan_flg & bits;
 	if (0U == seen) {
 		g_now_us += (UW)SCAN_TICK_MS * 1000U;
@@ -172,11 +190,37 @@ static void reset(void)
 	g_ds_step = 0U;
 	g_scan_flg = 0U;
 	g_stop = false;
+	g_running = true;
 	g_blocked_n = 0;
 	g_blocked_at_us = 0U;
 	g_cmd_n = 0;
 	g_cmd_full = 0;
 	g_tele_n = 0;
+	g_hook = NULL;
+}
+
+/* Run the real scan_task for run_ms of fake time. */
+static void run_task(UW run_ms)
+{
+	g_end_us = g_now_us + run_ms * 1000U;
+	g_in_task = 1;
+	if (0 == setjmp(g_task_out)) {
+		scan_task_run();
+	}
+	g_in_task = 0;
+}
+
+/* times text appears in the log */
+static int log_count(const char *p_text)
+{
+	const char *p_at = g_log;
+	int         count = 0;
+
+	while (NULL != (p_at = strstr(p_at, p_text))) {
+		count++;
+		p_at++;
+	}
+	return count;
 }
 
 /* A context in Avoiding after a bypass planned from this sweep: the 90 mm
@@ -242,9 +286,93 @@ static void switch_side_reports(void)
 	CHECK((0 == g_tele_n) && g_stop);
 }
 
+/* O5 world: the car stops at 240 mm from a wall it cannot pass, then at
+   rest the forward ping reads 255 mm (>= D_stop 250: "clear"), as on the
+   car (rest 223-252 mm, trials_batch2:873-876: Blocked left after 290 ms).
+   Later the wall goes away (CONTINUE) and comes back. */
+static UW  g_first_blocked_us;		/* first "-> BLOCKED" of the run */
+static UW  g_second_blocked_us;		/* after the wall came back */
+static int g_phase;
+static void hook_blocked_at_rest(void)
+{
+	if ((0 == g_phase) && (1 <= log_count("-> BLOCKED"))) {
+		g_first_blocked_us = g_now_us;
+		world_all(255);			/* at rest: reads D_stop or more */
+		g_phase = 1;
+	}
+}
+
+/* t_block from the first Blocked, over the rescans: BLOCKED to nav. */
+static void blocked_at_rest_pauses(void)
+{
+	/* the box stays close: Blocked never rescans (worked before) */
+	reset();
+	world_all(240);
+	g_phase = 0;
+	run_task(30000U);
+	CHECK(1 == log_count("-> BLOCKED"));
+	CHECK(1 == g_blocked_n);
+
+	/* the box reads 255 mm at rest: rescans every few seconds */
+	reset();
+	world_all(240);				/* stops, scans: no side passable */
+	g_phase = 0;
+	g_hook = hook_blocked_at_rest;
+	run_task(30000U);
+	CHECK(3 <= log_count("readings clear; rescan while STOP_SCAN remains set"));
+	CHECK(NULL != strstr(g_log, "[scan] still blocked: "));
+	CHECK(1 <= g_blocked_n);		/* was never raised */
+	CHECK((g_blocked_at_us - g_first_blocked_us) >= (UW)T_BLOCK_MS * 1000U);
+	CHECK((g_blocked_at_us - g_first_blocked_us) < (UW)(T_BLOCK_MS + 4000) * 1000U);
+	CHECK(1 == g_blocked_n);		/* the mission paused: Idle */
+}
+
+/* After a rescan finds the way clear the car drives on: a later Blocked
+   counts its own t_block. */
+static int g_blocked_seen;		/* "-> BLOCKED" count when the wall came back */
+static void hook_blocked_again(void)
+{
+	if ((0 == g_phase) && (1 <= log_count("-> BLOCKED"))) {
+		g_first_blocked_us = g_now_us;
+		world_all(255);			/* at rest: reads D_stop or more */
+		g_phase = 1;
+	} else if ((1 == g_phase) && ((g_now_us - g_first_blocked_us) >= 6000000U)) {
+		world_all(SL_FAR);		/* the wall is taken away */
+		g_phase = 2;
+	} else if ((2 == g_phase) && (1 <= log_count("PLANNING -> MONITORING"))) {
+		world_all(240);			/* and put back */
+		g_blocked_seen = log_count("-> BLOCKED");
+		g_phase = 3;
+	} else if ((3 == g_phase) && (log_count("-> BLOCKED") > g_blocked_seen)) {
+		g_second_blocked_us = g_now_us;
+		world_all(255);
+		g_phase = 4;
+	} else {
+		/* nothing to change */
+	}
+}
+
+static void blocked_run_restarts(void)
+{
+	reset();
+	world_all(240);
+	g_phase = 0;
+	g_second_blocked_us = 0U;
+	g_hook = hook_blocked_again;
+	run_task(40000U);
+	CHECK(1 == log_count("PLANNING -> MONITORING"));	/* the way was clear */
+	CHECK(0U != g_second_blocked_us);
+	CHECK(1 == g_blocked_n);
+	/* from the second Blocked, not the first */
+	CHECK((g_blocked_at_us - g_second_blocked_us) >= (UW)T_BLOCK_MS * 1000U);
+	CHECK((g_blocked_at_us - g_second_blocked_us) < (UW)(T_BLOCK_MS + 4000) * 1000U);
+}
+
 int main(void)
 {
 	switch_side_reports();
+	blocked_at_rest_pauses();
+	blocked_run_restarts();
 	printf("scan_task: %d checks, %d failures\n", g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 }

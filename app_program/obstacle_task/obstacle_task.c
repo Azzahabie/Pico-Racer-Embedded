@@ -33,6 +33,8 @@
  *	              only a confirmed false alarm or LINE_FOUND resumes
  *	              monitoring.
  *	              After t_block -> BLOCKED on nav_flg (mission pauses).
+ *	              t_block runs from the first Blocked over the rescans
+ *	              it makes, until the car drives again.
  *	  Sensor Lost 3 no-echo pings in a row (any active state): STOP_SCAN,
  *	              fault record. 3 valid echoes -> Coarse Scan. t_block ->
  *	              BLOCKED on nav_flg.
@@ -205,6 +207,8 @@ typedef enum {
  *   bits 9-10 scan_no_echo   no-echo pings in a row, saturates at 3
  *   bit  11   cmd_warned     "command not sent" printed this Planning
  *   bit  12   bench          mode 3: no mission, never abort a scan
+ *   bit  13   side_switched  this avoidance tried the other side
+ *   bit  14   blocked_run    Blocked and its rescans, since blocked_us
  * The scan grid stays uint16_t per slot (Tribunal 1 decision): 12 bits
  * would cover the range but save only ~9 bytes for a shift on every ping. */
 #define CTX_STATE_MASK		0x000FU
@@ -219,6 +223,7 @@ typedef enum {
 #define CTX_CMD_WARNED		(1U << 11)
 #define CTX_BENCH		(1U << 12)
 #define CTX_SIDE_SWITCHED	(1U << 13)	/* this avoidance tried the other side */
+#define CTX_BLOCKED_RUN		(1U << 14)	/* t_block counts from blocked_us */
 
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
@@ -234,6 +239,8 @@ _Static_assert(SL_SLOTS <= 32, "no_echo_slots needs one bit per slot");
 typedef struct {
 	UW		state_us;	/* when the state was entered     */
 	UW		scan_us;	/* when the coarse scan started   */
+	UW		blocked_us;	/* when Blocked was first entered,
+					   kept over its rescans (t_block) */
 	uint32_t	no_echo_slots;	/* this scan: slots that got no echo
 					   pulse (bit = SL_IDX), for print */
 	sl_profile_t	prof;
@@ -367,6 +374,26 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	p_ctx->state_us = now_us();
 	ctx_set_flag(p_ctx, CTX_BLOCKED_SENT | CTX_CMD_WARNED, false);
 	sl_runs_reset(&p_ctx->runs);
+
+	/* t_block counts from the first Blocked, over the rescans it makes
+	 * (Coarse, Fine, Planning, back to Blocked): the car has not moved.
+	 * Restarted at every Blocked, it never ran out when the box read
+	 * D_stop or more at rest (3 clear pings, rescan, Blocked again).
+	 * It starts again once the car drives or the mission stops. */
+	if(ST_BLOCKED == next) {
+		if(!ctx_flag(p_ctx, CTX_BLOCKED_RUN)) {
+			ctx_set_flag(p_ctx, CTX_BLOCKED_RUN, true);
+			p_ctx->blocked_us = p_ctx->state_us;
+		} else {
+			tm_printf((UB *)"[scan] still blocked: %d of %d ms (t_block)\n",
+				  (INT)ms_since(p_ctx->blocked_us), (INT)T_BLOCK_MS);
+		}
+	} else if((ST_MONITORING == next) || (ST_AVOIDING == next) ||
+		  (ST_REVERSING == next) || (ST_IDLE == next)) {
+		ctx_set_flag(p_ctx, CTX_BLOCKED_RUN, false);
+	} else {
+		/* a scan or Sensor Lost: a Blocked run goes on */
+	}
 
 	switch(next) {
 	case ST_IDLE:
@@ -915,6 +942,7 @@ LOCAL void scan_task_run(void)
 	ctx.bits = 0U;				/* Idle, every flag clear */
 	ctx.action = SL_CONTINUE;
 	ctx.scan_us = now_us();
+	ctx.blocked_us = ctx.scan_us;
 	ctx.no_echo_slots = 0U;
 	ctx.look_deg = 0;
 	enter(&ctx, ST_IDLE);			/* entry actions: centre, clear */
@@ -1020,7 +1048,7 @@ LOCAL void scan_task_run(void)
 				tm_printf((UB *)"[scan] readings clear; rescan while "
 					  "STOP_SCAN remains set\n");
 				enter(&ctx, ST_COARSE);
-			} else if(!ctx_flag(&ctx, CTX_BLOCKED_SENT) && (ms_since(ctx.state_us) >= (UW)T_BLOCK_MS)) {
+			} else if(!ctx_flag(&ctx, CTX_BLOCKED_SENT) && (ms_since(ctx.blocked_us) >= (UW)T_BLOCK_MS)) {
 				scan_if_set_blocked();
 				ctx_set_flag(&ctx, CTX_BLOCKED_SENT, true);
 			} else {
