@@ -30,6 +30,7 @@ unmeasured. Both tasks are built in with `TM_LINE_TASK` 1
 | barcode -> nav | `barcode_cmd_word()` | pending `{letter, action, seq}` (`barcode_action.h`) |
 | nav -> motion | `nav_cmd_mbf` | `{NAV_CMD_JUNCTION, action}` (`nav_ctrl.h`) |
 | ir_sense, barcode -> comms | `comms_tele_send()` | E line on state edges; E barcode on every read (letter 31 = rejected) |
+| ir_sense -> comms (`S.faults`) | `fault_set()` / `fault_clear()` (`nav_ctrl.h`) | `FAULT_LINE_SENSOR`, bit 4 of the shared fault flag, this task's bit only |
 
 Neither task drives the motors.
 
@@ -48,7 +49,16 @@ Neither task drives the motors.
   - the error `(right − left)/10`, −100..+100. **Positive = correct left**
     (counter-clockwise, the same sign as `S.trn`);
   - lost after `LINE_LOST_MS` without a confirmed black;
-  - a sensor fault after `IR_RAIL_FAULT_SAMPLES` at a rail.
+  - a sensor fault after `IR_RAIL_FAULT_SAMPLES` at a rail, or for a sample
+    whose ADC read failed. The fault sets `line_state`'s fault bit, and
+    `ir_sense_task` sets `FAULT_LINE_SENSOR` (`S.faults` bit 4,
+    MQTT_SCHEMA.md 4.1) on the edge where it starts and clears it on the
+    edge where it ends, before the console, so a barcode read never holds
+    it back. A failed ADC start-up sets it for good (the task stops).
+    The bit is a report: nav does not read the fault flag
+    (`FAULT_STOP_MASK` has no user), so a line fault still stops the car
+    the old way: motion treats it as the line missing, LINE_SEARCH, then
+    LINE_LOST pauses the mission.
 - **Junction:** GP26 and GP27 are closer together than the 18 mm line, so
   both read black (rl 11) whenever the car is centred. That is normal
   following, never a junction, and those two sensors cannot see a
@@ -178,7 +188,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold, noisy loss, stuck sensors |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold, noisy loss, stuck sensors and a failed ADC read (the fault starts and ends, also under a barcode) |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
 | `test_barcode_action` | the table, map apply and reject, the command word |
 | `test_line_state` | the word, and the motion statechart contract |

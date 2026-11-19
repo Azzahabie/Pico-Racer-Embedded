@@ -237,6 +237,17 @@ static void test_faults(void)
 
 	line_track_step(&trk, W, W, false, false, false, &out);	/* ADC read failed */
 	CHECK(line_state_fault(out.word));
+	/* the next good read ends it: ir_sense_task clears S.faults bit 4 on
+	   this edge, so the bit must not stick */
+	line_track_step(&trk, W, W, true, false, false, &out);
+	CHECK(!line_state_fault(out.word));
+
+	/* a fault while a barcode is under the car is still a fault (the bit
+	   is sent before the console's barcode check) */
+	feed(IR_RAIL_FAULT_SAMPLES, 4095u, W, true);		/* GP26 at the top rail */
+	CHECK(line_state_fault(out.word));
+	feed(1u, W, W, true);
+	CHECK(!line_state_fault(out.word));
 }
 
 static void test_word(void)

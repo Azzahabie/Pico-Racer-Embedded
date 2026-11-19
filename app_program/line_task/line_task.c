@@ -7,7 +7,8 @@
  * capture, sending widths to barcode_task on bar_mbf with TMO_POL.  It never
  * waits for decoding, the table or telemetry, and never drives the motors.
  * On CAL_REQ from nav_ctrl_task it calibrates over IR_CAL_SAMPLES samples
- * without stopping the 1 ms loop.
+ * without stopping the 1 ms loop.  A line sensor fault sets
+ * FAULT_LINE_SENSOR (S.faults bit 4) and clears it when it ends.
  */
 
 #include <tk/tkernel.h>
@@ -190,6 +191,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	BOOL		black;
 	BOOL		adc_ok;
 	BOOL		fault_reported = FALSE;
+	BOOL		fault_flagged = FALSE;	/* FAULT_LINE_SENSOR as last sent */
 	BOOL		lost_reported = TRUE;	/* LINE_STATE_INITIAL is lost */
 #if LINE_GP7_DIAG
 	UINT		gp7_ms = 0U;
@@ -206,6 +208,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	ercd = line_reader_init(NULL);
 	if(E_OK > ercd) {
 		tm_printf((UB *)"[line] ADC initialization failed, er=%d\n", ercd);
+		fault_set(FAULT_LINE_SENSOR);	/* S.faults bit 4, for good */
 		tell_nav(NAV_FLG_CAL_FAIL);
 		while(1) {
 			(void)tk_slp_tsk(TMO_FEVR);
@@ -267,6 +270,18 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 
 		if(out.junction) {
 			tell_nav(NAV_FLG_JUNCTION);
+		}
+
+		/* S.faults bit 4 follows line_state's fault bit, on its edges.
+		   Only this task's bit; before the console, so a barcode read
+		   never holds it back */
+		if((out.fields.fault ? TRUE : FALSE) != fault_flagged) {
+			fault_flagged = out.fields.fault ? TRUE : FALSE;
+			if(fault_flagged) {
+				fault_set(FAULT_LINE_SENSOR);
+			} else {
+				fault_clear(FAULT_LINE_SENSOR);
+			}
 		}
 
 		/* calibration runs inside the loop: sampling never stops */
