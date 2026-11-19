@@ -97,11 +97,12 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 
 | Rule | Value | Why |
 |---|---|---|
-| Onset | tilt ≥ 50 mg (~2.9°) for 3 windows (300 ms), moving, motion STEADY | a single jolting window once set "uphill" backwards and lost a 23 mm hump |
+| Onset | tilt ≥ 50 mg (~2.9°) for 3 windows (300 ms), moving, motion STEADY. 50 is `HUMP_ENTER_MG`, a build switch in `hump.h` (40 for a long ramp, §4.8) | a single jolting window once set "uphill" backwards and lost a 23 mm hump |
 | Uphill direction | sum of the 3 onset windows | mounting angle does not matter |
 | Level | tilt < 35 mg (~2.0°) | floor spots differ by up to 30 mg |
 | End, driven over | back within 2 mm of start height, or level for 40 mm **once on the way down** | a level top longer than 40 mm otherwise ended the hump on the top and counted the way down as a second hump |
-| End, safety cap | level for **120 mm** (was 250, `698d48b`) | far side that drops off too fast to read as a slope. On the demo hump (195 mm long, 10 mm) the car's body is as long as the hump and never reads the way down, so this is how that hump closes: 250 mm kept it open ~25 cm past the crest (1 Nov), 120 mm closes it **~14–15 cm** past (§4.5) |
+| End, safety cap | level for **120 mm** (was 250, `698d48b`) | far side that drops off too fast to read as a slope. On the demo hump (195 mm long, 10 mm) the car's body is as long as the hump and never reads the way down, so this is how that hump closes: 250 mm kept it open ~25 cm past the crest (1 Nov), 120 mm closes it **~14–15 cm** past (§4.5). A level top longer than 120 mm closes the hump on the top, and the way down then counts as a second hump (sim, §4.8) |
+| Way down after a close | off by default; `HUMP_WAY_DOWN` 1 (`hump.h`): once a hump closes while driving, downhill is its way down until the next climb, not a new hump | a long level top, or a gentle climb seen late, counted the ramp twice (sim, §4.8). Not driven |
 | End, mission paused or ended | past the top (read the way down, or level since the climb): **counted now**, then followed "on top"; still climbing: dropped | a stop ~80 mm after the hump, before the 120 mm close, dropped an 11 mm hump (3 Nov); the hump may be near the end of the line, where the car stops that soon (`hump_end_early()`) |
 | End, stopped | still for 1 s: hump counted, then the car is followed "on top" until it is back down | backing off a ramp once counted as a new hump |
 | Stopped on the slope | still, tilt ≥ 65 mg and under the 4 mm minimum: the climb stays open for the next push | stopped 2.4 mm up the 10 mm ramp, the climb was ignored and the rest of the ramp was never counted (2026-10-28) |
@@ -175,8 +176,9 @@ none of it feeds the hump height or the safety check.
 | `E imu` height, `S.hgt` (FR-12) | the **highest** hump this mission, 0 until one is counted and again at each mission start. Until 19 Nov it was the hump in progress, else the last one, so a lower second hump replaced the highest | the two 10 mm humps gave `S.hum=2 S.hgt=10` (§4.5); higher-then-lower not driven, host test only (`tests/imu_hump`) |
 | `S.trn` (FR-29) | encoder turn rate, left positive | `turning LEFT 27 deg/s` → `trn=24`, right bend `trn=-47`, still `0`, at boot `n/a` |
 
-All of these cases are replayed on a PC: `tests/imu_hump` (30 scenarios, most of them
-a pass that went wrong on the car) and `tests/imu_safety` (121 checks). Both pass.
+All of these cases are replayed on a PC: `tests/imu_hump` (47 scenarios, most of them
+a pass that went wrong on the car, run against each `hump.h` switch setting) and
+`tests/imu_safety` (121 checks). Both pass.
 
 ## 4. Results
 
@@ -355,6 +357,30 @@ T = 25° the lower (demo) ramp has a 15° margin.
 **Verified on the car with T = 25°** (2026-10-28 01:47): pushes over the 23.5 mm ramp
 in RUNNING, jerky ones included, gave no fault; a hand tilt in RUNNING faulted at
 26.3°.
+
+### 4.8 The final ramp: same height, a different width (19 Nov; sim, not driven)
+
+The final ramp is the same height (about 10 mm) but a different width. Across the
+track the width does not matter while both wheels ride up together. Along the track
+a longer ramp is gentler, and the onset threshold (50 mg for 3 windows) sets the
+limit. Host model with the real `hump.c` (as `tests/imu_hump`, 20 noise seeds per
+case, 48 mm/s), 10 mm, up half way and down the other half:
+
+| Length (way up) | Slope | Default build | `HUMP_ENTER_MG=40`, `HUMP_WAY_DOWN=1` |
+|---|---|---|---|
+| 195 mm (98), the demo hump | 103 mg | 20/20 in target | 20/20 |
+| 360 mm (180) | 55 mg | 20/20 | 20/20 |
+| 400 mm (200) | 50 mg | 13/20 in target, 5 counted twice | 20/20 |
+| 440 mm (220) | 45 mg | 0/20 seen | 20/20 |
+| 500 mm (250) | 40 mg | 0/20 | 14/20 |
+| 560 mm and longer | 36 mg and less | 0/20 | 0/20 |
+
+A level top longer than 120 mm (`HUMP_TOP_MAX_MM`) counts the ramp twice in the
+default build (sim, every top from 120 to 800 mm), once with `HUMP_WAY_DOWN=1`. A
+ramp crossed at an angle reads high by 1/cos(angle) (C; 30° +15 %), whatever its
+length. The defaults are unchanged: a fresh default build is byte-identical to the
+one before the switches. The envelope, the switch choice from a ruler measurement
+of the real ramp, and the car test matrix: [`ramp_width_test_matrix.md`](ramp_width_test_matrix.md).
 
 ## 5. Fault behaviour (FR-02, FR-28, NFR-13, NFR-18)
 
@@ -539,6 +565,12 @@ time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake unde
    bound (steepest hump + 5°, about 13° for the demo ramp), and the inversion is
    caught by z below 0, not by T, so a higher T would not weaken the end-of-run
    stop. That reading would need T over 40°. T stays 25° until car runs decide.
+16. **Long, gentle or rounded ramps (sim only, §4.8).** A climb gentler than the
+   onset threshold is never seen: in the default build a 10 mm ramp needs its way
+   up at most ~180 mm long. A level top longer than 120 mm counts twice. A rounded
+   ramp reads low, as its toe and foot are under the threshold. Floor tilt around
+   the ramp adds to the height (sim: 15 mg of tilt, 1.5 to 3.5 mm). The
+   `hump.h` switches cover part of this; neither has been driven.
 
 ## 7. Requirements status
 
