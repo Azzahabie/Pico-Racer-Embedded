@@ -30,6 +30,15 @@ EXPORT BOOL safety_tilted(void)	{ return tilt_n >= SAFETY_TILT_N; }
 EXPORT INT safety_tilt_run(void)	{ return tilt_n; }
 EXPORT BOOL safety_no_data(void)	{ return bad_n >= SAFETY_BAD_N; }
 
+/* The stop message only.  It used SAFETY_FLIP_MG, the trip's 0 mg, so a
+   car tipped onto its side (90 deg, |x, y| ~1 g) with z a little below 0
+   printed "upside down" instead of its angle.  Below -500 mg (past 120
+   deg) |x, y| is under 866 mg and falls to ~0 on its roof. */
+EXPORT BOOL safety_upside_down(void)
+{
+	return tilt_z < SAFETY_UPSIDE_MSG_MG;
+}
+
 /* A chip that reset (brown-out, a loose wire) answers 0, 0, 0, and the
    5987 mg glitch (4 Nov 04:41:36, "raw mean x=5987 y=5987 z=5987") reads
    the same on all three axes.  Neither is a reading.  Counted as good,

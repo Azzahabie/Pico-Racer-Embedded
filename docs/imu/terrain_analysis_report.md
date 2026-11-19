@@ -175,7 +175,7 @@ none of it feeds the hump height or the safety check.
 | `S.trn` (FR-29) | encoder turn rate, left positive | `turning LEFT 27 deg/s` → `trn=24`, right bend `trn=-47`, still `0`, at boot `n/a` |
 
 All of these cases are replayed on a PC: `tests/imu_hump` (30 scenarios, most of them
-a pass that went wrong on the car) and `tests/imu_safety` (114 checks). Both pass.
+a pass that went wrong on the car) and `tests/imu_safety` (121 checks). Both pass.
 
 ## 4. Results
 
@@ -426,7 +426,7 @@ What the code does:
 | Other paths | in hand 1.2 s with the wheels still (`EV_LIFT_FAULT_MS`, §5) and no good reading for 50 ms (NFR-13) raise the same fault |
 | After | the run ends in **FAULT**, not FINISHED (`S` `mis=6`, `faults=imu`). GP20 recalibrates on flat floor and clears the fault |
 | Hump | a hump still open when the fault comes is dropped, past its top or not (§3.2, Statechart 6.4): `hump discarded (fault or abnormal tilt)`, no `===== HUMP` line, `S.hum` one short. The demo hump stays open ~14–15 cm past its crest (§4.5), about 3 s at 48 mm/s (calculated). **Operator rule: wait for the `===== HUMP` line before lifting the car** |
-| Console | `[imu] !!! STOPPING: car tipped over (upside down, z <z> mg) !!!` when z is below 0 at the trip; tipped past T but not yet past 90°, the angle line as before (`... (26.5 deg to the LEFT, right side up)`). Before this message fix an upside-down trip printed `(0.0 deg to the , )`, as \|x, y\| is ~0 on its roof. The boot line `[imu] faults: tilt > 24.9 deg or upside down for 3 samples ...` shows the image has the z rule |
+| Console | `[imu] !!! STOPPING: car tipped over (upside down, z <z> mg) !!!` when z is below −500 mg at the trip (past 120°, `SAFETY_UPSIDE_MSG_MG`, used for the message only; the trip stays at z under 0); otherwise the angle line as before (`... (26.5 deg to the LEFT, right side up)`), so a car on its side, z near 0 either way, prints its angle. Before this message fix an upside-down trip printed `(0.0 deg to the , )`, as \|x, y\| is ~0 on its roof. The boot line `[imu] faults: tilt > 24.9 deg or upside down for 3 samples ...` shows the image has the z rule |
 
 Why z as well: resting on its roof the sideways part of gravity is about 0 again
 (sin 180° = 0), so \|x, y\| alone read an upside-down car as level, and a fast flip

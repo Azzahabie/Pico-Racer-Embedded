@@ -143,15 +143,15 @@ int main(void)
 	expect(safety_tilted(), "upside down at rest: tilted");
 	/* The stop message says "upside down" from z, not an angle from
 	   |x, y| (which reads 0.0 deg here). */
-	expect(safety_z_mg() < SAFETY_FLIP_MG && safety_tilt_mg() == 0,
+	expect(safety_upside_down() && safety_tilt_mg() == 0,
 	       "upside down at rest: message from z, |x, y| is 0");
 	safety_reset();
 	expect(run_tilt(170, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
 	       "170 deg (|x, y| 174 mg): tilt event on sample N");
-	expect(safety_z_mg() < SAFETY_FLIP_MG, "170 deg: message says upside down");
+	expect(safety_upside_down(), "170 deg: message says upside down");
 	safety_reset();
 	run_tilt(30, 10, SAFETY_EV_TILT);
-	expect(safety_z_mg() >= SAFETY_FLIP_MG,
+	expect(!safety_upside_down(),
 	       "30 deg: message keeps the angle and side");
 
 	/* A fast flip: 0-20 deg in the band, 40-140 deg spun out of it
@@ -178,8 +178,35 @@ int main(void)
 	safety_reset();
 	expect(run_tilt(90, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
 	       "on its side: tilt event");
-	expect(safety_z_mg() >= SAFETY_FLIP_MG,
+	expect(!safety_upside_down(),
 	       "on its side: message keeps the angle (90 deg)");
+
+	/* On its side with z a little below 0 (z reads near 0, either
+	   sign): it trips as before (SAFETY_FLIP_MG stays 0), but the
+	   message gives the angle.  While the message used SAFETY_FLIP_MG
+	   it said "upside down" here. */
+	safety_reset();
+	for (i = 1, at = 0; i <= 20 && at == 0; i++) {
+		if (safety_step(TRUE, 1000, 0, -20) & SAFETY_EV_TILT) at = i;
+	}
+	expect(at == SAFETY_TILT_N,
+	       "on its side, z -20 mg: tilt event on sample N");
+	expect(!safety_upside_down(),
+	       "on its side, z -20 mg: message keeps the angle");
+	safety_reset();
+	expect(run_tilt(110, 10, SAFETY_EV_TILT) == SAFETY_TILT_N,
+	       "110 deg (z -342 mg): tilt event on sample N");
+	expect(!safety_upside_down(), "110 deg: message keeps the angle");
+	safety_reset();
+	run_tilt(130, 10, SAFETY_EV_TILT);
+	expect(safety_upside_down(),
+	       "130 deg (z -643 mg): message says upside down");
+	/* The message limit: SAFETY_UPSIDE_MSG_MG, -500 mg (120 deg). */
+	safety_reset();
+	safety_step(TRUE, 866, 0, SAFETY_UPSIDE_MSG_MG);
+	expect(!safety_upside_down(), "z at the message limit: the angle");
+	safety_step(TRUE, 866, 0, SAFETY_UPSIDE_MSG_MG - 1);
+	expect(safety_upside_down(), "z 1 mg below the limit: upside down");
 
 	/* Reads failing: re-init after 2, no data after 5 (50 ms). */
 	safety_reset();

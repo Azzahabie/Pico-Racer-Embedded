@@ -193,9 +193,10 @@ LOCAL void raise_fault(INT why, UW t_first, const W a[3])
 	   the first offending sample to here, on the 1 MHz timer. */
 	us = in_w(TIMER_TIMERAWL) - t_first;
 	t10 = imu_deg10(safety_tilt_mg());
-	if(tilt && safety_z_mg() < SAFETY_FLIP_MG) {
-		/* Past 90 deg: on its roof |x, y| is ~0 again, so the angle
-		   and side read "0.0 deg to the , " (lifted and inverted). */
+	if(tilt && safety_upside_down()) {
+		/* Well past 90 deg: on its roof |x, y| is ~0 again, so the
+		   angle and side read "0.0 deg to the , " (lifted and
+		   inverted).  On its side, z near 0, the angle is printed. */
 		tm_sprintf(what, (UB *)"car tipped over (upside down, z %d mg)",
 			   safety_z_mg());
 	} else if(tilt) {
