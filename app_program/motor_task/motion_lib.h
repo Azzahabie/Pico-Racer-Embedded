@@ -230,6 +230,11 @@ motion_ds_state_t motion_ds_accel_state(int32_t accel_mmps2);
 /* Net distance in mm from the two wheels' positions since start-up. */
 int32_t motion_ds_dist_mm(int32_t pos_l, int32_t pos_r);
 
+/* Each wheel's speed over the newest window, cm/s, + forward (for the
+   telemetry record; rounded to the nearest cm/s). */
+void motion_ds_win_speed_cms(motion_ds_win_t const *p_win, int32_t *p_left,
+                             int32_t *p_right);
+
 /* ------------------------------------------------------------------ *
  *  Small helpers
  * ------------------------------------------------------------------ */

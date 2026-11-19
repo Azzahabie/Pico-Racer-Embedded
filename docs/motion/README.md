@@ -213,7 +213,7 @@ encoder's power wire unplugged: that one reports `wheel stalled`.
 
 ```
 [motion] timing (5 s): tick period 9998..10003 us, tick work max 41 us, encoder irq 4210/s (longest 3 us), lost ticks 0, dropped reports 0
-[motion] watchdog (5 s): longest gap between feeds 10000 us, resets at 30000 us
+[motion] watchdog (5 s): longest gap between feeds 10000 us, resets at 30000 us; E motion records dropped 0
 ```
 
 This is the core 1 timing evidence: tick jitter, the longest tick, the
@@ -221,6 +221,12 @@ encoder interrupt rate and its longest run, and the longest gap between
 two watchdog feeds. The 30 ms watchdog is safe only while that gap stays
 well below 30000 us; record the worst one, with Wi-Fi on too once motion
 runs in the Wi-Fi build.
+
+`E motion records dropped` counts the motion records (one per statechart
+change) that `tele_mbf` had no room for since start-up. The send never
+waits, so a full queue costs a record, never a tick. Without MQTT nothing
+empties the queue, so in a non-MQTT build it climbs once the queue fills;
+only the MQTT car build's number is evidence.
 
 - `encoder irq N/s` counts GPIO interrupts that reached the encoder
   callback. Callbacks from one interrupt share the dispatcher's entry

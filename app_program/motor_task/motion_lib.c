@@ -508,6 +508,27 @@ motion_ds_accel_state (int32_t accel_mmps2)
     return state;
 }
 
+/* speed = counts x pi x D x 100 / (CPR x window ms), in cm/s */
+#define DS_CMS_PER_MMPS (10)
+#define DS_SPEED_NUM    (DS_MM_NUM * DS_MS_PER_S)
+#define DS_SPEED_DEN                                                           \
+    ((int64_t)DS_PI_DEN * MOTION_COUNTS_PER_REV * DS_WINDOW_MS * DS_CMS_PER_MMPS)
+
+void
+motion_ds_win_speed_cms (motion_ds_win_t const *p_win, int32_t *p_left,
+                         int32_t *p_right)
+{
+    int32_t fwd  = ds_sum(p_win->fwd, p_win->next, 0u, MOTION_DS_WINDOW_TICKS);
+    int32_t turn = ds_sum(p_win->turn, p_win->next, 0u, MOTION_DS_WINDOW_TICKS);
+
+    /* fwd = l + r and turn = r - l, so 2l = fwd - turn, 2r = fwd + turn;
+       the 2 goes into the denominator. */
+    *p_left = ds_sat32(
+        ds_div_round((int64_t)(fwd - turn) * DS_SPEED_NUM, 2 * DS_SPEED_DEN));
+    *p_right = ds_sat32(
+        ds_div_round((int64_t)(fwd + turn) * DS_SPEED_NUM, 2 * DS_SPEED_DEN));
+}
+
 int32_t
 motion_ds_dist_mm (int32_t pos_l, int32_t pos_r)
 {

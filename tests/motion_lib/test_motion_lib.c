@@ -869,6 +869,61 @@ static void test_ds_accel(void)
 	CHECK(motion_ds_win_accel_mmps2(&w) > 0);
 }
 
+/* Counts per wheel over the newest window, as cm/s. */
+static double
+speed_ref (double counts)
+{
+	return counts * MM_PER_COUNT / WINDOW_S / 10.0;
+}
+
+static void test_ds_speed(void)
+{
+	motion_ds_win_t w;
+	int32_t l, r;
+	uint32_t i;
+
+	motion_ds_win_reset(&w);
+	motion_ds_win_speed_cms(&w, &l, &r);
+	CHECK_EQ(l, 0);
+	CHECK_EQ(r, 0);
+
+	/* 13 counts per tick on both wheels: about 10 cm/s each. */
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS; i++) {
+		motion_ds_win_add(&w, 13, 13);
+	}
+	motion_ds_win_speed_cms(&w, &l, &r);
+	CHECK_EQ(l, round_ref(speed_ref(13.0 * MOTION_DS_WINDOW_TICKS)));
+	CHECK_EQ(r, l);
+	CHECK((l >= 10) && (l <= 11));
+
+	/* Spin: left back, right forward; older ticks drop out. */
+	for (i = 0u; i < MOTION_DS_WINDOW_TICKS; i++) {
+		motion_ds_win_add(&w, -20, 30);
+	}
+	motion_ds_win_speed_cms(&w, &l, &r);
+	CHECK_EQ(l, round_ref(speed_ref(-20.0 * MOTION_DS_WINDOW_TICKS)));
+	CHECK_EQ(r, round_ref(speed_ref(30.0 * MOTION_DS_WINDOW_TICKS)));
+
+	/* Random windows against the floating-point formula. */
+	srand(29u);
+	for (i = 0u; i < 20000u; i++) {
+		uint32_t k;
+		double sl = 0.0, sr = 0.0;
+
+		for (k = 0u; k < MOTION_DS_HIST; k++) {
+			int32_t a = (rand() % 201) - 100, b = (rand() % 201) - 100;
+			motion_ds_win_add(&w, a, b);
+			if (k >= MOTION_DS_HIST - MOTION_DS_WINDOW_TICKS) {
+				sl += (double)a;
+				sr += (double)b;
+			}
+		}
+		motion_ds_win_speed_cms(&w, &l, &r);
+		CHECK((l - round_ref(speed_ref(sl)) <= 1) && (round_ref(speed_ref(sl)) - l <= 1));
+		CHECK((r - round_ref(speed_ref(sr)) <= 1) && (round_ref(speed_ref(sr)) - r <= 1));
+	}
+}
+
 int main(void)
 {
 	test_quad_table_properties();
@@ -893,6 +948,7 @@ int main(void)
 	test_ds_dist();
 	test_ds_turn();
 	test_ds_accel();
+	test_ds_speed();
 
 	printf("motion_lib: %d checks, %d failures\n", g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;

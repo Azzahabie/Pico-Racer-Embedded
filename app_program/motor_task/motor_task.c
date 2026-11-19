@@ -141,7 +141,8 @@ typedef enum
     REP_STEP,       /* val = moved in the step, rate = c/s    */
     REP_EVENT,      /* code = EVT_*, val/rate = arguments     */
     REP_TIMING,     /* timing of the last 5 s; rate_l = longest
-                       gap between watchdog feeds, us         */
+                       gap between watchdog feeds, us; rate_r
+                       = E motion records dropped so far      */
     REP_DIST        /* distance_state: code = state, val_l =
                        net mm, val_r = turn deg/s, rate_l =
                        accel mm/s^2, rate_r = counter         */
@@ -289,6 +290,7 @@ typedef struct
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
     uint8_t     avoid_side; /* MOTION_AVOID_SIDE_* of a BYPASS     */
+    uint32_t    tele_dropped; /* E motion records tele_mbf refused */
 
     /* line_state (line_state.h), read once per tick */
     uint32_t line_word;     /* the word this tick                  */
@@ -1222,6 +1224,7 @@ tick_report (motion_ctx_t *p_ctx)
         rep.irq_count  = irq_now - p_ctx->irq_mark;
         rep.isr_max_us = encoder_take_irq_max_us();
         rep.rate_l     = (int32_t)p_ctx->wdt_gap_max_us;
+        rep.rate_r     = (int32_t)p_ctx->tele_dropped;
         report_send(p_ctx, &rep);
 
         p_ctx->irq_mark       = irq_now;
@@ -2709,27 +2712,29 @@ fault_flg_bits (uint8_t faults)
     return bits;
 }
 
-/* Counts per tick -> cm/s: d x pi x diameter mm per tick, x 100 ticks a
-   second, / 10 mm a cm; pi as 31416 / 10000. */
-#define CMS_FROM_COUNTS(d)                                                     \
-    (((d) * 31416 * MOTION_WHEEL_DIA_MM)                                       \
-     / (MOTION_COUNTS_PER_REV * 1000))
-
 /* E motion (MQTT_SCHEMA.md 5, k = 0) on every statechart change: the new
-   state, this tick's wheel speeds, the running distance and turn rate, and
-   the motion faults now.  comms_tele_send() polls, so the tick never
-   waits. */
+   state, each wheel's speed over the distance_state window (50 ms, to the
+   nearest cm/s; one tick's counts would truncate 6 counts to 4 cm/s
+   instead of ~4.8), the running distance and turn rate, and the motion
+   faults now.  comms_tele_send() polls, so the tick never waits; a record
+   tele_mbf has no room for is dropped and counted (timing line, NFR-10). */
 static void
-tele_motion (motion_ctx_t const *p_ctx)
+tele_motion (motion_ctx_t *p_ctx)
 {
-    UB body[COMM_W_INTAKE_SIZE_MOTION];
+    UB      body[COMM_W_INTAKE_SIZE_MOTION];
+    int32_t speed_l;
+    int32_t speed_r;
 
-    (void)comms_tele_send(
-        body, (INT)comm_w_pack_motion(
-                  body, (uint32_t)motion_sm_state(&p_ctx->sm),
-                  CMS_FROM_COUNTS(p_ctx->d_l), CMS_FROM_COUNTS(p_ctx->d_r),
-                  (uint32_t)p_ctx->ds_mm, p_ctx->ds_turn,
-                  (uint32_t)fault_flg_bits(p_ctx->faults), 0u));
+    motion_ds_win_speed_cms(&p_ctx->ds_win, &speed_l, &speed_r);
+    if (E_OK
+        != comms_tele_send(
+            body, (INT)comm_w_pack_motion(
+                      body, (uint32_t)motion_sm_state(&p_ctx->sm), speed_l,
+                      speed_r, (uint32_t)p_ctx->ds_mm, p_ctx->ds_turn,
+                      (uint32_t)fault_flg_bits(p_ctx->faults), 0u)))
+    {
+        p_ctx->tele_dropped++;
+    }
 }
 
 /* One statechart step per tick, after the stall check.  The mission state
@@ -3629,9 +3634,11 @@ print_report (motion_report_t const *p_rep)
             print_line(line);
             (void)tm_sprintf(line,
                              (UB *)"[motion] watchdog (5 s): longest gap"
-                                   " between feeds %d us, resets at %u us",
+                                   " between feeds %d us, resets at %u us;"
+                                   " E motion records dropped %d",
                              (INT)p_rep->rate_l,
-                             (UINT)(MOTION_WDT_MS * US_PER_MS));
+                             (UINT)(MOTION_WDT_MS * US_PER_MS),
+                             (INT)p_rep->rate_r);
             print_line(line);
             break;
 

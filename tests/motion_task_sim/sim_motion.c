@@ -315,14 +315,19 @@ void fault_set(UINT bits) { g_fault_bits |= bits; }
 void fault_clear(UINT bits) { g_fault_bits &= ~bits; }
 
 /* comms_task.h (Buddy 1): every E body motion sends, unpacked as the laptop
-   would.  g_tele_count counts motion bodies; g_tele_last is the newest. */
+   would.  g_tele_count counts motion bodies; g_tele_last is the newest.
+   g_tele_full: tele_mbf has no room, so the send returns E_TMOUT. */
 static int		g_tele_count;
 static int		g_tele_bad;
+static int		g_tele_full;
 static T_COMM_W_BODY	g_tele_last;
 ER comms_tele_send(const UB *body, INT length)
 {
 	T_COMM_W_BODY	b;
 
+	if (g_tele_full) {
+		return E_TMOUT;
+	}
 	if ((COMM_W_OK != comm_w_unpack_body(body, (uint32_t)length, &b))
 	    || (COMM_W_KIND_MOTION != b.kind)) {
 		g_tele_bad++;
@@ -620,6 +625,7 @@ sim_reset (const char *p_name)
 	g_fault_bits = 0u;
 	g_tele_count = 0;
 	g_tele_bad = 0;
+	g_tele_full = 0;
 	(void)memset(&g_tele_last, 0, sizeof(g_tele_last));
 	g_cmd_n[0] = g_cmd_n[1] = 0;
 	memset(&g_line, 0, sizeof g_line);
@@ -1079,6 +1085,13 @@ scenario_statechart (void)
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
 	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_ready & 0x7FFFu));
 	CHECK(g_tele_last.fault == 0u);
+	/* speeds over the 50 ms window of the hand push, 13 counts a tick
+	   (10.3 cm/s), +128; both wheels turned alike, so the right one
+	   matches within one of its coarser counts */
+	CHECK(g_tele_last.speed_l
+	      == (uint8_t)(128 + lround(13.0 * DS_MM_PER_COUNT * 10.0)));
+	CHECK(abs((int)g_tele_last.speed_r - (int)g_tele_last.speed_l)
+	      <= (SIM_R_SCALED ? 1 : 0));
 
 	stop_request(MOTION_EVT_STOP_SCAN, 1);
 	sim_tick();
@@ -1090,9 +1103,13 @@ scenario_statechart (void)
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 	CHECK(strstr(g_log, "[motion] state BRAKED -> LINE_FOLLOW") != NULL);
 
+	g_tele_full = 1;		/* tele_mbf full: dropped and counted */
 	stop_request(MOTION_EVT_STOP_IMU, 1);			/* imu_task */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(g_ctx.tele_dropped == 1u);
+	CHECK(g_tele_count == 3);	/* not sent, the brake still came */
+	g_tele_full = 0;
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);	/* FAULT_CLEAR(IMU) */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
@@ -1116,7 +1133,9 @@ scenario_statechart (void)
 
 	CHECK(g_duty_max_abs > 0);			/* Line Following drove */
 	CHECK((g_nav_flag == 0u) && (g_scan_flag == 0u));	/* nothing owed */
-	CHECK(g_tele_count == 7);	/* one E motion per state change */
+	CHECK(g_tele_count == 6);	/* one E motion per state change,
+					   less the one dropped */
+	CHECK(g_ctx.tele_dropped == 1u);
 	CHECK(g_tele_bad == 0);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
 	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_paused & 0x7FFFu));
