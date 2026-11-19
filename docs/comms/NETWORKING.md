@@ -270,10 +270,14 @@ the MQTT client's address guard accepts it. Harmless while DHCP hands back the
 same address; logged for the optimisation pass.
 
 **Telemetry while offline:** every record produced before the first connect or
-during an outage is dropped at the radio's 112 B outbound queue (about 3 s of
+during an outage is dropped at the radio's 128 B outbound queue (about 3 s of
 `H` + `S`), and the ~6 records that fit are delivered late on reconnect. These
 drops show on the console (`[mqtt] … drop=N`), not in `S.drp`
-(`MQTT_SCHEMA.md` §3, §12 item 20).
+(`MQTT_SCHEMA.md` §3, §12 item 20). *(19 Nov: the size was given as 112 B; it
+is 4 slots of 32 B = 128 B since `CYW43_MQTT_RECORD_MAX` rose to 24, C from
+`cyw43_utk_mqtt_ids.h:33-34` and `cyw43_utk_kernel.c:26-31`.)* So **wait for
+live `S` before starting a run** ([`README.md`](README.md) §8): boot to
+ONLINE took 11.4–23.8 s on 4 Nov.
 
 ---
 

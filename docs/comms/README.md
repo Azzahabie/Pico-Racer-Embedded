@@ -167,6 +167,25 @@ All of M2–M6 were verified on hardware (see [`NETWORKING.md`](NETWORKING.md) �
 
 ## 8. Reading the stream during a run
 
+**Before pressing start, wait for live `S`.** Until the MQTT session is up,
+records have nowhere to go. The radio's outbound queue holds only 128 B
+(C: 4 slots of 32 B, `cyw43_utk_mqtt_ids.h:33-34`, `cyw43_utk_kernel.c:26-31`),
+about 6 records or 3 s of `H` + `S`; those arrive late, with an old `up`, once
+the car connects, and every record after them is dropped. The drops show only
+on the console (`[mqtt] … drop=N`), not in `drp`. In the 4 Nov car logs the car
+took 11.4–23.8 s from boot to `[wifi] state=ONLINE` (11 boots; the two over
+23 s needed a third join), and one run was started 2.9 s after boot, 9.3 s
+before ONLINE (trials batch 1, lines 1202, 1216, 1296): its RUNNING E mission
+and the first E records of the run never reached the broker. The mission
+itself never waits for Wi-Fi (that run drove on); only its record is lost. So
+before pressing GP20 or sending `start`, check on the viewer:
+
+- `S` arrives every second, `s` and `up` going up ("last S" under 3 s);
+- no new `GAP` after the first one (that one can be the retained `D`, below);
+- `mis` = READY, `faults` = 0, `drp` = 0.
+
+Allow about 25 s from power-on.
+
 What the `S` fields that are easy to misread really say. The full rows are in
 [`MQTT_SCHEMA.md`](MQTT_SCHEMA.md) §4.
 

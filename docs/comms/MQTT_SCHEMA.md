@@ -141,9 +141,11 @@ for v3 (2026-10-22); rule 1 and the header for v4 (2026-10-23) and v5
 > - **`drp` rose** → the car dropped it at its **intake** queue (`tele_mbf`):
 >   a producer sent faster than `comms_task` reads.
 > - **`drp` unchanged** → the car was **not connected** to the broker, so the
->   radio's **outbound** queue (112 B, about 3 s of `H` + `S`) filled and the
->   record was dropped there — every boot before the first connect, and every
->   outage — **or** the laptop was not subscribed at the time. These drops show
+>   radio's **outbound** queue (128 B, about 3 s of `H` + `S`; was given as
+>   112 B before 19 Nov) filled and the record was dropped there — every boot
+>   before the first connect, and every outage — **or** the laptop was not
+>   subscribed at the time. So wait for live `S` before starting a run
+>   (`README.md` §8). These drops show
 >   only on the car's console (`[mqtt] … drop=N`), not on the wire.
 > - **The first gap right after the laptop subscribes** → usually no loss at
 >   all: the broker first hands a new subscriber the **retained `D`** from the

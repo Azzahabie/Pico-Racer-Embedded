@@ -38,7 +38,10 @@ Always through Docker (`AGENTS.md` section 1). The images in use:
   - `UTK_NETLOG_ADDRESS` / `UTK_NETLOG_PORT` say where the wireless console goes.
 - **Demo day:** the car build, with `TM_WIFI_REPORT 0` (`app_main.c`; it turns the
   `[wifi]`/`[mqtt]` console task off), `UTK_MQTT_BROKER_DISCOVER 0`, the given
-  broker address in `broker_config.h`, and **never** `WIFI_NETLOG`.
+  broker address in `broker_config.h`, and **never** `WIFI_NETLOG`. Wait for
+  live `S` on the viewer before pressing start: records sent before MQTT
+  connects are lost beyond the first ~128 B, and boot to ONLINE took
+  11.4–23.8 s on 4 Nov (`comms/README.md` §8).
 - **Development switches,** all off in the car build:
   - `LINE_COMMISSIONING_MODE` (`common/robot_config.h`): line samples at 10/s for
     the viewer's line chart.
