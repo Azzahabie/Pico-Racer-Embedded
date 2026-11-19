@@ -503,6 +503,17 @@ time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake unde
    not found; **0 of 4** logged boots on 2–3 Nov (plus ~8 unlogged reboots after
    flashing). Demo day: after power-on check the `[imu] cal ok` line; if it shows
    5987, power off and on, then recalibrate.
+15. **A probable false tilt fault mid-run** (4 Nov, `trials_batch1` 04:12:15,
+   trial 4, contact "no"): the status lines before it read `turning LEFT 16 / 39
+   deg/s, 48 mm/s, level` (04:12:13.6, 04:12:14.6; line following on a curve),
+   then `car tipped over (39.9 deg nose DOWN)`,
+   `caught 61.3 ms`, with no nose event and no BUMP before or after. Cause not
+   known: hard braking read as nose-down tilt, or a wrong but valid I2C read
+   (item 7). The tilt stop now ends the run (§5.2), so a repeat would end the
+   demo early. **Open question for Buddy 4:** raise T? FR-28 sets only a lower
+   bound (steepest hump + 5°, about 13° for the demo ramp), and the inversion is
+   caught by z below 0, not by T, so a higher T would not weaken the end-of-run
+   stop. That reading would need T over 40°. T stays 25° until car runs decide.
 
 ## 7. Requirements status
 
