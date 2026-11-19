@@ -106,7 +106,7 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 | Stopped on the slope | still, tilt ≥ 65 mg and under the 4 mm minimum: the climb stays open for the next push | stopped 2.4 mm up the 10 mm ramp, the climb was ignored and the rest of the ramp was never counted (2026-10-28) |
 | Picked up | stopped but tilt changes > 60 mg between windows: "on top" ends | carried back to the start, the next climb was swallowed |
 | Minimum | 4 mm | shorter climbs are reported as ignored |
-| Fault / tilt past T | unfinished hump discarded (Statechart 6.4) | held on its side, a few mm of wheel turn once read as a 6 mm "hump" |
+| Fault / tilt past T | still climbing: discarded (Statechart 6.4). **Past the top: counted** (19 Nov, `hump_fault()`), at its height as it stood before the windows of the lift; the "on top" follow ends | held on its side, a few mm of wheel turn once read as a 6 mm "hump". Lifting the car ends the run, and inside the ~14–15 cm the demo hump stays open after its crest a lift dropped it (register I3). The lift tips the car while the wheels still drive (the line sensors read black), which adds height and resets the level run before the tilt fault comes, hence the earlier height. Host tests only: a nose-up lift 80 mm after the demo hump counts 9.8 mm (sim), not the ~12 mm the lift windows would give (calculated); a lift half way up counts nothing |
 | Accelerating / decelerating | windows that are not STEADY do not start a hump or flip CLIMBING/DESCENDING | acceleration reads as tilt (pitch hold) |
 
 `hump_state` (NONE / CLIMBING / DESCENDING) follows the direction of travel.
@@ -114,9 +114,11 @@ window adds ~1.3 mm, resolved to 1 µm). The reported height is the peak of the 
 ### 3.3 Mission handling (FR-12, Statechart 6.4)
 
 Ready → Running starts a new mission: the hump count and the **highest hump** go
-back to zero. Paused → Running keeps them. A fault drops an unfinished hump. A pause
-or the end of the mission **counts** an unfinished hump that is past its top, and
-drops one still climbing (§3.2; changed 3 Nov, it used to drop both). A pause keeps
+back to zero. Paused → Running keeps them. A pause, the end of the mission or (since
+19 Nov) an IMU fault **counts** an unfinished hump that is past its top, and drops one
+still climbing (§3.2; changed 3 Nov for pause and end, it used to drop both; a fault
+dropped both until 19 Nov, which differs from Statechart 6.4's "fault discards the
+unfinished hump" for a hump already past its top). A pause keeps
 the "on top" follow of a hump already counted, since the car has not moved: paused
 on top and then backed down, the way down once counted as a second hump. Verified on
 the car: `[imu] mission start: humps and highest hump reset` on every GP20 start
@@ -174,7 +176,7 @@ none of it feeds the hump height or the safety check.
 | `E imu` height, `S.hgt` (FR-12) | the **highest** hump this mission, 0 until one is counted and again at each mission start. Until 19 Nov it was the hump in progress, else the last one, so a lower second hump replaced the highest | the two 10 mm humps gave `S.hum=2 S.hgt=10` (§4.5); higher-then-lower not driven, host test only (`tests/imu_hump`) |
 | `S.trn` (FR-29) | encoder turn rate, left positive | `turning LEFT 27 deg/s` → `trn=24`, right bend `trn=-47`, still `0`, at boot `n/a` |
 
-All of these cases are replayed on a PC: `tests/imu_hump` (30 scenarios, most of them
+All of these cases are replayed on a PC: `tests/imu_hump` (35 scenarios, most of them
 a pass that went wrong on the car) and `tests/imu_safety` (114 checks). Both pass.
 
 ## 4. Results
@@ -425,6 +427,7 @@ What the code does:
 | Stop | in Running or Paused: STOP_IMU to motion_task, which brakes and holds both wheels at 0 until FAULT_CLEAR(IMU); FAULT_IMU on the shared fault flag; IMU_FAULT to nav_ctrl_task, which goes to FAULT and beeps |
 | Other paths | in hand 1.2 s with the wheels still (`EV_LIFT_FAULT_MS`, §5) and no good reading for 50 ms (NFR-13) raise the same fault |
 | After | the run ends in **FAULT**, not FINISHED (`S` `mis=6`, `faults=imu`). GP20 recalibrates on flat floor and clears the fault |
+| Hump | a hump still open but past its top is counted (`hump: IMU fault past its top, counted as it stood before`, then `===== HUMP`), so `S.hum` / `S.hgt` keep it; one still climbing is dropped (§3.2). Lift after the crest, or after the `===== HUMP` line to be sure |
 | Console | `[imu] !!! STOPPING: car tipped over (upside down, z <z> mg) !!!` when z is below 0 at the trip; tipped past T but not yet past 90°, the angle line as before (`... (26.5 deg to the LEFT, right side up)`). Before this message fix an upside-down trip printed `(0.0 deg to the , )`, as \|x, y\| is ~0 on its roof. The boot line `[imu] faults: tilt > 24.9 deg or upside down for 3 samples ...` shows the image has the z rule |
 
 Why z as well: resting on its roof the sideways part of gravity is about 0 again
@@ -443,7 +446,9 @@ To run (bench, wheels off the floor): calibrate on the floor, put the car on a b
 start with GP20 (the motors run, as the sensors read black), then lift and invert:
 slow (~1 s), fast (~0.2 s), and set down on its roof. Pass: a `STOPPING` line every
 time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake under
-20 ms.
+20 ms. On the course, once: lift ~8 cm after the demo hump's crest, before the
+`===== HUMP` line. Pass: the hump is counted at 8–12 mm (NFR-05 target for 10 mm)
+and `S.hum=1`.
 
 ## 6. Limitations and error sources
 

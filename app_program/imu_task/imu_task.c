@@ -804,9 +804,9 @@ EXPORT void imu_task(INT stacd, void *exinf)
 
 		/* Mission changes (Statechart 6.4): a new mission starts the
 		   hump count and highest hump from zero (FR-12); Paused ->
-		   Running keeps them.  A pause or the end counts a hump past
-		   its top and drops one still climbing; a fault drops it.  A
-		   pause keeps "on top": the car has not moved. */
+		   Running keeps them.  A pause, the end or a fault counts a
+		   hump past its top and drops one still climbing.  A pause
+		   keeps "on top": the car has not moved. */
 		if(ms != ms_prev) {
 			if(ms_prev == MS_READY && ms == MS_RUNNING) {
 				hump_mission_reset();
@@ -818,6 +818,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
 				hump_pause();
 			} else if(ms_prev == MS_RUNNING && ms == MS_FINISHED) {
 				hump_mission_end();
+			} else if(ms_prev == MS_RUNNING && ms == MS_FAULT) {
+				hump_fault();
 			} else if(ms_prev == MS_RUNNING) {
 				hump_abort();
 			}
@@ -906,9 +908,10 @@ EXPORT void imu_task(INT stacd, void *exinf)
 		if((k + 1) % HUMP_SAMPLES == 0) {
 			/* In Fault, or tilted past T, it is not driving over a
 			   hump: held on its side, a few mm of wheel turn read as
-			   a 6 mm "hump" at 1 g of tilt. */
+			   a 6 mm "hump" at 1 g of tilt.  One open and past its
+			   top is counted (the lift that ends the run). */
 			if(faulted || safety_tilted()) {
-				hump_abort();
+				hump_fault();
 			} else if(hn > 0) {
 				hump_step(hsum[0] / hn, hsum[1] / hn,
 					  motion_ds_delta_mm(ds, ds_hump),

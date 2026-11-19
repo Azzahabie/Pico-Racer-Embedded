@@ -188,6 +188,9 @@ Target ±2 mm or 20 %, limit ±5 mm.
       (~1 s), fast (~0.2 s), and set down on its roof. Every time:
       `STOPPING`, wheels stop and stay stopped, `S faults=imu mis=6`
 - [ ] Course: end a full run by lifting and inverting the car
+- [ ] Course, once: lift ~8 cm after the hump's crest, before the `===== HUMP`
+      line: the hump still counts (`hump: IMU fault past its top, counted as
+      it stood before`), `S.hum=1`. Lifted on the way up it is dropped
 
 ### FR-28 / NFR-19: tilt fault (limit 40 ms)
 
