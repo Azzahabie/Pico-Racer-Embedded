@@ -2,15 +2,26 @@
  * line_track.c - one 1 ms step of line tracking.
  */
 
+#include <stddef.h>
+
 #include "line_track.h"
 
 #define CANDIDATE_COUNT_MAX (1000u)
+
+/* both_black_run stops counting at CANDIDATE_COUNT_MAX: a longer J_n would
+   never fire */
+#if (LINE_JUNCTION_SAMPLES < 1u) || (LINE_JUNCTION_SAMPLES > CANDIDATE_COUNT_MAX)
+#error "LINE_JUNCTION_SAMPLES must be 1..1000"
+#endif
 
 void line_track_disarm_junction(line_track_t *trk)
 {
 	trk->both_black_run = 0u;
 	trk->clear_run = 0u;
 	trk->junction_armed = false;
+	trk->junction_due = false;
+	trk->on_crossbar = false;
+	trk->run_turning = false;
 }
 
 static void track_reset(line_track_t *trk)
@@ -23,6 +34,9 @@ static void track_reset(line_track_t *trk)
 	trk->both_black_run = 0u;
 	trk->clear_run = 0u;
 	trk->junction_armed = false;	/* rearm after the sensors leave it */
+	trk->junction_due = false;
+	trk->on_crossbar = false;
+	trk->run_turning = false;
 	trk->dark_ms = LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS;
 	trk->left_rail_run = 0u;
 	trk->right_rail_run = 0u;
@@ -70,29 +84,54 @@ static uint32_t debounce(line_track_t *trk, uint32_t raw_rl)
 }
 
 /* J_n GP7-black samples running = one event; then nothing until GP7 has
-   been off the crossbar LINE_JUNCTION_REARM_SAMPLES running. */
-static bool junction_step(line_track_t *trk, bool mark_black)
+   been off the crossbar LINE_JUNCTION_REARM_SAMPLES running.  With a gate
+   (LINE_JUNCTION_RULE 1): never on a bar of an open barcode read (a run
+   too long to be one is not), an armed junction fires once confirmed, and
+   a due junction waits for the verdict of a complete read.  A run that
+   began while the scan gate was shut (turning) never fires by length.
+   With none, in_read, armed_due, wait and turning are false and this is
+   the length rule alone. */
+static bool junction_step(line_track_t *trk, bool mark_black,
+			  const line_junction_gate_t *gate)
 {
+	bool in_read = (gate != NULL) && gate->in_read;
+	bool armed_due = (gate != NULL) && gate->armed_due;
+	bool wait = (gate != NULL) && gate->wait;
 	bool event = false;
 
 	if (mark_black) {
+		if (trk->both_black_run == 0u) {
+			/* the run's first sample: the scan gate now holds for
+			   all of it */
+			trk->run_turning = (gate != NULL) && gate->turning;
+		}
 		trk->clear_run = 0u;
 		if (trk->both_black_run < CANDIDATE_COUNT_MAX) {
 			trk->both_black_run++;
 		}
-		if (trk->junction_armed &&
-		    (trk->both_black_run >= LINE_JUNCTION_SAMPLES)) {
+		if (trk->junction_armed && !in_read &&
+		    (((trk->both_black_run >= LINE_JUNCTION_SAMPLES) &&
+		      !trk->run_turning) || armed_due)) {
 			trk->junction_armed = false;
-			event = true;
+			trk->junction_due = true;
 		}
 	} else {
 		trk->both_black_run = 0u;
+		trk->on_crossbar = false;
+		trk->run_turning = false;
 		if (trk->clear_run < CANDIDATE_COUNT_MAX) {
 			trk->clear_run++;
 		}
-		if (trk->clear_run >= LINE_JUNCTION_REARM_SAMPLES) {
+		/* not while a junction is held: it has not fired yet */
+		if ((trk->clear_run >= LINE_JUNCTION_REARM_SAMPLES) &&
+		    !trk->junction_due) {
 			trk->junction_armed = true;
 		}
+	}
+	if (trk->junction_due && !wait) {
+		trk->junction_due = false;
+		trk->on_crossbar = mark_black;
+		event = true;
 	}
 	return event;
 }
@@ -108,6 +147,15 @@ static uint32_t rail_run(uint32_t run, uint16_t raw)
 void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 		     bool adc_ok, bool barcode_hold, bool mark_black,
 		     line_track_out_t *out)
+{
+	line_track_step_gate(trk, left_raw, right_raw, adc_ok, barcode_hold,
+			     mark_black, NULL, out);
+}
+
+void line_track_step_gate(line_track_t *trk, uint16_t left_raw,
+			  uint16_t right_raw, bool adc_ok, bool barcode_hold,
+			  bool mark_black, const line_junction_gate_t *gate,
+			  line_track_out_t *out)
 {
 	line_state_fields_t *f = &out->fields;
 	uint32_t raw_rl;
@@ -144,14 +192,19 @@ void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 	rl = debounce(trk, raw_rl);
 
 	/* GP7 only: rl 11 is the centred car, not a junction.  Not held by a
-	   barcode read, because the crossbar under GP7 starts one itself; no
-	   barcode bar is J_n long. */
-	out->junction = junction_step(trk, mark_black);
-	out->crossing = trk->both_black_run >= LINE_JUNCTION_SAMPLES;
+	   barcode read's start, because the crossbar under GP7 starts one
+	   itself; with a gate, held while the bars of a read arrive, and a
+	   run that began while turning is not a crossbar. */
+	out->junction = junction_step(trk, mark_black, gate);
+	out->crossing = trk->on_crossbar ||
+			(((gate == NULL) || !gate->in_read) && !trk->run_turning &&
+			 (trk->both_black_run >= LINE_JUNCTION_SAMPLES));
 
-	/* noise-filtered: only a confirmed (debounced) black, or a barcode
-	   under the car, counts as seeing the line */
-	if (((rl != LINE_RL_CENTRED) || barcode_hold) && !fault) {
+	/* noise-filtered: only a confirmed (debounced) black counts as seeing
+	   the line.  Not a barcode hold: it blanks rl below, but the dark time
+	   and the lost bit follow the real sensors, or motion reads "line
+	   seen" with both sensors on white and never loses the line */
+	if ((rl != LINE_RL_CENTRED) && !fault) {
 		trk->dark_ms = 0u;
 	} else if (trk->dark_ms < (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS)) {
 		trk->dark_ms++;

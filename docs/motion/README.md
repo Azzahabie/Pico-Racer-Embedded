@@ -14,7 +14,7 @@ parts; how the integrated car was built and tested (stages S0-S8) is in
 
 | File | What it does |
 |---|---|
-| `app_program/motor_task/motor_task.c/.h` | `motion_task` (core 1, priority 11, 10 ms tick from a cyclic handler through an event flag) and `motion_report` (core 0, priority 24, does all the printing). Bench test, stall check, timing measurement. |
+| `app_program/motor_task/motor_task.c/.h` | `motion_task` (core 1, priority 11, 10 ms tick from a cyclic handler through an event flag) and `motion_report` (core 0, priority 24, does all the printing). Bench test, stall check, timing measurement. `motion_state_read()`: the statechart state for ir_sense_task's scan gate (below). |
 | `app_program/motor_task/motor.c/.h` | PWM driver: GP8/GP9 = slice 4, GP10/GP11 = slice 5, 10 kHz. One 32-bit store updates both inputs of a motor. |
 | `app_program/motor_task/encoder.c/.h` | Quadrature (x4) on GP0..GP3 with pull-ups. Both counts published as one packed 32-bit word. |
 | `app_program/motor_task/motion_lib.c/.h` | Pure arithmetic, no kernel calls: quadrature table, packed counts, wrap-safe delta, stall detector, integer PID with anti-windup, distance, turn rate and acceleration for `distance_state`. |
@@ -632,6 +632,28 @@ comes only every 200 ms and a sudden change shows for about 90 ms, so one
 run may miss it; pass if ACCELERATING and DECELERATING each appear in some
 run, and STEADY while gliding.
 
+### Motion state (for ir_sense_task's scan gate, Buddy 3)
+
+`motion_state_read()` (`motor_task.h`) returns the statechart state after
+motion's last step, a `motion_state_t` from `motion_sm.h` (IDLE,
+LINE_FOLLOW, TURNING, ...). Read only. motion_task stores it whole in one
+aligned 32-bit word once a tick, right after `motion_sm_step()` and
+before `distance_state` is published; a reader takes it with one load,
+no mutex. The reader is `ir_sense_task`, on core 1 like motion_task, so
+it is the same case as `distance_state` (one writer, readers on the
+writer's core). It is IDLE before the first step and always IDLE in
+bench images (`MOTION_BENCH` 1), which do not run the statechart; there
+`motor_task_flag()` is 0 as well.
+
+The scan gate uses it to shut GP7's barcode reads and the length-rule
+junction in TURNING, BYPASS, LINE_SEARCH and REVERSING, and to start its
+turn-rate average again when one of them ends (`line_task/scan_gate.h`,
+`docs/BUDDY3_LINE_BARCODE.md`). The word carries no counter: the gate
+takes its freshness from `distance_state`'s counter, published in the
+same tick, and ignores the state when that is stale. `tests/motion_task_sim`
+(`scenario_state_word`) checks the word against the statechart every
+tick through a turn, and in LINE_SEARCH, BYPASS and REVERSING.
+
 ## Record the results
 
 | Item | Left | Right |
@@ -718,7 +740,10 @@ Found while writing this; each needs its owner.
    the wait; the kernel clears every bit in the wait pattern
    (eventflag.c). It does no harm in scan_task, which gets every set bit
    back, but it is why motion never waits on a STOP bit with a clear.
-10. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
+10. **Motion state (Buddy 3).** `motion_state_read()` for ir_sense_task's
+   scan gate (see "Motion state" above). Read only; a reader on core 0
+   needs the same team agreement as `distance_state`.
+11. **Debug flags (Buddy 1).** With `BOARD_DIAG_GPIO_SCAN=1` and
    `TM_BLINK_LED=1`, blink's diagnostic pulse (`demo_tasks.c`) takes
    GP8-GP11 and GP2/GP3 back after motion has set them up. Keep both off
    on the car.

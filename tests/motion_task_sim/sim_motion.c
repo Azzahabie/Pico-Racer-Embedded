@@ -676,6 +676,7 @@ sim_reset (const char *p_name)
 #if MOTION_BENCH && MOTION_TEST_STOP
 	gb_st_ready = false;
 #endif
+	g_state_word = (uint32_t)MOTION_ST_IDLE;
 #if MOTION_PACKED
 	g_ds_word = MOTION_DS_WORD_ZERO;
 #else
@@ -2838,6 +2839,53 @@ scenario_statechart_replies (void)
 	sm_send_replies(MOTION_SM_REP_REVERSE_DONE);
 	CHECK(g_scan_flag == 0u);
 }
+
+/* motion_state_read() (ir_sense_task's scan gate) is the statechart's
+   state after every tick: Idle, Line Following, Turning all through a
+   left turn and Line Following after it, Line Search after a turn that
+   ends off the line, Bypass, Reversing. */
+static void
+scenario_state_word (void)
+{
+	int n = 0;
+
+	sim_reset("state word: motion_state_read() follows the statechart every tick");
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_IDLE);
+	sim_tick();
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_IDLE);
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_TURNING);
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+		CHECK(motion_state_read() == (uint32_t)motion_sm_state(&g_ctx.sm));
+	}
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_LINE_FOLLOW);
+
+	sim_reset_quiet();
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	g_line.rl = LINE_RL_CENTRED;			/* both white */
+	g_line.dark_ms = 500u;
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_LINE_SEARCH);
+
+	sim_reset_quiet();
+	bypass_begin(MOTION_AVOID_SIDE_LEFT, 150u);
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_BYPASS);
+
+	sim_reset_quiet();
+	reverse_start(150u);
+	CHECK(motion_state_read() == (uint32_t)MOTION_ST_REVERSING);
+}
 #endif
 
 #if MOTION_BENCH && !MOTION_TEST_STOP
@@ -3555,6 +3603,7 @@ main (int argc, char **argv)
 	scenario_reverse_stall();
 	scenario_reverse_twice();
 	scenario_reverse_motor_inv();
+	scenario_state_word();
 #elif MOTION_TEST_STOP
 	scenario_stop_test();
 #elif !MOTION_TEST_PID

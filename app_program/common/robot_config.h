@@ -19,6 +19,10 @@
 #ifndef LINE_STEER_INVERT
 #define LINE_STEER_INVERT                (1)
 #endif
+/* UNUSED: no code reads LINE_STOP_ON_LOST, so 0 and 1 build the same car.
+   ir_sense_task only reports a lost line (line_state); motion decides
+   (LINE_SEARCH, then LINE_LOST, which pauses the mission).  Kept, with its
+   check below, so a build that passes -DLINE_STOP_ON_LOST still compiles. */
 #ifndef LINE_STOP_ON_LOST
 #define LINE_STOP_ON_LOST                (0)
 #endif

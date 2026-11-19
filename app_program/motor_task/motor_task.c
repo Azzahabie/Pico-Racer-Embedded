@@ -432,6 +432,12 @@ static T_CMTX const g_cmtx_ds = {
 };
 #endif
 
+/* The statechart state for ir_sense_task's scan gate (motor_task.h,
+   motion_state_read()): motion_task is the only writer and stores it
+   whole once per tick, after the statechart step; a reader takes it with
+   one load.  Never written in bench images. */
+static volatile uint32_t g_state_word = (uint32_t)MOTION_ST_IDLE;
+
 /* ------------------------------------------------------------------ *
  *  Kernel objects
  * ------------------------------------------------------------------ */
@@ -1210,6 +1216,12 @@ motion_ds_read (void)
     return motion_ds_pack(copy.dist_mm, (motion_ds_state_t)copy.state,
                           copy.counter, copy.turn_dps);
 #endif
+}
+
+uint32_t
+motion_state_read (void)
+{
+    return g_state_word; /* one aligned load */
 }
 
 static void
@@ -2857,6 +2869,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     line_inputs(p_ctx, &in);
 
     motion_sm_step(&p_ctx->sm, &in, &out);
+    g_state_word = (uint32_t)motion_sm_state(&p_ctx->sm); /* one store */
 
     /* FAULT_CLEAR(MOTION) took it out of Motion Fault: forget the fault,
        or the next driving tick would raise it again. */

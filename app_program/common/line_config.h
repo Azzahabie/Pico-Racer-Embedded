@@ -32,6 +32,22 @@
 #define BARCODE_MAX_ELEMENTS                      ((BARCODE_MAX_CHARACTERS * 10u) + 19u)
 #define BARCODE_MAX_WIDTHS                        (512u)
 #define BARCODE_WIDE_NARROW_MIN_RATIO_X100        (150u)
+/* 1 (default): when one narrow/wide split for all nine elements of a
+   symbol fails, the decoder tries again with bars and spaces split apart
+   (barcode_decode.c).  A sensor that reads every bar wider reads every
+   space narrower by the same amount.  The one split fails with wide 2 x
+   narrow from about a quarter of the narrow width (0.75 mm on 3 mm
+   bars), and with 3 x from about a third (1 mm); split apart, they decode
+   (tests/test_barcode_decode.c, up to a third).  No wrong letter in the
+   sim sweeps (the checker's 21060 reads; 42120 more, half read
+   backwards).  BARCODE_SPLIT_MAX_RATIO: the widest bar (space) at most
+   this many times the narrowest bar (space) of the symbol.  This default
+   changed without car data.  0: the one split only, as before
+   (-DBARCODE_DECODE_SPLIT=0). */
+#ifndef BARCODE_DECODE_SPLIT
+#define BARCODE_DECODE_SPLIT                      (1u)
+#endif
+#define BARCODE_SPLIT_MAX_RATIO                   (8u)
 #define BARCODE_GAP_MAX_NARROW_RATIO_X100         (300u)
 #define BARCODE_SCAN_END_GAP_US                   (50000u)
 #define BARCODE_SCAN_IDLE_US                      BARCODE_SCAN_END_GAP_US
@@ -39,27 +55,158 @@
 
 /* ---- Barcode capture in ir_sense_task, in 1 ms sampling ticks ----
    Q: a read ends after this many white ticks, or BARCODE_Q_WIDTH_FACTOR x
-   the narrowest width seen, whichever is longer (the existing 50 ms /
-   4x-narrowest rule).  W_max: widths per read (32 letters).  W_long: any
-   single bar or space longer than this aborts the read.  PROVISIONAL until
-   measured on the car. */
+   the narrowest width seen, whichever is longer.  W_max: widths per read
+   (32 letters).  W_long: any single bar or space longer than this aborts
+   the read.  PROVISIONAL until measured on the car.
+   Factor 6 (was 4): a wide space is 2-3 narrow modules, and a sensor that
+   reads bars 0.5 mm wide (spaces 0.5 mm short) with GP7's speed 10 % off
+   makes the course's 9 mm wide space 4.2 times its 2.5 mm narrow space
+   (C), so 4 x narrowest ended the read inside the barcode (J3).  Sim, the
+   course sheet (3 mm, 3:1) at base 6 with GP7's speed +/-10 % and the
+   bars 0.5 mm off: 4 decodes 7 and 58 of 104 reads, 6 all 104.  A valid
+   read no longer waits for Q (BARCODE_END_ON_STOP), so the longer Q only
+   delays the end of a read that does not decode.
+   The cost of 6: a GP7 black that does not decode (a brush of the line,
+   a seam, a sheet that fails, the crossbar in a rule 0 image) keeps its
+   read open 6 x its width instead of 4 x, and with LINE_BARCODE_HOLD 1
+   the steering hold lasts as long (the width, Q, then
+   BARCODE_JUNCTION_HOLDOFF_MS 300): for the 124 ms blip of 4 Nov
+   (trials_batch1_2026-11-04.txt:2559) 1168 ms blind instead of 920 ms,
+   about 250 ms or 12 mm more at base 6 (C).  Before the H1 fix it also
+   widened the stretch in which a failed read swallowed the crossbar (18
+   mm instead of 12 for 3 mm bars, C); now that crossbar still fires
+   (BARCODE_NOT_BAR_RATIO_X10).  Re-run with the H1 fix (sim, the 63180
+   reads of the size envelope there): factor 4 decodes 33679 and fires 1132 junctions inside barcodes
+   (reads end at a wide space, and the rest of the barcode opens a read
+   of its own); 6 decodes 49217 with none.  So 6 stays.  This default
+   changed without car data.  -DBARCODE_Q_WIDTH_FACTOR=4 builds the old
+   value. */
 #define BARCODE_Q_TICKS                (BARCODE_SCAN_END_GAP_US / 1000u)
-#define BARCODE_Q_WIDTH_FACTOR                    (4u)
+#ifndef BARCODE_Q_WIDTH_FACTOR
+#define BARCODE_Q_WIDTH_FACTOR                    (6u)
+#endif
 #define BARCODE_W_MAX                             BARCODE_MAX_ELEMENTS
 #define BARCODE_W_LONG_TICKS                      (2000u)
 #define BARCODE_READ_MAX_TICKS         (BARCODE_SCAN_MAX_US / 1000u)
 
-/* Compiled-in letter -> movement table, used until a valid map arrives
-   (MQTT_SCHEMA.md 8.3).  No approved table exists yet (schema section 12
-   item 9), so it is off: until a map is loaded every letter is rejected
-   as unknown and no junction command is sent.  To use one, set _SET to 1
-   and give 26 characters, 'A' first: F forward, L left, R right, U U-turn. */
-#define BARCODE_DEFAULT_TABLE_SET                 (0)
-#define BARCODE_DEFAULT_TABLE                     ""
+/* Glitch filter (bar_capture.c): every GP7 sample goes through it before
+   the capture and, with LINE_JUNCTION_RULE 1, before the junction side.
+   A black or white run this many samples or shorter counts as the level
+   either side of it.  GP7 drops out inside a black run: "B63 w4 B24", 4
+   ms of white inside 91 ms of black, on 4 Nov
+   (tests/scan_bench/logs/trials_batch2_2026-11-04.txt:196).  6 merges
+   that logged 4 ms dropout (3 did not: the checker, 19 Nov) and is still
+   below the narrowest real bar or space: 2 mm at base 8 is 31 ms, and
+   1 mm (a 2 mm bar read 1 mm thin) with GP7 20 % fast is 13 ms (C).  The
+   checker's size envelope decodes the same at 3 and 6.  Every edge is
+   seen this many samples late (0.4 mm at base 8, C); widths are
+   unchanged.  A longer dropout is left to "not a bar" below.  0: no
+   filter, as before (-DBARCODE_GLITCH_TICKS=0). */
+#ifndef BARCODE_GLITCH_TICKS
+#define BARCODE_GLITCH_TICKS                      (6u)
+#endif
 
-/* While a barcode is being read, and this long after, line_state holds
-   rl/steer/error at 0 (the bars cross the line sensors).  It no longer
-   gates junctions: those come from GP7's run length (below). */
+/* Not a bar (bar_capture.c; it matters with LINE_JUNCTION_RULE 1).
+   Before, no black run inside an open read with 1-28 widths was a
+   junction, so a crossbar that started inside one never fired, armed or
+   not (H1, checker, 19 Nov): after a dropout inside the crossbar longer
+   than the filter, a speck or sheet edge in the quiet zone before it, or
+   an unreadable sheet close before it.  Now a black run inside an open
+   read is not a bar once it is longer than BARCODE_NOT_BAR_RATIO_X10 / 10
+   times the widest width of the read before the space in front of it
+   (that space may be the gap to the crossbar, any length up to the quiet
+   zone, so it is left out).  The junction rules then apply to the run as
+   to any other (armed: LINE_ARMED_CONFIRM_MM; otherwise J_n), and when a
+   junction fires the read ENDs there: barcode_task judges and prints the
+   widths before the crossbar (malformed), and the rest of the crossbar
+   opens no read.
+   Known limit (checker, 19 Nov): a real course sheet that fails to
+   decode because widths were lost (a space taped over, a bar not seen,
+   bars merged by blur) still has a 9 mm wide element, so the threshold
+   is 2.5 x 9 = 22.5 mm, longer than the 18 mm crossbar: a crossbar 0-15
+   mm behind such a sheet is swallowed (0 of 26 letters fire in the sim,
+   as before this fix; rule 0 fires).  Armed, the command then runs at
+   the next junction; unarmed there is no junction event.  Fixed only for
+   reads of equal-width bars (a speck, a dropout, merged small bars).
+   2.5 (the checker's figure) from a read's 11th width on: by then the
+   widths before the last space include a wide one (from any bar of *X*,
+   either way round, at most 8 narrow elements come before a wide one, C),
+   and no bar long enough for either rule (7.1 mm: J_n at base 4 with GP7
+   20 % slow, C) is more than 2.1 times a wide element (wide bar 1 mm
+   wider, wide space 1 mm narrower, GP7's speed +/-20 %, C).
+   Before the 11th width, BARCODE_NOT_BAR_EARLY_X10, 7: the widest width
+   so far may be a narrow one and the run a wide bar (the reversed start
+   character's wide bar is its 3rd width), up to 6.3 times a narrow bar
+   (3 x, the bars 1 mm thin, GP7 +/-20 %, C).  So a speck before the
+   crossbar must be under 18 / 7 = 2.6 mm (C), and the junction then
+   fires 7 x the speck into the crossbar: 14 mm for a 2 mm speck (host
+   test).  Except the 3rd width after a dropout, a space under
+   1 / BARCODE_DROPOUT_DIV of the bar before it, which no barcode's space
+   is (at least 0.22 of it: a 2 mm bar read 3 mm wide, its space 1 mm,
+   GP7 +/-20 %, C): there the ratio is 2.5.  Armed, a 4 ms dropout up to
+   5 mm into the crossbar fires (sim, base 4/6/8); later ones leave less
+   than 10 mm after them.  By the length rule, up to 4-5 mm at base 4 and
+   6, and never at base 8, where J_n is the whole crossbar (C).
+   Sim, the size envelope (63180 reads: narrow 2-6 mm, wide 2-3 x, base
+   4/6/8, GP7's speed +/-0/10/20 %, blur -1..+1 mm, 26 letters), 42120
+   more with half of them read backwards, and two sheets before one
+   junction: the same reads decode and 0 junctions fire inside barcodes,
+   with and without it.  0: off, as before
+   (-DBARCODE_NOT_BAR_RATIO_X10=0). */
+#ifndef BARCODE_NOT_BAR_RATIO_X10
+#define BARCODE_NOT_BAR_RATIO_X10                 (25u)
+#endif
+#ifndef BARCODE_NOT_BAR_EARLY_X10
+#define BARCODE_NOT_BAR_EARLY_X10                 (70u)
+#endif
+#ifndef BARCODE_DROPOUT_DIV
+#define BARCODE_DROPOUT_DIV                       (5u)
+#endif
+
+/* Compiled-in letter -> movement table, used until a valid map arrives
+   (MQTT_SCHEMA.md 8.3).  The letters are only given on the day, so it is
+   off: until a map is loaded every letter is rejected as unknown and no
+   junction command is sent.  To use one, set _SET to 1
+   and give 26 characters, 'A' first: F forward, L left, R right, U U-turn,
+   e.g. "LRFUFFFFFFFFFFFFFFFFFFFFFF" for the writeup's example (A left,
+   B right, C straight, D U-turn).  For a car image edit the two lines
+   here: an in-place rebuild does not recompile on a changed -D.  The host
+   tests set them with -D (tests/line/Makefile).  A wrong length stops the
+   build; any character other than F, L, R, U leaves the table empty, and
+   the boot line says so (docs/BUDDY3_LINE_BARCODE.md, "Commands on the
+   day"). */
+#ifndef BARCODE_DEFAULT_TABLE_SET
+#define BARCODE_DEFAULT_TABLE_SET                 (0)
+#endif
+#ifndef BARCODE_DEFAULT_TABLE
+#define BARCODE_DEFAULT_TABLE                     ""
+#endif
+#if (BARCODE_DEFAULT_TABLE_SET != 0) && (BARCODE_DEFAULT_TABLE_SET != 1)
+#error "BARCODE_DEFAULT_TABLE_SET must be 0 or 1"
+#endif
+
+/* Barcode hold.  1 (default): while a barcode is being read, and
+   BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds rl/steer/error at 0
+   and sets its barcode bit, and motion_task holds its heading: the car
+   drives straight while it reads.  0: nothing is held.  The prof's tip
+   (19 Nov) settles it: barcodes are always on straight segments and the
+   car should not steer while reading, so 1 stays.  What it costs: blind
+   straight driving, up to ~3.4 s (~158 mm) per sheet and ~2.2 s per
+   crossbar, because the crossbar under GP7 opens a read too (sim); what
+   it buys: GP7 passes the bars at a constant speed (with GP7's speed
+   varying +/-20 % today's decoder decodes 79-91 of 208 reads, with
+   +/-10 % all 208, sim).  The scan gate below stops curves and pivots
+   from opening a read, so they no longer hold the steering.
+   -DLINE_BARCODE_HOLD=0 still builds the other side.  Held or not, the
+   dark time and the lost bit follow the real line sensors (line_track.c),
+   so a held car on white is not "line seen" and is lost after
+   LINE_LOST_MS. */
+#ifndef LINE_BARCODE_HOLD
+#define LINE_BARCODE_HOLD                         (1u)
+#endif
+
+/* How long the hold lasts after a read ends (LINE_BARCODE_HOLD 1 only).
+   It no longer gates junctions: those come from GP7's run length (below). */
 #define BARCODE_JUNCTION_HOLDOFF_MS               (300u)
 
 /* ---- Junction detection (ticks of 1 ms) ----
@@ -68,11 +215,186 @@
    they cannot see one.  The junction comes from the barcode sensor (GP7)
    instead: a crossbar is one black run far longer than any barcode bar.
    J_n: GP7 black this many samples running = one junction.  It must be
-   above the widest barcode bar and below the crossbar (18 mm at
-   MOTION_LF_BASE, ~12 cm/s, is ~150 ms).  Rearm: GP7 white this many
-   samples running first.  PROVISIONAL until measured on the car. */
-#define LINE_JUNCTION_SAMPLES                     (80u)
+   above the widest barcode bar and below the crossbar at the speed GP7
+   passes them, taken as motion's line-following base (MOTION_LF_BASE,
+   motion_cfg.h), so J_n must move with MOTION_LF_BASE: change both
+   together.  Nothing in the firmware checks this; only the host test
+   does, with the default headers.
+   Base 6 is 47.6 mm/s (C: 6 counts a 10 ms tick, 64 mm wheel, 2535 counts
+   a turn; INTEGRATION.md S4 gives ~4.7 cm/s from lap times).  There the
+   course's 9 mm wide bar is 189 ms and the 18 mm crossbar 378 ms (C), and
+   280 sits about midway.  The old 80 was sized for ~12 cm/s: at base 6 it
+   is 3.8 mm of black, so every wide bar fired a junction (6 per sheet,
+   sim) that motion accepts in LINE_FOLLOW.
+   280 at a constant GP7 speed, bars and crossbar -2..+2 mm off their
+   printed width: at base 6 no bar fires and every crossbar does (sim,
+   host test).  At base 8 no bar fires either, but the crossbar is only
+   284 ms (C), so one seen 1 mm or more narrow is missed; at base 4 a wide
+   bar is 284 ms (C) and fires (host test).
+   These margins hold only while GP7 moves at about the base speed: a 9 mm
+   bar fires if GP7 is slower than ~32 mm/s, an 18 mm crossbar is missed
+   if it is faster than ~64 mm/s (C).  Steering moves GP7's speed: at the
+   41 deg/s logged in line following (4 Nov, trials_batch1 line 2554), by
+   about +/-32 mm/s if GP7 is 45 mm to the side of the centreline (C; the
+   45 mm is assumed, the mount is not measured).  So the gate for 280
+   is the car session C1 count of junction lines per sheet and per
+   crossbar.  Rearm: GP7 white this many samples running first.
+   PROVISIONAL; -DLINE_JUNCTION_SAMPLES=80 builds the old value. */
+#ifndef LINE_JUNCTION_SAMPLES
+#define LINE_JUNCTION_SAMPLES                     (280u)
+#endif
 #define LINE_JUNCTION_REARM_SAMPLES               (20u)
+
+/* ---- The barcode-armed junction (the team's rule, 19 Nov) ----
+   The course puts a barcode sheet before or at each junction, with bars
+   of different sizes, so no single length J_n can tell every bar from the
+   crossbar.  1 (default): once GP7 has read a complete, valid barcode and
+   barcode_task has stored its command, the next black run GP7 sees is the
+   junction, whatever its length (junction_arm.h).  While the bars of a
+   read arrive, nothing is a junction.  With no barcode armed, the length
+   rule above is the fallback.  This default changed without car data
+   (Hanis's decision, 19 Nov), and its three values below are guesses,
+   none measured, to confirm on the car: 10 mm (LINE_ARMED_CONFIRM_MM),
+   150 mm (LINE_ARMED_HOLD_MM) and 50 ms (LINE_ARMED_VERDICT_WAIT_MS).
+   0: the length rule alone, as before (-DLINE_JUNCTION_RULE=0, for the
+   A/B).  The rule needs BARCODE_END_ON_STOP 1.
+   Every switch back to the behaviour before these changes:
+   -DLINE_JUNCTION_RULE=0 -DBARCODE_END_ON_STOP=0 -DBARCODE_Q_WIDTH_FACTOR=4
+   -DBARCODE_DECODE_SPLIT=0 -DBARCODE_GLITCH_TICKS=0
+   -DBARCODE_NOT_BAR_RATIO_X10=0 -DLINE_SCAN_GATE=0 (tests/line OLD_RULE).
+   A -D car image needs a clean tree and make GCC="arm-none-eabi-gcc
+   -D...": CFLAGS is set with := (build_make/pico_rp2040.mk:257). */
+#ifndef LINE_JUNCTION_RULE
+#define LINE_JUNCTION_RULE                        (1u)
+#endif
+
+/* 1 (default): a one-letter read ENDs as soon as the stop character's
+   last bar ends, if its 29 widths decode as a valid *X*, instead of
+   after the quiet zone.  A crossbar closer behind the sheet than the
+   quiet zone (BARCODE_Q_WIDTH_FACTOR x the narrowest width: 18 mm for
+   the 3 mm bars, C) no longer joins the read and spoils it, and the
+   command is stored before the car reaches the crossbar.  This default
+   changed without car data.  0: always wait for the quiet zone, as before
+   (-DBARCODE_END_ON_STOP=0, with -DLINE_JUNCTION_RULE=0). */
+#ifndef BARCODE_END_ON_STOP
+#define BARCODE_END_ON_STOP                       (1u)
+#endif
+
+/* Armed: the black run is the junction once it has lasted
+   LINE_ARMED_MIN_SAMPLES samples (noise) and LINE_ARMED_CONFIRM_MM of
+   travel (distance_state, the wheels' average).  10 mm is longer than the
+   first bar of any barcode in the size range (every Code 39 barcode
+   starts with a narrow bar, at most 6 mm printed, so a second sheet
+   before the same junction does not fire), and shorter than the 18 mm
+   crossbar, also with the bars read 1 mm off and GP7's speed 20 % off the
+   car's (sim, tests/line).  Where the junction fires, which
+   MOTION_TURN_FWD_MM counts from: about 10 mm into the crossbar at base 6
+   and 8 (J_n 280 is 13.3 and 17.8 mm there, C); at base 4 J_n 280 is 8.9
+   mm (C), so the length rule fires first, and the armed junction line
+   prints "GP7 black 8-9 mm" (host test: 8.9-10.3 mm at a steady GP7
+   speed).  With GP7's speed +/-0-20 % off the car's and blur +/-1 mm, by
+   either rule: 7.6-10.3 mm at base 4, 7.8-15.5 at base 6, 7.4-19.1 at
+   base 8 (sim, the size envelope under BARCODE_NOT_BAR_RATIO_X10).  A
+   speck or dropout before or in the crossbar can move it later, up to the
+   crossbar's end.  PROVISIONAL: 10 mm is a guess to confirm on the car.
+   0 mm: the first LINE_ARMED_MIN_SAMPLES of black fire. */
+#ifndef LINE_ARMED_MIN_SAMPLES
+#define LINE_ARMED_MIN_SAMPLES                    (5u)
+#endif
+#ifndef LINE_ARMED_CONFIRM_MM
+#define LINE_ARMED_CONFIRM_MM                     (10u)
+#endif
+
+/* D_hold (week6_design_review.md, assumption 2): an armed junction is
+   disarmed after this much travel with no junction (the stored command
+   stays for nav; only the junction falls back to the length rule).
+   150 mm is a GUESS, not measured, to confirm on the car: it must be
+   longer than the gap from the last bar to the crossbar on the course. */
+#ifndef LINE_ARMED_HOLD_MM
+#define LINE_ARMED_HOLD_MM                        (150u)
+#endif
+
+/* After a complete read, a junction that is due waits at most this long
+   (ms) for barcode_task (core 0) to judge the read and store its command,
+   so nav finds it.  barcode_task wakes on the message; 50 ms is 2.4 mm at
+   base 6 (C).  50 ms is a GUESS (barcode_task's real latency on the car
+   is not measured), to confirm on the car. */
+#ifndef LINE_ARMED_VERDICT_WAIT_MS
+#define LINE_ARMED_VERDICT_WAIT_MS                (50u)
+#endif
+
+/* ---- The scan gate (scan_gate.h) ----
+   The prof's tip (19 Nov): barcodes are always on straight segments,
+   never on curves, so the car should drive straight while it reads one
+   and should not scan while turning.  1 (default, the team's decision
+   from the tip): a GP7 black that starts while the car is turning opens
+   no barcode read (so no steering hold and no reject) and never fires a
+   junction by the length rule.  A read already open goes on, and the
+   barcode-armed junction is not gated (a barcode and its junction are on
+   a straight).  "Turning" is either of:
+   - motion in a manoeuvre that is not line following: TURNING, BYPASS,
+     LINE_SEARCH or REVERSING (motion_state_read(), motor_task.h).  When
+     the manoeuvre ends the average below starts again from 0, so the
+     straight after a junction pivot scans at once;
+   - otherwise (LINE_FOLLOW, and the stopped states), motion's turn rate
+     (distance_state, motion_ds.h) averaged by two low-pass stages, each
+     1/LINE_SCAN_AVG_DIV of the way every 10 ms, at or above
+     LINE_SCAN_MAX_TURN_DPS: a curve.
+   Without distance_state (motor_task_flag() 0, as in a bench image, or
+   its counter unchanged for LINE_SCAN_STALE_MS) the gate stays open
+   (fails open), whatever the motion state.  0: no gate, as before
+   (-DLINE_SCAN_GATE=0).
+   On curves and in pivots GP7 sweeps across the line itself (register L5
+   and S3, _handover/diag_plan_v2.md): seven junction lines in one bypass
+   (tests/scan_bench/logs/fr20_bypass_rejoin_2026-11-04.txt:42-133), and
+   a false junction while line following
+   (trials_batch1_2026-11-04.txt:2553-2563). */
+#ifndef LINE_SCAN_GATE
+#define LINE_SCAN_GATE                            (1u)
+#endif
+
+/* Going straight: |averaged turn rate| below this (deg/s).  A curve's
+   turn rate is at least v / R: 18 deg/s at 150 mm radius and 9 deg/s at
+   300 mm at base 6 (47.6 mm/s, C), and more with the line sensors
+   125 mm ahead of the axle (33 and 10 deg/s, C).  A junction pivot is
+   about 43 deg/s and a bypass pivot about 72 deg/s (C, from
+   MOTION_TURN_SPEED and MOTION_BYPASS_TURN_SPEED; the IMU logged 70 deg/s
+   in a bypass, fr20_bypass_rejoin_2026-11-04.txt:48).  6 is a GUESS, not
+   measured, to confirm on the car.  Line following's slow wander (2 deg
+   right to 28 deg left over 8 s, motion_cfg.h above MOTION_HD_LINE_MM) is
+   about 4 deg/s on average (C); with what is left of the weave (below) on
+   top it can reach 6, and a sheet met then is not read. */
+#ifndef LINE_SCAN_MAX_TURN_DPS
+#define LINE_SCAN_MAX_TURN_DPS                    (6u)
+#endif
+
+/* The average: two low-pass stages, each moving 1/LINE_SCAN_AVG_DIV of
+   the way to its input every 10 ms (64: a time constant of 640 ms each).
+   On a straight the car weaves: 41 deg/s logged in line following
+   (trials_batch1_2026-11-04.txt:2554), roughly 1 Hz from the side
+   changes in the RL lines before it (2540-2552).  A plain 500 ms average
+   leaves +/-29 deg/s of a +/-45 deg/s 1 Hz weave (C: 45 x sin(pi/2) /
+   (pi/2)), far above 6, so a sheet met at the wrong moment would be
+   ignored; these two stages leave 2.6 deg/s at 1 Hz and 5.1 at 0.7 Hz
+   (sim, tests/line test_scan_gate); a weave slower than about 0.65 Hz at
+   that size would shut the gate (C).  The cost is time on curves: the
+   gate shuts about 0.8 s into a 150 mm curve and 1.5 s into a 300 mm
+   curve (sim, steady turn rates from the start of the turn), and opens
+   again late after one: the checker's 2D sim reads a sheet from about
+   130-140 mm after the end of a 90 deg curve of 150 mm radius, 50-60 mm
+   after a 300 mm one (sim, no weave).  Pivots no longer wait for it:
+   TURNING shuts the gate at once and its end resets the average (it
+   used to open again about 2.1 s after a 90 deg junction pivot, sim).
+   A GUESS, not measured. */
+#ifndef LINE_SCAN_AVG_DIV
+#define LINE_SCAN_AVG_DIV                         (64u)
+#endif
+
+/* distance_state is stale when its counter (+1 every 10 ms publish) has
+   not changed for this long (ms): then the gate fails open. */
+#ifndef LINE_SCAN_STALE_MS
+#define LINE_SCAN_STALE_MS                        (100u)
+#endif
 
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
 #define LINE_LOST_MS                              (1500u)
@@ -148,6 +470,40 @@
 #endif
 #if BATTERY_SENSE_GPIO != (26u + BATTERY_SENSE_ADC_CHANNEL)
 #error "The battery-sense GPIO and ADC channel do not match"
+#endif
+#if (LINE_BARCODE_HOLD != 0u) && (LINE_BARCODE_HOLD != 1u)
+#error "LINE_BARCODE_HOLD must be 0 or 1"
+#endif
+#if (LINE_JUNCTION_RULE != 0u) && (LINE_JUNCTION_RULE != 1u)
+#error "LINE_JUNCTION_RULE must be 0 or 1"
+#endif
+#if (BARCODE_DECODE_SPLIT != 0u) && (BARCODE_DECODE_SPLIT != 1u)
+#error "BARCODE_DECODE_SPLIT must be 0 or 1"
+#endif
+#if (BARCODE_END_ON_STOP != 0u) && (BARCODE_END_ON_STOP != 1u)
+#error "BARCODE_END_ON_STOP must be 0 or 1"
+#endif
+#if (LINE_JUNCTION_RULE != 0u) && (BARCODE_END_ON_STOP == 0u)
+#error "LINE_JUNCTION_RULE 1 needs BARCODE_END_ON_STOP 1"
+#endif
+#if (LINE_ARMED_MIN_SAMPLES < 1u) || (LINE_ARMED_VERDICT_WAIT_MS < 1u)
+#error "LINE_ARMED_MIN_SAMPLES and LINE_ARMED_VERDICT_WAIT_MS must be at least 1"
+#endif
+#if (LINE_SCAN_GATE != 0u) && (LINE_SCAN_GATE != 1u)
+#error "LINE_SCAN_GATE must be 0 or 1"
+#endif
+#if (LINE_SCAN_MAX_TURN_DPS < 1u) || (LINE_SCAN_MAX_TURN_DPS > 2000u) || \
+    (LINE_SCAN_AVG_DIV < 1u) || (LINE_SCAN_AVG_DIV > 1000u) || \
+    (LINE_SCAN_STALE_MS < 20u) || (LINE_SCAN_STALE_MS > 10000u)
+#error "LINE_SCAN_MAX_TURN_DPS must be 1..2000, LINE_SCAN_AVG_DIV 1..1000, LINE_SCAN_STALE_MS 20..10000"
+#endif
+#if BARCODE_GLITCH_TICKS > 10u
+#error "BARCODE_GLITCH_TICKS must be 0..10: the narrowest real bar is about 13 ms"
+#endif
+#if (BARCODE_NOT_BAR_RATIO_X10 != 0u) && \
+    ((BARCODE_NOT_BAR_RATIO_X10 < 20u) || (BARCODE_NOT_BAR_EARLY_X10 < BARCODE_NOT_BAR_RATIO_X10) || \
+     (BARCODE_DROPOUT_DIV < 1u))
+#error "BARCODE_NOT_BAR_RATIO_X10 must be 0 or at least 20, _EARLY_X10 at least as big, BARCODE_DROPOUT_DIV at least 1"
 #endif
 
 #endif

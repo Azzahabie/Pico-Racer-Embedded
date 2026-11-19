@@ -69,4 +69,22 @@ void barcode_rx_evaluate(barcode_rx_t *rx, barcode_rx_event_t event,
 
 const char *barcode_reject_name(barcode_reject_t reject);
 
+/*
+ * barcode_task's judged word (barcode_judged_word()): stored once a read's
+ * verdict is out, AFTER its command (if any) is stored, so ir_sense_task
+ * can tell "rejected" from "not judged yet".  Bit 8 set once any read was
+ * judged, bits 0-7 that read's read_id.  0 before the first.
+ */
+#define BARCODE_JUDGED_VALID (0x100u)
+
+static inline uint32_t barcode_judged_pack(uint8_t read_id)
+{
+	return BARCODE_JUDGED_VALID | (uint32_t)read_id;
+}
+
+static inline bool barcode_judged_is(uint32_t judged, uint8_t read_id)
+{
+	return judged == barcode_judged_pack(read_id);
+}
+
 #endif

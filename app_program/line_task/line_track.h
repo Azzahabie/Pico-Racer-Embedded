@@ -31,6 +31,10 @@ typedef struct {
 	uint32_t both_black_run;	/* junction debounce: GP7 black run */
 	uint32_t clear_run;		/* GP7 white samples since leaving it */
 	bool junction_armed;
+	bool junction_due;		/* fires once the gate's wait ends */
+	bool on_crossbar;		/* fired, GP7 still on that black */
+	bool run_turning;		/* this GP7 black run began while
+					   the scan gate was shut */
 
 	uint32_t dark_ms;		/* since the last confirmed black */
 	uint32_t left_rail_run;
@@ -46,6 +50,30 @@ typedef struct {
 	uint16_t left_norm;	/* 0 white .. 1000 black               */
 	uint16_t right_norm;
 } line_track_out_t;
+
+/*
+ * What the barcode side tells the junction detector, every sample
+ * (LINE_JUNCTION_RULE 1, from junction_arm_step()):
+ *   in_read   bars of an open barcode read are arriving: GP7's black run
+ *             is a bar, never a junction, unless it is too long to be a
+ *             bar of that read (bar_capture_in_read());
+ *   armed_due a complete barcode armed the junction and GP7's black run
+ *             has confirmed it (LINE_ARMED_CONFIRM_MM): fire now;
+ *   wait      a complete read is waiting for barcode_task's verdict: a
+ *             junction that is due waits (at most
+ *             LINE_ARMED_VERDICT_WAIT_MS), so nav finds the command;
+ *   turning   the scan gate is shut (LINE_SCAN_GATE 1, scan_gate.h): a GP7
+ *             black run that begins now never fires by the length rule,
+ *             however long it lasts.  armed_due still fires.
+ * Outside a read, GP7 black LINE_JUNCTION_SAMPLES running still fires (the
+ * length rule, the fallback when no barcode armed it).
+ */
+typedef struct {
+	bool in_read;
+	bool armed_due;
+	bool wait;
+	bool turning;
+} line_junction_gate_t;
 
 /* Start from the configured thresholds, uncalibrated, junction armed. */
 void line_track_init(line_track_t *trk, const ir_cal_sensor_t *left,
@@ -63,13 +91,22 @@ void line_track_disarm_junction(line_track_t *trk);
 
 /*
  * One sample.  adc_ok false = the ADC read failed (counts as a fault).
- * barcode_hold true = a barcode is under the car: rl/steer/error held at 0.
- * mark_black = the barcode sensor (GP7) reads black; a long enough run of
+ * barcode_hold true = a barcode is under the car: rl/steer/error held at 0;
+ * the dark time and the lost bit still follow the real sensors.
+ * mark_black = the barcode sensor (GP7) reads black (with a gate, after
+ * the capture's glitch filter, bar_capture_black()); a long enough run of
  * it is the junction (LINE_JUNCTION_SAMPLES).  rl 11 is never a junction:
  * both sensors are inside the line whenever the car is centred.
  */
 void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 		     bool adc_ok, bool barcode_hold, bool mark_black,
 		     line_track_out_t *out);
+
+/* The same with the barcode side's gate (above).  gate NULL is
+   line_track_step(): the length rule alone, LINE_JUNCTION_RULE 0. */
+void line_track_step_gate(line_track_t *trk, uint16_t left_raw,
+			  uint16_t right_raw, bool adc_ok, bool barcode_hold,
+			  bool mark_black, const line_junction_gate_t *gate,
+			  line_track_out_t *out);
 
 #endif

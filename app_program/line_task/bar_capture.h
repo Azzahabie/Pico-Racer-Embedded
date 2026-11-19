@@ -11,12 +11,38 @@
  * Every read gets a new read_id, carried on each message to barcode_task,
  * so widths left over from an aborted or partly delivered read can never
  * join the next one.
+ *
+ * A one-letter Code 39 read (start, letter, stop) is 29 widths.  With
+ * BARCODE_END_ON_STOP 1 the capture decodes them the moment the stop
+ * character's last bar ends and, if they are a valid *X* (either way
+ * round), ENDs the read on the next sample instead of after the quiet
+ * zone, so a crossbar close behind the sheet cannot join the read.  If
+ * the last bar runs on into a crossbar printed against it, the read is
+ * tried with that bar taken as narrow, and ENDs the same way.
+ *
+ * Every sample first goes through a glitch filter: a GP7 run of black or
+ * white BARCODE_GLITCH_TICKS samples or shorter is merged into the runs
+ * either side, so a dropout of a few ms inside the crossbar neither opens
+ * nor splits a read.  Longer runs are seen that many samples late at both
+ * ends, so their widths are kept.
+ *
+ * Inside an open read, a black run far longer than the read's widths so
+ * far is not a bar (BARCODE_NOT_BAR_RATIO_X10): the junction side may fire
+ * on it, and when it does the read ENDs there (bar_capture_junction()).
+ *
+ * The scan gate (LINE_SCAN_GATE 1, scan_gate.h) shuts the capture while
+ * the car is turning (bar_capture_set_gate()): a black that would open a
+ * read opens none, and neither does the rest of it (the capture waits for
+ * a quiet zone, as after an abort).  A read already open goes on.
  */
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "../common/robot_config.h"
+
+/* Widths in a one-letter Code 39 read: 3 symbols of 9, 2 gaps. */
+#define BAR_ONE_LETTER_WIDTHS (29u)
 
 typedef enum {
 	BAR_EV_NONE = 0,
@@ -31,7 +57,8 @@ typedef enum {
 	BAR_ABORT_TOO_LONG,	/* one width above W_long                   */
 	BAR_ABORT_TIMEOUT,	/* whole read above BARCODE_READ_MAX_TICKS  */
 	BAR_ABORT_OVERFLOW,	/* the message buffer to barcode_task full  */
-	BAR_ABORT_CANCELLED	/* mission state changed mid-read           */
+	BAR_ABORT_CANCELLED,	/* mission state changed mid-read           */
+	BAR_ABORT_JUNCTION	/* the black is a junction's crossbar       */
 } bar_abort_t;
 
 typedef enum {
@@ -49,6 +76,17 @@ typedef struct {
 	uint32_t ticks;		/* ticks since the read started           */
 	uint8_t read_id;
 	bar_abort_t reason;	/* of the last abort                      */
+	uint32_t first[BAR_ONE_LETTER_WIDTHS];	/* this read's first widths */
+	bool end_due;		/* complete: END on the next sample        */
+	bool complete;		/* this read ended as a valid *X*          */
+	char letter;		/* its letter, when complete               */
+	bool seen;		/* GP7 after the glitch filter            */
+	uint8_t pending;	/* samples GP7 has read the other way      */
+	uint16_t widest;	/* widest width of this read so far       */
+	uint16_t widest_before;	/* the same, before the last width        */
+	bool gate_open;		/* the scan gate: a read may open          */
+	uint16_t ignored;	/* blacks the shut gate opened no read on,
+				   modulo 65536                            */
 } bar_capture_t;
 
 /* Message to barcode_task: 4 bytes on bar_mbf. */
@@ -73,6 +111,43 @@ bool bar_capture_busy(const bar_capture_t *cap);
    sit on black indefinitely after width_too_long, and that must not hold
    line_state or silence the console. */
 bool bar_capture_reading(const bar_capture_t *cap);
+
+/* Bars of a read are arriving: reading, past its first black run and
+   short of the 29 widths of a one-letter barcode.  The first run is not
+   counted, because a crossbar opens a read of its own (and every Code 39
+   barcode starts with a narrow bar).  Nor is anything after the 29th
+   width of a read that did not end there: that barcode is over (it was
+   not a valid *X*), so a long black after it is the crossbar.  Nor is a
+   black run too long to be a bar of this read (BARCODE_NOT_BAR_RATIO_X10,
+   line_config.h): a crossbar that starts inside a read that is not a
+   barcode (a speck, a dropout, merged equal bars; not a damaged course
+   sheet with a 9 mm element: line_config.h, known limit).  A read that is
+   complete counts until its END (the sample after), so the junction side
+   sees the END before any junction can fall due. */
+bool bar_capture_in_read(const bar_capture_t *cap);
+
+/* GP7 after the glitch filter: what the capture saw this sample.  The
+   junction side counts its black runs on this too, so both see the same
+   runs (LINE_JUNCTION_RULE 1). */
+bool bar_capture_black(const bar_capture_t *cap);
+
+/* A junction fired while this read is open: GP7's black run is the
+   crossbar.  A read the crossbar opened itself (no width yet) is dropped:
+   BAR_EV_ABORT, BAR_ABORT_JUNCTION.  A read with widths before the
+   crossbar ENDs: BAR_EV_END, so barcode_task judges those widths (and
+   prints them if malformed); the crossbar is not one of them, and the
+   rest of it opens no new read (the capture waits for a quiet zone, as
+   after an abort).  A complete read due to END is left to END, and
+   nothing happens when no read is open: BAR_EV_NONE. */
+bar_event_t bar_capture_junction(bar_capture_t *cap);
+
+/* The scan gate for the samples that follow (open after init).  Shut: a
+   black that would open a read opens none and adds one to
+   bar_capture_t.ignored; the capture then waits for a quiet zone
+   (BARCODE_Q_TICKS of white), so the rest of that black never opens one
+   either, even if the gate opens meanwhile.  A read already open is not
+   touched. */
+void bar_capture_set_gate(bar_capture_t *cap, bool open);
 
 /* Build the 4-byte message for an event. */
 void bar_msg_pack(uint8_t msg[BAR_MSG_SIZE], bar_event_t event,

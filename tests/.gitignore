@@ -25,10 +25,22 @@ imu_hump/test_imu_hump
 imu_safety/test_imu_safety
 line/test_barcode_decode
 line/test_barcode_action
+line/test_barcode_action_table
+line/test_barcode_task
+line/test_barcode_task_table
+line/test_barcode_task_bad
 line/test_ir_cal
 line/test_line_track
 line/test_barcode_pipeline
 line/test_line_state
+line/test_junction_arm
+line/test_junction_old
+line/test_junction_h1_off
+line/test_junction_arm_nogate
+line/test_junction_scan_off
+line/test_junction_scan_short
+line/test_scan_gate
+line/test_scan_gate_short
 scan_logic_test
 host/test_messages
 # macOS clang debug folders, if the tests are run outside Docker

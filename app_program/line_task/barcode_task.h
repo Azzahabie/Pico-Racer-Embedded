@@ -32,6 +32,11 @@ EXPORT ER barcode_map_submit(const UB *map, INT length);
  * core: one aligned load.  nav_ctrl_task reads it at a junction. */
 EXPORT uint32_t barcode_cmd_word(void);
 
+/* barcode_rx.h's judged word: the read_id of the last read judged,
+ * stored after its command (if any).  ir_sense_task reads it to arm the
+ * junction (junction_arm.h).  One aligned load. */
+EXPORT uint32_t barcode_judged_word(void);
+
 /* The map version running (S.mpv), and whether any table is loaded. */
 EXPORT UB barcode_map_version(void);
 EXPORT BOOL barcode_map_loaded(void);

@@ -28,6 +28,7 @@
 LOCAL ID		g_bar_mbfid;
 LOCAL ID		g_map_mbfid;
 LOCAL volatile uint32_t	g_cmd = BARCODE_CMD_NONE;	/* one store, this task only */
+LOCAL volatile uint32_t	g_judged;	/* barcode_rx.h: after g_cmd, one store */
 LOCAL volatile UB	g_map_version;
 LOCAL volatile BOOL	g_map_loaded;
 LOCAL uint32_t		g_cmd_seq;
@@ -80,6 +81,11 @@ EXPORT uint32_t barcode_cmd_word(void)
 	return g_cmd;
 }
 
+EXPORT uint32_t barcode_judged_word(void)
+{
+	return g_judged;
+}
+
 EXPORT UB barcode_map_version(void)
 {
 	return g_map_version;
@@ -119,13 +125,13 @@ LOCAL void dump_widths(void)
 	}
 }
 
+/* Console and telemetry, after the verdict is stored (store_verdict). */
 LOCAL void report(const barcode_verdict_t *v)
 {
 	UB	body[COMM_W_INTAKE_SIZE_BARCODE];
 	UB	line[112];
 
 	if(v->accepted) {
-		set_cmd(barcode_letter_index(v->letter), (uint32_t)v->action);
 		tm_printf((UB *)"[barcode] '%c' -> %s (dir=%s), stored for the next junction\n",
 			  v->letter, barcode_action_name((uint32_t)v->action),
 			  v->decode.reversed ? "rev" : "fwd");
@@ -135,6 +141,10 @@ LOCAL void report(const barcode_verdict_t *v)
 	}
 
 	/* rejected: no command; the stored one (if any) is kept */
+	if((BARCODE_REJECT_ABORTED == v->reject) &&
+	   (BAR_ABORT_JUNCTION == g_rx.abort_reason)) {
+		return;		/* a crossbar, not a barcode: nothing to say */
+	}
 	if(BARCODE_REJECT_ABORTED == v->reject) {
 		(void)tm_sprintf(line, (UB *)"[barcode] REJECTED: aborted (%s)\n",
 				 bar_abort_name(g_rx.abort_reason));
@@ -158,10 +168,23 @@ LOCAL void report(const barcode_verdict_t *v)
 		COMM_W_BARCODE_UNREADABLE, 0U));
 }
 
+/* The command first, then the judged word: ir_sense_task arms the
+   junction only once it sees this read judged and a new command stored,
+   so nav always finds the command at the junction.  Both before the
+   console, which can take milliseconds. */
+LOCAL void store_verdict(const barcode_verdict_t *v)
+{
+	if(v->accepted) {
+		set_cmd(barcode_letter_index(v->letter), (uint32_t)v->action);
+	}
+	g_judged = barcode_judged_pack(g_rx.read_id);		/* one store */
+}
+
 /* Only between barcodes, so one read always sees one table. */
 LOCAL void apply_maps(void)
 {
 	UB	map[BARCODE_MAP_SIZE];
+	char	text[BARCODE_TABLE_TEXT_SIZE];
 	INT	size;
 
 	size = tk_rcv_mbf(g_map_mbfid, map, TMO_POL);
@@ -169,7 +192,9 @@ LOCAL void apply_maps(void)
 		if(barcode_table_apply_map(&g_table, map, size)) {
 			g_map_version = g_table.version;
 			g_map_loaded = TRUE;
-			tm_printf((UB *)"[barcode] map v%u applied\n", (UINT)g_table.version);
+			barcode_table_to_string(&g_table, text);
+			tm_printf((UB *)"[barcode] map v%u applied: %s\n",
+				  (UINT)g_table.version, text);
 		} else {
 			tm_printf((UB *)"[barcode] map of %d bytes rejected: table kept\n", size);
 		}
@@ -199,6 +224,7 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 	barcode_verdict_t	verdict;
 	mission_state_t	mission = nav_mission_state();
 	mission_state_t	now;
+	char		text[BARCODE_TABLE_TEXT_SIZE];
 
 	(void)stacd;
 	(void)exinf;
@@ -212,8 +238,19 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 			(void)tk_slp_tsk(TMO_FEVR);
 		}
 	}
-	tm_printf((UB *)"[barcode] decoder ready, table: %s\n",
-		  g_table.loaded ? "compiled-in default" : "none until a map arrives");
+	/* The table the car starts with, so the image can be checked on the
+	   console before a run: a compiled-in one is printed letter by letter,
+	   A first; one that failed to parse is named, not silently dropped. */
+	barcode_table_to_string(&g_table, text);
+	if(g_table.loaded) {
+		tm_printf((UB *)"[barcode] decoder ready, table: compiled-in default %s\n",
+			  text);
+	} else if(0 != BARCODE_DEFAULT_TABLE_SET) {
+		tm_printf((UB *)"[barcode] decoder ready, table: none until a map arrives "
+			  "(compiled-in table is not 26 of F/L/R/U)\n");
+	} else {
+		tm_printf((UB *)"[barcode] decoder ready, table: none until a map arrives\n");
+	}
 
 	while(1) {
 		size = tk_rcv_mbf(g_bar_mbfid, msg, BARCODE_WAIT_MS);
@@ -221,6 +258,7 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 			event = barcode_rx_feed(&g_rx, msg);
 			if(BARCODE_RX_NONE != event) {
 				barcode_rx_evaluate(&g_rx, event, &g_table, &verdict);
+				store_verdict(&verdict);
 				report(&verdict);
 			}
 		}
