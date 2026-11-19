@@ -7,7 +7,10 @@ for: the data representation table, RAM before and after, message sizes
 before and after, and correctness and performance.
 
 **Before** is commit `c3dea9d` ("before requirement change for obstacle
-task"). **After** is the tree this file was committed with. Legend: **M** =
+task"). **After** is commit `0e90f1a`, the minimum-bit change this file
+was written with. **Now** columns were re-measured on 19 Nov 2026 on
+branch `proposal/nav-barcode-cmd-kept`, after later commits added fields
+(rows 11, 20-22). Legend: **M** =
 measured with the car's ARM toolchain (`arm-none-eabi-size`, `nm -S`) by
 `tests/week13/scan_measure.sh`; **C** = calculated from the code. Re-run:
 
@@ -36,7 +39,7 @@ sh tests/week13/scan_measure.sh          # builds c3dea9d and HEAD in Docker
 | # | Field | Valid range | Bits | Representation |
 |---|---|---|---|---|
 | 10 | Scan state (Statechart 5 + Reversing) | 9 states | **4** | bits 0-3 of `scan_ctx_t.bits` (masks and shifts, `CTX_STATE_MASK`) |
-| 11 | reverse tried, after reverse, BLOCKED sent, abort scan, lost in scan, command warned, bench mode | 0/1 each | **1 each** | bits 4-8, 11, 12 of `bits` |
+| 11 | reverse tried, after reverse, BLOCKED sent, abort scan, lost in scan, command warned, bench mode; added later: side switched (bit 13), Blocked run (bit 14, t_block counts over Blocked's rescans), in bypass (bit 15) | 0/1 each | **1 each** | bits 4-8, 11-15 of `bits`. All 16 bits are now in use: one more flag needs a wider `bits` or a field of its own |
 | 12 | No-echo pings in a row, in a scan | 0-3 (saturating) | **2** | bits 9-10 of `bits` |
 | 13 | Forward-ping counters: close, clear, no-echo, echo | 0-7, 0-3, 0-3, 0-3 | 3 + 2 + 2 + 2 = **9** | `sl_runs_t.packed`, one `uint16_t` (was 4 bytes); PC Test 14 checks saturation and that nothing spills out of 9 bits |
 | 14 | Chosen action | 0-4 | 3 | `uint8_t` (smallest addressable unit; was a 4-byte enum) |
@@ -45,33 +48,40 @@ sh tests/week13/scan_measure.sh          # builds c3dea9d and HEAD in Docker
 | 17 | Scan grid, one slot per 5 deg | 0-4000 mm, 0 = far, 0xFFFF = not measured | 12 (+2 codes) | `uint16_t` per slot. Kept at 16 bits by the Tribunal 1 decision: 12-bit packing saves 9 bytes and costs a shift and mask on every ping. 19 slots (-45..+45; was 25 slots for -60..+60, a scan-range change, not a representation change). |
 | 18 | Slots with no echo this scan | 19 slots | 19 | `uint32_t` bitmask (smallest unit holding 19 bits) |
 | 19 | Obstacle profile (FR-16): closest point, angles, edges, width, offsets, clearances | -4000..+9999 mm, -45..+45 deg | 15 | `int16_t` each (was `int32_t`); arithmetic done in `int32_t`, stored with an explicit cast; `_Static_assert` on the largest value. 4 flags as `bool`. |
-| 20 | State entry time, scan start time | 32-bit microsecond timer | 32 | `UW`: wrap-safe differences need the full width |
+| 20 | State entry time, scan start time; added later: first Blocked time (`blocked_us`, t_block over the rescans) | 32-bit microsecond timer | 32 | `UW`: wrap-safe differences need the full width |
+| 21 | BYPASS plans this avoidance (`bypass_plans`, added later) | 0-3 (`SL_MAX_BYPASS_PLANS`) | 2 | `uint8_t` |
+| 22 | distance_state at the last ping in Avoiding (`ds_prev`, added later) | motion_task's packed word | 32 | `uint32_t`: a copy of the word, read by differences (`motion_ds_delta_mm`) |
 
 ## 2. RAM usage, before and after (M)
 
 ### scan_task context (`scan_ctx_t`, on scan_task's stack)
 
-| | Before | After | Change |
-|---|---|---|---|
-| `scan_ctx_t` | 136 B | **84 B** | **-52 B (-38 %)** |
-| of which `sl_profile_t` | 52 B | 26 B | -26 B (-50 %) |
-| of which `sl_runs_t` | 4 B | 2 B | -2 B (-50 %) |
-| of which the grid | 50 B (25 slots) | 38 B (19 slots) | -12 B, from the narrower scan range |
+| | Before | After | Change | Now (19 Nov) |
+|---|---|---|---|---|
+| `scan_ctx_t` | 136 B | **84 B** | **-52 B (-38 %)** | 96 B: 92 B with `bypass_plans` and `ds_prev` (rows 21-22, 8 B with padding, added on master after this change), +4 B `blocked_us` (row 20, this branch) |
+| of which `sl_profile_t` | 52 B | 26 B | -26 B (-50 %) | 26 B |
+| of which `sl_runs_t` | 4 B | 2 B | -2 B (-50 %) | 2 B |
+| of which the grid | 50 B (25 slots) | 38 B (19 slots) | -12 B, from the narrower scan range | 38 B |
+
+The Now sizes come from `tests/week13/scan_sizes.c`, whose copy of
+`scan_ctx_t` had stayed at the 84 B layout; it now matches
+`obstacle_task.c` again. 92 B is the same copy without `blocked_us`.
 
 The context lives on scan_task's fixed 4096-byte stack, so it lowers the
 stack in use, not the image's static RAM.
 
 ### Static RAM (`.data` + `.bss`) of scan_task and nav_ctrl objects
 
-| Object | Before | After | Why |
-|---|---|---|---|
-| scan_if.o | 32 B | 24 B | tele_mbf ID and private drop counter gone (comms counts drops) |
-| servo.o | 0 B | 1 B | servo angle now remembered (ramped moves), as `int8_t` |
-| ultrasonic.o | 28 B | 28 B | unchanged (row 9) |
-| nav_ctrl.o | 28 B | 32 B | +4 B: the shared fault flag's ID (row 3) |
-| **Total** | **88 B** | **85 B** | -3 B while adding the shared fault flag and the servo ramp |
+| Object | Before | After | Now (19 Nov) | Why |
+|---|---|---|---|---|
+| scan_if.o | 32 B | 24 B | 24 B | tele_mbf ID and private drop counter gone (comms counts drops) |
+| servo.o | 0 B | 1 B | 1 B | servo angle now remembered (ramped moves), as `int8_t` |
+| ultrasonic.o | 28 B | 28 B | 28 B | unchanged (row 9) |
+| nav_ctrl.o | 28 B | 32 B | 44 B | +4 B: the shared fault flag's ID (row 3). Now +12 B more: `g_move_open` (1) and `g_cmd_taken` (4) for the junction handling, `g_cmd_sent` (1) and `g_cmd_sent_seq` (4) for keeping a refused junction's barcode command (J4, this branch), 2 B padding |
+| **Total** | **88 B** | **85 B** | **97 B** | -3 B while adding the shared fault flag and the servo ramp; +12 B since, in nav_ctrl.o |
 
-Whole image, for context: `.data` 172 -> 176 B, `.bss` 19 876 -> 31 564 B.
+Whole image, for context: `.data` 172 -> 176 B, `.bss` 19 876 -> 31 564 B
+(now 240 B and 32 076 B).
 The growth is the other subsystems merged since `c3dea9d` (IMU, line and
 barcode, motion, comms), not this change; Buddy 5's share is in the table
 above.

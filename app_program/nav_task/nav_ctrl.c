@@ -1,7 +1,7 @@
 /*
  *	nav_ctrl.c
- *	nav_ctrl_task, MINIMAL version: the System-Level Statechart (Section 5)
- *	without junction / barcode navigation yet.
+ *	nav_ctrl_task: the System-Level Statechart (Section 5) and the
+ *	junction / barcode navigation.
  *
  *	  Initialising -> Calibrating -> Ready -> Running <-> Paused
  *	                       ^                     |
@@ -20,15 +20,24 @@
  *	Calibration (FR-02): CAL_REQ to ir_sense_task and imu_task, wait for
  *	both CAL_OK (10 s), else Fault. If neither task is bound yet (bench),
  *	calibration is SKIPPED and says so on the console. After a fault,
- *	FAULT_CLEAR is sent only after both calibrations pass.
+ *	FAULT_CLEAR is sent only after both calibrations pass.  A GP20 fault
+ *	reset first waits NAV_CAL_SETTLE_MS, hands off (the press rocks the car).
+ *	MQTT commands sent while calibrating are dropped, never applied later.
  *
  *	JUNCTION (ir_sense_task, FR-08): barcode_task's stored command goes to
- *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf, once that is bound;
- *	no stored command means no command (straight on).
+ *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf; no stored command means
+ *	no command (straight on).  motion_task turns and answers MOVE_DONE, or
+ *	CMD_REJECTED when it is not following the line (a bypass, a search);
+ *	the stored command counts as used only on MOVE_DONE, or when the
+ *	mission pauses during the turn (NAV_KEEP_CMD_ON_REFUSAL 1, default).
+ *	With 0 it is used up at the junction where it is sent, as before.
  *
- *	NOT YET (needs Buddy 2): motion_task executing the junction command,
- *	MOVE_DONE / CMD_REJECTED handling, end-of-course trigger (owner
- *	unassigned), RGB LED on GP18 (WS2812, needs PIO).
+ *	End of the run: the demo ends by lifting and inverting the car
+ *	(the prof, 19 Nov).  imu_task turns that into an IMU fault only with
+ *	the upside-down fix on branch proposal/imu-upside-down-stop: without
+ *	it a car resting upside down reads level, and the pick-up check
+ *	cannot fire while driving.
+ *	NOT YET: RGB LED on GP18 (WS2812, needs PIO).
  *
  *	Barr-C (safety subset): braces on every body, constant on the left of
  *	==/!=, lowercase _t type names, names of 3+ characters, g_ globals,
@@ -61,12 +70,39 @@
 /* S5 turn test without barcodes: a junction with no barcode command uses
    this action (barcode_action_t: 0 forward, 1 left, 2 right, 3 U-turn)
    instead of going straight on.  -1, the default, is the real behaviour;
-   never set it for the demo build. */
+   never set it for the demo build.  A TEST image says so at boot. */
 #ifndef NAV_TEST_JUNCTION_ACTION
 #define NAV_TEST_JUNCTION_ACTION	(-1)
 #endif
+/* What a refused JUNCTION (CMD_REJECTED) does to the barcode command.
+   1, the default: the command is kept for the next junction.  During a
+   bypass or a line search GP7 crosses lines that read as junctions (the 4
+   Nov logs show 0-7 per bypass, M: trials_batch1/2, fr20_bypass_rejoin),
+   motion refuses each one, and the first of them used to lose the command
+   before the real junction after the box.  This goes against the design
+   rule "a junction command is only valid at the junction where it was
+   issued" (Week 6 review, section 8.2): with the box just past a
+   crossroad, the crossroad is crossed during the bypass, refused, and the
+   command then runs at the next junction, the wrong place.
+   0: the command is used up at the junction where it is sent, whatever
+   motion answers and also when nav_cmd_mbf is full (the rule, and the
+   behaviour before 19 Nov).  The owner chooses. */
+#ifndef NAV_KEEP_CMD_ON_REFUSAL
+#define NAV_KEEP_CMD_ON_REFUSAL	1
+#endif
 #define BTN_LOCKOUT_MS		300	/* ignore bounces after a press */
 #define CAL_TIMEOUT_MS		10000	/* [TBD with Buddies 3 and 4] */
+/* Fault reset by GP20: the press rocks the car, and the line calibration
+   (1 s, no stillness check) and the IMU's first try started at once.  On
+   4 Nov 13 of 29 calibrations failed with line "low_contrast" or IMU "not
+   still" / "car moving", e.g. GP20 at 04:17:12.841, then GP27 low_contrast
+   and IMU "not still" 1 s later (trials_batch1:2299-2305).  So after a
+   GP20 fault reset nav waits this long, hands off, before CAL_REQ.  Boot
+   and an MQTT reset start at once: nobody touches the car.  0 = no wait,
+   as before. */
+#ifndef NAV_CAL_SETTLE_MS
+#define NAV_CAL_SETTLE_MS	1000
+#endif
 #define HEARTBEAT_MS		1000	/* wake at least this often */
 
 /* Buzzer: 125 MHz / (div 1) / (wrap + 1) = 2 kHz */
@@ -87,6 +123,8 @@ LOCAL ID		g_fault_flgid = 0;
 LOCAL nav_bind_t	g_nav_bind;
 LOCAL bool		g_move_open = false;	/* JUNCTION sent, no reply yet */
 LOCAL uint32_t		g_cmd_taken;		/* seq of the last barcode command used */
+LOCAL bool		g_cmd_sent = false;	/* the open JUNCTION carries a barcode command */
+LOCAL uint32_t		g_cmd_sent_seq;		/* ... with this seq */
 
 /* ------------------------------------------------------------------ */
 /* Readers                                                            */
@@ -259,6 +297,19 @@ LOCAL void set_state(mission_state_t next)
 	g_mission = (uint32_t)next;			/* the only writer */
 	if((MS_RUNNING != next) && (MS_PAUSED != next)) {
 		g_move_open = false;	/* no turn survives Finished, Fault or a new mission */
+		g_cmd_sent = false;
+	} else if((MS_RUNNING == prev) && (MS_PAUSED == next) && g_cmd_sent) {
+		/* Paused (GP21, MQTT, BLOCKED, LINE_LOST) during a barcode turn:
+		   motion drops the turn and answers CMD_REJECTED.  The turn was
+		   started at the junction the command was for, so it counts as
+		   used: kept, it would turn the car at a later junction, or pivot
+		   a full turn from the half-turned pose when GP7 reads the same
+		   junction again after the resume. */
+		g_cmd_taken = g_cmd_sent_seq;
+		g_cmd_sent = false;
+		tm_printf((UB *)"[nav] paused during a barcode turn: command used\n");
+	} else {
+		/* Running, or Paused with no barcode turn open: nothing to end */
 	}
 	tm_printf((UB *)"[nav] mission %s -> %s\n", nav_state_name(prev),
 		  nav_state_name(next));
@@ -347,10 +398,38 @@ LOCAL bool calibrate(void)
 	return ok;
 }
 
-LOCAL void enter_calibrating(bool after_fault)
+/* MQTT commands that queued while calibrating are dropped, not applied
+   later: a START sent during calibration used to start the run the moment
+   Ready was reached, with nobody at the car.  The flag is cleared first,
+   so a command placed during the drain is never left behind unseen. */
+LOCAL void drop_mission_cmds(void)
 {
+	UB	cmd = 0U;
+
+	if(0 >= g_nav_bind.mission_cmd_mbfid) {
+		return;
+	}
+	(void)tk_clr_flg(g_nav_flgid, ~NAV_FLG_MISSION_CMD);
+	while(0 < tk_rcv_mbf(g_nav_bind.mission_cmd_mbfid, &cmd, TMO_POL)) {
+		tm_printf((UB *)"[nav] MQTT command %d sent while CALIBRATING: dropped\n",
+			  (INT)cmd);
+	}
+}
+
+/* settle_ms: wait this long before CAL_REQ (a GP20 press moved the car) */
+LOCAL void enter_calibrating(bool after_fault, INT settle_ms)
+{
+	bool	cal_ok;
+
 	set_state(MS_CALIBRATING);
-	if(calibrate()) {
+	if(0 < settle_ms) {
+		tm_printf((UB *)"[nav] hands off the car: calibration starts in %d ms\n",
+			  settle_ms);
+		tk_dly_tsk(settle_ms);
+	}
+	cal_ok = calibrate();
+	drop_mission_cmds();
+	if(cal_ok) {
 		if(after_fault) {
 			send_fault_clear(FAULT_CLEAR_IMU);	/* only after both pass */
 			send_fault_clear(FAULT_CLEAR_MOTION);
@@ -383,7 +462,7 @@ LOCAL void on_button(void)
 		} else if(MS_FINISHED == state) {
 			set_state(MS_READY);		/* reset for a new mission */
 		} else if(MS_FAULT == state) {
-			enter_calibrating(true);	/* fault reset */
+			enter_calibrating(true, NAV_CAL_SETTLE_MS);	/* fault reset */
 		} else {
 			/* ignored in this state */
 		}
@@ -421,7 +500,7 @@ LOCAL void on_mission_cmd(void)
 		} else if((MCMD_RESET == cmd) && (MS_FINISHED == state)) {
 			set_state(MS_READY);
 		} else if((MCMD_RESET == cmd) && (MS_FAULT == state)) {
-			enter_calibrating(true);
+			enter_calibrating(true, 0);	/* nobody touches the car */
 		} else if((MCMD_FINISH == cmd) &&
 			  ((MS_RUNNING == state) || (MS_PAUSED == state))) {
 			set_state(MS_FINISHED);
@@ -434,12 +513,15 @@ LOCAL void on_mission_cmd(void)
 }
 
 /* NAV_FLG_JUNCTION from ir_sense_task (FR-08): the barcode command stored
-   since the last junction goes to motion_task as NAV_CMD_JUNCTION, once.
-   With none stored, no command: motion_task follows the line straight on. */
+   since the last junction goes to motion_task as NAV_CMD_JUNCTION.  It is
+   used up only when motion turns (on_motion_reply), or here with
+   NAV_KEEP_CMD_ON_REFUSAL 0.  With none stored, no command: motion_task
+   follows the line straight on. */
 LOCAL void on_junction(void)
 {
 	uint32_t	cmd = barcode_cmd_word();	/* one aligned load */
 	uint32_t	action = barcode_cmd_action(cmd);
+	bool		b_barcode = false;
 	UB		msg[2];
 	ER		ercd;
 
@@ -454,7 +536,11 @@ LOCAL void on_junction(void)
 		return;
 	}
 	if(barcode_cmd_pending(cmd, g_cmd_taken)) {
+#if NAV_KEEP_CMD_ON_REFUSAL
+		b_barcode = true;		/* used once motion has turned */
+#else
 		g_cmd_taken = barcode_cmd_seq(cmd);	/* this junction used it */
+#endif
 	} else {
 #if NAV_TEST_JUNCTION_ACTION >= 0
 		action = (uint32_t)NAV_TEST_JUNCTION_ACTION;
@@ -471,6 +557,8 @@ LOCAL void on_junction(void)
 		ercd = tk_snd_mbf(g_nav_bind.nav_cmd_mbfid, msg, (INT)sizeof(msg), TMO_POL);
 		if(E_OK == ercd) {
 			g_move_open = true;
+			g_cmd_sent = b_barcode;
+			g_cmd_sent_seq = barcode_cmd_seq(cmd);
 			tm_printf((UB *)"[nav] -> motion: JUNCTION(%s)\n",
 				  barcode_action_name(action));
 		} else {
@@ -481,6 +569,29 @@ LOCAL void on_junction(void)
 		tm_printf((UB *)"[nav] -> nav_cmd_mbf: JUNCTION(%s) (motion_task not bound)\n",
 			  barcode_action_name(action));
 	}
+}
+
+/* MOVE_DONE or CMD_REJECTED for the open JUNCTION.  The barcode command it
+   carried is used up only when motion turned (MOVE_DONE; with
+   NAV_KEEP_CMD_ON_REFUSAL 0 it was used when sent).  motion_task
+   refuses a JUNCTION outside Line Following, and during a bypass or a
+   search GP7 crosses lines that read as junctions: a refusal there used to
+   lose the command before the real junction.  Now it waits for the next
+   junction.  (A turn dropped half way by an obstacle also answers
+   CMD_REJECTED, so its command is used at the next junction instead.  A
+   turn dropped by a pause was already counted as used in set_state.) */
+LOCAL void on_motion_reply(UINT bits)
+{
+	bool	b_done = (0U != (bits & NAV_FLG_MOVE_DONE));
+	bool	b_kept = (!b_done) && g_cmd_sent;
+
+	if(b_done && g_cmd_sent) {
+		g_cmd_taken = g_cmd_sent_seq;		/* this junction used it */
+	}
+	g_cmd_sent = false;
+	g_move_open = false;				/* ready for the next junction */
+	tm_printf((UB *)"[nav] motion: %s%s\n", b_done ? "MOVE_DONE" : "CMD_REJECTED",
+		  b_kept ? ", barcode command kept for the next junction" : "");
 }
 
 EXPORT void nav_ctrl_task(INT stacd, void *exinf)
@@ -508,8 +619,14 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 	(void)gpio_irq_attach(BTN_START_PIN, GPIO_IRQ_EDGE_FALL, nav_btn_isr);
 	(void)gpio_irq_attach(BTN_PAUSE_PIN, GPIO_IRQ_EDGE_FALL, nav_btn_isr);
 
-	enter_calibrating(false);
+	enter_calibrating(false, 0);
 	tm_printf((UB *)"[nav] GP20 = start/resume/reset, GP21 = pause\n");
+#if NAV_TEST_JUNCTION_ACTION >= 0
+	tm_printf((UB *)"[nav] TEST image: NAV_TEST_JUNCTION_ACTION %d, a junction with "
+		  "no barcode command takes %s (not for the demo)\n",
+		  (INT)NAV_TEST_JUNCTION_ACTION,
+		  barcode_action_name((uint32_t)NAV_TEST_JUNCTION_ACTION));
+#endif
 
 	while(1) {
 		ercd = tk_wai_flg(g_nav_flgid, NAV_WAIT_BITS, TWF_ORW | TWF_BITCLR,
@@ -543,10 +660,7 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 			on_junction();
 		}
 		if(0U != (bits & (NAV_FLG_MOVE_DONE | NAV_FLG_CMD_REJECTED))) {
-			g_move_open = false;		/* ready for the next junction */
-			tm_printf((UB *)"[nav] motion: %s\n",
-				  (0U != (bits & NAV_FLG_MOVE_DONE)) ? "MOVE_DONE"
-								     : "CMD_REJECTED");
+			on_motion_reply(bits);
 		}
 	}
 }

@@ -66,6 +66,12 @@ static int32_t beam_corr_mm(int32_t dist_mm)
 	return (dist_mm * SL_BEAM_CORR_PER_1000) / 1000;
 }
 
+/* the same, for the reported width only (SL_WIDTH_REPORT_CORR_PER_1000) */
+static int32_t report_corr_mm(int32_t dist_mm)
+{
+	return (dist_mm * SL_WIDTH_REPORT_CORR_PER_1000) / 1000;
+}
+
 /* Closest hit. Hits inside the car's corridor (|d sin theta| <= C_pass)
  * win over hits outside it, so an object off to the side cannot hide one
  * that is straight ahead. On a tie prefer the angle nearest to 0.
@@ -223,7 +229,14 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 	p_prof->x_right_mm = (int16_t)(lateral_mm((int32_t)grid[right_idx], right_idx) -
 				       beam_corr_mm((int32_t)grid[right_idx]));
 
-	p_prof->width_mm = (int16_t)(p_prof->x_right_mm - p_prof->x_left_mm);
+	/* W as reported (FR-16, NFR-20: the [scan] profile line and the E
+	 * obstacle record): the same edges, pulled in by
+	 * SL_WIDTH_REPORT_CORR_PER_1000 instead.  Nothing plans with W: the
+	 * corridor, clearances and offsets below use x_left_mm / x_right_mm. */
+	p_prof->width_mm = (int16_t)((lateral_mm((int32_t)grid[right_idx], right_idx) -
+				      report_corr_mm((int32_t)grid[right_idx])) -
+				     (lateral_mm((int32_t)grid[left_idx], left_idx) +
+				      report_corr_mm((int32_t)grid[left_idx])));
 	if(p_prof->width_mm < 0) {
 		p_prof->width_mm = 0;		/* tiny object: cone wider */
 	}

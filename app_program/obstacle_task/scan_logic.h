@@ -76,6 +76,31 @@
  * kept and the real width put around it; the offset is that edge + the
  * clearance. 0 = use the measured edges (obstacles of unknown size).
  *
+ * Default 0 since 19 Nov (was 90 from 7c7d669, "Not yet counted on the
+ * car"): every counted car trial used the measured edges.  The 14 logged
+ * trial sweeps (trials_batch1/2_2026-11-04, all before 7c7d669) give
+ * exactly the logged offsets with 0 (offset L + R = width + 2 x C_pass),
+ * and batch 2 was 3/3 contact-free with them.  On the same 13 box sweeps 90
+ * gives the same side 33-80 mm less (sim: e.g. batch1 04:08:37 283 mm
+ * against 363 driven, batch2 04:36:17 238 against 273), and its centre is
+ * mostly the stop heading, not the box (about 465 x sin(heading)), with
+ * a tie-break that takes the side the heading shortens.  -DSL_KNOWN_W_MM=90
+ * still builds it (PC Test 20); MOTION_BYPASS_ARC and SL_KNOWN_STRAIGHT
+ * need it (checked in obstacle_task.c).
+ *
+ * Owner decision, margin: measured-edge offsets run close to
+ * SL_MAX_OFFSET_MM (400), and a side over it is not passable.  Logged:
+ * batch1 04:15:29 had its far side at 398.  Sim: the five 3 Nov bench
+ * sweeps of the 90 mm box at 334 mm (cluttered bench, logs/dwell_334mm_*)
+ * give offset L 451, R 400-406 with today's C_pass, so 3 of 5 are
+ * BLOCKED; with 90 all 5 are BYPASS RIGHT (R 268-271).  So a scan from
+ * further out than the tested 200-250 mm (after a REVERSE, or a late
+ * stop) can end in Blocked and a mission pause where 90 would bypass.
+ * The 4 Nov trial images had this same sizing and limit, so this is not
+ * new against the car-tested build.  But today's motion (7c7d669: IMU
+ * heading trusted after 100 mm of Line Following, was 300) has not run on
+ * the car with this sizing.
+ *
  * SL_KNOWN_STRAIGHT picks the clearance and must equal MOTION_BYPASS_KNOWN:
  *   0 (default): motion's zig-zag probing bypass pivots beside the box, so
  *     C_pass (248): offset = |centre| + 45 + 248 = ~293 mm for a centred
@@ -83,7 +108,7 @@
  *   1: motion drives straight past (no pivots beside it): the car's
  *     half-width + a 70 mm gap (133): ~178 mm. */
 #ifndef SL_KNOWN_W_MM
-#define SL_KNOWN_W_MM		90
+#define SL_KNOWN_W_MM		0
 #endif
 #ifndef SL_KNOWN_STRAIGHT
 #define SL_KNOWN_STRAIGHT	0
@@ -131,6 +156,27 @@
  * why the full theoretical correction is too much. */
 #define SL_BEAM_CORR_PER_1000	80
 
+/* Reported width only (19 Nov): the cone still makes the 90 mm demo box
+ * read 157-250 mm wide on the car (4 Nov trial sweeps, k 80), so E obstacle
+ * width_cm said 16-25 (NFR-20, rubric "measure obstacle width").  A larger
+ * SL_BEAM_CORR_PER_1000 would also pull in the edges the bypass is sized
+ * from (SL_KNOWN_W_MM 0) and shorten the sidestep, so the reported width
+ * W (sl_profile_t.width_mm: the [scan] profile line and E obstacle) gets
+ * its own correction, and nothing plans with W.  240 = the fit to the car
+ * scans (sim on the logged sweeps): 11 of the 13 trial sweeps of the box
+ * read within 30 % of 90 mm.  Fitted and checked on the same 13 sweeps:
+ * no held-out scan has checked it yet.  Fitted to the 90 mm box only: the
+ * 3 Nov bench scans of it at 250 mm still read high (0/5), and the 200 mm
+ * box at 200 mm goes from 5/5 within 30 % to 0/5 (78-123 mm; sim on the
+ * logged bench scans; see docs/obstacle/requirements_status.md section 7).
+ * W = k 80 edge span - 0.16 x (left + right edge distance), floored at 0,
+ * so a span under about 64 mm at 200 mm (C) reports width_cm 0, which the
+ * MQTT schema reads as "not reported yet" (docs/comms/MQTT_SCHEMA.md).
+ * -DSL_WIDTH_REPORT_CORR_PER_1000=80 reports as before. */
+#ifndef SL_WIDTH_REPORT_CORR_PER_1000
+#define SL_WIDTH_REPORT_CORR_PER_1000	240
+#endif
+
 /* ---- "N in a row" rules (Statechart 5) ---- */
 #define SL_N_STOP		2	/* close readings to set STOP_SCAN           */
 #define SL_N_STOP_HUMP		4	/* ... while hump_state is not NONE (8.3)    */
@@ -159,7 +205,7 @@ typedef struct {
 	int16_t	right_deg;		/* outermost hit on the right             */
 	int16_t	x_left_mm;		/* lateral position of left edge          */
 	int16_t	x_right_mm;		/* lateral position of right edge         */
-	int16_t	width_mm;		/* W, beam-corrected                      */
+	int16_t	width_mm;		/* W as reported (SL_WIDTH_REPORT_CORR)   */
 	int16_t	offset_left_mm;		/* sideways move to pass left             */
 	int16_t	offset_right_mm;	/* sideways move to pass right            */
 	int16_t	clear_left_mm;		/* free space beyond the left edge        */

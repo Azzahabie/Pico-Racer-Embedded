@@ -23,7 +23,9 @@
  *	              Profile -> telemetry -> Planning.
  *	  Planning    continue / bypass / reverse / blocked (FR-17). Bypass:
  *	              clear replies, place command, set CMD, clear STOP_SCAN ->
- *	              Avoiding. Reverse (once): STOP_SCAN stays set -> Reversing.
+ *	              Avoiding. Continue: clear STOP_SCAN -> Monitoring, or
+ *	              back to Avoiding while a bypass is under way (motion
+ *	              resumes it). Reverse (once): STOP_SCAN stays set -> Reversing.
  *	              Buffer full: keep STOP_SCAN, retry each tick, Blocked
  *	              after t_block. No buffer bound: Blocked at once.
  *	  Reversing   wait REVERSE_DONE -> Coarse Scan with D_obs + reverse.
@@ -33,6 +35,8 @@
  *	              only a confirmed false alarm or LINE_FOUND resumes
  *	              monitoring.
  *	              After t_block -> BLOCKED on nav_flg (mission pauses).
+ *	              t_block runs from the first Blocked over the rescans
+ *	              it makes, until the car drives again.
  *	  Sensor Lost 3 no-echo pings in a row (any active state): STOP_SCAN,
  *	              fault record. 3 valid echoes -> Coarse Scan. t_block ->
  *	              BLOCKED on nav_flg.
@@ -205,6 +209,10 @@ typedef enum {
  *   bits 9-10 scan_no_echo   no-echo pings in a row, saturates at 3
  *   bit  11   cmd_warned     "command not sent" printed this Planning
  *   bit  12   bench          mode 3: no mission, never abort a scan
+ *   bit  13   side_switched  this avoidance tried the other side
+ *   bit  14   blocked_run    Blocked and its rescans, since blocked_us
+ *   bit  15   in_bypass      motion took a BYPASS; until LINE_FOUND,
+ *                            LINE_LOST or Idle
  * The scan grid stays uint16_t per slot (Tribunal 1 decision): 12 bits
  * would cover the range but save only ~9 bytes for a shift on every ping. */
 #define CTX_STATE_MASK		0x000FU
@@ -219,6 +227,8 @@ typedef enum {
 #define CTX_CMD_WARNED		(1U << 11)
 #define CTX_BENCH		(1U << 12)
 #define CTX_SIDE_SWITCHED	(1U << 13)	/* this avoidance tried the other side */
+#define CTX_BLOCKED_RUN		(1U << 14)	/* t_block counts from blocked_us */
+#define CTX_IN_BYPASS		(1U << 15)	/* a bypass is under way in motion */
 
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
@@ -234,6 +244,8 @@ _Static_assert(SL_SLOTS <= 32, "no_echo_slots needs one bit per slot");
 typedef struct {
 	UW		state_us;	/* when the state was entered     */
 	UW		scan_us;	/* when the coarse scan started   */
+	UW		blocked_us;	/* when Blocked was first entered,
+					   kept over its rescans (t_block) */
 	uint32_t	no_echo_slots;	/* this scan: slots that got no echo
 					   pulse (bit = SL_IDX), for print */
 	sl_profile_t	prof;
@@ -368,11 +380,34 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	ctx_set_flag(p_ctx, CTX_BLOCKED_SENT | CTX_CMD_WARNED, false);
 	sl_runs_reset(&p_ctx->runs);
 
+	/* t_block counts from the first Blocked, over the rescans it makes
+	 * (Coarse, Fine, Planning, back to Blocked): the car has not moved.
+	 * Restarted at every Blocked, it would never run out while an
+	 * obstacle read D_stop or more at rest (3 clear pings, rescan,
+	 * Blocked again).  Found from the code, not seen on the car: the
+	 * 290 ms Blocked at 04:37:36 (trials_batch2) was a car turned to
+	 * -57 deg after a side switch, and its rescan found nothing within
+	 * D_obs.  It starts again once the car drives or the mission stops. */
+	if(ST_BLOCKED == next) {
+		if(!ctx_flag(p_ctx, CTX_BLOCKED_RUN)) {
+			ctx_set_flag(p_ctx, CTX_BLOCKED_RUN, true);
+			p_ctx->blocked_us = p_ctx->state_us;
+		} else {
+			tm_printf((UB *)"[scan] still blocked: %d of %d ms (t_block)\n",
+				  (INT)ms_since(p_ctx->blocked_us), (INT)T_BLOCK_MS);
+		}
+	} else if((ST_MONITORING == next) || (ST_AVOIDING == next) ||
+		  (ST_REVERSING == next) || (ST_IDLE == next)) {
+		ctx_set_flag(p_ctx, CTX_BLOCKED_RUN, false);
+	} else {
+		/* a scan or Sensor Lost: a Blocked run goes on */
+	}
+
 	switch(next) {
 	case ST_IDLE:
 		scan_if_stop_clear();		/* no stale stop survives */
 		ctx_set_flag(p_ctx, CTX_REVERSE_TRIED | CTX_AFTER_REVERSE |
-			     CTX_SIDE_SWITCHED, false);
+			     CTX_SIDE_SWITCHED | CTX_IN_BYPASS, false);
 		p_ctx->bypass_plans = 0U;
 		servo_centre();
 		break;
@@ -711,17 +746,14 @@ LOCAL void print_scan(const scan_ctx_t *p_ctx, UW scan_ms)
 		  (scan_ms > (UW)SCAN_BUDGET_MS) ? ", OVER" : "");
 }
 
-/* Fine Scan done: profile, action, telemetry record (FR-16, FR-23).
- * The obstacle body is 13 bits today (width, bypass side); the rest of
- * the profile is on the console until Buddy 1 takes a wider body. */
-LOCAL void make_profile(scan_ctx_t *p_ctx)
+/* E obstacle (FR-16, FR-23): the profile's width and the side of the
+ * current action (S.obs, S.byp). The obstacle body is 13 bits today
+ * (width, bypass side); the rest of the profile is on the console until
+ * Buddy 1 takes a wider body. */
+LOCAL void send_obstacle(const scan_ctx_t *p_ctx)
 {
 	uint32_t	bypass;
 	uint32_t	width_mm;
-
-	sl_profile(p_ctx->grid, d_obs_mm(p_ctx), &p_ctx->prof);
-	p_ctx->action = sl_decide(&p_ctx->prof, ctx_flag(p_ctx, CTX_REVERSE_TRIED));
-	print_scan(p_ctx, ms_since(p_ctx->scan_us));
 
 	if(SL_BYPASS_LEFT == p_ctx->action) {
 		bypass = SCAN_TELE_BYPASS_LEFT;
@@ -732,6 +764,15 @@ LOCAL void make_profile(scan_ctx_t *p_ctx)
 	}
 	width_mm = (0 < p_ctx->prof.width_mm) ? (uint32_t)p_ctx->prof.width_mm : 0U;
 	scan_if_send_profile(width_mm, bypass);
+}
+
+/* Fine Scan done: profile, action, telemetry record (FR-16, FR-23). */
+LOCAL void make_profile(scan_ctx_t *p_ctx)
+{
+	sl_profile(p_ctx->grid, d_obs_mm(p_ctx), &p_ctx->prof);
+	p_ctx->action = sl_decide(&p_ctx->prof, ctx_flag(p_ctx, CTX_REVERSE_TRIED));
+	print_scan(p_ctx, ms_since(p_ctx->scan_us));
+	send_obstacle(p_ctx);
 }
 
 /* After an aborted or failed scan: where to go. Returns true if handled. */
@@ -805,6 +846,8 @@ LOCAL void switch_side(scan_ctx_t *p_ctx)
 		scan_if_clear(SCAN_FLG_REPLIES);
 		if(scan_if_send_cmd(&cmd)) {
 			scan_if_stop_clear();		/* AFTER the command (Section 4) */
+			send_obstacle(p_ctx);		/* S.byp: the side now driven */
+			ctx_set_flag(p_ctx, CTX_IN_BYPASS, true);
 			enter(p_ctx, ST_AVOIDING);
 		} else {
 			cmd_not_sent(p_ctx);
@@ -825,10 +868,21 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 
 	switch(p_ctx->action) {
 	case SL_CONTINUE:
-		tm_printf((UB *)"[scan] false alarm / not in the path: continue\n");
 		scan_if_stop_clear();
 		ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, false);
-		enter(p_ctx, ST_MONITORING);
+		if(ctx_flag(p_ctx, CTX_IN_BYPASS)) {
+			/* a re-plan inside an avoidance found the way clear.
+			 * motion_task's Braked resumes the bypass it was braked
+			 * in once STOP_SCAN clears (motion_sm.c, history), so
+			 * serve it: only Avoiding answers its looks and ends the
+			 * avoidance on LINE_FOUND / LINE_LOST.  In Monitoring
+			 * the looks timed out as "still there" (car, 4 Nov). */
+			tm_printf((UB *)"[scan] way clear: the bypass carries on\n");
+			enter(p_ctx, ST_AVOIDING);
+		} else {
+			tm_printf((UB *)"[scan] false alarm / not in the path: continue\n");
+			enter(p_ctx, ST_MONITORING);
+		}
 		break;
 
 	case SL_BYPASS_LEFT:
@@ -855,6 +909,7 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 		if(scan_if_send_cmd(&cmd)) {
 			scan_if_stop_clear();		/* AFTER the command (Section 4) */
 			ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, false);
+			ctx_set_flag(p_ctx, CTX_IN_BYPASS, true);
 			enter(p_ctx, ST_AVOIDING);
 		} else {
 			cmd_not_sent(p_ctx);
@@ -908,6 +963,7 @@ LOCAL void scan_task_run(void)
 	ctx.bits = 0U;				/* Idle, every flag clear */
 	ctx.action = SL_CONTINUE;
 	ctx.scan_us = now_us();
+	ctx.blocked_us = ctx.scan_us;
 	ctx.no_echo_slots = 0U;
 	ctx.look_deg = 0;
 	enter(&ctx, ST_IDLE);			/* entry actions: centre, clear */
@@ -982,7 +1038,8 @@ LOCAL void scan_task_run(void)
 					    TMO_FEVR);
 			if(0U != (bits & SCAN_FLG_LINE_FOUND)) {
 				/* this avoidance is over */
-				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED, false);
+				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED |
+					     CTX_IN_BYPASS, false);
 				ctx.bypass_plans = 0U;
 				enter(&ctx, ST_MONITORING);
 			} else if(0U != (bits & SCAN_FLG_LINE_LOST)) {
@@ -1013,7 +1070,7 @@ LOCAL void scan_task_run(void)
 				tm_printf((UB *)"[scan] readings clear; rescan while "
 					  "STOP_SCAN remains set\n");
 				enter(&ctx, ST_COARSE);
-			} else if(!ctx_flag(&ctx, CTX_BLOCKED_SENT) && (ms_since(ctx.state_us) >= (UW)T_BLOCK_MS)) {
+			} else if(!ctx_flag(&ctx, CTX_BLOCKED_SENT) && (ms_since(ctx.blocked_us) >= (UW)T_BLOCK_MS)) {
 				scan_if_set_blocked();
 				ctx_set_flag(&ctx, CTX_BLOCKED_SENT, true);
 			} else {
