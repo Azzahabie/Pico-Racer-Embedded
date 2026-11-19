@@ -23,7 +23,9 @@
  *	              Profile -> telemetry -> Planning.
  *	  Planning    continue / bypass / reverse / blocked (FR-17). Bypass:
  *	              clear replies, place command, set CMD, clear STOP_SCAN ->
- *	              Avoiding. Reverse (once): STOP_SCAN stays set -> Reversing.
+ *	              Avoiding. Continue: clear STOP_SCAN -> Monitoring, or
+ *	              back to Avoiding while a bypass is under way (motion
+ *	              resumes it). Reverse (once): STOP_SCAN stays set -> Reversing.
  *	              Buffer full: keep STOP_SCAN, retry each tick, Blocked
  *	              after t_block. No buffer bound: Blocked at once.
  *	  Reversing   wait REVERSE_DONE -> Coarse Scan with D_obs + reverse.
@@ -209,6 +211,8 @@ typedef enum {
  *   bit  12   bench          mode 3: no mission, never abort a scan
  *   bit  13   side_switched  this avoidance tried the other side
  *   bit  14   blocked_run    Blocked and its rescans, since blocked_us
+ *   bit  15   in_bypass      motion took a BYPASS; until LINE_FOUND,
+ *                            LINE_LOST or Idle
  * The scan grid stays uint16_t per slot (Tribunal 1 decision): 12 bits
  * would cover the range but save only ~9 bytes for a shift on every ping. */
 #define CTX_STATE_MASK		0x000FU
@@ -224,6 +228,7 @@ typedef enum {
 #define CTX_BENCH		(1U << 12)
 #define CTX_SIDE_SWITCHED	(1U << 13)	/* this avoidance tried the other side */
 #define CTX_BLOCKED_RUN		(1U << 14)	/* t_block counts from blocked_us */
+#define CTX_IN_BYPASS		(1U << 15)	/* a bypass is under way in motion */
 
 _Static_assert(ST_SENSOR_LOST <= CTX_STATE_MASK, "scan state needs more than 4 bits");
 _Static_assert(SL_N_NO_ECHO <= CTX_NO_ECHO_MAX, "scan_no_echo field too narrow");
@@ -399,7 +404,7 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	case ST_IDLE:
 		scan_if_stop_clear();		/* no stale stop survives */
 		ctx_set_flag(p_ctx, CTX_REVERSE_TRIED | CTX_AFTER_REVERSE |
-			     CTX_SIDE_SWITCHED, false);
+			     CTX_SIDE_SWITCHED | CTX_IN_BYPASS, false);
 		p_ctx->bypass_plans = 0U;
 		servo_centre();
 		break;
@@ -839,6 +844,7 @@ LOCAL void switch_side(scan_ctx_t *p_ctx)
 		if(scan_if_send_cmd(&cmd)) {
 			scan_if_stop_clear();		/* AFTER the command (Section 4) */
 			send_obstacle(p_ctx);		/* S.byp: the side now driven */
+			ctx_set_flag(p_ctx, CTX_IN_BYPASS, true);
 			enter(p_ctx, ST_AVOIDING);
 		} else {
 			cmd_not_sent(p_ctx);
@@ -859,10 +865,21 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 
 	switch(p_ctx->action) {
 	case SL_CONTINUE:
-		tm_printf((UB *)"[scan] false alarm / not in the path: continue\n");
 		scan_if_stop_clear();
 		ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, false);
-		enter(p_ctx, ST_MONITORING);
+		if(ctx_flag(p_ctx, CTX_IN_BYPASS)) {
+			/* a re-plan inside an avoidance found the way clear.
+			 * motion_task's Braked resumes the bypass it was braked
+			 * in once STOP_SCAN clears (motion_sm.c, history), so
+			 * serve it: only Avoiding answers its looks and ends the
+			 * avoidance on LINE_FOUND / LINE_LOST.  In Monitoring
+			 * the looks timed out as "still there" (car, 4 Nov). */
+			tm_printf((UB *)"[scan] way clear: the bypass carries on\n");
+			enter(p_ctx, ST_AVOIDING);
+		} else {
+			tm_printf((UB *)"[scan] false alarm / not in the path: continue\n");
+			enter(p_ctx, ST_MONITORING);
+		}
 		break;
 
 	case SL_BYPASS_LEFT:
@@ -889,6 +906,7 @@ LOCAL void do_planning(scan_ctx_t *p_ctx)
 		if(scan_if_send_cmd(&cmd)) {
 			scan_if_stop_clear();		/* AFTER the command (Section 4) */
 			ctx_set_flag(p_ctx, CTX_AFTER_REVERSE, false);
+			ctx_set_flag(p_ctx, CTX_IN_BYPASS, true);
 			enter(p_ctx, ST_AVOIDING);
 		} else {
 			cmd_not_sent(p_ctx);
@@ -1017,7 +1035,8 @@ LOCAL void scan_task_run(void)
 					    TMO_FEVR);
 			if(0U != (bits & SCAN_FLG_LINE_FOUND)) {
 				/* this avoidance is over */
-				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED, false);
+				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED |
+					     CTX_IN_BYPASS, false);
 				ctx.bypass_plans = 0U;
 				enter(&ctx, ST_MONITORING);
 			} else if(0U != (bits & SCAN_FLG_LINE_LOST)) {

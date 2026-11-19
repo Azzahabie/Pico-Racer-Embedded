@@ -9,7 +9,9 @@
  *
  * What it checks: switch_side() sends a new E obstacle with the side it
  * now drives (S.byp); t_block runs over Blocked and its rescans, so a box
- * that reads D_stop or more at rest still pauses the mission.
+ * that reads D_stop or more at rest still pauses the mission; a re-plan
+ * during a bypass that finds the way clear goes back to Avoiding (motion
+ * resumes the bypass), so its looks are answered.
  * The whole Statechart runs in scan_task_run(); every scan_if_wait()
  * calls the scenario's hook, and the run ends at a fake time. */
 
@@ -70,6 +72,7 @@ INT tm_sprintf(UB *str, const UB *format, ...)
 /* ---- fakes: the world (servo, HC-SR04, motion's distance) ------------ */
 static INT      g_servo_deg;
 static uint16_t g_world_mm[SL_SLOTS];	/* mm; SL_FAR = out of range */
+static int      g_close_pings;		/* next pings ahead read 180 mm */
 static uint32_t g_ds_word;		/* motion_ds: dist_mm field only */
 static uint32_t g_ds_step;		/* mm added per read (car moving) */
 
@@ -83,7 +86,10 @@ us_status_t us_ping(UW *p_mm, UW *p_width_us)
 	uint16_t mm = SL_FAR;
 
 	*p_width_us = 0U;
-	if ((g_servo_deg >= -SL_LIMIT_DEG) && (g_servo_deg <= SL_LIMIT_DEG)) {
+	if ((0 < g_close_pings) && (0 == g_servo_deg)) {
+		g_close_pings--;
+		mm = 180U;			/* something close, then gone */
+	} else if ((g_servo_deg >= -SL_LIMIT_DEG) && (g_servo_deg <= SL_LIMIT_DEG)) {
 		mm = g_world_mm[SL_IDX(g_servo_deg)];
 	}
 	*p_mm = mm;
@@ -186,6 +192,7 @@ static void reset(void)
 	g_log[0] = '\0';
 	g_servo_deg = 0;
 	world_all(SL_FAR);
+	g_close_pings = 0;
 	g_ds_word = 0U;
 	g_ds_step = 0U;
 	g_scan_flg = 0U;
@@ -368,11 +375,85 @@ static void blocked_run_restarts(void)
 	CHECK((g_blocked_at_us - g_second_blocked_us) < (UW)(T_BLOCK_MS + 4000) * 1000U);
 }
 
+/* O3 world: a 90 mm-ish box 200 mm ahead (hits -10..+10 deg): stop,
+   scan, BYPASS.  On the bypass leg two pings read 180 mm and then the
+   way is clear (the re-plan's scan sees nothing: CONTINUE).  Then motion
+   asks for a look, and finds the line. */
+static int g_look_n;			/* AVOID_LOOK commands seen */
+static void hook_replan_clear(void)
+{
+	int idx;
+
+	g_look_n = 0;
+	for (idx = 0; (idx < g_cmd_n) && (idx < 32); idx++) {
+		if (AVOID_LOOK == g_cmds[idx].type) {
+			g_look_n++;
+		}
+	}
+	if ((0 == g_phase) && (1 <= log_count("PLANNING -> AVOIDING"))) {
+		world_all(SL_FAR);		/* the box is beside the car now */
+		g_ds_step = 5U;			/* a straight leg: D_stop applies */
+		g_close_pings = 2;		/* something on the leg, then gone */
+		g_phase = 1;
+	} else if ((1 == g_phase) && (2 <= log_count("-> AVOIDING"))) {
+		g_ds_step = 0U;			/* a probe pivot */
+		g_scan_flg |= SCAN_FLG_LOOK;	/* motion asks to look */
+		g_phase = 2;
+	} else if ((2 == g_phase) && (1 <= g_look_n)) {
+		g_scan_flg |= SCAN_FLG_LINE_FOUND;	/* back on the line */
+		g_phase = 3;
+	} else if ((3 == g_phase) && (1 <= log_count("AVOIDING -> MONITORING"))) {
+		g_close_pings = 2;		/* a false alarm later on */
+		g_phase = 4;
+	} else {
+		/* nothing to change */
+	}
+}
+
+static void replan_clear_resumes_bypass(void)
+{
+	int idx;
+
+	reset();
+	for (idx = SL_IDX(-10); idx <= SL_IDX(10); idx++) {
+		g_world_mm[idx] = 200U;
+	}
+	g_phase = 0;
+	g_hook = hook_replan_clear;
+	run_task(20000U);
+	CHECK(4 == g_phase);
+	CHECK(AVOID_BYPASS == g_cmds[0].type);
+	CHECK(1 == log_count("AVOIDING -> COARSE_SCAN"));	/* the re-plan */
+	CHECK(1 == log_count("[scan] way clear: the bypass carries on"));
+	CHECK(log_count("PLANNING -> AVOIDING") == 2);	/* not Monitoring */
+	CHECK(1 == g_look_n);				/* the look is answered */
+	CHECK(NULL != strstr(g_log, "[scan] side look"));
+	CHECK(1 == log_count("AVOIDING -> MONITORING"));	/* LINE_FOUND ends it */
+	/* the later false alarm, outside any avoidance: Monitoring as before */
+	CHECK(1 == log_count("[scan] false alarm / not in the path: continue"));
+	CHECK(1 == log_count("PLANNING -> MONITORING"));
+	CHECK(!g_stop);
+}
+
+/* A false alarm with no bypass under way goes back to Monitoring. */
+static void false_alarm_monitors(void)
+{
+	reset();
+	g_close_pings = 2;
+	run_task(5000U);
+	CHECK(1 == log_count("[scan] false alarm / not in the path: continue"));
+	CHECK(1 == log_count("PLANNING -> MONITORING"));
+	CHECK(0 == log_count("way clear"));
+	CHECK((0 == g_cmd_n) && !g_stop);
+}
+
 int main(void)
 {
 	switch_side_reports();
 	blocked_at_rest_pauses();
 	blocked_run_restarts();
+	replan_clear_resumes_bypass();
+	false_alarm_monitors();
 	printf("scan_task: %d checks, %d failures\n", g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 }
