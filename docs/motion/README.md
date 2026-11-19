@@ -97,14 +97,17 @@ your car's numbers will differ.
 
 ```
 [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop, MOTION_PACKED=1
-[motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 1590 (MOTION_COUNTS_PER_REV_R), right counts scaled to left units
+[motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 1590 (MOTION_COUNTS_PER_REV_R), right counts scaled to left units; MOTION_LF_LOST_DIR_MS=0
 [motion] last reset: power-on or RUN pin.
 [motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
 ```
 
 `counts per wheel turn` shows the values this image was built with
 (every image, the car build too), so a log says which right-wheel value
-was on the car; `no scaling` means the two are equal.
+was on the car; `no scaling` means the two are equal. The same line
+ends with the L4 switch `MOTION_LF_LOST_DIR_MS` (0 = off, the default;
+50 in an image built with `-DMOTION_LF_LOST_DIR_MS=50`), so a course
+log says which line-following setting ran.
 
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
 nothing else runs: report the `er` value. It covers the hardware set-up
@@ -727,7 +730,8 @@ Checked against master on 19 Nov (52b707d). Car results so far are in
   sample. Built with `-DMOTION_LF_LOST_DIR_MS=50` it does that only once
   the line has been dark 50 ms, and steers by the word's own error
   before, so a short 00 while crossing the line gives no full kick. Try
-  it on the course before changing the default.
+  it on the course before changing the default. The boot line
+  `counts per wheel turn` ends with the value the image has.
 - The final bypass settings (7c7d669) have not been counted on the car.
   Re-check `MOTION_BYPASS_PIVOT_PCT` (90 %, set in S7 before the
   right-wheel scaling; `right_encoder_scaling.md` point 4).

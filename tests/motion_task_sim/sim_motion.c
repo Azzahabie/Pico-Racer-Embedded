@@ -2940,15 +2940,18 @@ scenario_hand_turn (void)
 static void
 scenario_watchdog_feed (void)
 {
-	char	want[160];
+	char	want[REPORT_LINE_LEN];
 	int	brakes;
 
 	sim_reset("watchdog: armed at start-up, fed every completed tick");
-	/* the counts per turn the image has, at boot (W1) */
-	(void)snprintf(want, sizeof want, "[motion] counts per wheel turn: left %d"
-		       " (MOTION_COUNTS_PER_REV), right %d (MOTION_COUNTS_PER_REV_R)%s\n",
+	/* the counts per turn the image has, at boot (W1), and the L4
+	   switch (review L3): 0 here, 50 in sim_lfdir */
+	CHECK(snprintf(want, sizeof want, "[motion] counts per wheel turn: left %d"
+		       " (MOTION_COUNTS_PER_REV), right %d (MOTION_COUNTS_PER_REV_R)%s;"
+		       " MOTION_LF_LOST_DIR_MS=%u\n",
 		       (int)MOTION_COUNTS_PER_REV, (int)MOTION_COUNTS_PER_REV_R,
-		       SIM_R_SCALED ? ", right counts scaled to left units" : ", no scaling");
+		       SIM_R_SCALED ? ", right counts scaled to left units" : ", no scaling",
+		       (unsigned)MOTION_LF_LOST_DIR_MS) < (int)sizeof want);
 	CHECK(strstr(g_log, want) != NULL);
 	CHECK(g_wdt_starts == 1);
 	CHECK(g_wdt_feeds_at_start == 0);

@@ -3495,15 +3495,18 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
 #endif
 
     /* Which counts per turn this image was built with (W1: the right
-       wheel's value is still disputed), so a log shows it. */
+       wheel's value is still disputed), and the L4 switch (a -D, which
+       an in-place rebuild keeps), so a log shows both. */
     (void)tm_sprintf(p_line,
                      (UB *)"[motion] counts per wheel turn: left %d"
                            " (MOTION_COUNTS_PER_REV), right %d"
-                           " (MOTION_COUNTS_PER_REV_R)%s",
+                           " (MOTION_COUNTS_PER_REV_R)%s;"
+                           " MOTION_LF_LOST_DIR_MS=%u",
                      (INT)MOTION_COUNTS_PER_REV, (INT)MOTION_COUNTS_PER_REV_R,
                      (MOTION_COUNTS_PER_REV_R != MOTION_COUNTS_PER_REV)
                          ? ", right counts scaled to left units"
-                         : ", no scaling");
+                         : ", no scaling",
+                     (UINT)MOTION_LF_LOST_DIR_MS);
     print_line(p_line);
 }
 
