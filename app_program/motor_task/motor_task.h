@@ -49,6 +49,16 @@
    senders. */
 ID motor_task_flag(void);
 
+/* motion_task's statechart state after its last step, a motion_state_t
+   (motion_sm.h), for ir_sense_task's scan gate (line_task/scan_gate.h).
+   Read only.  One writer (motion_task, core 1, once a tick after the
+   statechart step) stores it with one aligned 32-bit store; the reader
+   takes it with one load, like distance_state (motion_ds.h).  No mutex:
+   ir_sense_task is on core 1 too.  MOTION_ST_IDLE before the first step,
+   and always in bench images (MOTION_BENCH 1), where motor_task_flag()
+   is 0. */
+uint32_t motion_state_read(void);
+
 /* Optional, for the NFR-18 timing: a STOP sender calls this just before
    tk_set_flg, with the bit it is about to set.  It notes the 1 MHz time,
    so motion can report how long after the request it braked. */
