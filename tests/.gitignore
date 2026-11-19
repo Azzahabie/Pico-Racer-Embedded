@@ -35,3 +35,4 @@ host/test_messages
 *.dSYM/
 nav/sim_nav
 nav/sim_nav_test
+obstacle/sim_obstacle

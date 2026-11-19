@@ -711,17 +711,14 @@ LOCAL void print_scan(const scan_ctx_t *p_ctx, UW scan_ms)
 		  (scan_ms > (UW)SCAN_BUDGET_MS) ? ", OVER" : "");
 }
 
-/* Fine Scan done: profile, action, telemetry record (FR-16, FR-23).
- * The obstacle body is 13 bits today (width, bypass side); the rest of
- * the profile is on the console until Buddy 1 takes a wider body. */
-LOCAL void make_profile(scan_ctx_t *p_ctx)
+/* E obstacle (FR-16, FR-23): the profile's width and the side of the
+ * current action (S.obs, S.byp). The obstacle body is 13 bits today
+ * (width, bypass side); the rest of the profile is on the console until
+ * Buddy 1 takes a wider body. */
+LOCAL void send_obstacle(const scan_ctx_t *p_ctx)
 {
 	uint32_t	bypass;
 	uint32_t	width_mm;
-
-	sl_profile(p_ctx->grid, d_obs_mm(p_ctx), &p_ctx->prof);
-	p_ctx->action = sl_decide(&p_ctx->prof, ctx_flag(p_ctx, CTX_REVERSE_TRIED));
-	print_scan(p_ctx, ms_since(p_ctx->scan_us));
 
 	if(SL_BYPASS_LEFT == p_ctx->action) {
 		bypass = SCAN_TELE_BYPASS_LEFT;
@@ -732,6 +729,15 @@ LOCAL void make_profile(scan_ctx_t *p_ctx)
 	}
 	width_mm = (0 < p_ctx->prof.width_mm) ? (uint32_t)p_ctx->prof.width_mm : 0U;
 	scan_if_send_profile(width_mm, bypass);
+}
+
+/* Fine Scan done: profile, action, telemetry record (FR-16, FR-23). */
+LOCAL void make_profile(scan_ctx_t *p_ctx)
+{
+	sl_profile(p_ctx->grid, d_obs_mm(p_ctx), &p_ctx->prof);
+	p_ctx->action = sl_decide(&p_ctx->prof, ctx_flag(p_ctx, CTX_REVERSE_TRIED));
+	print_scan(p_ctx, ms_since(p_ctx->scan_us));
+	send_obstacle(p_ctx);
 }
 
 /* After an aborted or failed scan: where to go. Returns true if handled. */
@@ -805,6 +811,7 @@ LOCAL void switch_side(scan_ctx_t *p_ctx)
 		scan_if_clear(SCAN_FLG_REPLIES);
 		if(scan_if_send_cmd(&cmd)) {
 			scan_if_stop_clear();		/* AFTER the command (Section 4) */
+			send_obstacle(p_ctx);		/* S.byp: the side now driven */
 			enter(p_ctx, ST_AVOIDING);
 		} else {
 			cmd_not_sent(p_ctx);
