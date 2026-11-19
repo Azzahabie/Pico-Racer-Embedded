@@ -1567,19 +1567,35 @@ lf_reset (motion_ctx_t *p_ctx)
     }
 }
 
+/* MOTION_LF_LOST_DIR_MS (L4 experiment, motion_cfg.h): the line has
+   been dark long enough for the full last-side error.  0, the default:
+   from the first 00. */
+static bool
+lf_dark_long (uint32_t word)
+{
+#if MOTION_LF_LOST_DIR_MS > 0
+    return line_state_dark_ms(word) >= (uint32_t)MOTION_LF_LOST_DIR_MS;
+#else
+    (void)word;
+    return true;
+#endif
+}
+
 /* The error Line Following steers by.  Off the line (rl 00, both sensors
    white) the word's error is only the difference between two white
    readings, so the car ran straight off the outside of a curve (S4
    attempt 7: about -30 for the 1.5 s until LOST).  Instead it keeps
-   turning, at full error, to the side the line was last seen on.  Not
-   during a barcode hold, which also reads rl 00 by design. */
+   turning, at full error, to the side the line was last seen on (with
+   MOTION_LF_LOST_DIR_MS above 0, only once the 00 has lasted that long).
+   Not during a barcode hold, which also reads rl 00 by design. */
 static int32_t
 lf_error (const motion_ctx_t *p_ctx)
 {
     uint32_t word = p_ctx->line_word;
 
     if ((LINE_RL_CENTRED == line_state_rl(word))
-        && !line_state_barcode(word) && (0 != p_ctx->line_dir))
+        && !line_state_barcode(word) && (0 != p_ctx->line_dir)
+        && lf_dark_long(word))
     {
         return p_ctx->line_dir * LINE_ST_ERR_MAX;
     }

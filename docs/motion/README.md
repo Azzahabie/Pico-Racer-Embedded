@@ -28,7 +28,7 @@ parts; how the integrated car was built and tested (stages S0-S8) is in
 | `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
 | `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
 | `tests/motion_wdt/` | The watchdog driver against fake registers: the arming steps and their order, LOAD, the feed, the reset cause. |
-| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, the watchdog test image, and the Week 6 (unpacked) build with `distance_state` behind a mutex. |
+| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, the watchdog test image, the Week 6 (unpacked) build with `distance_state` behind a mutex, and `sim_lfdir` with the L4 switch `MOTION_LF_LOST_DIR_MS` 50. |
 
 Run the host tests in the build container (on macOS the host compiler's
 AddressSanitizer aborts at start-up):
@@ -705,6 +705,13 @@ Checked against master on 19 Nov (52b707d). Car results so far are in
   (`results.md`). Settle it with a 10-turn count; it scales distances,
   turns, the bypass and imu_task's hump heights. Every image prints the
   value it was built with at boot (`counts per wheel turn`).
+- L4 experiment switch `MOTION_LF_LOST_DIR_MS` (motion_cfg.h, default 0
+  = off, as before): on a 00 (both line sensors white) Line Following
+  steers at the full error toward the last-seen side from the first
+  sample. Built with `-DMOTION_LF_LOST_DIR_MS=50` it does that only once
+  the line has been dark 50 ms, and steers by the word's own error
+  before, so a short 00 while crossing the line gives no full kick. Try
+  it on the course before changing the default.
 - The final bypass settings (7c7d669) have not been counted on the car.
   Re-check `MOTION_BYPASS_PIVOT_PCT` (90 %, set in S7 before the
   right-wheel scaling; `right_encoder_scaling.md` point 4).

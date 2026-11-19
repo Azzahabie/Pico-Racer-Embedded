@@ -1245,6 +1245,39 @@ scenario_line_follow_off_curve (void)
 	CHECK(lf_error(&g_ctx) == 0);
 }
 
+/* L4 (MOTION_LF_LOST_DIR_MS): a short 00 while the car crosses the line.
+   By default the full last-side error applies from the first 00 (the
+   behaviour on the car); with the experiment switch (sim_lfdir, 50 ms)
+   the word's own error applies until the dark time reaches it. */
+static void
+scenario_line_follow_short_gap (void)
+{
+	sim_reset("line follow: a short 00 and MOTION_LF_LOST_DIR_MS");
+	g_mission = MS_RUNNING;
+	sim_ticks(20);
+	g_line.rl = LINE_RL_LEFT_DEV;			/* line under the left sensor */
+	g_line.error = 40;
+	sim_ticks(3);
+	CHECK(g_ctx.line_dir == 1);
+
+	g_line.rl = LINE_RL_CENTRED;			/* a 00 has just begun */
+	g_line.error = -5;
+	g_line.dark_ms = 0u;
+	sim_tick();
+#if MOTION_LF_LOST_DIR_MS > 0
+	CHECK(lf_error(&g_ctx) == -5);			/* the word's own error */
+	g_line.dark_ms = ((MOTION_LF_LOST_DIR_MS + 9u) / 10u) * 10u;
+	sim_tick();
+	CHECK(lf_error(&g_ctx) == LINE_ST_ERR_MAX);	/* dark long enough */
+#else
+	CHECK(lf_error(&g_ctx) == LINE_ST_ERR_MAX);	/* full error at once */
+#endif
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_line.rl = LINE_RL_JUNCTION;
+	g_line.error = 0;
+	g_line.dark_ms = 0u;
+}
+
 /* L9: the side the line was last seen on is kept over a pause and resume,
    but a new mission starts with none, so its first search sweeps left
    (the default) instead of the old mission's side. */
@@ -3362,6 +3395,7 @@ main (int argc, char **argv)
 	scenario_line_follow_soft();
 	scenario_line_follow_off_curve();
 	scenario_line_dir_new_mission();
+	scenario_line_follow_short_gap();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
 	scenario_turns();
@@ -3419,12 +3453,13 @@ main (int argc, char **argv)
 	scenario_pid_unplug_mid_run();
 #endif
 
-	printf("motion_task sim (%s%s): %d checks, %d failures\n",
+	printf("motion_task sim (%s%s%s): %d checks, %d failures\n",
 	       !MOTION_BENCH ? "bench off"
 	       : MOTION_TEST_WDT ? "watchdog test"
 	       : MOTION_TEST_STOP ? "stop test"
 	       : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
 	       MOTION_PACKED ? "" : ", Week 6 unpacked",
+	       (MOTION_LF_LOST_DIR_MS > 0u) ? ", MOTION_LF_LOST_DIR_MS on" : "",
 	       g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -156,6 +156,20 @@
 #define MOTION_LF_SEEN_MS     (30u) /* dark below this: line still seen */
 #define MOTION_LF_FOUND_TICKS (3u)  /* seen this many ticks: found      */
 
+/* Experiment switch (L4, 19 Nov): GP26 and GP27 do not reliably both sit
+   inside the 18 mm line, so a car crossing it can read a short 00 (both
+   white) between 01 and 10 (team count of the 4 Nov logs,
+   tests/scan_bench/logs: 74 of 467 crossings), and Line Following then
+   steers at the full +-100 toward the last-seen side.  Above 0, the full
+   error is used only once line_state's dark time has reached this many
+   ms (10 ms steps); before that it steers by the word's own error.
+   0, the default: the full error from the first 00, as before.  A car
+   tuning guess (about 50 was suggested); set it with -D, never commit
+   it changed without car runs. */
+#ifndef MOTION_LF_LOST_DIR_MS
+#define MOTION_LF_LOST_DIR_MS (0u)
+#endif
+
 /* Line search (statechart LINE_SEARCH, [L_search]).  Both sensors sit
    inside the 18 mm line, so a centred car reads 11 and only a car off the
    line reads 00: after LINE_LOST_MS of 00 the car pivots on the spot
