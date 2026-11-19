@@ -382,9 +382,12 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 
 	/* t_block counts from the first Blocked, over the rescans it makes
 	 * (Coarse, Fine, Planning, back to Blocked): the car has not moved.
-	 * Restarted at every Blocked, it never ran out when the box read
-	 * D_stop or more at rest (3 clear pings, rescan, Blocked again).
-	 * It starts again once the car drives or the mission stops. */
+	 * Restarted at every Blocked, it would never run out while an
+	 * obstacle read D_stop or more at rest (3 clear pings, rescan,
+	 * Blocked again).  Found from the code, not seen on the car: the
+	 * 290 ms Blocked at 04:37:36 (trials_batch2) was a car turned to
+	 * -57 deg after a side switch, and its rescan found nothing within
+	 * D_obs.  It starts again once the car drives or the mission stops. */
 	if(ST_BLOCKED == next) {
 		if(!ctx_flag(p_ctx, CTX_BLOCKED_RUN)) {
 			ctx_set_flag(p_ctx, CTX_BLOCKED_RUN, true);

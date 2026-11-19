@@ -294,9 +294,11 @@ static void switch_side_reports(void)
 }
 
 /* O5 world: the car stops at 240 mm from a wall it cannot pass, then at
-   rest the forward ping reads 255 mm (>= D_stop 250: "clear"), as on the
-   car (rest 223-252 mm, trials_batch2:873-876: Blocked left after 290 ms).
-   Later the wall goes away (CONTINUE) and comes back. */
+   rest the forward ping reads 255 mm (>= D_stop 250: "clear").  The case
+   comes from the code: on the car the closest reading at the first scan
+   was 223-252 mm, but no log shows it (trials_batch2:873-876 is a car
+   turned after a side switch whose rescan found nothing).  Later the
+   wall goes away (CONTINUE) and comes back. */
 static UW  g_first_blocked_us;		/* first "-> BLOCKED" of the run */
 static UW  g_second_blocked_us;		/* after the wall came back */
 static int g_phase;
@@ -328,7 +330,7 @@ static void blocked_at_rest_pauses(void)
 	run_task(30000U);
 	CHECK(3 <= log_count("readings clear; rescan while STOP_SCAN remains set"));
 	CHECK(NULL != strstr(g_log, "[scan] still blocked: "));
-	CHECK(1 <= g_blocked_n);		/* was never raised */
+	CHECK(1 <= g_blocked_n);		/* raised (the old code never did) */
 	CHECK((g_blocked_at_us - g_first_blocked_us) >= (UW)T_BLOCK_MS * 1000U);
 	CHECK((g_blocked_at_us - g_first_blocked_us) < (UW)(T_BLOCK_MS + 4000) * 1000U);
 	CHECK(1 == g_blocked_n);		/* the mission paused: Idle */
