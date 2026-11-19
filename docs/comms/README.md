@@ -176,15 +176,21 @@ records have nowhere to go. The radio's outbound queue holds only 128 B
 about 6 records or 3 s of `H` + `S`; those arrive late, with an old `up`, once
 the car connects, and every record after them is dropped. The drops show only
 on the console (`[mqtt] … drop=N`), not in `drp`. In the 4 Nov car logs the car
-took 11.4–23.8 s from boot to `[wifi] state=ONLINE` (11 boots; the two over
-23 s needed a third join), and one run was started 2.9 s after boot, 9.3 s
-before ONLINE (trials batch 1, lines 1202, 1216, 1296): its RUNNING E mission
-and the first E records of the run never reached the broker. The mission
-itself never waits for Wi-Fi (that run drove on); only its record is lost. So
-before pressing GP20 or sending `start`, check on the viewer:
+took 11.4–23.8 s from boot to `[wifi] state=ONLINE` (11 boots in
+`tests/scan_bench/logs/`: 6 in `trials_batch1_2026-11-04.txt`, 4 in
+`trials_batch2_2026-11-04.txt`, 1 in `imu_bypass_left_right_2026-11-04.txt`;
+the two over 23 s needed a third join), and one run was started 2.9 s after
+boot, 9.3 s before ONLINE
+(`tests/scan_bench/logs/trials_batch1_2026-11-04.txt`, lines 1202, 1216 and
+1296): its RUNNING E mission and the first E records of the run never reached
+the broker. The mission itself never waits for Wi-Fi (that run drove on); only
+its record is lost. So before pressing GP20 or sending `start`, check on the
+viewer:
 
 - `S` arrives every second, `s` and `up` going up ("last S" under 3 s);
-- no new `GAP` after the first one (that one can be the retained `D`, below);
+- no `GAP` once `S` is arriving every second; one or two `GAP`s at the first
+  connect are normal (the retained `D`, below, and the boot records the 128 B
+  queue could not hold);
 - `mis` = READY, `faults` = 0, `drp` = 0.
 
 Allow about 25 s from power-on.

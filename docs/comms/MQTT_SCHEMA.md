@@ -463,7 +463,9 @@ turn rate are why the record limit rose to 24).
 > - prints `GAP: expected s=<the D's s + 1>` on the first live record
 >   (`telemetry_decode.py:194-196` flags any `s` that is not the last + 1), and
 >   its gap counter starts at 1. The viewer re-subscribes after each reconnect
->   to the broker, so the same false gap can come back then.
+>   to the broker and keeps its last `s`, so each reconnect gives two false
+>   gaps: the retained `D` itself (its old `s` does not follow the last live
+>   record), then the first live record after it.
 >
 > Reproduced off the car (19 Nov, sim: amqtt 0.12.2 broker, paho-mqtt 2.2.0,
 > this repo's `telemetry_decode.py`): a retained `D s=40`, then a rebooted
