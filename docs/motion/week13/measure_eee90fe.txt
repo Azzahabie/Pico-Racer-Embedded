@@ -1,4 +1,4 @@
-commit a7ee725, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
+commit eee90fe, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
 
 ==== MOTION_PACKED=1 (0 warnings)
 -- whole image, static RAM (bytes):
@@ -11,8 +11,8 @@ commit a7ee725, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17467	      4	   9280	  26751	   687f	motor_task.o
-    21433	     36	   9333	  30802	   7852	(TOTALS)
+    17499	      4	   9280	  26783	   689f	motor_task.o
+    21465	     36	   9333	  30834	   7872	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_edges_l encoder.o
   2 g_edges_la encoder.o
@@ -58,8 +58,8 @@ commit a7ee725, car profile (SMP=1 CONSOLE=usb_cdc), extra: none
      1162	      0	      0	   1162	    48a	motion_sm.o
       136	      0	      0	    136	     88	motion_wdt.o
       436	     32	      0	    468	    1d4	motor.o
-    17467	      0	   9296	  26763	   688b	motor_task.o
-    21429	     32	   9353	  30814	   785e	(TOTALS)
+    17475	      0	   9296	  26771	   6893	motor_task.o
+    21437	     32	   9353	  30822	   7866	(TOTALS)
 -- every motion RAM variable (bytes, name):
   4 g_count_l encoder.o
   4 g_count_r encoder.o

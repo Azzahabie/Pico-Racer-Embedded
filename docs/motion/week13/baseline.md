@@ -9,9 +9,9 @@ says how it was obtained: M = measured, C = calculated, E = estimated.
 
 The prof's 27 Oct announcement: comparing with the original design is no
 longer required; give evidence for the final implementation only. The
-final numbers, measured with `tests/week13/measure.sh` on commit a7ee725
+final numbers, measured with `tests/week13/measure.sh` on commit eee90fe
 (car profile, `MOTION_PACKED` 1, 0 warnings;
-[measure_a7ee725.txt](measure_a7ee725.txt)):
+[measure_eee90fe.txt](measure_eee90fe.txt)):
 
 | What | Final | How |
 |---|---|---|

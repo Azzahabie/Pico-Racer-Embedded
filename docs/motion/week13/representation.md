@@ -8,9 +8,9 @@ final build; the "Week 6 form" column is kept only to show what the
 minimum-bit change replaced.
 
 Legend: M = measured, E = estimated, C = calculated. "nm" = measured with
-`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit a7ee725, car
+`arm-none-eabi-nm -S` by `tests/week13/measure.sh` on commit eee90fe, car
 profile (SMP=1 CONSOLE=usb_cdc), `MOTION_PACKED` 1, 0 warnings; its output
-is in [measure_a7ee725.txt](measure_a7ee725.txt). Re-run it on the demo
+is in [measure_eee90fe.txt](measure_eee90fe.txt). Re-run it on the demo
 commit.
 
 | # | Field | Owner | Writer -> reader(s), core | Valid range (M/E) | Bits | Week 6 form | Final form, size, sync | RAM (final) | Message bytes (final) | Status |
@@ -56,7 +56,7 @@ commit.
 | 36 | Task stacks motion_task, motion_report | Buddy 2 | n/a | n/a | n/a | n/a | 2 x 4096 B static | 8192 B (M, nm) | none | built |
 | 37 | Kernel objects | Buddy 2 | n/a | n/a | n/a | n/a | 2 TCB, 1 FLGCB, 3 MBFCB (report, nav_cmd, avoid_cmd), 1 CYCCB; fixed tables (config/config.h CNF_MAX_*) | 0 B beyond the tables; IDs 4 B each in .bss | none | built |
 
-**Motion's static RAM, final build (M, nm, a7ee725):** 36 B .data + 9333 B
+**Motion's static RAM, final build (M, nm, eee90fe):** 36 B .data + 9333 B
 .bss = 9369 B, of which 8192 B are the two task stacks and 568 B the
 motion_task context. Whole image: 240 B .data + 32108 B .bss.
 
