@@ -1678,6 +1678,73 @@ scenario_turn_no_line (void)
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
 }
 
+/* Every action, at every kind of junction, as motion sees it.  motion does
+   not know the junction's shape: what differs is whether a line is under
+   GP26/GP27 when the manoeuvre ends.  An arm there (a crossroad; left or
+   right at a T met from the stem; straight on or into the stem at a T met
+   from the side; a U-turn anywhere) gives MOVE_DONE and Line Following.
+   No arm (straight on at a T met from the stem, or a turn to the side a T
+   has no arm on) gives MOVE_DONE, Line Search, and, with no line found,
+   Line Lost, which nav reads as LINE_LOST (it pauses the mission).  The
+   console lines checked here are the ones a car run prints.  Which arms a
+   junction has is geometry the sim does not model; whether GP7 sees the
+   junction at all is ir_sense_task's (tests/line). */
+static void
+scenario_turn_arms (void)
+{
+	static const struct {
+		uint8_t		action;
+		const char	*taken;
+	} acts[4] = {
+		{ BARCODE_ACT_FORWARD, "[motion] nav_cmd JUNCTION (raw 0x2000): accepted, TURNING\n" },
+		{ BARCODE_ACT_LEFT,    "[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING\n" },
+		{ BARCODE_ACT_RIGHT,   "[motion] nav_cmd JUNCTION (raw 0x2002): accepted, TURNING\n" },
+		{ BARCODE_ACT_UTURN,   "[motion] nav_cmd JUNCTION (raw 0x2003): accepted, TURNING\n" },
+	};
+	int32_t	dl;
+	int32_t	dr;
+	int	a;
+	int	n;
+
+	for (a = 0; a < 4; a++) {
+		sim_reset("turning: every action onto an arm -> LINE_FOLLOW, MOVE_DONE");
+		CHECK(run_turn(acts[a].action, &dl, &dr) > 0);
+		CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+		CHECK(strstr(g_log, acts[a].taken) != NULL);
+		CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> TURNING\n") != NULL);
+		CHECK(strstr(g_log, "[motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE\n") != NULL);
+		CHECK(strstr(g_log, "REFUSED") == NULL);
+
+		sim_reset("turning: every action with no arm -> LINE_SEARCH, then LINE_LOST");
+		g_mission = MS_RUNNING;
+		sim_ticks(3);
+		g_nav_flag = 0u;
+		CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, acts[a].action));
+		sim_tick();
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+		g_line.rl = LINE_RL_CENTRED;		/* both white from here */
+		g_line.dark_ms = 500u;
+		n = 0;
+		while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+			sim_tick();
+		}
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+		CHECK((g_nav_flag & NAV_FLG_MOVE_DONE) != 0u);
+		CHECK(strstr(g_log, acts[a].taken) != NULL);
+		CHECK(strstr(g_log, "[motion] state TURNING -> LINE_SEARCH, sent MOVE_DONE\n") != NULL);
+		g_line.dark_ms = 2550u;
+		g_line.lost = true;
+		n = 0;
+		while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH) && (n++ < 3000)) {
+			sim_tick();
+		}
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_LOST);
+		CHECK((g_nav_flag & NAV_FLG_LINE_LOST) != 0u);
+		CHECK(strstr(g_log, "[motion] state LINE_SEARCH -> LINE_LOST, sent LINE_LOST\n") != NULL);
+	}
+}
+
 /* An obstacle stop during the pivot: braked, then the turn carries on
    where it was and still ends at 90 deg, with one MOVE_DONE. */
 static void
@@ -3464,6 +3531,7 @@ main (int argc, char **argv)
 	scenario_cmd_junction_rejected();
 	scenario_turns();
 	scenario_turn_no_line();
+	scenario_turn_arms();
 	scenario_turn_resume();
 	scenario_turn_refused_keeps();
 #if MOTION_BYPASS_KNOWN
