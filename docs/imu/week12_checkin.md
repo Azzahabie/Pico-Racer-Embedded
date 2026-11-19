@@ -14,8 +14,9 @@ the integrated car, 1–3 Nov 2026, on branch `imu_task` (commits `1551f7d`,
 > removed from the requirements. The IMU's only stop requirement is now: when the
 > car is lifted or overturned, stop the motors at once. On demo day the car is
 > lifted **and inverted** to end the run. What the code does: tilt past T = 25°,
-> or z below 0 (upside down, commit `d5f0120`), for 3 samples in a row raises the
-> IMU fault and STOP_IMU, and the run ends in FAULT (terrain report §5.2). Impact
+> or z below 0 (upside down), for 3 samples in a row raises the IMU fault and
+> STOP_IMU, and the run ends in FAULT (terrain report §5.2). The z rule is the
+> upside-down fix (branch `proposal/imu-upside-down-stop`). Impact
 > (class 4, `!! BUMP`) never stopped the car; it stays only as an informational
 > event and counts toward no requirement. The FR-27 row below is as of the
 > check-in; the upside-down rule has passed the host tests only, not the car.

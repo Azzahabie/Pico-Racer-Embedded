@@ -11,8 +11,9 @@ This report covers the hump detection and height method (FR-10, FR-11, FR-12), i
 accuracy against NFR-05, the thresholds chosen from measured data, and the IMU fault
 behaviour (FR-02, FR-28, NFR-13, NFR-18/19), including the stop when the car is lifted
 and inverted, which ends the demo run (§5.2, the prof's requirement change of 19 Nov).
-Every number below comes from the serial logs of the runs listed in §5; nothing is
-presented as validated that was not measured.
+Every number below comes from the serial logs of the runs listed in §5, except those
+labelled calculated (C) or simulated (sim: host tests or a host model), which are not
+from the logs. Nothing is presented as validated that was not measured.
 
 ---
 
@@ -421,7 +422,7 @@ What the code does:
 
 | Step | Rule (`imu_safety.c`, `imu_task.c`) |
 |---|---|
-| Detect | every 10 ms sample: tilt \|x, y\| over T = 25° with z under 950 mg, **or z under 0 mg** (`SAFETY_FLIP_MG`, past 90°: upside down, commit `d5f0120`), for N = 3 samples in a row. Samples with \|a\| outside 0.7–1.3 g neither count nor reset the run (jolt filter, §4.7) |
+| Detect | every 10 ms sample: tilt \|x, y\| over T = 25° with z under 950 mg, **or z under 0 mg** (`SAFETY_FLIP_MG`, past 90°: upside down), for N = 3 samples in a row. Samples with \|a\| outside 0.7–1.3 g neither count nor reset the run (jolt filter, §4.7). The z rule is the upside-down fix (branch `proposal/imu-upside-down-stop`) |
 | Stop | in Running or Paused: STOP_IMU to motion_task, which brakes and holds both wheels at 0 until FAULT_CLEAR(IMU); FAULT_IMU on the shared fault flag; IMU_FAULT to nav_ctrl_task, which goes to FAULT and beeps |
 | Other paths | in hand 1.2 s with the wheels still (`EV_LIFT_FAULT_MS`, §5) and no good reading for 50 ms (NFR-13) raise the same fault |
 | After | the run ends in **FAULT**, not FINISHED (`S` `mis=6`, `faults=imu`). GP20 recalibrates on flat floor and clears the fault |
@@ -549,7 +550,7 @@ time, the wheels stop at once and stay stopped, `S faults=imu mis=6`, brake unde
 | FR-12 | ✅ highest hump per mission, reset on Ready→Running, in the `hump_state` word; two-hump run: `highest 28 mm` (§4.5); count in `E imu` and `S.hum`, the highest in `E imu` and `S.hgt` (until 19 Nov `S.hgt` carried the last hump; the change is host-tested only, §3.6) |
 | FR-23 / FR-29 | ✅ FR-29: `S.tlt` and `S.trn` in the S record every second (§3.6). ✅ FR-23: `E imu` (M6) on every class change and hump-count change: class, hump count, height; on the car `hump_count=1 hump_height_mm=10` at the hump and `S.hum=1 S.hgt=10` after (they read 0 before, as comms_task fills them from `E imu`) |
 | FR-27 | ✅ classifier running on the car under motor power: moving, turning, climbing, descending, stopped as expected. Impact (class 4, A = 2.5 g) is **report-only**: IMU collision detection was removed from the requirements (the prof, 19 Nov; §3.4) |
-| FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6). z below 0 (upside down) counts as tilted too (`d5f0120`, §5.2): host tests only |
+| FR-28 | ✅ T = 25°, N = 3; humps up to 20° self-driven do not trip (the 23 mm ramp; the demo ramp peaks at ~7°); a car caught on the 23 mm ramp and tipping to 32° faults; knocks filtered (one residual false fault, §6). z below 0 (upside down) counts as tilted too since the upside-down fix (branch `proposal/imu-upside-down-stop`, §5.2): host tests only |
 | Lift and invert (the prof, 19 Nov; demo point 10) | 🟡 built: tilt past T or upside down for 3 samples → IMU fault + STOP_IMU, the run ends in FAULT (§5.2). Host tests pass; not yet run on the car |
 | NFR-05 | ✅ demo hump (10 mm), self-driven: **14/14 within target**, mean −0.04 mm, range 8.9–11.3 mm (§4.5). The final ramp is about this height (prof, 3 Nov). 23 mm hump, no longer required: target 3/4, limit 4/4. Hand pushes: every clean pass within target |
 | NFR-13 | ✅ cal fail, abnormal tilt, read failure (50 ms); init fail not run |

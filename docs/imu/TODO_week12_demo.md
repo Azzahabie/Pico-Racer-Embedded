@@ -181,9 +181,10 @@ Target ±2 mm or 20 %, limit ±5 mm.
 
 ### Lifted and inverted → IMU fault, the end of the run (the prof, 19 Nov)
 
-- [x] Built: tilt past T, or z below 0 (upside down, commit `d5f0120`), for
-      3 samples in Running or Paused → `STOPPING` + STOP_IMU + FAULT
-      (terrain report §5.2). Host tests only
+- [x] Built: tilt past T, or z below 0 (upside down), for 3 samples in
+      Running or Paused → `STOPPING` + STOP_IMU + FAULT (terrain report
+      §5.2). The z rule is the upside-down fix (branch
+      `proposal/imu-upside-down-stop`). Host tests only
 - [ ] Bench, wheels off the floor, motors running: lift and invert slow
       (~1 s), fast (~0.2 s), and set down on its roof. Every time:
       `STOPPING`, wheels stop and stay stopped, `S faults=imu mis=6`
