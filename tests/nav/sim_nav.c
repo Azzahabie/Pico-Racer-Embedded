@@ -8,7 +8,9 @@
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
  * it for the next junction.  Calibration: a GP20 fault reset waits
  * NAV_CAL_SETTLE_MS before CAL_REQ; boot and an MQTT reset do not; an
- * MQTT command sent while calibrating is dropped, not applied at Ready. */
+ * MQTT command sent while calibrating is dropped, not applied at Ready.
+ * Built twice: the real image, and a TEST image (-DNAV_TEST_JUNCTION_ACTION=1)
+ * that must say so at boot. */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -410,8 +412,35 @@ static void cmd_during_cal_dropped(void)
 	CHECK(NULL == strstr(g_log, "dropped"));
 }
 
+/* G7: a TEST image (NAV_TEST_JUNCTION_ACTION >= 0) says so at boot and
+   turns at a junction with no barcode; the real image says nothing. */
+static void test_image_marker(void)
+{
+	reset();
+	run_boot();
+	CHECK(MS_READY == nav_mission_state());
+#if NAV_TEST_JUNCTION_ACTION >= 0
+	CHECK(NULL != strstr(g_log, "[nav] TEST image: NAV_TEST_JUNCTION_ACTION 1, "
+			     "a junction with no barcode command takes LEFT"));
+	CHECK(log_before("GP20 = start/resume/reset", "TEST image"));
+	reset();
+	on_junction();				/* no barcode command */
+	CHECK(sent_junction(1u));
+	CHECK(NULL != strstr(g_log, "no barcode command: TEST action LEFT"));
+#else
+	CHECK(NULL == strstr(g_log, "TEST"));
+#endif
+}
+
 int main(void)
 {
+#if NAV_TEST_JUNCTION_ACTION >= 0
+	/* the other scenarios assume the real image (straight on) */
+	test_image_marker();
+	printf("nav TEST image (NAV_TEST_JUNCTION_ACTION %d): %d checks, %d failures\n",
+	       NAV_TEST_JUNCTION_ACTION, g_checks, g_failures);
+	return (0 == g_failures) ? 0 : 1;
+#endif
 	refused_keeps_command();
 	done_uses_command();
 	newer_command_waits();
@@ -419,6 +448,7 @@ int main(void)
 	fault_reset_waits();
 	reset_and_boot_no_wait();
 	cmd_during_cal_dropped();
+	test_image_marker();
 	printf("nav junctions and calibration: %d checks, %d failures\n", g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 }

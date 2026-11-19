@@ -65,7 +65,7 @@
 /* S5 turn test without barcodes: a junction with no barcode command uses
    this action (barcode_action_t: 0 forward, 1 left, 2 right, 3 U-turn)
    instead of going straight on.  -1, the default, is the real behaviour;
-   never set it for the demo build. */
+   never set it for the demo build.  A TEST image says so at boot. */
 #ifndef NAV_TEST_JUNCTION_ACTION
 #define NAV_TEST_JUNCTION_ACTION	(-1)
 #endif
@@ -581,6 +581,12 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 
 	enter_calibrating(false, 0);
 	tm_printf((UB *)"[nav] GP20 = start/resume/reset, GP21 = pause\n");
+#if NAV_TEST_JUNCTION_ACTION >= 0
+	tm_printf((UB *)"[nav] TEST image: NAV_TEST_JUNCTION_ACTION %d, a junction with "
+		  "no barcode command takes %s (not for the demo)\n",
+		  (INT)NAV_TEST_JUNCTION_ACTION,
+		  barcode_action_name((uint32_t)NAV_TEST_JUNCTION_ACTION));
+#endif
 
 	while(1) {
 		ercd = tk_wai_flg(g_nav_flgid, NAV_WAIT_BITS, TWF_ORW | TWF_BITCLR,

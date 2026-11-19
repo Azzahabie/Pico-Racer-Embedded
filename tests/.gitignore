@@ -33,3 +33,4 @@ host/test_messages
 # macOS clang debug folders, if the tests are run outside Docker
 *.dSYM/
 nav/sim_nav
+nav/sim_nav_test
