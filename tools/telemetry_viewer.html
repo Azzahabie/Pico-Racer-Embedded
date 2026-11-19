@@ -225,6 +225,8 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     <dl id="link"><dt>wifi</dt><dd id="l-wifi">—</dd><dt>mqtt</dt><dd id="l-mqtt">—</dd>
       <dt>S count</dt><dd id="l-scount">0</dd><dt>gaps</dt><dd id="l-gaps">0</dd>
       <dt>rejects</dt><dd id="l-rej">0</dd></dl>
+    <h2>Last E motion <span class="muted" id="em-time"></span></h2>
+    <dl id="emotion"><dt>—</dt><dd>no E motion yet</dd></dl>
     <h2>Recent events</h2>
     <ul id="events"></ul>
   </aside>
@@ -416,11 +418,13 @@ function changed() { store.set("hidden", [...hidden]); renderTags(); render(); }
 
 /* ---- car state panel ------------------------------------------------ */
 let lastSAt = 0, sCount = 0, gaps = 0, rejects = 0;
+let lastMotionState;                // E motion state last listed in events
 const events = [];
 function resetState() {
-  lastSAt = 0; sCount = 0; gaps = 0; rejects = 0; events.length = 0;
+  lastSAt = 0; sCount = 0; gaps = 0; rejects = 0; events.length = 0; lastMotionState = undefined;
   $("mission").textContent = "—"; $("mission").className = "big";
   $("state").innerHTML = "<dt>—</dt><dd>no S yet</dd>";
+  $("emotion").innerHTML = "<dt>—</dt><dd>no E motion yet</dd>"; $("em-time").textContent = "";
   $("faults").textContent = ""; $("events").textContent = "";
   $("l-wifi").textContent = "—"; $("l-mqtt").textContent = "—";
   updateCounters(); drawFaults("0");
@@ -453,11 +457,28 @@ function track(l, isLive) {
       }));
     }
     if (l.tag.startsWith("E ")) {
-      const body = Object.entries(l.fields || {}).filter(([k]) => !["s", "up", "k"].includes(k))
-        .map(([k, v]) => `${k}=${v}`).join(" ");
-      events.unshift(`<span class="t">${l.time}</span>${l.tag.slice(2)} ${body}`);
-      events.length = Math.min(events.length, 12);
-      $("events").innerHTML = events.map((e) => `<li>${e}</li>`).join("");
+      const f = l.fields || {};
+      const kv = Object.entries(f).filter(([k]) => !["s", "up", "k"].includes(k));
+      let listIt = true;
+      if (l.tag === "E motion") {
+        // Motion sends E motion on every state change and once a second
+        // while a wheel moves (PR #22).  Only a change of state goes in the
+        // 12 events, so barcode and obstacle events stay; the latest
+        // values are always in "Last E motion".
+        listIt = f.state !== lastMotionState;
+        lastMotionState = f.state;
+        $("em-time").textContent = "· " + l.time;
+        $("emotion").replaceChildren(...kv.flatMap(([k, v]) => {
+          const dt = document.createElement("dt"); dt.textContent = k;
+          const dd = document.createElement("dd"); dd.textContent = v; return [dt, dd];
+        }));
+      }
+      if (listIt) {
+        const body = kv.map(([k, v]) => `${k}=${v}`).join(" ");
+        events.unshift(`<span class="t">${l.time}</span>${l.tag.slice(2)} ${body}`);
+        events.length = Math.min(events.length, 12);
+        $("events").innerHTML = events.map((e) => `<li>${e}</li>`).join("");
+      }
     }
     updateCounters();
   } else if (l.src === "serial") {

@@ -315,19 +315,39 @@ void fault_set(UINT bits) { g_fault_bits |= bits; }
 void fault_clear(UINT bits) { g_fault_bits &= ~bits; }
 
 /* comms_task.h (Buddy 1): every E body motion sends, unpacked as the laptop
-   would.  g_tele_count counts motion bodies; g_tele_last is the newest. */
+   would.  g_tele_count counts motion bodies; g_tele_last is the newest.
+   g_tele_full: tele_mbf has no room, so the send returns E_TMOUT.
+   g_tele_dst is S.dst as comms_task's fold() works it out (cm since the
+   last motion state change, rebased on a new state, unsigned difference
+   modulo 32768, clamped to 255); g_tele_dst_max is its largest value. */
 static int		g_tele_count;
 static int		g_tele_bad;
+static int		g_tele_full;
 static T_COMM_W_BODY	g_tele_last;
+static int		g_fold_have;
+static uint16_t		g_fold_base;
+static uint32_t		g_tele_dst;
+static uint32_t		g_tele_dst_max;
 ER comms_tele_send(const UB *body, INT length)
 {
 	T_COMM_W_BODY	b;
+	uint32_t	cm;
 
+	if (g_tele_full) {
+		return E_TMOUT;
+	}
 	if ((COMM_W_OK != comm_w_unpack_body(body, (uint32_t)length, &b))
 	    || (COMM_W_KIND_MOTION != b.kind)) {
 		g_tele_bad++;
 		return E_PAR;
 	}
+	if (!g_fold_have || (b.motion_state != g_tele_last.motion_state)) {
+		g_fold_base = b.dist_mm;
+		g_fold_have = 1;
+	}
+	cm = comm_w_dist_delta_mm(b.dist_mm, g_fold_base) / 10u;
+	g_tele_dst = (cm > 255u) ? 255u : cm;
+	if (g_tele_dst > g_tele_dst_max) { g_tele_dst_max = g_tele_dst; }
 	g_tele_last = b;
 	g_tele_count++;
 	return E_OK;
@@ -451,12 +471,18 @@ INT tk_rcv_mbf(ID id, void *msg, TMO tmo)
 	g_cmd_n[q]--;
 	return 2;
 }
+/* The tick must exist before motion_task starts, which arms the watchdog
+   (W9).  g_fail_cyc makes tk_cre_cyc fail, as a full handler table would. */
+static int		g_fail_cyc;
+static int		g_cyc_calls;
+static int		g_cyc_calls_at_motion = -1;	/* when motion_task was made */
 ID tk_cre_tsk(CONST T_CTSK *p)
 {
 	CHECK((p->tskatr & TA_USERBUF) != 0u);	/* stack is ours, not the heap */
 	CHECK((p->bufptr != NULL) && (((uintptr_t)p->bufptr % 8u) == 0u));
 	CHECK((p->stksz % 8) == 0);
 	if (p->task == (FP)motor_task) {
+		g_cyc_calls_at_motion = g_cyc_calls;
 		CHECK(p->itskpri == 11);
 		CHECK((p->tskatr & TA_ASSPRC) != 0u);
 		CHECK(p->assprc == TP_PRC2);	/* core 1 */
@@ -471,7 +497,13 @@ ID tk_cre_tsk(CONST T_CTSK *p)
 	return 3;
 }
 ER tk_sta_tsk(ID id, INT stacd) { (void)id; (void)stacd; return E_OK; }
-ID tk_cre_cyc(CONST T_CCYC *p) { CHECK(p->cyctim == 10u); return 4; }
+
+ID tk_cre_cyc(CONST T_CCYC *p)
+{
+	CHECK(p->cyctim == 10u);
+	g_cyc_calls++;
+	return g_fail_cyc ? E_LIMIT : 4;
+}
 
 /* distance_state mutex (MOTION_PACKED 0 only).  g_mtx_held = 1 plays a
    reader that holds it. */
@@ -494,7 +526,13 @@ ER tk_loc_mtx(ID id, TMO tmo)
 	return E_OK;
 }
 ER tk_unl_mtx(ID id) { CHECK(id == SIM_MTXID); CHECK(g_mtx_held); g_mtx_held = 0; return E_OK; }
-ER tk_dly_tsk(TMO tmo) { (void)tmo; return E_OK; }
+/* A scenario's hook on every tk_dly_tsk (it may longjmp out). */
+static void		(*g_dly_hook)(TMO tmo);
+ER tk_dly_tsk(TMO tmo)
+{
+	if (g_dly_hook != NULL) { g_dly_hook(tmo); }
+	return E_OK;
+}
 ER tk_slp_tsk(TMO tmo) { (void)tmo; return E_OK; }
 INT tk_get_prc(void) { return 2; }
 
@@ -620,6 +658,11 @@ sim_reset (const char *p_name)
 	g_fault_bits = 0u;
 	g_tele_count = 0;
 	g_tele_bad = 0;
+	g_tele_full = 0;
+	g_fold_have = 0;
+	g_fold_base = 0u;
+	g_tele_dst = 0u;
+	g_tele_dst_max = 0u;
 	(void)memset(&g_tele_last, 0, sizeof(g_tele_last));
 	g_cmd_n[0] = g_cmd_n[1] = 0;
 	memset(&g_line, 0, sizeof g_line);
@@ -1077,8 +1120,15 @@ scenario_statechart (void)
 	CHECK(g_ctx.ds_mm == d_ready);	/* distance_state never jumps */
 	CHECK(g_tele_count == 1);		/* E motion for the change */
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_ready & 0x7FFFu));
+	CHECK(g_tele_last.dist_mm == 0u);	/* Ready -> Running: a new mission */
 	CHECK(g_tele_last.fault == 0u);
+	/* speeds over the 50 ms window of the hand push, 13 counts a tick
+	   (10.3 cm/s), +128; both wheels turned alike, so the right one
+	   matches within one of its coarser counts */
+	CHECK(g_tele_last.speed_l
+	      == (uint8_t)(128 + lround(13.0 * DS_MM_PER_COUNT * 10.0)));
+	CHECK(abs((int)g_tele_last.speed_r - (int)g_tele_last.speed_l)
+	      <= (SIM_R_SCALED ? 1 : 0));
 
 	stop_request(MOTION_EVT_STOP_SCAN, 1);
 	sim_tick();
@@ -1090,9 +1140,13 @@ scenario_statechart (void)
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
 	CHECK(strstr(g_log, "[motion] state BRAKED -> LINE_FOLLOW") != NULL);
 
+	g_tele_full = 1;		/* tele_mbf full: dropped and counted */
 	stop_request(MOTION_EVT_STOP_IMU, 1);			/* imu_task */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(g_ctx.tele_dropped == 1u);
+	CHECK(g_tele_count == 3);	/* not sent, the brake still came */
+	g_tele_full = 0;
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);	/* FAULT_CLEAR(IMU) */
 	sim_tick();
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
@@ -1116,10 +1170,15 @@ scenario_statechart (void)
 
 	CHECK(g_duty_max_abs > 0);			/* Line Following drove */
 	CHECK((g_nav_flag == 0u) && (g_scan_flag == 0u));	/* nothing owed */
-	CHECK(g_tele_count == 7);	/* one E motion per state change */
+	CHECK(g_tele_count == 6);	/* one E motion per state change,
+					   less the one dropped */
+	CHECK(g_ctx.tele_dropped == 1u);
 	CHECK(g_tele_bad == 0);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_paused & 0x7FFFu));
+	/* a resume keeps the mission's distance: its travel, at least the net
+	   distance (the sim car rocks a little under the PID) */
+	CHECK((g_tele_last.dist_mm >= (uint16_t)(d_paused - d_ready))
+	      && (g_tele_last.dist_mm <= (uint16_t)(d_paused - d_ready + 2)));
 }
 
 /* Line Following steering (S4, 30 Oct).  A small error, below one count
@@ -1184,6 +1243,81 @@ scenario_line_follow_off_curve (void)
 	g_line.error = 0;
 	sim_ticks(1);
 	CHECK(lf_error(&g_ctx) == 0);
+}
+
+/* L4 (MOTION_LF_LOST_DIR_MS): a short 00 while the car crosses the line.
+   By default the full last-side error applies from the first 00 (the
+   behaviour on the car); with the experiment switch (sim_lfdir, 50 ms)
+   the word's own error applies until the dark time reaches it. */
+static void
+scenario_line_follow_short_gap (void)
+{
+	sim_reset("line follow: a short 00 and MOTION_LF_LOST_DIR_MS");
+	g_mission = MS_RUNNING;
+	sim_ticks(20);
+	g_line.rl = LINE_RL_LEFT_DEV;			/* line under the left sensor */
+	g_line.error = 40;
+	sim_ticks(3);
+	CHECK(g_ctx.line_dir == 1);
+
+	g_line.rl = LINE_RL_CENTRED;			/* a 00 has just begun */
+	g_line.error = -5;
+	g_line.dark_ms = 0u;
+	sim_tick();
+#if MOTION_LF_LOST_DIR_MS > 0
+	CHECK(lf_error(&g_ctx) == -5);			/* the word's own error */
+	g_line.dark_ms = ((MOTION_LF_LOST_DIR_MS + 9u) / 10u) * 10u;
+	sim_tick();
+	CHECK(lf_error(&g_ctx) == LINE_ST_ERR_MAX);	/* dark long enough */
+#else
+	CHECK(lf_error(&g_ctx) == LINE_ST_ERR_MAX);	/* full error at once */
+#endif
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_line.rl = LINE_RL_JUNCTION;
+	g_line.error = 0;
+	g_line.dark_ms = 0u;
+}
+
+/* L9: the side the line was last seen on is kept over a pause and resume,
+   but a new mission starts with none, so its first search sweeps left
+   (the default) instead of the old mission's side. */
+static void
+scenario_line_dir_new_mission (void)
+{
+	sim_reset("line search: a new mission forgets the last-seen side, a resume keeps it");
+	g_mission = MS_RUNNING;
+	sim_ticks(10);
+	g_line.rl = LINE_RL_RIGHT_DEV;			/* line under the right sensor */
+	g_line.error = -70;
+	sim_ticks(5);
+	CHECK(g_ctx.line_dir == -1);
+	g_line.rl = LINE_RL_JUNCTION;			/* centred again */
+	g_line.error = 0;
+	sim_ticks(5);
+
+	g_mission = MS_PAUSED;				/* GP21, then GP20: a resume */
+	sim_tick();
+	g_mission = MS_RUNNING;
+	sim_tick();
+	CHECK(g_ctx.line_dir == -1);
+
+	g_mission = MS_FINISHED;			/* finish, reset, a new mission */
+	sim_tick();
+	g_mission = MS_READY;
+	sim_tick();
+	g_mission = MS_RUNNING;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK(g_ctx.line_dir == 0);
+
+	g_line.rl = LINE_RL_CENTRED;			/* line lost straight away */
+	g_line.dark_ms = 2000u;
+	g_line.lost = true;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+	CHECK(g_ctx.search_dir == 1);			/* left first, not the old right */
+	g_line.lost = false;
+	g_line.dark_ms = 0u;
 }
 
 /* The Line Following correction on its own (S4, 31 Oct): it eases in,
@@ -1255,6 +1389,91 @@ scenario_line_follow_soft (void)
 
 /* A stall while driving: the statechart goes to Motion Fault, the brake
    is written before MOTION_FAULT reaches nav, and the line says so. */
+/* E motion once a second while a wheel moves, nothing while still; the
+   distance it carries is the travel in this mission, forward or back, so
+   comms_task's S.dst grows and never jumps; it starts again at a new
+   mission (Section 4) and is kept on a resume; a refused send is tried
+   again. */
+static void
+scenario_telemetry (void)
+{
+	uint16_t d_paused;
+	int i;
+
+	sim_reset("telemetry: E motion once a second while moving, mission distance");
+	sim_ticks(3);
+	CHECK(g_tele_count == 0);
+	for (i = 0; i < 150; i++) { ds_move_tick(4.0, 4.0); }	/* pushed, Ready */
+	CHECK(g_tele_count == 1);			/* one second in: one record */
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
+	CHECK(g_tele_last.speed_l == (uint8_t)(128 + lround(4.0 * DS_MM_PER_COUNT * 10.0)));
+	for (i = 0; i < 100; i++) { ds_move_tick(4.0, 4.0); }
+	CHECK(g_tele_count == 2);			/* and one a second after */
+	sim_ticks(300);					/* standing still */
+	CHECK(g_tele_count == 3);	/* one more for the last push, then nothing */
+	CHECK(g_tele_last.speed_l == 128u);		/* stopped */
+	CHECK(labs((long)g_tele_last.dist_mm - lround(250.0 * 4.0 * DS_MM_PER_COUNT)) <= 1);
+	CHECK((g_tele_dst > 0u) && (g_tele_dst < 255u));	/* S.dst grew in Idle */
+
+	g_mission = MS_RUNNING;				/* a new mission */
+	sim_tick();
+	CHECK(g_tele_count == 4);
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);		/* from 0 again */
+	g_mission = MS_PAUSED;				/* stops, Idle */
+	sim_tick();
+	CHECK(g_tele_count == 5);
+	d_paused = g_tele_last.dist_mm;
+	for (i = 0; i < 120; i++) { ds_move_tick(-4.0, -4.0); }	/* pushed back */
+	sim_ticks(150);
+	CHECK(g_tele_count == 7);
+	CHECK(labs((long)g_tele_last.dist_mm
+		   - ((long)d_paused + lround(120.0 * 4.0 * DS_MM_PER_COUNT))) <= 1);
+	CHECK(labs((long)g_tele_dst - lround(120.0 * 4.0 * DS_MM_PER_COUNT) / 10) <= 1);
+	CHECK(g_tele_dst_max < 255u);			/* backwards adds, never wraps */
+	g_mission = MS_RUNNING;				/* a resume */
+	sim_tick();
+	CHECK(g_tele_count == 8);
+	CHECK(labs((long)g_tele_last.dist_mm
+		   - ((long)d_paused + lround(120.0 * 4.0 * DS_MM_PER_COUNT))) <= 2);
+
+	g_tele_full = 1;				/* tele_mbf full */
+	g_mission = MS_PAUSED;
+	sim_tick();
+	CHECK(g_tele_count == 8);			/* LINE_FOLLOW -> IDLE refused */
+	CHECK(g_ctx.tele_dropped == 1u);
+	g_tele_full = 0;
+	sim_ticks(20);
+	CHECK(g_tele_count == 9);			/* tried again, 100 ms on */
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
+	sim_ticks(300);
+	CHECK(g_tele_count == 9);			/* once */
+	g_tele_full = 1;		/* still full: 100 ms, then once a second */
+	for (i = 0; i < 60; i++) { ds_move_tick(4.0, 4.0); }
+	CHECK(g_ctx.tele_dropped == 3u);	/* the send and one fast retry */
+	g_tele_full = 0;
+	sim_ticks(40);
+	CHECK(g_tele_count == 9);		/* backed off, not every 100 ms */
+	sim_ticks(30);
+	CHECK(g_tele_count == 10);		/* a second after the retry */
+	CHECK(g_ctx.tele_dropped == 3u);
+
+	g_mission = MS_READY;				/* reset button */
+	sim_tick();
+	g_mission = MS_RUNNING;				/* the next mission */
+	sim_tick();
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);
+	g_mission = MS_FINISHED;
+	sim_tick();
+	for (i = 0; i < 50; i++) { ds_move_tick(4.0, 4.0); }
+	g_mission = MS_RUNNING;		/* a Ready shorter than a tick: still new */
+	sim_tick();
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);
+	CHECK(g_tele_bad == 0);
+}
+
 static void
 scenario_statechart_fault (void)
 {
@@ -1273,6 +1492,12 @@ scenario_statechart_fault (void)
 	CHECK(g_brakes_at_nav > brakes);		/* braked before the reply */
 	CHECK((g_nav_flag & NAV_FLG_MOTION_FAULT) != 0u);
 	CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT") != NULL);
+	/* the reason, before the state line (W3) */
+	CHECK(strstr(g_log, "[motion] FAULT 0x01: left wheel stalled  motors braked"
+			    " until nav sends FAULT_CLEAR(MOTION).\n[motion]   at the"
+			    " fault: duty L") != NULL);
+	CHECK(strstr(g_log, "FAULT_CLEAR(MOTION).\n[motion]   at the fault")
+	      < strstr(g_log, "[motion] state LINE_FOLLOW -> FAULT"));
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_FAULT);
 	CHECK(g_tele_last.fault == 0x1u);		/* E motion fault: stall */
 	sim_ticks(5);
@@ -1286,6 +1511,46 @@ scenario_statechart_fault (void)
 	CHECK(g_ctx.faults == 0u);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
 	CHECK(g_tele_last.fault == 0u);			/* cleared with it */
+}
+
+/* W3: a wheel held during Line Following.  The FAULT line names the
+   wheel and gives the duty the stall check judged (the tick before the
+   brake) and each stall window: the held wheel's spans [t_stall] with no
+   progress, the free wheel's is short because it keeps moving. */
+static void
+scenario_statechart_fault_reason (void)
+{
+	char	want[160];
+	int32_t	duty_l = 0;
+	int32_t	duty_r = 0;
+	int	t;
+
+	sim_reset("statechart: a wheel held while line following, the reason printed");
+	g_mission = MS_RUNNING;
+	sim_ticks(50);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_wheel[0].b_blocked = 1;
+	for (t = 0; (t < 100) && (motion_sm_state(&g_ctx.sm) != MOTION_ST_FAULT); t++) {
+		duty_l = g_duty[0];
+		duty_r = g_duty[1];
+		sim_tick();
+	}
+	g_wheel[0].b_blocked = 0;
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_FAULT);
+	CHECK(g_ctx.faults == (uint8_t)MOTION_FAULT_STALL_L);
+	CHECK(duty_l >= MOTION_DEADBAND_DUTY);		/* judged while driven */
+	CHECK(strstr(g_log, "[motion] FAULT 0x01: left wheel stalled  motors braked"
+			    " until nav sends FAULT_CLEAR(MOTION).") != NULL);
+	(void)snprintf(want, sizeof want, "at the fault: duty L%+d R%+d; since each"
+		       " wheel last made progress: L+0 counts in %d ms, R+",
+		       (int)duty_l, (int)duty_r,
+		       (int)(MOTION_STALL_TICKS * MOTION_TICK_MS));
+	CHECK(strstr(g_log, want) != NULL);
+	if (strstr(g_log, want) == NULL) { printf("   wanted: %s\n%s", want, g_log); }
+	CHECK(strstr(g_log, "; missed L0 R0\n") != NULL);
+	CHECK(count_kind(REP_EVENT, EVT_SM_FAULT) == 1);
+	sim_ticks(20);
+	CHECK(count_kind(REP_EVENT, EVT_SM_FAULT) == 1);	/* once per entry */
 }
 
 /* nav_cmd_mbf: after an IMU fault and recalibration, FAULT_CLEAR(IMU)
@@ -1367,7 +1632,12 @@ scenario_turns (void)
 	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + tol);
 	CHECK(FWD_MM(dl, dr) >= MOTION_TURN_FWD_MM);
 	CHECK(FWD_MM(dl, dr) <= MOTION_TURN_FWD_MM + 20);	/* + the line follow after */
-	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2001): taken") != NULL);
+	/* "received" at the read, then the outcome (critic C3) */
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING\n"
+			    "[motion] state LINE_FOLLOW -> TURNING\n") != NULL);
+	CHECK(strstr(g_log, "taken") == NULL);
+	CHECK(strstr(g_log, "REFUSED") == NULL);
 
 	sim_reset("turning: RIGHT pivots clockwise");
 	CHECK(run_turn(BARCODE_ACT_RIGHT, &dl, &dr) > 0);
@@ -1406,6 +1676,73 @@ scenario_turn_no_line (void)
 	}
 	CHECK((g_nav_flag & NAV_FLG_MOVE_DONE) != 0u);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+}
+
+/* Every action, at every kind of junction, as motion sees it.  motion does
+   not know the junction's shape: what differs is whether a line is under
+   GP26/GP27 when the manoeuvre ends.  An arm there (a crossroad; left or
+   right at a T met from the stem; straight on or into the stem at a T met
+   from the side; a U-turn anywhere) gives MOVE_DONE and Line Following.
+   No arm (straight on at a T met from the stem, or a turn to the side a T
+   has no arm on) gives MOVE_DONE, Line Search, and, with no line found,
+   Line Lost, which nav reads as LINE_LOST (it pauses the mission).  The
+   console lines checked here are the ones a car run prints.  Which arms a
+   junction has is geometry the sim does not model; whether GP7 sees the
+   junction at all is ir_sense_task's (tests/line). */
+static void
+scenario_turn_arms (void)
+{
+	static const struct {
+		uint8_t		action;
+		const char	*taken;
+	} acts[4] = {
+		{ BARCODE_ACT_FORWARD, "[motion] nav_cmd JUNCTION (raw 0x2000): accepted, TURNING\n" },
+		{ BARCODE_ACT_LEFT,    "[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING\n" },
+		{ BARCODE_ACT_RIGHT,   "[motion] nav_cmd JUNCTION (raw 0x2002): accepted, TURNING\n" },
+		{ BARCODE_ACT_UTURN,   "[motion] nav_cmd JUNCTION (raw 0x2003): accepted, TURNING\n" },
+	};
+	int32_t	dl;
+	int32_t	dr;
+	int	a;
+	int	n;
+
+	for (a = 0; a < 4; a++) {
+		sim_reset("turning: every action onto an arm -> LINE_FOLLOW, MOVE_DONE");
+		CHECK(run_turn(acts[a].action, &dl, &dr) > 0);
+		CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+		CHECK(strstr(g_log, acts[a].taken) != NULL);
+		CHECK(strstr(g_log, "[motion] state LINE_FOLLOW -> TURNING\n") != NULL);
+		CHECK(strstr(g_log, "[motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE\n") != NULL);
+		CHECK(strstr(g_log, "REFUSED") == NULL);
+
+		sim_reset("turning: every action with no arm -> LINE_SEARCH, then LINE_LOST");
+		g_mission = MS_RUNNING;
+		sim_ticks(3);
+		g_nav_flag = 0u;
+		CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, acts[a].action));
+		sim_tick();
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+		g_line.rl = LINE_RL_CENTRED;		/* both white from here */
+		g_line.dark_ms = 500u;
+		n = 0;
+		while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+			sim_tick();
+		}
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+		CHECK((g_nav_flag & NAV_FLG_MOVE_DONE) != 0u);
+		CHECK(strstr(g_log, acts[a].taken) != NULL);
+		CHECK(strstr(g_log, "[motion] state TURNING -> LINE_SEARCH, sent MOVE_DONE\n") != NULL);
+		g_line.dark_ms = 2550u;
+		g_line.lost = true;
+		n = 0;
+		while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH) && (n++ < 3000)) {
+			sim_tick();
+		}
+		CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_LOST);
+		CHECK((g_nav_flag & NAV_FLG_LINE_LOST) != 0u);
+		CHECK(strstr(g_log, "[motion] state LINE_SEARCH -> LINE_LOST, sent LINE_LOST\n") != NULL);
+	}
 }
 
 /* An obstacle stop during the pivot: braked, then the turn carries on
@@ -1449,6 +1786,87 @@ scenario_turn_resume (void)
 	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
 	CHECK(TURNED(dl, dr) >= PIVOT_COUNTS(90));
 	CHECK(TURNED(dl, dr) <= PIVOT_COUNTS(90) + PIVOT_COUNTS(5));
+}
+
+/* A LEFT turn braked by STOP_SCAN part way round its pivot; the
+   positions where the turn began. */
+static void
+left_turn_braked (int32_t *p_l0, int32_t *p_r0)
+{
+	int	n = 0;
+
+	g_mission = MS_RUNNING;
+	sim_ticks(3);
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_LEFT));
+	sim_tick();
+	*p_l0 = g_ctx.pos_l;
+	*p_r0 = g_ctx.pos_r;
+	while ((g_ctx.turn_phase != 1u) && (n++ < 3000)) {	/* TURN_PH_PIVOT */
+		sim_tick();
+	}
+	sim_ticks(60);
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+}
+
+/* A JUNCTION while a turn is braked half way is refused, and does not
+   change the turn: the LEFT still ends as a LEFT.  The same when it comes
+   in the tick the braked turn resumes (review L2). */
+static void
+scenario_turn_refused_keeps (void)
+{
+	int32_t l0;
+	int32_t r0;
+	int	n = 0;
+
+	sim_reset("turning: a JUNCTION refused mid-turn leaves the turn as it was");
+	left_turn_braked(&l0, &r0);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_RIGHT));
+	sim_tick();
+	CHECK((g_nav_flag & NAV_FLG_CMD_REJECTED) != 0u);	/* refused */
+	CHECK(g_ctx.turn_action == (uint8_t)BARCODE_ACT_LEFT);
+	CHECK(strstr(g_log, "nav_cmd JUNCTION (raw 0x2002): REFUSED in BRAKED,"
+			    " sent CMD_REJECTED") != NULL);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	g_nav_flag = 0u;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK((g_ctx.pos_l - l0 < 0) && (g_ctx.pos_r - r0 > 0));	/* turned left */
+	CHECK(TURNED(g_ctx.pos_l - l0, g_ctx.pos_r - r0) >= PIVOT_COUNTS(90));
+
+	/* The state changes (BRAKED -> TURNING) in that tick, but the turn is
+	   the old one resumed: never "accepted" for the new JUNCTION. */
+	sim_reset("turning: a JUNCTION in the tick a braked turn resumes is refused");
+	left_turn_braked(&l0, &r0);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, BARCODE_ACT_RIGHT));
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING);
+	CHECK(g_ctx.turn_phase == 1u);				/* the same pivot */
+	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(g_ctx.turn_action == (uint8_t)BARCODE_ACT_LEFT);
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2002): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2002): REFUSED (BRAKED ->"
+			    " TURNING), sent CMD_REJECTED\n"
+			    "[motion] state BRAKED -> TURNING, sent CMD_REJECTED\n")
+	      != NULL);
+	CHECK(strstr(g_log, "(raw 0x2002): accepted") == NULL);
+	g_nav_flag = 0u;
+	n = 0;
+	while ((motion_sm_state(&g_ctx.sm) == MOTION_ST_TURNING) && (n++ < 3000)) {
+		sim_tick();
+	}
+	CHECK(g_nav_flag == NAV_FLG_MOVE_DONE);
+	CHECK((g_ctx.pos_l - l0 < 0) && (g_ctx.pos_r - r0 > 0));	/* turned left */
+	CHECK(TURNED(g_ctx.pos_l - l0, g_ctx.pos_r - r0) >= PIVOT_COUNTS(90));
 }
 
 /* Start a bypass the way scan_task does: STOP_SCAN, the command, then
@@ -2152,6 +2570,11 @@ scenario_cmd_junction_rejected (void)
 	sim_tick();
 	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	/* the refusal is on the console even with no state change (C3) */
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED in BRAKED,"
+			    " sent CMD_REJECTED\n") != NULL);
+	CHECK(strstr(g_log, "accepted") == NULL);
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
 	sim_ticks(3);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
@@ -2165,6 +2588,29 @@ scenario_cmd_junction_rejected (void)
 	sim_tick();
 	CHECK(strstr(g_log, "nav_cmd unknown (raw 0x7700): dropped (invalid)") != NULL);
 	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+
+	/* A STOP in the same tick moves Line Following to Braked: the
+	   REFUSED line names both states, not "in LINE_FOLLOW" (review L1). */
+	sim_reset("nav_cmd: a JUNCTION in the tick STOP_SCAN brakes is refused");
+	g_mission = MS_RUNNING;
+	sim_ticks(5);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	g_nav_flag = 0u;
+	CHECK(sim_send_cmd(SIM_NAV_MBFID, NAV_CMD_JUNCTION, 1u));	/* LEFT */
+	stop_request(MOTION_EVT_STOP_SCAN, 1);
+	sim_tick();
+	CHECK(g_nav_flag == NAV_FLG_CMD_REJECTED);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_BRAKED);
+	CHECK(strstr(g_log, "[motion] nav_cmd JUNCTION (raw 0x2001): received\n"
+			    "[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED (LINE_FOLLOW"
+			    " -> BRAKED), sent CMD_REJECTED\n"
+			    "[motion] state LINE_FOLLOW -> BRAKED, sent CMD_REJECTED\n")
+	      != NULL);
+	CHECK(strstr(g_log, "REFUSED in") == NULL);
+	CHECK(strstr(g_log, "accepted") == NULL);
+	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);
+	sim_ticks(3);
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);	/* no turn later */
 }
 
 /* avoid_cmd_mbf: scan_task's packed REVERSE starts the reverse, as the
@@ -2239,6 +2685,9 @@ scenario_reverse (void)
 	CHECK((g_duty[0] == 0) && (g_duty[1] == 0));
 	CHECK(g_ctx.faults == 0u);
 	CHECK(t < 300);					/* inside scan's 5 s */
+	/* S.dst grew through the reverse (records 1 s and 2 s in), never the
+	   ~32 m a falling distance would give */
+	CHECK((g_tele_dst_max >= 6u) && (g_tele_dst_max <= 18u));
 
 	(void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_SCAN);	/* false alarm */
 	sim_tick();
@@ -2558,7 +3007,19 @@ scenario_hand_turn (void)
 static void
 scenario_watchdog_feed (void)
 {
+	char	want[REPORT_LINE_LEN];
+	int	brakes;
+
 	sim_reset("watchdog: armed at start-up, fed every completed tick");
+	/* the counts per turn the image has, at boot (W1), and the L4
+	   switch (review L3): 0 here, 50 in sim_lfdir */
+	CHECK(snprintf(want, sizeof want, "[motion] counts per wheel turn: left %d"
+		       " (MOTION_COUNTS_PER_REV), right %d (MOTION_COUNTS_PER_REV_R)%s;"
+		       " MOTION_LF_LOST_DIR_MS=%u\n",
+		       (int)MOTION_COUNTS_PER_REV, (int)MOTION_COUNTS_PER_REV_R,
+		       SIM_R_SCALED ? ", right counts scaled to left units" : ", no scaling",
+		       (unsigned)MOTION_LF_LOST_DIR_MS) < (int)sizeof want);
+	CHECK(strstr(g_log, want) != NULL);
 	CHECK(g_wdt_starts == 1);
 	CHECK(g_wdt_feeds_at_start == 0);
 	CHECK(strstr(g_log, "last reset: power-on or RUN pin") != NULL);
@@ -2567,11 +3028,15 @@ scenario_watchdog_feed (void)
 	CHECK(g_wdt_feeds == 600);
 	CHECK(strstr(g_log, "longest gap between feeds 10000 us, resets at 30000 us") != NULL);
 
-	/* No tick, no feed.  On the car the chip resets 30 ms after the
-	   last feed, before this 50 ms timeout could ever fire. */
+	/* No tick, no feed, and each timed-out wait brakes.  On the car the
+	   20 ms timeout (MOTION_TICK_TIMEOUT_MS) brakes once before the chip
+	   resets 30 ms after the last feed (W8: it was 50 ms, after it). */
+	brakes = g_brake_calls;
 	g_fail_ticks = 3;
 	sim_ticks(3);
 	CHECK(g_wdt_feeds == 600);
+	CHECK(g_ctx.lost_ticks == 3u);
+	CHECK(g_brake_calls == brakes + 3);
 	sim_tick();
 	CHECK(g_wdt_feeds == 601);
 }
@@ -2611,6 +3076,89 @@ scenario_init_fail_not_armed (void)
 	CHECK(g_wdt_starts == 0);
 	CHECK(strstr(g_log, "init FAILED") != NULL);
 	CHECK(strstr(g_log, "watchdog NOT armed") != NULL);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+}
+
+/* No tick (tk_cre_cyc failed): motion_task still starts and brakes, but
+   never arms the watchdog, which nothing would feed (W9). */
+static void
+scenario_no_tick_not_armed (void)
+{
+	printf("-- no tick: motion_task brakes, watchdog not armed\n");
+	memset(&g_ctx, 0, sizeof g_ctx);
+	g_n_seen = 0; g_q_count = 0; g_log_len = 0; g_log[0] = '\0';
+	g_wdt_starts = 0;
+	g_cyc_calls = 0;
+	g_cyc_calls_at_motion = -1;
+	g_fail_cyc = 1;
+	CHECK(motor_task_start() == E_LIMIT);
+	g_fail_cyc = 0;
+	CHECK(g_cyc_calls_at_motion == 1);	/* motion_task made all the same */
+	CHECK(g_tick_ercd == E_LIMIT);
+	g_brake_calls = 0;
+	CHECK(motion_start_up(&g_ctx, 2) == E_LIMIT);
+	drain_reports();
+	CHECK(g_wdt_starts == 0);
+	CHECK(g_brake_calls >= 1);
+	CHECK((g_ctx.faults & MOTION_FAULT_INIT) != 0u);
+	CHECK(strstr(g_log, "init FAILED (er=-34)") != NULL);
+	CHECK(strstr(g_log, "watchdog NOT armed") != NULL);
+	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
+
+	CHECK(motor_task_start() == E_OK);	/* the tick back for the rest */
+	CHECK(g_tick_ercd == E_OK);
+}
+
+/* motor_task() after a failed set-up: nav gets MOTION_FAULT and S.faults
+   both motion bits at once, nothing more while the mission is not
+   Running, and both again once a mission is started (W7). */
+static int	g_init_fail_polls;
+
+static void
+init_fail_dly_hook (TMO tmo)
+{
+	int n;
+
+	if (tmo != (TMO)INIT_FAIL_POLL_MS) { return; }	/* bench: button settle */
+	n = ++g_init_fail_polls;
+	if (n == 1) {
+		CHECK(g_nav_flag == NAV_FLG_MOTION_FAULT);	/* before any wait */
+		CHECK(g_fault_bits == (FAULT_MOTOR_STALL | FAULT_ENCODER));
+		g_nav_flag = 0u;			/* nav took it: FAULT */
+		g_fault_bits = 0u;
+	} else if (n == 2) {
+		CHECK(g_nav_flag == 0u);		/* Ready: not raised again */
+		g_mission = MS_RUNNING;			/* GP20 after a fault reset */
+	} else {
+		CHECK(g_nav_flag == NAV_FLG_MOTION_FAULT);
+		CHECK(g_fault_bits == (FAULT_MOTOR_STALL | FAULT_ENCODER));
+		longjmp(g_loop_jmp, 1);
+	}
+}
+
+static void
+scenario_init_fail_tells_nav (void)
+{
+	printf("-- init fails: nav gets MOTION_FAULT, again when a mission starts\n");
+	memset(&g_ctx, 0, sizeof g_ctx);
+	g_n_seen = 0; g_q_count = 0; g_log_len = 0; g_log[0] = '\0';
+	g_wdt_starts = 0;
+	g_nav_flag = 0u;
+	g_fault_bits = 0u;
+	g_mission = MS_READY;
+	g_fail_init = 1;
+	g_init_fail_polls = 0;
+	g_dly_hook = init_fail_dly_hook;
+	if (setjmp(g_loop_jmp) == 0) {
+		motor_task(0, NULL);
+	}
+	g_dly_hook = NULL;
+	g_fail_init = 0;
+	g_mission = MS_READY;
+	drain_reports();
+	CHECK(g_init_fail_polls == 3);
+	CHECK(g_wdt_starts == 0);
+	CHECK(strstr(g_log, "init FAILED") != NULL);
 	CHECK(g_duty[0] == 0 && g_duty[1] == 0);
 }
 
@@ -2944,6 +3492,7 @@ main (int argc, char **argv)
 	g_verbose = (argc > 1) && (strcmp(argv[1], "-v") == 0);
 
 	CHECK(motor_task_start() == E_OK);
+	CHECK(g_cyc_calls_at_motion == 1);	/* the tick before motion_task */
 	CHECK(sizeof(motion_report_t) == 52u);
 
 #if MOTION_TEST_WDT
@@ -2954,6 +3503,8 @@ main (int argc, char **argv)
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
+	scenario_no_tick_not_armed();
+	scenario_init_fail_tells_nav();
 	scenario_bench_off();
 	scenario_ds_straight();
 	scenario_ds_turn_and_reverse();
@@ -2968,15 +3519,21 @@ main (int argc, char **argv)
 	scenario_stop_before_first_tick();
 	scenario_stop_order();
 	scenario_statechart();
+	scenario_telemetry();
 	scenario_statechart_fault();
+	scenario_statechart_fault_reason();
 	scenario_line_follow_steer();
 	scenario_line_follow_soft();
 	scenario_line_follow_off_curve();
+	scenario_line_dir_new_mission();
+	scenario_line_follow_short_gap();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
 	scenario_turns();
 	scenario_turn_no_line();
+	scenario_turn_arms();
 	scenario_turn_resume();
+	scenario_turn_refused_keeps();
 #if MOTION_BYPASS_KNOWN
 	scenario_bypass_known();
 #else
@@ -3006,6 +3563,8 @@ main (int argc, char **argv)
 	scenario_watchdog_feed();
 	scenario_boot_after_watchdog();
 	scenario_init_fail_not_armed();
+	scenario_no_tick_not_armed();
+	scenario_init_fail_tells_nav();
 	scenario_button_held_at_boot();
 	scenario_open_loop();
 	scenario_dead_encoder();
@@ -3026,12 +3585,13 @@ main (int argc, char **argv)
 	scenario_pid_unplug_mid_run();
 #endif
 
-	printf("motion_task sim (%s%s): %d checks, %d failures\n",
+	printf("motion_task sim (%s%s%s): %d checks, %d failures\n",
 	       !MOTION_BENCH ? "bench off"
 	       : MOTION_TEST_WDT ? "watchdog test"
 	       : MOTION_TEST_STOP ? "stop test"
 	       : (MOTION_TEST_PID ? "closed-loop" : "open-loop"),
 	       MOTION_PACKED ? "" : ", Week 6 unpacked",
+	       (MOTION_LF_LOST_DIR_MS > 0u) ? ", MOTION_LF_LOST_DIR_MS on" : "",
 	       g_checks, g_failures);
 	return (g_failures == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

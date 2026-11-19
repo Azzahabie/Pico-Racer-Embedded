@@ -36,6 +36,7 @@ typedef int		BOOL;
 #define E_NOMEM		(-33)
 #define E_LIMIT		(-34)
 #define E_OBJ		(-41)
+#define E_NOEXS		(-42)
 #define E_TMOUT		(-50)
 
 #define TA_HLNG		0x00000001UL

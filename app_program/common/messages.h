@@ -180,14 +180,15 @@ typedef struct {
 #define COMM_W_KIND_MISSION     5U   /* Vehicle Controller */
 #define COMM_W_KIND_COUNT       6U   /* 6 and 7 are reserved and rejected */
 
-/* motion (Buddy 2).  PLACEHOLDER: speed_l, speed_r and ovf are Buddy 1's
-   proposal until Buddy 2 confirms the unit and range. */
+/* motion (Buddy 2).  speed_l, speed_r and ovf confirmed by Buddy 2:
+   speeds in cm/s stored +128 (the car stays well under 127 cm/s), ovf set
+   when a field was clamped.  state = motion_sm.h motion_state_t (0-8). */
 #define COMM_W_MOTION_STATE_BITS   4U   /* 0-15                               */
-#define COMM_W_MOTION_SPEED_BITS   8U   /* PLACEHOLDER: -128..127 cm/s, +128  */
+#define COMM_W_MOTION_SPEED_BITS   8U   /* -128..127 cm/s, +128               */
 #define COMM_W_MOTION_DIST_BITS   15U   /* mm, wrapping counter 0..32767       */
 #define COMM_W_MOTION_TURN_BITS   10U   /* -512..511 deg/s, +512               */
 #define COMM_W_MOTION_FAULT_BITS   2U   /* bit 0 stall, bit 1 encoder          */
-#define COMM_W_MOTION_OVF_BITS     1U   /* PLACEHOLDER: a field was clamped   */
+#define COMM_W_MOTION_OVF_BITS     1U   /* a field was clamped                */
 #define COMM_W_BODY_BITS_MOTION   (COMM_W_KIND_BITS + COMM_W_MOTION_STATE_BITS \
                                    + 2U * COMM_W_MOTION_SPEED_BITS            \
                                    + COMM_W_MOTION_DIST_BITS                   \
@@ -261,12 +262,12 @@ typedef char comm_w_e_fits[(COMM_W_E_SIZE_MAX <= COMM_W_E_SIZE_LIMIT
 typedef struct {
     uint8_t  kind;
     uint8_t  motion_state;     /* motion                          */
-    uint8_t  speed_l;          /* motion, stored +128 (PLACEHOLDER) */
-    uint8_t  speed_r;          /* motion, stored +128 (PLACEHOLDER) */
+    uint8_t  speed_l;          /* motion, cm/s stored +128          */
+    uint8_t  speed_r;          /* motion, cm/s stored +128          */
     uint16_t dist_mm;          /* motion, 15-bit wrapping counter  */
     uint16_t turn_rate;        /* motion, stored +512              */
     uint8_t  fault;            /* motion                          */
-    uint8_t  ovf;              /* motion (PLACEHOLDER)            */
+    uint8_t  ovf;              /* motion, a field was clamped     */
     uint8_t  line_state;       /* line                            */
     uint8_t  deviation;        /* line, stored +128               */
     uint8_t  letter;           /* barcode                         */
@@ -593,10 +594,12 @@ static inline uint32_t comm_w_e_size(uint32_t kind)
  *  offset-encoded.
  * ------------------------------------------------------------------ */
 
-/* state 0-15; speeds in cm/s (PLACEHOLDER); dist_mm is the running distance,
-   stored modulo 32768 (the laptop takes differences); turn rate in deg/s;
-   fault: bit 0 stall, bit 1 encoder.  ovf (PLACEHOLDER) is sent as given,
-   and is also set when this helper had to clamp a field. */
+/* state 0-15; speeds in cm/s; dist_mm is the distance motion travelled in
+   this mission, forward and back (so it never goes down; 0 at a new
+   mission, kept on a resume), stored modulo 32768 (the laptop takes
+   differences); turn rate in deg/s; fault: bit 0 stall, bit 1 encoder.
+   ovf is sent as given, and is also set when this helper had to clamp a
+   field. */
 static inline uint32_t comm_w_pack_motion(uint8_t out[COMM_W_INTAKE_SIZE_MOTION],
                                           uint32_t state, int32_t speed_l_cms,
                                           int32_t speed_r_cms, uint32_t dist_mm,

@@ -82,9 +82,14 @@
 #define MOTION_TASK_STACK (4096) /* same as every other task (SMP) */
 #define MOTION_TICK_MS    (10u)
 
-/* No tick for this long means the cyclic handler or the kernel timer has
-   stopped: brake. */
-#define MOTION_TICK_TIMEOUT_MS (50)
+/* No tick for this long means the cyclic handler has stopped while the
+   kernel timer still runs: brake and count a lost tick.  It must stay
+   below MOTION_WDT_MS, or the watchdog resets the chip first and this
+   brake never runs (it was 50 ms, W8; checked in motor_task.c).  Two
+   tick periods: the longest period seen on the car is 11.5 ms
+   (docs/INTEGRATION.md, NFR-11).  If the kernel timer itself stops, this
+   timeout stops with it and only the watchdog acts. */
+#define MOTION_TICK_TIMEOUT_MS (20)
 
 #define MOTION_REPORT_TICKS (20u) /* status line every 200 ms */
 
@@ -151,6 +156,20 @@
 #define MOTION_LF_SEEN_MS     (30u) /* dark below this: line still seen */
 #define MOTION_LF_FOUND_TICKS (3u)  /* seen this many ticks: found      */
 
+/* Experiment switch (L4, 19 Nov): GP26 and GP27 do not reliably both sit
+   inside the 18 mm line, so a car crossing it can read a short 00 (both
+   white) between 01 and 10 (team count of the 4 Nov logs,
+   tests/scan_bench/logs: 74 of 467 crossings), and Line Following then
+   steers at the full +-100 toward the last-seen side.  Above 0, the full
+   error is used only once line_state's dark time has reached this many
+   ms (10 ms steps); before that it steers by the word's own error.
+   0, the default: the full error from the first 00, as before.  A car
+   tuning guess (about 50 was suggested); set it with -D, never commit
+   it changed without car runs. */
+#ifndef MOTION_LF_LOST_DIR_MS
+#define MOTION_LF_LOST_DIR_MS (0u)
+#endif
+
 /* Line search (statechart LINE_SEARCH, [L_search]).  Both sensors sit
    inside the 18 mm line, so a centred car reads 11 and only a car off the
    line reads 00: after LINE_LOST_MS of 00 the car pivots on the spot
@@ -169,15 +188,24 @@
  *  Car geometry and distance_state  (motion_ds.h)
  * ------------------------------------------------------------------ */
 
-/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION once GP7 has
-   been on the crossbar LINE_JUNCTION_SAMPLES; the car then drives
+/* Turning (statechart TURNING, FR-08).  nav sends JUNCTION as soon as
+   ir_sense_task flags the junction under GP7.  With the barcode-armed rule
+   (LINE_JUNCTION_RULE 1, the default in
+   proposal/line-barcode-beside-line) that is about 10 mm into the
+   crossbar after a valid barcode (LINE_ARMED_CONFIRM_MM of travel; at
+   base 4 the length rule comes first, 280 samples = 8.9 mm, C).
+   Otherwise (nothing armed, or rule 0) it is once GP7 has been on the
+   crossbar LINE_JUNCTION_SAMPLES (80 here, 280 on that branch: 3.8 or
+   13.3 mm at base 6, C).  From that point the car drives
    MOTION_TURN_FWD_MM straight so the axle is over the crossing ([d_sensor]:
    GP7 to the wheel axle), and pivots on the spot at MOTION_TURN_SPEED
    until each wheel has turned PIVOT_COUNTS(90) (left, right) or (180)
    (U-turn, counter-clockwise).  Straight on drives MOTION_TURN_CROSS_MM
-   ([L_cross]) across the crossing, ignoring the line.  Then MOVE_DONE, and
-   Line Following if the line is under the sensors, else Line Search.
-   PROPOSED: measure d_sensor on the car; turn speed as the line search. */
+   ([L_cross]) from the same point across the crossing, ignoring the line.
+   Then MOVE_DONE, and Line Following if the line is under the sensors,
+   else Line Search.
+   PROPOSED: measure d_sensor (GP7 to the axle) on the car; turn speed as
+   the line search. */
 #define MOTION_TURN_FWD_MM    (50)
 #define MOTION_TURN_CROSS_MM  (40)
 #define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
@@ -365,16 +393,21 @@
 #define MOTION_COUNTS_PER_REV (2535)
 #define MOTION_WHEEL_DIA_MM   (64)
 
-/* The right wheel's own counts per turn (x4).  Measured 4 Nov 2026 by
-   Buddy 5: the right motor gives ~0.63 x the left's counts per turn
-   (likely a different gearbox), steady at hand speed and at 35 % duty:
-     hand, single turns: 1582, 1583, 1595, 1598 (1646 first, with slop)
-     bench open-loop:    R fwd 3101-3111 vs L 5018-5049 counts
-   motion_task scales every right count to left-wheel units on read
-   (tick_encoders), so MOTION_COUNTS_PER_REV stays the one unit for
-   distance, speed and pivots.  Set it equal to MOTION_COUNTS_PER_REV to
-   switch the scaling off.  See docs/motion/right_encoder_scaling.md. */
-#define MOTION_COUNTS_PER_REV_R (1590)
+/* The right wheel's own counts per turn (x4).  2535, the same as the left,
+   so the scaling is off.  Measured 19 Nov 2026 (M, bench image, 10 hand
+   turns each, ~/pico_session/logs/serial_20261119_222026_S1.log): right
+   20234 (444 missed transitions), then 23558 (125 missed), then after the
+   right encoder's Grove cable was unplugged and re-seated 25315 (13
+   missed) = 2532 per turn; left 25330 (0 missed) = 2533.  The 4 Nov value
+   1590 (Buddy 5: hand 1582-1598, open loop R 3101-3111 vs L 5018-5049)
+   came from the same fault: a loose right encoder cable loses counts and
+   reads as missed transitions; there is no different gearbox.  23-24 Oct
+   gave 2533 and 2536.8 (results.md).  If "missed" climbs on the right
+   again, re-seat that cable before trusting any distance or turn.
+   motion_task still scales right counts to left-wheel units on read
+   (tick_encoders) whenever this differs from MOTION_COUNTS_PER_REV.  See
+   docs/motion/right_encoder_scaling.md. */
+#define MOTION_COUNTS_PER_REV_R (2535)
 #define MOTION_WHEELBASE_MM   (127)
 
 /* Hump (W6 6.2 / 6.4, Integration Rules 2.7; M3), while imu_task's

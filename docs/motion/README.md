@@ -1,12 +1,14 @@
 # Motion control (Buddy 2): bring-up guide
 
-`motion_task` owns the two motors and the two wheel encoders. This first
-version proves the hardware on the bench: PWM on the H-bridge, both
-encoders counting the right way, the 10 ms tick on core 1, the FR-30
-stall check, the hardware watchdog and the emergency stop (STOP_SCAN and
-STOP_IMU). It also publishes `distance_state`, the distance and turn rate
-`imu_task` needs. The command interface from `nav_ctrl_task` and
-`scan_task` comes next.
+`motion_task` owns the two motors and the two wheel encoders: PWM on the
+H-bridge, both encoders, the 10 ms tick on core 1, the FR-30 stall check,
+the hardware watchdog, the emergency stop (STOP_SCAN and STOP_IMU),
+`distance_state` for `imu_task` and `scan_task`, statechart 6.2 and what each state
+drives (line following, junction turns, reverse, bypass, line search),
+the commands from `nav_ctrl_task` and `scan_task`, and the E motion
+telemetry record. This guide covers the bench bring-up and motion's own
+parts; how the integrated car was built and tested (stages S0-S8) is in
+`docs/INTEGRATION.md`, which wins where the two disagree.
 
 ## What is in the code
 
@@ -26,7 +28,7 @@ STOP_IMU). It also publishes `distance_state`, the distance and turn rate
 | `tests/encoder/` | The encoder driver against a fake dispatcher with Buddy 5's interface. |
 | `tests/encoder_dispatch/` | The encoder driver through Buddy 5's real `gpio_irq.c` on fake registers, both cores. |
 | `tests/motion_wdt/` | The watchdog driver against fake registers: the arming steps and their order, LOAD, the feed, the reset cause. |
-| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, the watchdog test image, and the Week 6 (unpacked) build with `distance_state` behind a mutex. |
+| `tests/motion_task_sim/` | The real `motor_task.c` run on a PC against a simulated car, with the bench off and on, the watchdog test image, the Week 6 (unpacked) build with `distance_state` behind a mutex, and `sim_lfdir` with the L4 switch `MOTION_LF_LOST_DIR_MS` 50. |
 
 Run the host tests in the build container (on macOS the host compiler's
 AddressSanitizer aborts at start-up):
@@ -46,8 +48,10 @@ constant on the left of `==`, `for (;;)`, ISR names end `_isr`) through
 **Packed or unpacked (Week 13 evidence).** `MOTION_PACKED` in
 `motion_cfg.h` is committed as 1: the packed layouts. 0 builds the Week 6
 (unpacked) layouts on the same code, only to measure the Week 13 "before".
-Today it switches only the encoder counts (one packed word against two
-32-bit counters copied with interrupts off). `sh tests/week13/measure.sh`
+Today it switches the encoder counts (one packed word against two 32-bit
+counters copied with interrupts off) and `distance_state` (one word
+against an 8 B struct behind a priority-inheritance mutex). The commands,
+the statechart byte and the E motion record are the same in both builds. `sh tests/week13/measure.sh`
 builds HEAD both ways and prints motion's RAM; `make -C tests` tests both.
 Every ready line ends with `MOTION_PACKED=1` or `=0`, so keep it in each
 timing log. Method and numbers: `week13/baseline.md`.
@@ -93,13 +97,35 @@ your car's numbers will differ.
 
 ```
 [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, button GP20, test=open-loop, MOTION_PACKED=1
+[motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 1590 (MOTION_COUNTS_PER_REV_R), right counts scaled to left units; MOTION_LF_LOST_DIR_MS=0
 [motion] last reset: power-on or RUN pin.
 [motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
 ```
 
+`counts per wheel turn` shows the values this image was built with
+(every image, the car build too), so a log says which right-wheel value
+was on the car; `no scaling` means the two are equal. The same line
+ends with the L4 switch `MOTION_LF_LOST_DIR_MS` (0 = off, the default;
+50 in an image built with `-DMOTION_LF_LOST_DIR_MS=50`), so a course
+log says which line-following setting ran.
+
 `processor 2` = core 1. `init FAILED` means the motors are held braked and
-nothing else runs: report the `er` value. The watchdog is then not armed,
-so the car does not reboot over and over.
+nothing else runs: report the `er` value. It covers the hardware set-up
+and the 10 ms tick: `motor_task_start()` makes the tick before it starts
+motion_task, and if it cannot (for example `er=-34`, E_LIMIT: no free
+cyclic handler) motion_task still starts, brakes and reports init FAILED.
+The watchdog is then not armed, so the car does not reboot over and over
+(with no tick nothing would feed it). motion tells nav at once
+(MOTION_FAULT on nav_flg), but at boot nav reads it only once its
+calibration has returned (it waits up to `CAL_TIMEOUT_MS`, 10 s, for
+the replies, nav_ctrl.c); then it prints `[nav] MOTION fault` and the
+mission goes to FAULT. S.faults shows both motion bits
+(`motor_stall|encoder`). Both bits usually mean the set-up failed, but a
+run-time fault can set them too (for example a left stall and a right
+encoder fault); a set-up failure has `init FAILED` at boot and no
+`[motion] state ... -> FAULT` line. A fault reset (GP20) lets the
+mission start again, but motion raises the same fault within 100 ms of
+RUNNING, so a mission never runs with no motor.
 
 `last reset` says why the chip started:
 
@@ -213,7 +239,7 @@ encoder's power wire unplugged: that one reports `wheel stalled`.
 
 ```
 [motion] timing (5 s): tick period 9998..10003 us, tick work max 41 us, encoder irq 4210/s (longest 3 us), lost ticks 0, dropped reports 0
-[motion] watchdog (5 s): longest gap between feeds 10000 us, resets at 30000 us
+[motion] watchdog (5 s): longest gap between feeds 10000 us, resets at 30000 us; E motion sends refused 0
 ```
 
 This is the core 1 timing evidence: tick jitter, the longest tick, the
@@ -222,6 +248,19 @@ two watchdog feeds. The 30 ms watchdog is safe only while that gap stays
 well below 30000 us; record the worst one, with Wi-Fi on too once motion
 runs in the Wi-Fi build.
 
+`E motion sends refused` counts the E motion sends (one per statechart
+change, one a second while a wheel moves, and retries after a refusal:
+100 ms later, then once a second) that `tele_mbf` had no room for since start-up. The send never
+waits, so a full queue costs a send, never a tick. Without MQTT nothing
+empties the queue, so in a non-MQTT build it climbs once the queue fills;
+only the MQTT car build's number is evidence.
+
+- `lost ticks` counts waits with no tick within 20 ms
+  (`MOTION_TICK_TIMEOUT_MS`); each one brakes the motors. The timeout is
+  below the 30 ms watchdog, so this brake comes first (it was 50 ms and
+  could never run while the watchdog was armed). It runs on the same
+  kernel timer as the tick, so it only catches a stopped cyclic handler;
+  a stopped timer resets the chip through the watchdog instead.
 - `encoder irq N/s` counts GPIO interrupts that reached the encoder
   callback. Callbacks from one interrupt share the dispatcher's entry
   timestamp, so two pins changing together count once.
@@ -233,7 +272,8 @@ runs in the Wi-Fi build.
 ### Watchdog (PreTri1 row 2, PostTri1 row 9)
 
 `motion_task` arms the RP2040 hardware watchdog once its set-up has passed
-and feeds it as the last thing in every completed tick. If the task hangs,
+and the 10 ms tick exists, and feeds it as the last thing in every
+completed tick. If the task hangs,
 or its tick stops (core 0 stalled, kernel timer stopped, a fault handler
 spinning), the chip resets 30 ms after the last feed (`MOTION_WDT_MS`,
 proposed). The reset puts GP8 to GP11 back to inputs with pull-downs, so
@@ -305,7 +345,22 @@ Decided here, where the design is silent:
 - `distance_state` is never reset, not even for a new mission: imu_task
   works from differences, and a jump would read as a sudden movement.
   The mission distance (Section 4: reset on a new mission, kept on a
-  resume) comes with the telemetry record, step 1.8.
+  resume) is what the E motion record carries as `dist_mm`: the distance
+  travelled since the mission began, forward and back alike
+  (`mission_counts`), so it never goes down. comms_task works out
+  `S.dst` (cm since the last motion change) as a modulo-32768
+  difference, so a falling distance would come out as about 32 m, which
+  `S.dst` clamps to 255 cm. The record goes out on
+  every state change and once a second while a wheel moves, so `S.dst`
+  grows between changes. nav enters Running only from Ready (new
+  mission) or Paused (resume), so motion treats any other way into
+  Running as a new mission too. A Paused -> Finished -> Ready -> Running
+  burst inside one 10 ms tick (three MQTT commands in one comms window)
+  still reads as a resume; catching it would need a mission number from
+  nav.
+- A new mission also forgets which side the line was last seen on, so
+  its first Line Search sweeps left first, as after power-on, instead of
+  toward the side the last mission saw; a resume keeps the side.
 
 Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 
@@ -332,11 +387,12 @@ Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 | T19 | REVERSING | FAULT | stall or encoder fault: MOTION_FAULT, REVERSE_DONE |
 | T20 | FAULT | IDLE | FAULT_CLEAR(MOTION) |
 
-**Built so far:** the states, the transitions, the replies, the mission
-and STOP inputs, the stall check in every driving state, and the
-**reverse** (below). **Not yet:** the commands (step 1.7) and the other
-manoeuvres (line following needs Avani's line state, turns, bypass,
-search), so those states keep the wheels braked for now.
+**Built:** the states, the transitions, the replies, the mission and STOP
+inputs, the stall check in every driving state, the commands, and what
+every state drives: line following, junction turns, the **reverse**
+(below), the bypass and the line search (integration, 29 Oct to 4 Nov;
+see `docs/INTEGRATION.md`). Junction turns (TURNING) have not run on the
+car yet.
 
 **Reverse.** On scan_task's REVERSE command (in BRAKED, STOP_IMU clear)
 both wheels drive backwards under the PID at `MOTION_REV_TARGET` (10
@@ -346,8 +402,8 @@ scan_task and the car is braked again. It runs while STOP_SCAN stays set,
 as the design says; a new STOP_IMU brakes it in that same wake and ends
 it with REVERSE_DONE; a blocked wheel gives a stall fault (FAULT, with
 REVERSE_DONE and MOTION_FAULT). In the simulator, 150 mm took 207 ticks
-(2.1 s, simulation), inside scan_task's 5 s timeout. It can be triggered
-on the car once the command buffer (step 1.7) is in.
+(2.1 s, simulation), inside scan_task's 5 s timeout. scan_task sends it
+through avoid_cmd_mbf (bound in app_main.c).
 Each change prints one line:
 
 ```
@@ -355,6 +411,65 @@ Each change prints one line:
 [motion] state LINE_FOLLOW -> BRAKED
 [motion] state TURNING -> LINE_FOLLOW, sent MOVE_DONE
 ```
+
+A JUNCTION from nav prints twice: `received` when motion reads it, then,
+in the same tick, what the statechart did with it:
+
+```
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): accepted, TURNING
+[motion] state LINE_FOLLOW -> TURNING
+```
+
+```
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED in BRAKED, sent CMD_REJECTED
+[motion] state BRAKED -> BRAKED, sent CMD_REJECTED
+```
+
+If the state changed in that same tick for another reason (a STOP, a
+fault or a pause, or a braked turn resuming), the REFUSED line names
+both states: the one the JUNCTION met and the one the statechart went
+to. Only Line Following takes a JUNCTION, but a STOP that arrives in the
+same tick wins (from the simulator):
+
+```
+[motion] STOP_SCAN set: brake written 17 us after the request.
+[motion] nav_cmd JUNCTION (raw 0x2001): received
+[motion] nav_cmd JUNCTION (raw 0x2001): REFUSED (LINE_FOLLOW -> BRAKED), sent CMD_REJECTED
+[motion] state LINE_FOLLOW -> BRAKED, sent CMD_REJECTED
+```
+
+`REFUSED (BRAKED -> TURNING)` is a braked turn resuming as it was; the
+new JUNCTION is not taken, and the old turn keeps its own action.
+
+The low byte of `raw` is the action (0 forward, 1 left, 2 right, 3
+U-turn). A state line with the same state on both sides means a reply
+was sent with no change of state. Older logs print `taken` for every
+well-formed JUNCTION, refused or not; there only `state LINE_FOLLOW ->
+TURNING` proves the turn was taken.
+
+Entering FAULT also prints why, just before the state line (numbers from
+the simulator, left wheel held during Line Following):
+
+```
+[motion] FAULT 0x01: left wheel stalled  motors braked until nav sends FAULT_CLEAR(MOTION).
+[motion]   at the fault: duty L+377 R+168; since each wheel last made progress: L+0 counts in 300 ms, R+0 counts in 0 ms; missed L0 R0
+[motion] state LINE_FOLLOW -> FAULT, sent MOTION_FAULT
+```
+
+The fault byte uses the bits of the bench `FAULT` line (0x01 left stall,
+0x02 right stall, 0x10 left encoder, 0x20 right encoder). `duty` is what
+the stall check judged, the tick before the brake. Each wheel's stall
+window restarts whenever the wheel makes progress (3 counts the
+commanded way), so the stalled wheel shows about 300 ms with fewer than
+3 counts and a wheel that kept moving shows 0 ms or close to it. The
+window also restarts when the commanded direction changes, and every
+tick the duty is under the dead band (`MOTION_DEADBAND_DUTY`, 150), so
+0 ms can also mean the wheel was not being driven. Right-wheel counts
+are in left-wheel units when the boot line says `right counts scaled to
+left units`. `missed` is the encoder's illegal transitions, as in the
+status line.
 
 **Test** (normal image, wheels off, Buddy 5's sensor plugged in): press
 GP20 and look for `state IDLE -> LINE_FOLLOW`; put a hand in front of the
@@ -369,8 +484,7 @@ and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
 
 - **scan_task sets and clears STOP_SCAN;** motion never clears it.
   **imu_task sets STOP_IMU** and never clears it; motion clears it when
-  nav_ctrl_task sends FAULT_CLEAR(IMU). That comes with the commands
-  (step 1.7), so until then nothing clears STOP_IMU.
+  nav_ctrl_task sends FAULT_CLEAR(IMU). Nothing else clears STOP_IMU.
 - **Motion brakes in the wake that first sees a STOP bit**, before
   anything else. It always waits on the STOP bits that are not set yet,
   so a new STOP wakes it at once, not at the next tick.
@@ -380,9 +494,9 @@ and STOP_IMU 0x08 (agreed with Buddy 5 on 27 Oct).
   it in that wake. A bit already set is left out of the wait (it would
   wake motion again and again) and is checked on every tick.
 - **When every STOP bit clears**, the statechart goes back to the state it
-  was in (history, see Statechart above). Apart from the reverse, the
-  manoeuvres are not built yet, so those states keep the wheels braked. A
-  STOP also ends any bench test.
+  was in (history, see Statechart above), which drives again from the
+  next tick (line following, turn, bypass or search). A STOP also ends
+  any bench test.
 
 How a sender raises a stop (`scan_if_stop_set()` does exactly this):
 
@@ -438,10 +552,9 @@ the sensor: expect
 `STOP_SCAN set: brake written NN us after the request.` (scan_task
 stamps its own request, so this is NFR-18 timing from the real sender).
 `every STOP bit clear` follows when scan_task's own scan decides the way
-is free, which may be while the hand is still there. scan_task prints its
-`STOP_ONLY` banner (motion's stop is bound; its commands and motion's
-replies are still simulated), because its command buffer is not bound
-yet.
+is free, which may be while the hand is still there. Its REVERSE and
+BYPASS commands reach motion through avoid_cmd_mbf, and motion's replies
+are real.
 
 ### distance_state (for imu_task, Buddy 4)
 
@@ -457,9 +570,13 @@ Layout agreed with Buddy 4 (PostTri1 Version C row 17):
 | 20-31 | turn | deg/s, counter-clockwise (left) positive, -2048..+2047, stored + 2048 | `motion_ds_turn_dps(w)` |
 
 How a reader uses it (one load, no mutex, the four fields always from the
-same tick). The reader is `imu_task` on core 1: PostTri1 row 2 allows a
-lock-free word only for one reader on the writer's core, so a second
-reader, or one on core 0, needs the team's agreement first.
+same tick). The readers are `imu_task`, `scan_task` (the pivot-aware
+re-plan) and `ir_sense_task` (the travel that confirms the barcode-armed
+junction), all on core 1, the writer's core. PostTri1 row 2 allowed one
+same-core reader; the second was agreed in integration (INTEGRATION.md
+3.3, D13). The third is in proposal/line-barcode-beside-line, not on this
+branch, and the team agrees to it in that pull request. A fourth reader,
+or a reader on core 0, would still need the team's agreement.
 
 ```c
 #include "../motor_task/motion_ds.h"
@@ -608,26 +725,49 @@ Found while writing this; each needs its owner.
 
 ## Not done yet
 
-- avoid_cmd_mbf and nav_cmd_mbf are not created or bound yet, so
-  scan_task still simulates motion's replies to its commands. motion_flg
-  is bound, so its STOP_SCAN does brake the car.
-- Command interface from `nav_ctrl_task` and `scan_task` (CMD bit),
-  STOP_IMU cleared on FAULT_CLEAR(IMU), Motion Fault exit on
-  FAULT_CLEAR(MOTION).
-- What each statechart state drives: line following (needs Avani's
-  line state), turns, bypass and line search. Reverse is built, and
-  waits for the command buffer to be triggered on the car.
-- The shared 1 MHz timer helper in `messages.h` that Buddy 4 agreed to
-  (`motion_stop_stamp()` is motion's half of it, for now).
-- Straight-line correction, encoder turns.
-- Week 13 RAM numbers for `distance_state` (`tests/week13/measure.sh`,
-  after the commit).
-- PostTri1 row 2 stress test for the lock-free words: a core 1 reader
-  checks the `distance_state` counter and field ranges while motion_task
-  publishes, for 10 minutes on the car.
-- Minimum-bit command and telemetry formats, once `common/messages.h` is
-  agreed with Buddy 1. The 52-byte print record here is motion's console
-  channel, in every build and the same in both MOTION_PACKED settings; it
-  is not the Week 13 "before" (see week13/baseline.md).
-- Watchdog tests 2 and 3 on the car, and the feed gap with Wi-Fi on.
-- Stop tests 1 and 2 on the car, and test 1 again with Wi-Fi.
+Checked against master on 19 Nov (52b707d). Car results so far are in
+`results.md` and `docs/INTEGRATION.md`.
+
+**Needs the car**
+- Junction turns (FR-08): built (3580c38), never run on the car.
+  `MOTION_TURN_FWD_MM` (50) is still proposed: measure GP7 to the axle.
+  Junction pivots use the full `PIVOT_COUNTS` at `MOTION_TURN_SPEED` 6
+  (no scale); check whether they overshoot as the bypass pivots did.
+- Right wheel counts per turn: `MOTION_COUNTS_PER_REV_R` is 1590
+  (4 Nov), but the right wheel measured 2533 and 2536.8 on 23-24 Oct
+  (`results.md`). Settle it with a 10-turn count; it scales distances,
+  turns, the bypass and imu_task's hump heights. Every image prints the
+  value it was built with at boot (`counts per wheel turn`).
+- L4 experiment switch `MOTION_LF_LOST_DIR_MS` (motion_cfg.h, default 0
+  = off, as before): on a 00 (both line sensors white) Line Following
+  steers at the full error toward the last-seen side from the first
+  sample. Built with `-DMOTION_LF_LOST_DIR_MS=50` it does that only once
+  the line has been dark 50 ms, and steers by the word's own error
+  before, so a short 00 while crossing the line gives no full kick. Try
+  it on the course before changing the default. The boot line
+  `counts per wheel turn` ends with the value the image has.
+- The final bypass settings (7c7d669) have not been counted on the car.
+  Re-check `MOTION_BYPASS_PIVOT_PCT` (90 %, set in S7 before the
+  right-wheel scaling; `right_encoder_scaling.md` point 4).
+- NFR-04 accuracy trials (straight and 90/180 degree pivots), which also
+  need a test entry that commands one move. The straight trials double
+  as the FR-09 check: the mission distance in the E motion record
+  against a tape measure.
+- PID step responses on the floor and the tuning report (the gains are
+  the no-load bench values).
+- Watchdog tests 2 and 3 and the feed gap with Wi-Fi on; stop tests 1
+  and 2 with Wi-Fi; FR-30 with one encoder wire unplugged; NFR-11 (36 of
+  39 windows within 10 +/- 1 ms, worst 11.5 ms, INTEGRATION.md).
+- A distance_state check for PostTri1 row 2: a core 1 reader checks the
+  counter and field ranges while motion_task publishes, for 10 minutes
+  on the car. (The generic lock-free word stress test, 555f3a5, passed
+  18/18 on the car on 29 Oct: INTEGRATION.md S2, D1-D3.)
+
+**Code or decisions**
+- Straight-line correction from the left-right difference.
+- Motion API functions (move forward, turn, stop): the writeup's
+  examples. nav_ctrl_task and scan_task use the command buffers instead.
+- FR-23 encoder counts in telemetry (week13/representation.md row 28).
+- The shared 1 MHz timer helper in `messages.h` (`motion_stop_stamp()`
+  is motion's half).
+- Week 13: re-run `tests/week13/measure.sh` on the demo commit.

@@ -1,9 +1,34 @@
-# Week 13 evidence 2 and 3: motion's RAM and message sizes, before and after
+# Week 13 evidence 2 and 3: motion's RAM and message sizes
 
 The changed requirement (Tribunal 1) asks for RAM and message sizes before
 and after the minimum-bit change, and evidence that timing did not get
 unacceptably worse. This file is motion's (Buddy 2's) share. Every number
 says how it was obtained: M = measured, C = calculated, E = estimated.
+
+## Final implementation (what Week 13 needs since 27 Oct)
+
+The prof's 27 Oct announcement: comparing with the original design is no
+longer required; give evidence for the final implementation only. The
+final numbers, measured with `tests/week13/measure.sh` on commit 2beaa61
+(car profile, `MOTION_PACKED` 1, 0 warnings;
+[measure_2beaa61.txt](measure_2beaa61.txt)):
+
+| What | Final | How |
+|---|---|---|
+| Motion static RAM | 9381 B (40 B .data + 9341 B .bss), of which 8192 B are the two task stacks and 576 B the motion_task context g_ctx | M, `arm-none-eabi-size` and `nm` |
+| Whole image static RAM | 244 B .data + 32112 B .bss | M, `arm-none-eabi-size -A` |
+| Command buffers | nav_cmd_mbf 32 B (room 4), avoid_cmd_mbf 16 B (room 2) | M, nm |
+| E motion record | 7 B payload, 12 B in tele_mbf, 13 B record E | C, messages.h (`COMM_W_INTAKE_SIZE_MOTION`, `COMM_W_E_SIZE_MOTION`) and the 4 B header + round-to-4 rule; cross-checked by the car's ARM compiler in `tests/week13/sizes.c` |
+| Avoid command | 2 B payload (packed uint16) | C, messages.h |
+| Nav command | 2 B payload (2 raw bytes, INTEGRATION.md D4) | C, nav_ctrl.h |
+
+Per-field detail: [representation.md](representation.md). Re-run
+measure.sh on the demo commit. Timing evidence (correctness and timing,
+item 4) comes from the 5 s timing line on the car, see
+`docs/motion/README.md` "Timing evidence".
+
+The rest of this file is the before/after method and numbers from October,
+kept as history.
 
 ## Before and after, on the same code
 
@@ -19,9 +44,9 @@ Building both from one commit means RAM, message sizes and timing compare
 like for like (PostTri1 Version C row 8 promises the stop-time test on both
 builds).
 
-Today the switch covers the encoder counts and `distance_state`. Each
-later feature (commands, the motion state) is written with both forms
-under the same switch; see "To be added".
+In the final code the switch covers only the encoder counts and
+`distance_state`. The commands, the statechart byte and the E motion
+record were built without a Week 6 form and are the same in both builds.
 
 ## Method
 
@@ -48,8 +73,9 @@ objects. Both task stacks and the report queue are static arrays
 (`TA_USERBUF`), so they are inside that number; nothing of motion's comes
 from the kernel heap. Kernel control blocks sit in fixed tables sized in
 `config/config.h`, so creating or dropping a flag, mutex or buffer changes
-no byte in the map: motion uses 2 task, 1 flag, 1 message buffer and
-1 cyclic handler slots. Buddy 5's `gpio_irq.o` is not counted. The whole
+no byte in the map: motion uses 2 task, 1 flag, 3 message buffer
+(report queue, nav_cmd_mbf, avoid_cmd_mbf) and 1 cyclic handler slots,
+plus 1 mutex in the `MOTION_PACKED` 0 build only. Buddy 5's `gpio_irq.o` is not counted. The whole
 image is shown as well, but it can move by linker alignment.
 
 **Message sizes.** A message buffer stores each message as a 4-byte
@@ -57,7 +83,7 @@ header plus the message rounded up to 4 bytes
 (`kernel/tkernel/messagebuf.h`), so the RAM a message costs is not its
 `sizeof`. Both are reported.
 
-## Results now (M, commit 292860e, car profile)
+## Results, 24 Oct (M, commit 292860e, car profile)
 
 Raw output: [measure_292860e.txt](measure_292860e.txt).
 
@@ -84,7 +110,7 @@ stacks (C: 2 x (4096 B stack + 128 B system stack + 8 B heap block
 header), kernel/tkernel/task_manage.c and memory.c); the map could not
 show those.
 
-**Messages today.** None of motion's Week 13 messages exist yet.
+**Messages (October; the E motion record has existed since 754fdf7, 31 Oct; on master 1 Nov via PR #18).**
 
 | Message | Before | After |
 |---|---|---|
@@ -95,7 +121,7 @@ The print record is motion's console channel, present in every build
 including the integration image, and the same in both settings, so it is
 not a "before" for anything. With its 4096 B stack it costs 4544 B.
 
-## To be added as features land
+## October plan (all built since; final forms in representation.md)
 
 | Item (plan step) | Switched? | Expected before -> after | Owner |
 |---|---|---|---|
@@ -105,11 +131,11 @@ not a "before" for anything. With its 4096 B stack it costs 4544 B.
 | Telemetry sender (1.8) | no (Buddy 1's format) | Buddy 1's v1 record -> 7 B event | Buddy 1, motion supplies fields |
 | Shared fault bits (1.11, 2.4) | no | event-flag bits in both | Buddy 5's flag, motion sets its bits |
 
-Each one adds its Week 6 form under `MOTION_PACKED`, a line in `sizes.c`
-where it is a message, and a row update in
-[representation.md](representation.md).
+In the end only `distance_state` got a Week 6 form; the commands, the
+statechart byte, the telemetry sender and the fault bits were built
+packed only (see [representation.md](representation.md)).
 
-## Needs the car
+## Needs the car (October plan; since 27 Oct the both-builds runs are optional)
 
 - **NFR-11 timing on both builds:** run the bench test on
   `motion_packed0.uf2` and `motion_packed1.uf2` from the script (same

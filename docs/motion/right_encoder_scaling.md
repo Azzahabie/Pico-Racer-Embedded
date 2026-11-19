@@ -4,6 +4,15 @@
 branch `obstacle_task`. Not yet run on the car with the change in. Please
 review before it goes into `master`.*
 
+> **Update 19 Nov 2026 (Buddy 2, measured):** the 1590 was a loose right
+> encoder cable, not a different gearbox. Ten hand turns of the right wheel
+> read 20234 counts with 444 missed transitions, then 23558 with 125
+> missed; after the right encoder's Grove cable was unplugged and re-seated
+> they read 25315 with 13 missed (2532 per turn), and the left read 25330
+> with 0 (2533 per turn). `MOTION_COUNTS_PER_REV_R` is back to 2535, so the
+> scaling is off. Watch the right wheel's "missed" count in the bench
+> status line: if it climbs, re-seat that cable.
+
 ## 1. Summary
 
 The **right wheel's encoder gives about 1590 counts per wheel turn; the left

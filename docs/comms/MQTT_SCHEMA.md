@@ -292,7 +292,9 @@ one changes this record, so it comes to Buddy 1 as a pull request** that bumps
 ## 5. Record `E` — the edge event (8–13 bytes, per kind)
 
 *Rewritten for schema v3 (2026-10-22).* Published on the **same** topic as `S`
-the instant something happens. It is the audit trail; a lost `E` is a real gap
+the instant something happens. (Exception: motion also sends a same-state `E`
+once a second while a wheel moves, §5.1 `dist_mm`, so `S.dst` grows between
+changes.) It is the audit trail; a lost `E` is a real gap
 in the run map. Header (§3) with `t = 1`, then the **event body**:
 
 | Bits | Field | Meaning |
@@ -328,12 +330,12 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 | Bits | Field | Range / unit | Meaning |
 |---|---|---|---|
 | 4 | `state` | 0–15 | motion state; also `S.mot` |
-| 8 | `speed_l` | −128–127 cm/s, stored + 128 | left wheel speed. **PLACEHOLDER** until Buddy 2 confirms unit and range |
-| 8 | `speed_r` | −128–127 cm/s, stored + 128 | right wheel speed. **PLACEHOLDER** |
-| 15 | `dist_mm` | 0–32767 mm, **wraps** | distance travelled, a wrapping counter: the reader takes differences modulo 32768 |
+| 8 | `speed_l` | −128–127 cm/s, stored + 128 | left wheel speed over the last 50 ms, to the nearest cm/s, + forward (Buddy 2 confirmed, 19 Nov) |
+| 8 | `speed_r` | −128–127 cm/s, stored + 128 | right wheel speed, as `speed_l` |
+| 15 | `dist_mm` | 0–32767 mm, **wraps** | distance travelled in this mission, forward and back alike, so it never goes down (0 at a new mission, kept on a resume; design Section 4); a wrapping counter: the reader takes differences modulo 32768. Motion sends an E record on every state change and once a second while a wheel moves, so `S.dst` grows between changes |
 | 10 | `turn_rate` | −512–511 °/s, stored + 512 | turn rate from the wheel encoders |
 | 2 | `fault` | bit 0 stall, bit 1 encoder | the motion faults **at the moment of this event** (§12 item 17) |
-| 1 | `ovf` | 0–1 | set when the helper clamped a field. **PLACEHOLDER** |
+| 1 | `ovf` | 0–1 | set when the helper clamped a field |
 
 **`k = 1` line** (Buddy 3) — `comm_w_pack_line()`
 
@@ -383,7 +385,7 @@ allocation, not a permanent limit.
 
 - **What an owner may ask for.** Add, remove, widen or narrow any field in
   their kind, or define a placeholder field (as `speed_l`, `speed_r` and `ovf`
-  are today). Bodies are variable length, so a change to one kind does not
+  were until Buddy 2 confirmed them on 19 Nov, §12 item 15). Bodies are variable length, so a change to one kind does not
   affect any other kind.
 - **The process.** The owner tells Buddy 1 the field, its range and its unit.
   Buddy 1 updates `messages.h` (the `COMM_W_*` constants and the
@@ -644,7 +646,7 @@ kept as the bit-order sanity check in `tests/host/test_messages.c`.*
 | 12 | ~~**Wi-Fi-loss bit latched until reported**~~ | §4.1 | **closed 2026-10-29:** built in `comms_task` (§4.1, "The Wi-Fi-loss bit and the wire") |
 | 13 | **`up` as ms since boot (32 bits) or since run start (19 bits)** | §3 | *new (Tribunal 1).* Keep 32; 19 saves a byte but changes meaning |
 | 14 | **`dst`, `hgt`, `obs` at 8 bits** | §4 | *new (Tribunal 1).* Clamped; widen if a measured range exceeds 255 |
-| 15 | **Motion `speed_l`, `speed_r`, `ovf`** | §5.1 | *new (v3).* **PLACEHOLDER** widths (8, 8, 1) proposed by Buddy 1; pending unit and range from Buddy 2 |
+| 15 | **Motion `speed_l`, `speed_r`, `ovf`** | §5.1 | *new (v3).* Widths (8, 8, 1) proposed by Buddy 1. **Closed (19 Nov):** Buddy 2 confirmed cm/s, ±127 (the car stays far below it), speeds over the 50 ms distance_state window |
 | 16 | **Tilt and encoder counts** | §4, §5.1 | *new (v3).* **Tilt and turn rate closed by v5 (2026-10-28):** `S.tlt` and `S.trn` (FR-29), ranges from Buddy 4, read from Buddy 4's tilt-state word. **Encoder counts (FR-23) still open**, pending range from Buddy 2 |
 | 17 | **Motion `fault` vs. `S.faults`** | §4.1, §5.1 | *new (v3).* The motion event's `fault` bits record the faults **at the moment of that event**; the `S` fault bitmask is the **current state**. They can differ, and both are kept |
 | 18 | **Buddy 3's `line_seen` bit** | §5.1 | *new (v3).* Pending range from owner; not in the line body yet |

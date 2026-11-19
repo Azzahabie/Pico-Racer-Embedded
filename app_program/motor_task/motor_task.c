@@ -56,6 +56,12 @@
 #include "motion_sm.h"
 #include "motor_task.h"
 
+/* A lost tick is braked before the watchdog resets the chip (W8). */
+_Static_assert(((uint32_t)MOTION_TICK_TIMEOUT_MS > MOTION_TICK_MS)
+                   && ((uint32_t)MOTION_TICK_TIMEOUT_MS < MOTION_WDT_MS),
+               "MOTION_TICK_TIMEOUT_MS must lie between a tick and the"
+               " watchdog timeout");
+
 /* The motion_flg bits (common/messages.h) are four different bits. */
 _Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
                 | MOTION_EVT_STOP_IMU)
@@ -73,6 +79,8 @@ _Static_assert((MOTION_EVT_TICK | MOTION_EVT_CMD | MOTION_EVT_STOP_SCAN
 #define REPORT_QUEUE_LEN  (8u)   /* records in the mbf      */
 #define REPORT_LINE_LEN   (192)
 #define MBF_HEADER_BYTES  (4u) /* per message, messagebuf.h */
+
+#define INIT_FAIL_POLL_MS  (100) /* set-up failed: mission check */
 
 #define CONSOLE_WAIT_POLLS (200) /* x 100 ms = 20 s max     */
 #define CONSOLE_WAIT_MS    (100)
@@ -141,7 +149,8 @@ typedef enum
     REP_STEP,       /* val = moved in the step, rate = c/s    */
     REP_EVENT,      /* code = EVT_*, val/rate = arguments     */
     REP_TIMING,     /* timing of the last 5 s; rate_l = longest
-                       gap between watchdog feeds, us         */
+                       gap between watchdog feeds, us; rate_r
+                       = E motion sends refused so far        */
     REP_DIST        /* distance_state: code = state, val_l =
                        net mm, val_r = turn deg/s, rate_l =
                        accel mm/s^2, rate_r = counter         */
@@ -170,18 +179,32 @@ typedef enum
                      old state, rate_l = replies sent       */
     EVT_CMD,      /* a command taken from a buffer: val_l =
                      CMD_SRC_*, val_r = the raw 2 bytes,
-                     rate_l = CMD_RES_*                     */
-    EVT_BYP       /* bypass phase: val_l = phase, val_r =
+                     rate_l = CMD_RES_*; for a JUNCTION's
+                     outcome rate_r = the state it met and
+                     the state it went to (CMD_WENT_SHIFT) */
+    EVT_BYP,      /* bypass phase: val_l = phase, val_r =
                      sideways mm toward the side, rate_l =
                      heading - line deg (x side), rate_r =
                      1 IMU heading in use, 0 encoders only  */
+    EVT_SM_FAULT  /* statechart entered Motion Fault: faults
+                     byte; duty_l/_r = the duty the stall check
+                     judged; val_l/_r = net counts in each
+                     wheel's stall window, rate_l/_r = its
+                     length in ticks                        */
 } report_event_t;
 
 /* EVT_CMD fields */
 #define CMD_SRC_NAV       (0)
 #define CMD_SRC_AVOID     (1)
 #define CMD_RES_TAKEN     (0) /* passed to the statechart          */
+#define CMD_RES_RECEIVED  (1) /* JUNCTION read; its outcome follows */
 #define CMD_RES_INVALID   (2) /* unknown or malformed: dropped      */
+#define CMD_RES_ACCEPTED  (3) /* JUNCTION: a new turn started       */
+#define CMD_RES_REFUSED   (4) /* JUNCTION: refused, CMD_REJECTED    */
+/* A JUNCTION's outcome, rate_r: bits 0-7 the state the JUNCTION met, bits
+   8-15 the state the statechart went to in that tick. */
+#define CMD_STATE_MASK    (0xFFu)
+#define CMD_WENT_SHIFT    (8u)
 
 typedef struct
 {
@@ -289,6 +312,14 @@ typedef struct
     uint8_t     avoid_cmd; /* motion_sm_avoid_t waiting for a tick */
     uint16_t    avoid_mm;  /* its distance (step 1.7 fills both)  */
     uint8_t     avoid_side; /* MOTION_AVOID_SIDE_* of a BYPASS     */
+    uint32_t    tele_dropped; /* E motion sends tele_mbf refused   */
+    uint32_t    tele_ticks;   /* ticks since the last E motion try   */
+    int32_t     tele_pos_l;   /* positions at the last E motion sent */
+    int32_t     tele_pos_r;
+    uint8_t     tele_refused; /* E motion sends refused in a row     */
+    uint32_t    mission_counts; /* |change of pos_l + pos_r|, mission */
+    int32_t     odo_prev;     /* pos_l + pos_r at the last tick      */
+    uint8_t     mission_prev; /* mission_state_t at the last tick    */
 
     /* line_state (line_state.h), read once per tick */
     uint32_t line_word;     /* the word this tick                  */
@@ -311,7 +342,8 @@ typedef struct
     bool    b_search_over;  /* both sweeps done, no line            */
 
     /* turning: the junction's action and how far the turn has got */
-    uint8_t turn_action;    /* barcode_action_t from nav            */
+    uint8_t turn_action;    /* barcode_action_t of the turn now     */
+    uint8_t turn_req;       /* ... of the last JUNCTION received     */
     uint8_t turn_phase;     /* TURN_PH_*                            */
     int32_t turn_start_l;   /* positions at the phase's start, kept */
     int32_t turn_start_r;   /* while Braked so a resume carries on  */
@@ -408,6 +440,10 @@ static ID g_flgid;
 static ID g_mbfid;
 static ID g_nav_mbfid;   /* nav_cmd_mbf:   nav_ctrl_task -> motion */
 static ID g_avoid_mbfid; /* avoid_cmd_mbf: scan_task -> motion     */
+
+/* What tk_cre_cyc gave for the tick.  Set by motor_task_start() before
+   motion_task starts; motion_task arms the watchdog only if it is E_OK. */
+static ER g_tick_ercd = E_NOEXS;
 
 /* NFR-18 request times, one word per STOP source.  Each is written only
    by its own sender (motion_stop_stamp) and read only by motion_task. */
@@ -1222,6 +1258,7 @@ tick_report (motion_ctx_t *p_ctx)
         rep.irq_count  = irq_now - p_ctx->irq_mark;
         rep.isr_max_us = encoder_take_irq_max_us();
         rep.rate_l     = (int32_t)p_ctx->wdt_gap_max_us;
+        rep.rate_r     = (int32_t)p_ctx->tele_dropped;
         report_send(p_ctx, &rep);
 
         p_ctx->irq_mark       = irq_now;
@@ -1535,19 +1572,35 @@ lf_reset (motion_ctx_t *p_ctx)
     }
 }
 
+/* MOTION_LF_LOST_DIR_MS (L4 experiment, motion_cfg.h): the line has
+   been dark long enough for the full last-side error.  0, the default:
+   from the first 00. */
+static bool
+lf_dark_long (uint32_t word)
+{
+#if MOTION_LF_LOST_DIR_MS > 0
+    return line_state_dark_ms(word) >= (uint32_t)MOTION_LF_LOST_DIR_MS;
+#else
+    (void)word;
+    return true;
+#endif
+}
+
 /* The error Line Following steers by.  Off the line (rl 00, both sensors
    white) the word's error is only the difference between two white
    readings, so the car ran straight off the outside of a curve (S4
    attempt 7: about -30 for the 1.5 s until LOST).  Instead it keeps
-   turning, at full error, to the side the line was last seen on.  Not
-   during a barcode hold, which also reads rl 00 by design. */
+   turning, at full error, to the side the line was last seen on (with
+   MOTION_LF_LOST_DIR_MS above 0, only once the 00 has lasted that long).
+   Not during a barcode hold, which also reads rl 00 by design. */
 static int32_t
 lf_error (const motion_ctx_t *p_ctx)
 {
     uint32_t word = p_ctx->line_word;
 
     if ((LINE_RL_CENTRED == line_state_rl(word))
-        && !line_state_barcode(word) && (0 != p_ctx->line_dir))
+        && !line_state_barcode(word) && (0 != p_ctx->line_dir)
+        && lf_dark_long(word))
     {
         return p_ctx->line_dir * LINE_ST_ERR_MAX;
     }
@@ -2611,7 +2664,8 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
    before the receives, so a command placed after it is still read.
 
    A JUNCTION goes to the statechart with its action kept for turn_drive();
-   outside Line Following the statechart refuses it (CMD_REJECTED).
+   outside Line Following the statechart refuses it (CMD_REJECTED).  Here
+   it is only "received": tick_statechart() reports the outcome.
    A BYPASS keeps its side and offset for bypass_drive(). */
 static void
 report_cmd (motion_ctx_t *p_ctx, int32_t src, uint32_t raw, int32_t res)
@@ -2680,8 +2734,10 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         else if ((NAV_CMD_JUNCTION == msg[0])
                  && (msg[1] <= (UB)BARCODE_ACT_UTURN))
         {
-            p_in->nav          = MOTION_SM_NAV_JUNCTION;
-            p_ctx->turn_action = msg[1];
+            res             = CMD_RES_RECEIVED;
+            p_in->nav       = MOTION_SM_NAV_JUNCTION;
+            p_ctx->turn_req = msg[1]; /* the turn's, if the statechart
+                                         takes it (tick_statechart) */
         }
         else
         {
@@ -2709,27 +2765,51 @@ fault_flg_bits (uint8_t faults)
     return bits;
 }
 
-/* Counts per tick -> cm/s: d x pi x diameter mm per tick, x 100 ticks a
-   second, / 10 mm a cm; pi as 31416 / 10000. */
-#define CMS_FROM_COUNTS(d)                                                     \
-    (((d) * 31416 * MOTION_WHEEL_DIA_MM)                                       \
-     / (MOTION_COUNTS_PER_REV * 1000))
+/* A refused E motion is tried again this many ticks later (100 ms), then
+   once a second while tele_mbf still refuses it. */
+#define TELE_RETRY_TICKS (10u)
 
-/* E motion (MQTT_SCHEMA.md 5, k = 0) on every statechart change: the new
-   state, this tick's wheel speeds, the running distance and turn rate, and
-   the motion faults now.  comms_tele_send() polls, so the tick never
-   waits. */
+/* E motion (MQTT_SCHEMA.md 5, k = 0), on every statechart change and once
+   a second while a wheel moves (tick_telemetry): the state, each wheel's
+   speed over the distance_state window (50 ms, to the nearest cm/s; one
+   tick's counts would truncate 6 counts to 4 cm/s instead of ~4.8), the
+   distance travelled in this mission, the turn rate and the motion faults
+   now.  The distance counts forward and backward travel alike, so it
+   never goes down: comms_task takes S.dst as a modulo-32768 difference,
+   and a reverse would otherwise come out as about 32 m, which S.dst clamps
+   to 255 cm.  comms_tele_send() polls, so the tick never waits; a send
+   tele_mbf refuses is counted (timing line, NFR-10) and tried again with
+   the values then (TELE_RETRY_TICKS, then once a second). */
 static void
-tele_motion (motion_ctx_t const *p_ctx)
+tele_motion (motion_ctx_t *p_ctx)
 {
-    UB body[COMM_W_INTAKE_SIZE_MOTION];
+    UB      body[COMM_W_INTAKE_SIZE_MOTION];
+    int32_t speed_l;
+    int32_t speed_r;
+    int32_t mission_mm; /* the packer keeps 15 bits, modulo 32768 */
 
-    (void)comms_tele_send(
-        body, (INT)comm_w_pack_motion(
-                  body, (uint32_t)motion_sm_state(&p_ctx->sm),
-                  CMS_FROM_COUNTS(p_ctx->d_l), CMS_FROM_COUNTS(p_ctx->d_r),
-                  (uint32_t)p_ctx->ds_mm, p_ctx->ds_turn,
-                  (uint32_t)fault_flg_bits(p_ctx->faults), 0u));
+    motion_ds_win_speed_cms(&p_ctx->ds_win, &speed_l, &speed_r);
+    mission_mm = motion_ds_dist_mm((int32_t)p_ctx->mission_counts, 0);
+    if (E_OK
+        == comms_tele_send(
+            body, (INT)comm_w_pack_motion(
+                      body, (uint32_t)motion_sm_state(&p_ctx->sm), speed_l,
+                      speed_r, (uint32_t)mission_mm, p_ctx->ds_turn,
+                      (uint32_t)fault_flg_bits(p_ctx->faults), 0u)))
+    {
+        p_ctx->tele_refused = 0u;
+        p_ctx->tele_pos_l   = p_ctx->pos_l;
+        p_ctx->tele_pos_r   = p_ctx->pos_r;
+    }
+    else
+    {
+        if (p_ctx->tele_refused < UINT8_MAX)
+        {
+            p_ctx->tele_refused++;
+        }
+        p_ctx->tele_dropped++;
+    }
+    p_ctx->tele_ticks = 0u;
 }
 
 /* One statechart step per tick, after the stall check.  The mission state
@@ -2737,7 +2817,16 @@ tele_motion (motion_ctx_t const *p_ctx)
    take_commands().  Every driving state is built: line following, the
    line search, the turn, the reverse and the bypass.
    distance_state is never reset: imu_task works from differences, and a
-   jump would read as a fake movement. */
+   jump would read as a fake movement.  The distance motion reports in
+   telemetry (mission_counts) starts again at a new mission (Section 4:
+   Ready -> Running; Paused -> Running is a resume and keeps it).  nav
+   enters Running only from those two, so any other way in (Finished,
+   Fault or Calibrating seen last) is a new mission too, even when Ready
+   lasted less than a tick.  A new mission also forgets the side the line
+   was last seen on (line_dir), so its first search does not sweep the
+   last mission's side first.  Paused -> Finished -> Ready -> Running inside
+   one tick (three MQTT commands in one comms window) still reads as a
+   resume; catching it would need a mission number from nav. */
 static void
 tick_statechart (motion_ctx_t *p_ctx)
 {
@@ -2746,9 +2835,19 @@ tick_statechart (motion_ctx_t *p_ctx)
     motion_state_t  before  = motion_sm_state(&p_ctx->sm);
     mission_state_t mission = nav_mission_state();
     motion_report_t rep;
+    motion_report_t fault_rep;
+    bool            b_fault_in;
 
     take_commands(p_ctx, &in);
-    in.b_running     = (MS_RUNNING == mission);
+    if ((MS_RUNNING == mission)
+        && (MS_RUNNING != (mission_state_t)p_ctx->mission_prev)
+        && (MS_PAUSED != (mission_state_t)p_ctx->mission_prev))
+    {
+        p_ctx->mission_counts = 0u; /* a new mission */
+        p_ctx->line_dir       = 0;  /* no side seen in it yet (L9) */
+    }
+    p_ctx->mission_prev = (uint8_t)mission;
+    in.b_running        = (MS_RUNNING == mission);
     in.b_stop_scan   = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_SCAN));
     in.b_stop_imu    = (0u != (p_ctx->stop_bits & MOTION_EVT_STOP_IMU));
     in.b_fault       = (0u != ((uint32_t)p_ctx->faults & SM_FAULTS));
@@ -2772,6 +2871,19 @@ tick_statechart (motion_ctx_t *p_ctx)
     {
         (void)tk_clr_flg(g_flgid, ~(UINT)MOTION_EVT_STOP_IMU);
     }
+    /* Why it entered Motion Fault, for the console (W3).  Filled before
+       the brake, which zeroes the duty, and man_start(), which resets
+       the stall windows; sent with the state line below. */
+    b_fault_in = out.b_changed
+                 && (MOTION_ST_FAULT == motion_sm_state(&p_ctx->sm));
+    if (b_fault_in)
+    {
+        report_fill(p_ctx, &fault_rep, REP_EVENT, (uint8_t)EVT_SM_FAULT);
+        fault_rep.val_l  = p_ctx->stall_l.net;
+        fault_rep.val_r  = p_ctx->stall_r.net;
+        fault_rep.rate_l = (int32_t)p_ctx->stall_l.idle_ticks;
+        fault_rep.rate_r = (int32_t)p_ctx->stall_r.idle_ticks;
+    }
     if (out.b_changed && !motion_sm_driving(motion_sm_state(&p_ctx->sm)))
     {
         motor_brake_all(); /* before any reply, e.g. MOTION_FAULT */
@@ -2779,6 +2891,15 @@ tick_statechart (motion_ctx_t *p_ctx)
     hd_tick(p_ctx, motion_sm_state(&p_ctx->sm));
     if (out.b_changed)
     {
+        /* A new turn takes the JUNCTION's action.  A refused JUNCTION (any
+           state but Line Following, a turn braked half way included)
+           never changes the turn underway, and a resumed turn keeps its
+           own. */
+        if ((MOTION_ST_TURNING == motion_sm_state(&p_ctx->sm))
+            && !out.b_resumed)
+        {
+            p_ctx->turn_action = p_ctx->turn_req;
+        }
         man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
@@ -2792,6 +2913,30 @@ tick_statechart (motion_ctx_t *p_ctx)
         tele_motion(p_ctx);
     }
 
+    if (MOTION_SM_NAV_JUNCTION == in.nav)
+    {
+        /* What became of the JUNCTION (critic C3): accepted only if a new
+           turn started this tick, else refused with CMD_REJECTED.  Both
+           states go out: a STOP, fault or pause in the same tick, or a
+           braked turn resuming, changes the state although the JUNCTION
+           was refused (review L1). */
+        report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_CMD);
+        rep.val_l  = CMD_SRC_NAV;
+        rep.val_r  = (int32_t)(((uint32_t)NAV_CMD_JUNCTION << 8)
+                               | (uint32_t)p_ctx->turn_req);
+        rep.rate_l = (out.b_changed && !out.b_resumed
+                      && (MOTION_ST_TURNING == motion_sm_state(&p_ctx->sm)))
+                         ? CMD_RES_ACCEPTED
+                         : CMD_RES_REFUSED;
+        rep.rate_r = (int32_t)((uint32_t)before
+                               | ((uint32_t)motion_sm_state(&p_ctx->sm)
+                                  << CMD_WENT_SHIFT));
+        report_send(p_ctx, &rep);
+    }
+    if (b_fault_in)
+    {
+        report_send(p_ctx, &fault_rep);
+    }
     if (out.b_changed || (0u != out.replies))
     {
         report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_STATE);
@@ -2799,6 +2944,33 @@ tick_statechart (motion_ctx_t *p_ctx)
         rep.val_r  = (int32_t)before;
         rep.rate_l = (int32_t)out.replies;
         report_send(p_ctx, &rep);
+    }
+}
+
+/* After tick_distance: add this tick's travel to the mission distance
+   (both wheels' counts, forward or back), then send the E motion record
+   once a second while a wheel moves (plan 1.8), or again after a refused
+   send (100 ms, then once a second).  Between state changes this is what lets the laptop, and
+   comms_task's S.dst (cm since the last motion change), see the distance
+   grow.  Nothing while the car stands still. */
+static void
+tick_telemetry (motion_ctx_t *p_ctx)
+{
+    int32_t sum = p_ctx->pos_l + p_ctx->pos_r;
+
+    p_ctx->mission_counts += (uint32_t)motion_abs(sum - p_ctx->odo_prev);
+    p_ctx->odo_prev = sum;
+
+    p_ctx->tele_ticks++;
+    if (((0u != p_ctx->tele_refused)
+         && (p_ctx->tele_ticks >= ((1u == p_ctx->tele_refused)
+                                       ? TELE_RETRY_TICKS
+                                       : (uint32_t)TICKS_PER_S)))
+        || ((p_ctx->tele_ticks >= (uint32_t)TICKS_PER_S)
+            && ((p_ctx->pos_l != p_ctx->tele_pos_l)
+                || (p_ctx->pos_r != p_ctx->tele_pos_r))))
+    {
+        tele_motion(p_ctx);
     }
 }
 #endif
@@ -2877,6 +3049,9 @@ motion_tick (motion_ctx_t *p_ctx)
     motor_set(MOTOR_RIGHT, p_ctx->cmd_r);
 
     tick_distance(p_ctx);
+#if !MOTION_BENCH
+    tick_telemetry(p_ctx);
+#endif
     tick_report(p_ctx);
 
     t_end = now_us();
@@ -3007,8 +3182,9 @@ motion_init (motion_ctx_t *p_ctx)
 /* Everything before the first tick, in this order: why the chip last
    started (read before arming, which rewrites the marker it uses), the
    hardware set-up, then the watchdog.  It is armed only if the set-up
-   passed, so a car that cannot run stays braked instead of rebooting
-   over and over. */
+   passed and the tick exists (motor_task_start), so a car that cannot run
+   stays braked instead of rebooting over and over: with no tick nothing
+   would feed it, and the chip would reset every MOTION_WDT_MS. */
 static ER
 motion_start_up (motion_ctx_t *p_ctx, INT prc)
 {
@@ -3027,6 +3203,12 @@ motion_start_up (motion_ctx_t *p_ctx, INT prc)
 #endif
 
     ercd = motion_init(p_ctx);
+    if ((E_OK == ercd) && (E_OK != g_tick_ercd))
+    {
+        ercd = g_tick_ercd; /* no tick: a set-up failure too */
+        p_ctx->faults |= MOTION_FAULT_INIT;
+        motor_brake_all();
+    }
     if (E_OK == ercd)
     {
         p_ctx->wdt_fed_us = now_us();
@@ -3046,9 +3228,10 @@ motion_start_up (motion_ctx_t *p_ctx, INT prc)
 }
 
 /* Wait for one tick and run it.  No tick within MOTION_TICK_TIMEOUT_MS
-   means the cyclic handler stopped: brake.  This timeout runs on the
-   same kernel timer as the tick, so if that timer stops (core 0 stalled)
-   it never fires.  The watchdog covers that case: no tick, no feed. */
+   (20 ms, below the 30 ms watchdog) means the cyclic handler stopped:
+   brake.  This timeout runs on the same kernel timer as the tick, so if
+   that timer stops (core 0 stalled) it never fires.  The watchdog covers
+   that case: no tick, no feed. */
 static void
 motion_cycle (motion_ctx_t *p_ctx)
 {
@@ -3091,6 +3274,21 @@ motion_cycle (motion_ctx_t *p_ctx)
     }
 }
 
+/* A failed set-up (motion_start_up), for nav_ctrl_task and S.faults
+   (W7): MOTION_FAULT sends the mission to Fault.  No fault bit is just
+   for it, so both motion bits are set, motor and encoder. */
+static void
+init_fail_report (void)
+{
+    ID nav_id = nav_flag();
+
+    fault_set(FAULT_MOTOR_STALL | FAULT_ENCODER);
+    if (nav_id > 0)
+    {
+        (void)tk_set_flg(nav_id, NAV_FLG_MOTION_FAULT);
+    }
+}
+
 void
 motor_task (INT stacd, void *exinf)
 {
@@ -3108,11 +3306,19 @@ motor_task (INT stacd, void *exinf)
 
     if (ercd != E_OK)
     {
-        /* Without encoders or PWM nothing here is safe to run: stay
-           braked and do nothing else (the watchdog is not armed). */
+        /* Without encoders, PWM or the tick nothing here is safe to run:
+           stay braked and do nothing else (the watchdog is not armed).
+           Tell nav, or a mission would run with no motor and no fault
+           (W7): now, and again whenever the mission is Running (a fault
+           reset recalibrates and allows a start). */
+        init_fail_report();
         for (;;)
         {
-            (void)tk_slp_tsk(TMO_FEVR);
+            (void)tk_dly_tsk((TMO)INIT_FAIL_POLL_MS);
+            if (MS_RUNNING == nav_mission_state())
+            {
+                init_fail_report();
+            }
         }
     }
 
@@ -3138,23 +3344,30 @@ print_line (UB const *p_line)
 
 static void print_step_hints(UB *p_line, motion_report_t const *p_rep);
 
+/* "[motion] FAULT 0x01: left wheel stalled  <tail>": every fault bit by
+   name. */
 static void
-print_faults (UB *p_line, motion_report_t const *p_rep)
+print_fault_bits (UB *p_line, uint8_t faults, char const *p_tail)
 {
-    uint8_t faults = p_rep->faults;
-
     (void)tm_sprintf(
-        p_line,
-        (UB *)"[motion] FAULT 0x%02x:%s%s%s%s%s%s  motors braked."
-              " Fix, then press the button to run again.",
-        (UINT)faults,
+        p_line, (UB *)"[motion] FAULT 0x%02x:%s%s%s%s%s%s  %s", (UINT)faults,
         ((faults & MOTION_FAULT_STALL_L) != 0u) ? " left wheel stalled" : "",
         ((faults & MOTION_FAULT_STALL_R) != 0u) ? " right wheel stalled" : "",
         ((faults & MOTION_FAULT_ENC_L) != 0u) ? " left encoder fault" : "",
         ((faults & MOTION_FAULT_ENC_R) != 0u) ? " right encoder fault" : "",
         ((faults & MOTION_FAULT_TICK) != 0u) ? " tick lost" : "",
-        ((faults & MOTION_FAULT_INIT) != 0u) ? " init failed" : "");
+        ((faults & MOTION_FAULT_INIT) != 0u) ? " init failed" : "", p_tail);
     print_line(p_line);
+}
+
+static void
+print_faults (UB *p_line, motion_report_t const *p_rep)
+{
+    uint8_t faults = p_rep->faults;
+
+    print_fault_bits(p_line, faults,
+                     "motors braked. Fix, then press the button to run"
+                     " again.");
 
     (void)tm_sprintf(
         p_line,
@@ -3171,6 +3384,30 @@ print_faults (UB *p_line, motion_report_t const *p_rep)
                          " wires of that encoder.");
     }
     print_step_hints(p_line, p_rep);
+}
+
+/* EVT_SM_FAULT (normal image): why the statechart entered Motion Fault,
+   with what the stall check judged.  Each wheel's stall window restarts
+   whenever it makes progress (MOTION_STALL_MIN_COUNTS the commanded
+   way), so a wheel that kept moving shows 0 ms or close to it.  It also
+   restarts on a change of direction and on every tick under the dead
+   band (MOTION_DEADBAND_DUTY), so 0 ms can mean not driven.  Right-wheel
+   counts are in left-wheel units (tick_encoders). */
+static void
+print_sm_fault (UB *p_line, motion_report_t const *p_rep)
+{
+    print_fault_bits(p_line, p_rep->faults,
+                     "motors braked until nav sends FAULT_CLEAR(MOTION).");
+    (void)tm_sprintf(
+        p_line,
+        (UB *)"[motion]   at the fault: duty L%+d R%+d; since each wheel"
+              " last made progress: L%+d counts in %d ms, R%+d counts in"
+              " %d ms; missed L%u R%u",
+        (INT)p_rep->duty_l, (INT)p_rep->duty_r, (INT)p_rep->val_l,
+        (INT)(p_rep->rate_l * (int32_t)MOTION_TICK_MS), (INT)p_rep->val_r,
+        (INT)(p_rep->rate_r * (int32_t)MOTION_TICK_MS), (UINT)p_rep->inv_l,
+        (UINT)p_rep->inv_r);
+    print_line(p_line);
 }
 
 static void
@@ -3259,6 +3496,21 @@ print_ready (UB *p_line, motion_report_t const *p_rep)
                      (INT)MOTION_PACKED);
     print_line(p_line);
 #endif
+
+    /* Which counts per turn this image was built with (W1: the right
+       wheel's value is still disputed), and the L4 switch (a -D, which
+       an in-place rebuild keeps), so a log shows both. */
+    (void)tm_sprintf(p_line,
+                     (UB *)"[motion] counts per wheel turn: left %d"
+                           " (MOTION_COUNTS_PER_REV), right %d"
+                           " (MOTION_COUNTS_PER_REV_R)%s;"
+                           " MOTION_LF_LOST_DIR_MS=%u",
+                     (INT)MOTION_COUNTS_PER_REV, (INT)MOTION_COUNTS_PER_REV_R,
+                     (MOTION_COUNTS_PER_REV_R != MOTION_COUNTS_PER_REV)
+                         ? ", right counts scaled to left units"
+                         : ", no scaling",
+                     (UINT)MOTION_LF_LOST_DIR_MS);
+    print_line(p_line);
 }
 
 static void
@@ -3354,11 +3606,17 @@ print_byp (UB *p_line, motion_report_t const *p_rep)
 }
 #endif
 
-/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken". */
+/* EVT_CMD, e.g. "[motion] nav_cmd FAULT_CLEAR(IMU): taken".  A JUNCTION
+   prints twice: "received" at the read, then "accepted, TURNING" or
+   "REFUSED in <state>, sent CMD_REJECTED" once the statechart decided;
+   "REFUSED (<state> -> <state>)" if the state changed in that tick all
+   the same (a STOP, fault or pause, or a braked turn resuming). */
 static void
 print_cmd (UB *p_line, motion_report_t const *p_rep)
 {
     uint32_t    raw = (uint32_t)p_rep->val_r;
+    uint32_t    met;  /* a JUNCTION's outcome: the state it met */
+    uint32_t    went; /* and the state the statechart went to */
     char const *what;
     char const *res;
     uint8_t     op;
@@ -3385,9 +3643,30 @@ print_cmd (UB *p_line, motion_report_t const *p_rep)
                                                       : "BYPASS right";
         }
     }
-    res = (CMD_RES_TAKEN == p_rep->rate_l) ? "taken" : "dropped (invalid)";
+    res  = (CMD_RES_TAKEN == p_rep->rate_l)      ? "taken"
+           : (CMD_RES_RECEIVED == p_rep->rate_l) ? "received"
+           : (CMD_RES_ACCEPTED == p_rep->rate_l) ? "accepted, TURNING"
+                                                 : "dropped (invalid)";
+    met  = (uint32_t)p_rep->rate_r & CMD_STATE_MASK;
+    went = ((uint32_t)p_rep->rate_r >> CMD_WENT_SHIFT) & CMD_STATE_MASK;
 
-    if (CMD_SRC_NAV == p_rep->val_l)
+    if ((CMD_RES_REFUSED == p_rep->rate_l) && (met == went))
+    {
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] nav_cmd %s (raw 0x%04x): REFUSED in"
+                               " %s, sent CMD_REJECTED",
+                         what, (UINT)raw, motion_sm_name(met));
+    }
+    else if (CMD_RES_REFUSED == p_rep->rate_l)
+    {
+        /* The state changed in that tick, but not for this JUNCTION. */
+        (void)tm_sprintf(p_line,
+                         (UB *)"[motion] nav_cmd %s (raw 0x%04x): REFUSED"
+                               " (%s -> %s), sent CMD_REJECTED",
+                         what, (UINT)raw, motion_sm_name(met),
+                         motion_sm_name(went));
+    }
+    else if (CMD_SRC_NAV == p_rep->val_l)
     {
         (void)tm_sprintf(p_line, (UB *)"[motion] nav_cmd %s (raw 0x%04x): %s",
                          what, (UINT)raw, res);
@@ -3518,6 +3797,10 @@ print_event (UB *p_line, motion_report_t const *p_rep)
             print_faults(p_line, p_rep);
             break;
 
+        case EVT_SM_FAULT:
+            print_sm_fault(p_line, p_rep);
+            break;
+
         case EVT_STOP:
         case EVT_GO:
         case EVT_STOPTEST:
@@ -3629,9 +3912,11 @@ print_report (motion_report_t const *p_rep)
             print_line(line);
             (void)tm_sprintf(line,
                              (UB *)"[motion] watchdog (5 s): longest gap"
-                                   " between feeds %d us, resets at %u us",
+                                   " between feeds %d us, resets at %u us;"
+                                   " E motion sends refused %d",
                              (INT)p_rep->rate_l,
-                             (UINT)(MOTION_WDT_MS * US_PER_MS));
+                             (UINT)(MOTION_WDT_MS * US_PER_MS),
+                             (INT)p_rep->rate_r);
             print_line(line);
             break;
 
@@ -3755,6 +4040,17 @@ motor_task_start (void)
         ercd   = (obj_id < E_OK) ? obj_id : tk_sta_tsk(obj_id, 0);
     }
 
+    /* The tick before motion_task, which arms the watchdog only once the
+       tick that feeds it exists.  The handler only sets TICK, which
+       motion_task clears before its first wait.  If the tick cannot be
+       made, motion_task still starts, to brake the motors, and reports
+       init FAILED without arming; this function returns the error. */
+    if (E_OK == ercd)
+    {
+        obj_id      = tk_cre_cyc(&g_ccyc);
+        g_tick_ercd = (obj_id < E_OK) ? obj_id : E_OK;
+    }
+
     if (E_OK == ercd)
     {
         obj_id = tk_cre_tsk(&g_ctsk_motion);
@@ -3771,8 +4067,7 @@ motor_task_start (void)
 
     if (E_OK == ercd)
     {
-        obj_id = tk_cre_cyc(&g_ccyc);
-        ercd   = (obj_id < E_OK) ? obj_id : E_OK;
+        ercd = g_tick_ercd;
     }
 
     return ercd;

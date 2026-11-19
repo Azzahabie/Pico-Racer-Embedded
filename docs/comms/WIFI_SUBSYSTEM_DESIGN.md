@@ -276,7 +276,7 @@ interface *they* write against. Option **A** was chosen this session
 > - `tele_mbf` holds 16 records (192 B) and is created by `comms_tele_init()`
 >   first in `usermain()`. Its ID `tele_mbfid` is declared in `comms_task.h`
 >   rather than `messages.h`, so `messages.h` stays plain C for the PC test.
-> - `ovf` (clamped) is now a field of the motion body only (PLACEHOLDER); other
+> - `ovf` (clamped) is now a field of the motion body only; other
 >   kinds clamp silently, and `S.drp` counts **intake**-queue drops (not
 >   outbound drops while disconnected — `MQTT_SCHEMA.md` §3).
 >
@@ -411,7 +411,7 @@ owned by its producer** — how an owner asks for a change is
 | 4 | obstacle | Buddy 5 | width_cm 8, bypass 2 | 13 | 2 / 9 |
 | 5 | mission | Vehicle Controller | state 3 | 6 | 1 / 8 |
 
-\* PLACEHOLDER until Buddy 2 confirms the unit and range.
+\* Was PLACEHOLDER; Buddy 2 confirmed the unit and range on 19 Nov (`MQTT_SCHEMA.md` §12 item 15).
 
 *v1/v2 history:* the kinds were `EVT_MOTION` … `EVT_MISSION` numbered from 1,
 each carrying two 8-bit values `a` and `b`; at Tribunal 1 the barcode moved from

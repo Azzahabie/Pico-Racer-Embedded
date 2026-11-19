@@ -143,3 +143,22 @@ the encoders count when a wheel is turned by hand.
   the motors started. Keep the power bank on whenever USB is connected.
 - With the power bank on, BOOTSEL is only read at power-up: power bank off,
   hold BOOTSEL, power bank on, plug in the USB, then let go.
+
+## 2026-11-19: right-wheel counts settled (bench image, wheels off the ground)
+
+Image `bench_R2535_436c063.uf2` (all five PRs merged, MOTION_BENCH 1,
+right scaling off). Log: `~/pico_session/logs/serial_20261119_222026_S1.log`
+on Hanis's Mac. Ten slow forward hand turns per trial (M):
+
+| Trial | Counts | Missed transitions | Per turn | Note |
+|---|---|---|---|---|
+| Right 1 | 20234 | 444 | 2023 | cable as found |
+| Right 2 | 23558 | 125 | 2356 | |
+| Right 3 | 25315 | 13 | 2532 | after unplugging and re-seating the right encoder's Grove cable, power off |
+| Left 1 | 25330 | 0 | 2533 | |
+
+The right wheel turns the same as the left. The 4 Nov value 1590
+(right_encoder_scaling.md) came from the loose cable, which loses counts
+and shows as missed transitions. `MOTION_COUNTS_PER_REV_R` is 2535 again.
+Same session: tick period 9.78-10.21 ms, longest gap between watchdog feeds
+10.5 ms (limit 30 ms), ir_sense missed 1 ms ticks 0.
