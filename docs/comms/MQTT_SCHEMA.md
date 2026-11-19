@@ -626,8 +626,25 @@ after any schema change, or it rejects every record with `unknown schema v`.*
 It is checked byte for byte against the firmware packer by
 `tests/host/test_decoder.py` and `tests/host/test_messages.c`, which share
 vectors generated from [`Tribunal/packed_size.py`](Tribunal/packed_size.py).
-The `map` publisher is **not written yet** (Tribunal roadmap step 5); it will
-live in the same script, because hand-typing 7 packed bytes is error-prone.
+**Sending the barcode map on the day** *(the letters are only given then;
+added 19 Nov)*. `python3 tools/barcode_map.py A=L B=R C=F D=U --mv 2` turns
+the pairs into the 26-letter table (letters not named are F) and the 7 bytes,
+packed by `telemetry_decode.pack_map`, and prints a `mosquitto_pub` line:
+
+```sh
+printf '\222\014\000\000\000\000\000' | mosquitto_pub -h <broker-ip> -p 1883 -t robocar/pico-racer-01/map -r -q 1 -s
+```
+
+It sends nothing unless given `--publish --broker <broker-ip>` (needs
+`paho-mqtt`). Send the map **before pressing start**, by the viewer's "Send
+map" box, that line, or `--publish`; all three publish retained at QoS 1.
+The car prints `[comms] map mv=2 LRFU… -> barcode_task`, then `[barcode] map
+v2 applied` once no barcode is being read, and `S.mpv` becomes 2. Checked by
+`tests/host/test_barcode_map.py` (in `make -C tests`), and the printed line
+once against a local `eclipse-mosquitto:2` broker (19 Nov): a retained 7-byte
+`920c0000000000` came back. The fallback (a compiled-in table, rebuilt and
+flashed), what each stage prints, and the limits no table fixes are in
+`docs/BUDDY3_LINE_BARCODE.md`, "Commands on the day" (PR #23).
 
 > **What this replaces.** The v1 M10 gate was "a generic client renders the JSON
 > as a tree with no custom parser". The v2 gate is: **a teammate who has never

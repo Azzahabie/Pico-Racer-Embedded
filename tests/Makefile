@@ -8,7 +8,7 @@ SUITES := motion_lib motion_sm motor motion_wdt encoder encoder_dispatch motion_
 
 # Single-file tests at this level (no folder Makefile of their own).
 CC   ?= gcc
-FILE_TESTS := scan_logic host_messages
+FILE_TESTS := scan_logic host_messages host_map_tool
 
 .PHONY: test clean $(SUITES) $(FILE_TESTS)
 test: $(SUITES) $(FILE_TESTS)
@@ -26,6 +26,10 @@ scan_logic:
 host_messages:
 	$(CC) -std=c99 -Wall -Wextra -Werror -o host/test_messages host/test_messages.c
 	./host/test_messages
+
+# Buddy 1: tools/barcode_map.py, the day-of map helper (dry run, no broker).
+host_map_tool:
+	python3 host/test_barcode_map.py
 
 clean:
 	for s in $(SUITES); do $(MAKE) -s -C $$s clean; done
