@@ -402,6 +402,41 @@ int main(void)
 	}
 #endif
 
+#if SL_KNOWN_W_MM == 0
+	/* 21. measured-edge sizing, the default since 19 Nov: it is what every
+	 * counted car trial ran (4 Nov), so the logged sweeps must give the
+	 * logged offsets exactly (offset L + R = width + 2 C_pass) */
+	printf("Test 21: car sweeps 4 Nov, measured-edge offsets as driven\n");
+	{
+		/* trials_batch2 04:36:17: width 160, offset L 383 R 273, RIGHT */
+		grid_clear(grid);
+		set(grid, -45, 1332); set(grid, -40, 1342); set(grid, -35, 275);
+		set(grid, -25, 252);  set(grid,   0, 253);  set(grid,  10, 261);
+		set(grid,  15, SL_FAR); set(grid, 20, 1540); set(grid, 25, 1451);
+		set(grid,  45, 1138);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("batch2 04:36:17: x -135..25, offsets L 383 R 273 as logged",
+		      (-135 == prof.x_left_mm) && (25 == prof.x_right_mm) &&
+		      (383 == prof.offset_left_mm) && (273 == prof.offset_right_mm));
+		check("batch2 04:36:17: offset L + R = edges + 2 C_pass",
+		      prof.offset_left_mm + prof.offset_right_mm ==
+		      prof.x_right_mm - prof.x_left_mm + 2 * SL_C_PASS_MM);
+		check("batch2 04:36:17: BYPASS RIGHT as logged", SL_BYPASS_RIGHT == act);
+
+		/* trials_batch2 04:32:36: width 182, offset L 318 R 360, LEFT */
+		grid_clear(grid);
+		set(grid, -45, 1353); set(grid, -30, 1339); set(grid, -25, 1315);
+		set(grid, -20, 268);  set(grid, -10, 251);  set(grid,   0, 246);
+		set(grid,  25, 255);  set(grid,  30, 267);  set(grid,  35, 1439);
+		set(grid,  45, 1401);
+		act = run(grid, SL_D_OBS_MM, false, &prof);
+		check("batch2 04:32:36: x -70..112, offsets L 318 R 360 as logged",
+		      (-70 == prof.x_left_mm) && (112 == prof.x_right_mm) &&
+		      (318 == prof.offset_left_mm) && (360 == prof.offset_right_mm));
+		check("batch2 04:32:36: BYPASS LEFT as logged", SL_BYPASS_LEFT == act);
+	}
+#endif
+
 	printf("\n%s (%d failed)\n",
 	       g_fails ? "SOME TESTS FAILED" : "ALL TESTS PASSED", g_fails);
 	return g_fails ? 1 : 0;

@@ -76,6 +76,18 @@
  * kept and the real width put around it; the offset is that edge + the
  * clearance. 0 = use the measured edges (obstacles of unknown size).
  *
+ * Default 0 since 19 Nov (was 90 from 7c7d669, "Not yet counted on the
+ * car"): every counted car trial used the measured edges.  The 14 logged
+ * trial sweeps (trials_batch1/2_2026-11-04, all before 7c7d669) give
+ * exactly the logged offsets with 0 (offset L + R = width + 2 x C_pass),
+ * and batch 2 was 3/3 contact-free with them.  On the same 13 box sweeps 90
+ * gives the same side 33-80 mm less (sim: e.g. batch1 04:08:37 283 mm
+ * against 363 driven, batch2 04:36:17 238 against 273), and its centre is
+ * mostly the stop heading, not the box (about 465 x sin(heading)), with
+ * a tie-break that takes the side the heading shortens.  -DSL_KNOWN_W_MM=90
+ * still builds it (PC Test 20); MOTION_BYPASS_ARC and SL_KNOWN_STRAIGHT
+ * need it (checked in obstacle_task.c).
+ *
  * SL_KNOWN_STRAIGHT picks the clearance and must equal MOTION_BYPASS_KNOWN:
  *   0 (default): motion's zig-zag probing bypass pivots beside the box, so
  *     C_pass (248): offset = |centre| + 45 + 248 = ~293 mm for a centred
@@ -83,7 +95,7 @@
  *   1: motion drives straight past (no pivots beside it): the car's
  *     half-width + a 70 mm gap (133): ~178 mm. */
 #ifndef SL_KNOWN_W_MM
-#define SL_KNOWN_W_MM		90
+#define SL_KNOWN_W_MM		0
 #endif
 #ifndef SL_KNOWN_STRAIGHT
 #define SL_KNOWN_STRAIGHT	0
