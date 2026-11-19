@@ -594,10 +594,11 @@ static inline uint32_t comm_w_e_size(uint32_t kind)
  *  offset-encoded.
  * ------------------------------------------------------------------ */
 
-/* state 0-15; speeds in cm/s (PLACEHOLDER); dist_mm is the running distance,
-   stored modulo 32768 (the laptop takes differences); turn rate in deg/s;
-   fault: bit 0 stall, bit 1 encoder.  ovf (PLACEHOLDER) is sent as given,
-   and is also set when this helper had to clamp a field. */
+/* state 0-15; speeds in cm/s; dist_mm is motion's distance in this mission
+   (0 at a new mission, kept on a resume), stored modulo 32768 (the laptop
+   takes differences); turn rate in deg/s; fault: bit 0 stall, bit 1
+   encoder.  ovf is sent as given, and is also set when this helper had to
+   clamp a field. */
 static inline uint32_t comm_w_pack_motion(uint8_t out[COMM_W_INTAKE_SIZE_MOTION],
                                           uint32_t state, int32_t speed_l_cms,
                                           int32_t speed_r_cms, uint32_t dist_mm,

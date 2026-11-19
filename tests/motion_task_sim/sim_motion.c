@@ -1083,7 +1083,7 @@ scenario_statechart (void)
 	CHECK(g_ctx.ds_mm == d_ready);	/* distance_state never jumps */
 	CHECK(g_tele_count == 1);		/* E motion for the change */
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_ready & 0x7FFFu));
+	CHECK(g_tele_last.dist_mm == 0u);	/* Ready -> Running: a new mission */
 	CHECK(g_tele_last.fault == 0u);
 	/* speeds over the 50 ms window of the hand push, 13 counts a tick
 	   (10.3 cm/s), +128; both wheels turned alike, so the right one
@@ -1138,7 +1138,8 @@ scenario_statechart (void)
 	CHECK(g_ctx.tele_dropped == 1u);
 	CHECK(g_tele_bad == 0);
 	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
-	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)d_paused & 0x7FFFu));
+	CHECK(g_tele_last.dist_mm	/* a resume keeps the mission's distance */
+	      == (uint16_t)((uint32_t)(d_paused - d_ready) & 0x7FFFu));
 }
 
 /* Line Following steering (S4, 30 Oct).  A small error, below one count
@@ -1274,6 +1275,59 @@ scenario_line_follow_soft (void)
 
 /* A stall while driving: the statechart goes to Motion Fault, the brake
    is written before MOTION_FAULT reaches nav, and the line says so. */
+/* E motion once a second while a wheel moves, nothing while still; the
+   distance it carries starts again at a new mission (Section 4) and is
+   kept on a resume. */
+static void
+scenario_telemetry (void)
+{
+	int32_t d_start;
+	int i;
+
+	sim_reset("telemetry: E motion once a second while moving, mission distance");
+	sim_ticks(3);
+	CHECK(g_tele_count == 0);
+	for (i = 0; i < 150; i++) { ds_move_tick(4.0, 4.0); }	/* pushed, Ready */
+	CHECK(g_tele_count == 1);			/* one second in: one record */
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_IDLE);
+	CHECK(g_tele_last.speed_l == (uint8_t)(128 + lround(4.0 * DS_MM_PER_COUNT * 10.0)));
+	for (i = 0; i < 100; i++) { ds_move_tick(4.0, 4.0); }
+	CHECK(g_tele_count == 2);			/* and one a second after */
+	sim_ticks(300);					/* standing still */
+	CHECK(g_tele_count == 3);	/* one more for the last push, then nothing */
+	CHECK(g_tele_last.speed_l == 128u);		/* stopped */
+	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)g_ctx.ds_mm & 0x7FFFu));
+	d_start = g_ctx.ds_mm;
+
+	g_mission = MS_RUNNING;				/* a new mission */
+	sim_tick();
+	CHECK(g_tele_count == 4);
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);		/* from 0 again */
+	g_mission = MS_PAUSED;				/* stops, Idle */
+	sim_tick();
+	CHECK(g_tele_count == 5);
+	for (i = 0; i < 120; i++) { ds_move_tick(4.0, 4.0); }	/* pushed while paused */
+	sim_ticks(150);
+	CHECK(g_tele_count == 7);
+	CHECK(g_ctx.ds_mm > d_start);
+	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)(g_ctx.ds_mm - d_start) & 0x7FFFu));
+	g_mission = MS_RUNNING;				/* a resume */
+	sim_tick();
+	CHECK(g_tele_count == 8);
+	CHECK(g_tele_last.dist_mm == (uint16_t)((uint32_t)(g_ctx.ds_mm - d_start) & 0x7FFFu));
+	g_mission = MS_PAUSED;
+	sim_tick();
+	g_mission = MS_READY;				/* reset button */
+	sim_tick();
+	g_mission = MS_RUNNING;				/* the next mission */
+	sim_tick();
+	CHECK(g_tele_last.motion_state == (uint8_t)MOTION_ST_LINE_FOLLOW);
+	CHECK(g_tele_last.dist_mm == 0u);
+	CHECK(g_tele_bad == 0);
+	CHECK(g_ctx.tele_dropped == 0u);
+}
+
 static void
 scenario_statechart_fault (void)
 {
@@ -2987,6 +3041,7 @@ main (int argc, char **argv)
 	scenario_stop_before_first_tick();
 	scenario_stop_order();
 	scenario_statechart();
+	scenario_telemetry();
 	scenario_statechart_fault();
 	scenario_line_follow_steer();
 	scenario_line_follow_soft();

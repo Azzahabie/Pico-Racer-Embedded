@@ -330,7 +330,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 | 4 | `state` | 0–15 | motion state; also `S.mot` |
 | 8 | `speed_l` | −128–127 cm/s, stored + 128 | left wheel speed over the last 50 ms, to the nearest cm/s, + forward (Buddy 2 confirmed, 19 Nov) |
 | 8 | `speed_r` | −128–127 cm/s, stored + 128 | right wheel speed, as `speed_l` |
-| 15 | `dist_mm` | 0–32767 mm, **wraps** | distance travelled, a wrapping counter: the reader takes differences modulo 32768 |
+| 15 | `dist_mm` | 0–32767 mm, **wraps** | distance travelled in this mission (0 at a new mission, kept on a resume; design Section 4), a wrapping counter: the reader takes differences modulo 32768. Motion sends an E record on every state change and once a second while a wheel moves, so `S.dst` grows between changes |
 | 10 | `turn_rate` | −512–511 °/s, stored + 512 | turn rate from the wheel encoders |
 | 2 | `fault` | bit 0 stall, bit 1 encoder | the motion faults **at the moment of this event** (§12 item 17) |
 | 1 | `ovf` | 0–1 | set when the helper clamped a field |

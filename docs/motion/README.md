@@ -225,7 +225,8 @@ well below 30000 us; record the worst one, with Wi-Fi on too once motion
 runs in the Wi-Fi build.
 
 `E motion records dropped` counts the motion records (one per statechart
-change) that `tele_mbf` had no room for since start-up. The send never
+change, and one a second while a wheel moves) that `tele_mbf` had no room
+for since start-up. The send never
 waits, so a full queue costs a record, never a tick. Without MQTT nothing
 empties the queue, so in a non-MQTT build it climbs once the queue fills;
 only the MQTT car build's number is evidence.
@@ -313,7 +314,11 @@ Decided here, where the design is silent:
 - `distance_state` is never reset, not even for a new mission: imu_task
   works from differences, and a jump would read as a sudden movement.
   The mission distance (Section 4: reset on a new mission, kept on a
-  resume) comes with the telemetry record, step 1.8.
+  resume) is what the E motion record carries as `dist_mm`: motion keeps
+  `distance_state` at the mission's start (`mission_mm0`) and sends the
+  difference. The record goes out on every state change and once a
+  second while a wheel moves, so comms_task's `S.dst` (cm since the last
+  motion change) grows between changes.
 
 Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 
@@ -631,11 +636,8 @@ Checked against master on 19 Nov (52b707d). Car results so far are in
 - The final bypass settings (7c7d669) have not been counted on the car.
 - NFR-04 accuracy trials (straight and 90/180 degree pivots), which also
   need a test entry that commands one move. The straight trials double
-  as the FR-09 check: the distance motion reports against a tape
-  measure. (FR-09 needs no reset: every E motion record carries the
-  running distance, and a mission's distance is the difference from the
-  mission's first record, modulo 32768; resetting it would show
-  imu_task and comms_task a jump.)
+  as the FR-09 check: the mission distance in the E motion record
+  against a tape measure.
 - PID step responses on the floor and the tuning report (the gains are
   the no-load bench values).
 - Watchdog tests 2 and 3 and the feed gap with Wi-Fi on; stop tests 1
