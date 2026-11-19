@@ -96,13 +96,29 @@ Neither task drives the motors.
   It rearms only after GP7 has read white for `LINE_JUNCTION_REARM_SAMPLES`
   samples running. A barcode read doesn't block it, because the crossbar
   starts a capture of its own.
-- **Barcode hold (`LINE_BARCODE_HOLD`, default 0):** with barcodes printed
-  across the line (1), a read holds rl/steer/error at 0 and sets the word's
-  barcode bit, so motion holds its heading over the bars. On the demo course
-  the barcodes sit beside the line (the prof's course photos, 19 Nov), so the
-  line sensors never see a bar and nothing is held (0). Holding there blinded
-  line following for about 2 s after every junction (the crossbar under GP7
-  opens a read too) and made motion read "line seen" on white.
+- **Barcode hold (`LINE_BARCODE_HOLD`, default 1, today's behaviour):**
+  while a barcode is being read, and `BARCODE_JUNCTION_HOLDOFF_MS` after, the
+  word's rl/steer/error are held at 0 and its barcode bit is set, so motion
+  holds its heading. With 0 nothing is held. The hold was written for bars
+  that cross the line sensors; on the demo course the sheets sit beside the
+  line (the prof's course photos, 19 Nov), so GP26/GP27 never see a bar.
+  Which setting is better there is **not decided yet**:
+  - Holding keeps the heading, so GP7 passes the bars at a constant speed,
+    which the decoder needs. With GP7's speed varying ±20 %, today's decoder
+    decodes 79-91 of 208 reads; with ±10 %, all 208 (sim).
+  - Not holding avoids blind straight driving: up to about 3.4 s (about
+    158 mm) per sheet, and about 2.2 s per crossbar, because the crossbar
+    under GP7 opens a read too (sim).
+  - Avani and Hanis choose after the car session C1 A/B. Build the other
+    side with `-DLINE_BARCODE_HOLD=0`.
+
+  Held or not, the dark time and the lost bit follow the real line sensors.
+  Before, a hold also kept the dark time at 0, so with both sensors on white
+  motion still read "line seen" (rl 00 but dark under `MOTION_LF_SEEN_MS`) and
+  the line was never lost: a turn that landed off the arm went on to
+  LINE_FOLLOW and drove blind for 0.38-2.87 s instead of LINE_SEARCH (sim).
+  Now a held car on white stops being "line seen" after `MOTION_LF_SEEN_MS`
+  and is lost after `LINE_LOST_MS` (host test).
 - **Mission change:** the junction is disarmed and a partial barcode
   aborted.
 
@@ -192,7 +208,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | Suite | What it covers |
 |---|---|
 | `test_ir_cal` | calibration pass and fail (rail, contrast), hysteresis, normalising, both polarities |
-| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold, noisy loss, stuck sensors and a failed ADC read (the fault starts and ends, also under a barcode) |
+| `test_line_track` | error direction, J_n debounce, one event, rearm, J_n against the course bars and crossbar at `MOTION_LF_BASE` (bars ±2 mm), noise, barcode hold (the dark time and the loss still follow the sensors under it), noisy loss, stuck sensors and a failed ADC read (the fault starts and ends, also under a barcode) |
 | `test_barcode_pipeline` | every letter, both directions, 3 speeds, from 1 ms samples through capture, messages, decode and table; malformed, unknown, multi-letter, END/ABORT, W_long, W_max, timeout, cancel, stale `read_id`, lost widths |
 | `test_barcode_action` | the table, map apply and reject, the command word |
 | `test_line_state` | the word, and the motion statechart contract |

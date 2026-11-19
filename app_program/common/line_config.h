@@ -57,16 +57,27 @@
 #define BARCODE_DEFAULT_TABLE_SET                 (0)
 #define BARCODE_DEFAULT_TABLE                     ""
 
-/* Where the barcodes are.  1: printed across the line, so their bars cross
-   the line sensors: while a barcode is being read, and
-   BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds rl/steer/error at 0
-   and sets its barcode bit, and motion_task holds its heading.  0: beside
-   the line, as on the demo course (the prof's course photos, 19 Nov): the
-   line sensors never see a bar, so nothing is held.  Holding there only
-   blinded line following for ~2 s after every junction, because the
-   crossbar under GP7 opens a read too, and made motion read "line seen"
-   with both sensors on white. */
-#define LINE_BARCODE_HOLD                         (0u)
+/* Barcode hold.  1 (default, today's behaviour): while a barcode is being
+   read, and BARCODE_JUNCTION_HOLDOFF_MS after, line_state holds
+   rl/steer/error at 0 and sets its barcode bit, and motion_task holds its
+   heading.  0: nothing is held.  The hold was written for bars that cross
+   the line sensors; on the demo course the sheets sit beside the line (the
+   prof's course photos, 19 Nov), so GP26/GP27 never see a bar.  Which
+   setting is better there is NOT decided yet:
+   - holding keeps the heading, so GP7 passes the bars at a constant
+     speed, which the decoder needs: with GP7's speed varying +/-20 %
+     today's decoder decodes 79-91 of 208 reads, with +/-10 % all 208
+     (sim);
+   - not holding avoids blind straight driving: up to ~3.4 s (~158 mm) per
+     sheet, and ~2.2 s per crossbar, because the crossbar under GP7 opens a
+     read too (sim).
+   Avani and Hanis choose after the car session C1 A/B; build the other
+   side with -DLINE_BARCODE_HOLD=0.  Held or not, the dark time and the
+   lost bit follow the real line sensors (line_track.c), so a held car on
+   white is not "line seen" and is lost after LINE_LOST_MS. */
+#ifndef LINE_BARCODE_HOLD
+#define LINE_BARCODE_HOLD                         (1u)
+#endif
 
 /* How long the hold lasts after a read ends (LINE_BARCODE_HOLD 1 only).
    It no longer gates junctions: those come from GP7's run length (below). */
@@ -171,6 +182,9 @@
 #endif
 #if BATTERY_SENSE_GPIO != (26u + BATTERY_SENSE_ADC_CHANNEL)
 #error "The battery-sense GPIO and ADC channel do not match"
+#endif
+#if (LINE_BARCODE_HOLD != 0u) && (LINE_BARCODE_HOLD != 1u)
+#error "LINE_BARCODE_HOLD must be 0 or 1"
 #endif
 
 #endif

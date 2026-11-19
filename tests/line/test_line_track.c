@@ -1,6 +1,6 @@
 /* Host test for line_track.c: line detection and error direction, junction
    debounce and rearming, J_n against the course barcodes, noisy line loss,
-   barcode hold, stuck sensors. */
+   barcode hold (and the dark time under it), stuck sensors. */
 
 #include "check.h"
 #include "../../app_program/line_task/line_track.h"
@@ -133,7 +133,7 @@ static void test_junction(void)
 	CHECK(line_state_barcode(out.word));
 	CHECK(line_state_rl(out.word) == LINE_RL_CENTRED);
 	CHECK(line_state_error(out.word) == 0);
-	CHECK(!line_state_lost(out.word));		/* the bars count as seen */
+	CHECK(!line_state_lost(out.word));		/* GP26/GP27 on the line */
 	CHECK(feed_mark(LINE_JUNCTION_SAMPLES, B, B, true, true) == 1u);
 
 	/* mission change while on a junction: it does not fire again */
@@ -222,6 +222,44 @@ static void test_line_loss(void)
 	CHECK(line_state_dark_ms(out.word) == 0u);
 }
 
+/* A barcode hold blanks rl, steer and error, not the dark time: that
+   follows the real (debounced) line sensors.  Motion reads "line seen" as
+   rl != 0 or dark < MOTION_LF_SEEN_MS, and rl is 00 while held, so a dark
+   time held at 0 read "line seen" with both sensors on white, and the
+   line was never lost (sim: a turn that lands off the arm went on to
+   LINE_FOLLOW instead of LINE_SEARCH). */
+static void test_hold_dark(void)
+{
+	setup();
+	feed(LINE_CONFIRM_SAMPLES, B, B, false);	/* centred on the line */
+
+	/* held on the line: rl reads 00, but the line is seen */
+	feed(1000u, B, B, true);
+	CHECK(line_state_barcode(out.word));
+	CHECK(line_state_rl(out.word) == LINE_RL_CENTRED);
+	CHECK(line_state_dark_ms(out.word) == 0u);
+	CHECK(!line_state_lost(out.word));
+
+	/* held, both sensors white: the debounce keeps 11 for
+	   LINE_LOST_SAMPLES - 1 samples, then the dark time counts */
+	feed((LINE_LOST_SAMPLES - 1u) + MOTION_LF_SEEN_MS, W, W, true);
+	CHECK(line_state_barcode(out.word));
+	CHECK(line_state_rl(out.word) == LINE_RL_CENTRED);
+	CHECK(line_state_dark_ms(out.word) >= MOTION_LF_SEEN_MS);	/* not seen */
+	CHECK(!line_state_lost(out.word));
+	feed(LINE_LOST_MS - 1u - MOTION_LF_SEEN_MS, W, W, true);
+	CHECK(out.fields.dark_ms == LINE_LOST_MS - 1u);
+	CHECK(!line_state_lost(out.word));
+	feed(1u, W, W, true);
+	CHECK(line_state_barcode(out.word));
+	CHECK(line_state_lost(out.word));
+
+	/* back on the line, still held: found, dark 0 again */
+	feed(LINE_CONFIRM_SAMPLES, B, B, true);
+	CHECK(!line_state_lost(out.word));
+	CHECK(line_state_dark_ms(out.word) == 0u);
+}
+
 static void test_faults(void)
 {
 	setup();
@@ -304,6 +342,7 @@ int main(void)
 	test_junction();
 	test_junction_course();
 	test_line_loss();
+	test_hold_dark();
 	test_faults();
 	test_word();
 	return check_report("line tracking");

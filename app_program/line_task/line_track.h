@@ -63,7 +63,8 @@ void line_track_disarm_junction(line_track_t *trk);
 
 /*
  * One sample.  adc_ok false = the ADC read failed (counts as a fault).
- * barcode_hold true = a barcode is under the car: rl/steer/error held at 0.
+ * barcode_hold true = a barcode is under the car: rl/steer/error held at 0;
+ * the dark time and the lost bit still follow the real sensors.
  * mark_black = the barcode sensor (GP7) reads black; a long enough run of
  * it is the junction (LINE_JUNCTION_SAMPLES).  rl 11 is never a junction:
  * both sensors are inside the line whenever the car is centred.

@@ -155,9 +155,11 @@ void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 	out->junction = junction_step(trk, mark_black);
 	out->crossing = trk->both_black_run >= LINE_JUNCTION_SAMPLES;
 
-	/* noise-filtered: only a confirmed (debounced) black, or a barcode
-	   under the car, counts as seeing the line */
-	if (((rl != LINE_RL_CENTRED) || barcode_hold) && !fault) {
+	/* noise-filtered: only a confirmed (debounced) black counts as seeing
+	   the line.  Not a barcode hold: it blanks rl below, but the dark time
+	   and the lost bit follow the real sensors, or motion reads "line
+	   seen" with both sensors on white and never loses the line */
+	if ((rl != LINE_RL_CENTRED) && !fault) {
 		trk->dark_ms = 0u;
 	} else if (trk->dark_ms < (LINE_ST_DARK_MASK * LINE_ST_DARK_UNIT_MS)) {
 		trk->dark_ms++;
