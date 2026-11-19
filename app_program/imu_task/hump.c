@@ -49,9 +49,9 @@
 LOCAL const char * const hump_name[] = { "none", "climbing", "descending" };
 
 LOCAL HUMP_STATE hump_state = HUMP_NONE;
-LOCAL UW	hump_count;		/* humps finished since boot         */
+LOCAL UW	hump_count;		/* humps finished this mission       */
 LOCAL UW	hump_last_mm;		/* height of the last one            */
-LOCAL UW	hump_max_mm;		/* highest since boot                */
+LOCAL UW	hump_max_mm;		/* highest this mission (FR-12)      */
 LOCAL W		base[2];		/* level x, y: the floor's own tilt  */
 LOCAL W		onset[2];		/* tilt as the hump began = uphill   */
 LOCAL W		h_um, peak_um, trough_um; /* height now / highest / lowest, um */

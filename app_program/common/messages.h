@@ -392,7 +392,7 @@ static inline uint32_t comm_w_pack_h(uint8_t out[COMM_W_H_SIZE], uint16_t s,
 #define COMM_W_S_BAR_BITS       5U   /* letter index, 31 = none yet         */
 #define COMM_W_S_ACT_BITS       2U   /* action code                         */
 #define COMM_W_S_HUM_BITS       4U   /* humps detected                      */
-#define COMM_W_S_HGT_BITS       8U   /* last hump height, mm                */
+#define COMM_W_S_HGT_BITS       8U   /* highest hump this mission, mm       */
 #define COMM_W_S_OBS_BITS       8U   /* last obstacle width, cm             */
 #define COMM_W_S_BYP_BITS       2U   /* bypass taken                        */
 #define COMM_W_S_MIS_BITS       3U   /* mission state                       */
@@ -658,7 +658,7 @@ static inline uint32_t comm_w_pack_barcode(uint8_t out[COMM_W_INTAKE_SIZE_BARCOD
 
 /* event_class 0-6: 0 still, 1 turning, 2 climbing, 3 descending, 4 impact,
    5 accelerating, 6 moving (FR-27 and more; 7 reserved); hump_count 0-15;
-   hump height in mm. */
+   hump_height_mm: the highest hump this mission, in mm. */
 static inline uint32_t comm_w_pack_imu(uint8_t out[COMM_W_INTAKE_SIZE_IMU],
                                        uint32_t event_class, uint32_t hump_count,
                                        uint32_t hump_height_mm)

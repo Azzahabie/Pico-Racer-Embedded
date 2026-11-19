@@ -355,7 +355,7 @@ Kinds 6 and 7 are reserved; a reader rejects them. Each body starts with
 |---|---|---|---|
 | 3 | `class` | 0–6 | motion class: 0 still, 1 turning, 2 climbing, 3 descending, 4 impact (FR-27), 5 accelerating, 6 moving; 7 reserved. *v5: was 0–4, same width* |
 | 4 | `hump_count` | 0–15 | humps detected; also `S.hum` |
-| 8 | `hump_height_mm` | 0–255 mm, clamped | hump height; also `S.hgt` |
+| 8 | `hump_height_mm` | 0–255 mm, clamped | height of the highest hump this mission (FR-12); 0 = none yet, and again at each mission start; also `S.hgt` |
 
 **`k = 4` obstacle** (Buddy 5) — `comm_w_pack_obstacle()`
 

@@ -35,9 +35,9 @@ IMPORT HUMP_STATE hump_get_state(void);
 IMPORT const char *hump_state_name(HUMP_STATE s);
 IMPORT W  hump_height_mm(void);		/* on the hump now; 0 if none */
 IMPORT W  hump_height_um(void);		/* the same in um, for logs   */
-IMPORT UW hump_get_count(void);		/* humps finished since boot  */
+IMPORT UW hump_get_count(void);		/* humps counted this mission */
 IMPORT UW hump_get_last_mm(void);	/* height of the last one     */
-IMPORT UW hump_get_max_mm(void);	/* highest since boot (FR-12) */
+IMPORT UW hump_get_max_mm(void);	/* highest hump, this mission */
 
 IMPORT UW imu_isqrt(UW v);
 IMPORT UW imu_deg10(UW mg);		/* tilt in 0.1 deg from sin in mg */
