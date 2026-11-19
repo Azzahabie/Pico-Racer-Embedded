@@ -133,3 +133,12 @@ and the `scan took ... ms` figure with the old 4.6-5.0 s. Estimate:
 | Line direction over distance (04:32) | Averaged over 400 mm of travel, trusted after 300 mm; 80 mm margin past the estimate on the return. Sim: a slow ±20° wander learned to 0° | `motion_cfg.h` `MOTION_HD_*` |
 | Batch 2 (04:32 image) | 3/3 real bypasses rejoined (box seen every time, 151-261 mm); 28.2-33.4 s. One stray detection (367 mm, width 0) after only 3 s of line, encoders-only, Blocked. **No contact in any of the 3 (tester).** IMU failed calibration again at 04:41; unprompted resets at 04:37:52, 04:38:41 (power?) | `logs/trials_batch2_2026-11-04.txt` |
 
+
+## 7. Proposed fixes, 19 Nov 2026 (branch `proposal/nav-barcode-cmd-kept`, not run on the car)
+
+Bug IDs are from the 19 Nov diagnosis register. Host tests only: none of
+these has run on the car yet.
+
+| ID | Was | Now | Where / test |
+|---|---|---|---|
+| N1 | A GP20 fault reset sent CAL_REQ at once, while the press still rocked the car: 13 of 29 calibrations on 4 Nov ended in FAULT (line `low_contrast`, IMU `not still` / `car moving`; e.g. `trials_batch1` 04:17:12.841-13.846) | After a GP20 fault reset nav prints `[nav] hands off the car: calibration starts in 1000 ms` and waits `NAV_CAL_SETTLE_MS` (1000, `-DNAV_CAL_SETTLE_MS=0` for the old behaviour) before CAL_REQ. Boot and an MQTT RESET start at once. **Operator: let go of the car after pressing GP20** | `nav_ctrl.c`; `tests/nav` |

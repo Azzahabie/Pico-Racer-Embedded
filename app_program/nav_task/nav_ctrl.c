@@ -20,7 +20,8 @@
  *	Calibration (FR-02): CAL_REQ to ir_sense_task and imu_task, wait for
  *	both CAL_OK (10 s), else Fault. If neither task is bound yet (bench),
  *	calibration is SKIPPED and says so on the console. After a fault,
- *	FAULT_CLEAR is sent only after both calibrations pass.
+ *	FAULT_CLEAR is sent only after both calibrations pass.  A GP20 fault
+ *	reset first waits NAV_CAL_SETTLE_MS, hands off (the press rocks the car).
  *
  *	JUNCTION (ir_sense_task, FR-08): barcode_task's stored command goes to
  *	motion_task as NAV_CMD_JUNCTION on nav_cmd_mbf; no stored command means
@@ -69,6 +70,17 @@
 #endif
 #define BTN_LOCKOUT_MS		300	/* ignore bounces after a press */
 #define CAL_TIMEOUT_MS		10000	/* [TBD with Buddies 3 and 4] */
+/* Fault reset by GP20: the press rocks the car, and the line calibration
+   (1 s, no stillness check) and the IMU's first try started at once.  On
+   4 Nov 13 of 29 calibrations failed with line "low_contrast" or IMU "not
+   still" / "car moving", e.g. GP20 at 04:17:12.841, then GP27 low_contrast
+   and IMU "not still" 1 s later (trials_batch1:2299-2305).  So after a
+   GP20 fault reset nav waits this long, hands off, before CAL_REQ.  Boot
+   and an MQTT reset start at once: nobody touches the car.  0 = no wait,
+   as before. */
+#ifndef NAV_CAL_SETTLE_MS
+#define NAV_CAL_SETTLE_MS	1000
+#endif
 #define HEARTBEAT_MS		1000	/* wake at least this often */
 
 /* Buzzer: 125 MHz / (div 1) / (wrap + 1) = 2 kHz */
@@ -352,9 +364,15 @@ LOCAL bool calibrate(void)
 	return ok;
 }
 
-LOCAL void enter_calibrating(bool after_fault)
+/* settle_ms: wait this long before CAL_REQ (a GP20 press moved the car) */
+LOCAL void enter_calibrating(bool after_fault, INT settle_ms)
 {
 	set_state(MS_CALIBRATING);
+	if(0 < settle_ms) {
+		tm_printf((UB *)"[nav] hands off the car: calibration starts in %d ms\n",
+			  settle_ms);
+		tk_dly_tsk(settle_ms);
+	}
 	if(calibrate()) {
 		if(after_fault) {
 			send_fault_clear(FAULT_CLEAR_IMU);	/* only after both pass */
@@ -388,7 +406,7 @@ LOCAL void on_button(void)
 		} else if(MS_FINISHED == state) {
 			set_state(MS_READY);		/* reset for a new mission */
 		} else if(MS_FAULT == state) {
-			enter_calibrating(true);	/* fault reset */
+			enter_calibrating(true, NAV_CAL_SETTLE_MS);	/* fault reset */
 		} else {
 			/* ignored in this state */
 		}
@@ -426,7 +444,7 @@ LOCAL void on_mission_cmd(void)
 		} else if((MCMD_RESET == cmd) && (MS_FINISHED == state)) {
 			set_state(MS_READY);
 		} else if((MCMD_RESET == cmd) && (MS_FAULT == state)) {
-			enter_calibrating(true);
+			enter_calibrating(true, 0);	/* nobody touches the car */
 		} else if((MCMD_FINISH == cmd) &&
 			  ((MS_RUNNING == state) || (MS_PAUSED == state))) {
 			set_state(MS_FINISHED);
@@ -538,7 +556,7 @@ EXPORT void nav_ctrl_task(INT stacd, void *exinf)
 	(void)gpio_irq_attach(BTN_START_PIN, GPIO_IRQ_EDGE_FALL, nav_btn_isr);
 	(void)gpio_irq_attach(BTN_PAUSE_PIN, GPIO_IRQ_EDGE_FALL, nav_btn_isr);
 
-	enter_calibrating(false);
+	enter_calibrating(false, 0);
 	tm_printf((UB *)"[nav] GP20 = start/resume/reset, GP21 = pause\n");
 
 	while(1) {

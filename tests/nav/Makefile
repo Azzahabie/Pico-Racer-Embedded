@@ -1,5 +1,5 @@
-# Host test for nav_ctrl_task's junction handling (app_program/nav_task/
-# nav_ctrl.c): the real nav_ctrl.c with the motion sim's kernel stubs.
+# Host test for nav_ctrl_task (app_program/nav_task/nav_ctrl.c): junction
+# commands and calibration, the real nav_ctrl.c on the motion sim stubs.
 #     make -C tests/nav          (in the build container on macOS)
 
 SRC  := ../../app_program

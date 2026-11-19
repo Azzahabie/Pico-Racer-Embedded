@@ -6,8 +6,10 @@
  * What it checks: the barcode command goes to motion_task once per
  * junction, and is used up only when motion turns (MOVE_DONE); a refusal
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
- * it for the next junction. */
+ * it for the next junction.  Calibration: a GP20 fault reset waits
+ * NAV_CAL_SETTLE_MS before CAL_REQ; boot and an MQTT reset do not. */
 
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -33,15 +35,50 @@ static UB   g_sent[16][2];		/* messages on nav_cmd_mbf */
 static int  g_sent_n;
 static int  g_mbf_full;			/* tk_snd_mbf returns E_TMOUT */
 #define NAV_CMD_MBF_ID	50
+#define IR_FLG_ID	60		/* ir_sense_task's flag (CAL_REQ) */
+#define IMU_FLG_ID	61		/* imu_task's flag (CAL_REQ) */
+#define CAL_REQ_BIT	0x0001U
+static long g_slept_ms;			/* every tk_dly_tsk so far */
+static long g_cal_req_ms;		/* g_slept_ms at the first CAL_REQ, -1 = none */
+static int  g_cal_fail;			/* the tasks answer CAL_FAIL */
+static jmp_buf g_main_loop;		/* nav_ctrl_task reached its main wait */
+static int  g_in_task;
+
+/* ir_sense_task and imu_task answer a CAL_REQ at once. */
+static void cal_answer(ID id)
+{
+	if (g_cal_req_ms < 0) {
+		g_cal_req_ms = g_slept_ms;
+	}
+	g_flg[g_nav_flgid] |= g_cal_fail ? NAV_FLG_CAL_FAIL
+					 : ((IR_FLG_ID == id) ? NAV_FLG_CAL_OK_IR
+							      : NAV_FLG_CAL_OK_IMU);
+}
 
 ID tk_cre_flg(CONST T_CFLG *p) { (void)p; return g_next_flg++; }
-ER tk_set_flg(ID id, UINT ptn) { g_flg[id] |= ptn; return E_OK; }
+ER tk_set_flg(ID id, UINT ptn)
+{
+	if ((IR_FLG_ID == id) || (IMU_FLG_ID == id)) {
+		if (0U != (ptn & CAL_REQ_BIT)) {
+			cal_answer(id);
+		}
+		return E_OK;
+	}
+	g_flg[id] |= ptn;
+	return E_OK;
+}
 ER tk_clr_flg(ID id, UINT ptn) { g_flg[id] &= ptn; return E_OK; }
 ER tk_ref_flg(ID id, T_RFLG *p) { p->flgptn = g_flg[id]; return E_OK; }
 ER tk_wai_flg(ID id, UINT ptn, UINT mode, UINT *p_ptn, TMO tmo)
 {
-	(void)mode; (void)tmo;
+	(void)tmo;
+	if (g_in_task && (NAV_WAIT_BITS == ptn)) {
+		longjmp(g_main_loop, 1);	/* boot is over: leave the task */
+	}
 	*p_ptn = g_flg[id] & ptn;
+	if (0U != (mode & TWF_BITCLR)) {
+		g_flg[id] &= ~*p_ptn;
+	}
 	return (0U != *p_ptn) ? E_OK : E_TMOUT;
 }
 ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
@@ -54,8 +91,30 @@ ER tk_snd_mbf(ID id, void *msg, INT size, TMO tmo)
 	g_sent_n++;
 	return E_OK;
 }
-INT tk_rcv_mbf(ID id, void *msg, TMO tmo) { (void)id; (void)msg; (void)tmo; return E_TMOUT; }
-ER tk_dly_tsk(TMO tmo) { (void)tmo; return E_OK; }
+
+/* mission_cmd_mbf: comms_task's MQTT commands, one byte each */
+#define MISSION_MBF_ID	51
+static UB  g_mq[8];
+static int g_mq_head;
+static int g_mq_n;
+static void mq_put(UB cmd)
+{
+	g_mq[(g_mq_head + g_mq_n) % 8] = cmd;
+	g_mq_n++;
+	g_flg[g_nav_flgid] |= NAV_FLG_MISSION_CMD;
+}
+INT tk_rcv_mbf(ID id, void *msg, TMO tmo)
+{
+	(void)tmo;
+	if ((MISSION_MBF_ID != id) || (0 == g_mq_n)) {
+		return E_TMOUT;
+	}
+	*(UB *)msg = g_mq[g_mq_head];
+	g_mq_head = (g_mq_head + 1) % 8;
+	g_mq_n--;
+	return 1;
+}
+ER tk_dly_tsk(TMO tmo) { g_slept_ms += tmo; return E_OK; }
 ER tk_slp_tsk(TMO tmo) { (void)tmo; return E_OK; }
 
 static char g_log[8192];
@@ -76,7 +135,8 @@ void out_w(UW addr, UW data) { (void)addr; (void)data; }
 void clr_w(UW addr, UW data) { (void)addr; (void)data; }
 ER   gpio_set_pin(UINT no, UINT mode) { (void)no; (void)mode; return E_OK; }
 ER   gpio_set_val(UINT no, UINT val) { (void)no; (void)val; return E_OK; }
-UINT gpio_get_val(UINT no) { (void)no; return 1U; }
+static UINT g_pins_low;			/* buttons held down, bit = GP */
+UINT gpio_get_val(UINT no) { return (0U != (g_pins_low & (1U << no))) ? 0U : 1U; }
 ER   pwm_set_pin(UINT no) { (void)no; return E_OK; }
 ER   pwm_set_enabled(UINT no, BOOL en) { (void)no; (void)en; return E_OK; }
 ER   pwm_set_wrap(UINT no, UW wrap) { (void)no; (void)wrap; return E_OK; }
@@ -107,9 +167,20 @@ static void reset(void)
 	(void)nav_ctrl_init();
 	memset(&bind, 0, sizeof(bind));
 	bind.nav_cmd_mbfid = NAV_CMD_MBF_ID;
+	bind.ir_flgid = IR_FLG_ID;
+	bind.imu_flgid = IMU_FLG_ID;
+	bind.cal_req_bit = CAL_REQ_BIT;
+	bind.mission_cmd_mbfid = MISSION_MBF_ID;
 	nav_bind(&bind);
 	g_sent_n = 0;
 	g_mbf_full = 0;
+	g_slept_ms = 0;
+	g_cal_req_ms = -1;
+	g_cal_fail = 0;
+	g_in_task = 0;
+	g_pins_low = 0U;
+	g_mq_head = 0;
+	g_mq_n = 0;
 	g_bar_word = BARCODE_CMD_NONE;
 	g_cmd_taken = 0U;
 	g_move_open = false;
@@ -211,12 +282,69 @@ static void edges(void)
 	CHECK(0 == g_sent_n);			/* not Running: ignored */
 }
 
+/* text a appears in the log, and before text b */
+static bool log_before(const char *a, const char *b)
+{
+	const char *p_a = strstr(g_log, a);
+	const char *p_b = strstr(g_log, b);
+
+	return (NULL != p_a) && (NULL != p_b) && (p_a < p_b);
+}
+
+/* Boot: run nav_ctrl_task up to its main wait. */
+static void run_boot(void)
+{
+	g_mission = (uint32_t)MS_INITIALISING;
+	g_in_task = 1;
+	if (0 == setjmp(g_main_loop)) {
+		nav_ctrl_task(0, NULL);
+	}
+	g_in_task = 0;
+}
+
+/* N1: a GP20 fault reset waits, hands off, before CAL_REQ (the press
+   rocks the car); FAULT -> CALIBRATING is shown first. */
+static void fault_reset_waits(void)
+{
+	reset();
+	g_mission = (uint32_t)MS_FAULT;
+	g_pins_low = 1U << BTN_START_PIN;
+	on_button();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(g_cal_req_ms >= (long)(BTN_DEBOUNCE_MS + NAV_CAL_SETTLE_MS));
+	CHECK(log_before("mission FAULT -> CALIBRATING", "hands off the car"));
+	CHECK(log_before("hands off the car", "mission CALIBRATING -> READY"));
+	CHECK((2 == g_sent_n) && (NAV_CMD_FAULT_CLEAR == g_sent[0][0]) &&
+	      (FAULT_CLEAR_IMU == g_sent[0][1]) && (FAULT_CLEAR_MOTION == g_sent[1][1]));
+}
+
+/* N1: an MQTT reset and the boot calibration do not wait. */
+static void reset_and_boot_no_wait(void)
+{
+	reset();
+	g_mission = (uint32_t)MS_FAULT;
+	mq_put((UB)MCMD_RESET);
+	on_mission_cmd();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(0 == g_cal_req_ms);
+	CHECK(NULL == strstr(g_log, "hands off"));
+
+	reset();
+	run_boot();
+	CHECK(MS_READY == nav_mission_state());
+	CHECK(0 == g_cal_req_ms);
+	CHECK(NULL == strstr(g_log, "hands off"));
+	CHECK(log_before("CALIBRATING -> READY", "GP20 = start/resume/reset"));
+}
+
 int main(void)
 {
 	refused_keeps_command();
 	done_uses_command();
 	newer_command_waits();
 	edges();
-	printf("nav junctions: %d checks, %d failures\n", g_checks, g_failures);
+	fault_reset_waits();
+	reset_and_boot_no_wait();
+	printf("nav junctions and calibration: %d checks, %d failures\n", g_checks, g_failures);
 	return (0 == g_failures) ? 0 : 1;
 }
