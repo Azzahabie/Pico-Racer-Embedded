@@ -393,16 +393,21 @@
 #define MOTION_COUNTS_PER_REV (2535)
 #define MOTION_WHEEL_DIA_MM   (64)
 
-/* The right wheel's own counts per turn (x4).  Measured 4 Nov 2026 by
-   Buddy 5: the right motor gives ~0.63 x the left's counts per turn
-   (likely a different gearbox), steady at hand speed and at 35 % duty:
-     hand, single turns: 1582, 1583, 1595, 1598 (1646 first, with slop)
-     bench open-loop:    R fwd 3101-3111 vs L 5018-5049 counts
-   motion_task scales every right count to left-wheel units on read
-   (tick_encoders), so MOTION_COUNTS_PER_REV stays the one unit for
-   distance, speed and pivots.  Set it equal to MOTION_COUNTS_PER_REV to
-   switch the scaling off.  See docs/motion/right_encoder_scaling.md. */
-#define MOTION_COUNTS_PER_REV_R (1590)
+/* The right wheel's own counts per turn (x4).  2535, the same as the left,
+   so the scaling is off.  Measured 19 Nov 2026 (M, bench image, 10 hand
+   turns each, ~/pico_session/logs/serial_20261119_222026_S1.log): right
+   20234 (444 missed transitions), then 23558 (125 missed), then after the
+   right encoder's Grove cable was unplugged and re-seated 25315 (13
+   missed) = 2532 per turn; left 25330 (0 missed) = 2533.  The 4 Nov value
+   1590 (Buddy 5: hand 1582-1598, open loop R 3101-3111 vs L 5018-5049)
+   came from the same fault: a loose right encoder cable loses counts and
+   reads as missed transitions; there is no different gearbox.  23-24 Oct
+   gave 2533 and 2536.8 (results.md).  If "missed" climbs on the right
+   again, re-seat that cable before trusting any distance or turn.
+   motion_task still scales right counts to left-wheel units on read
+   (tick_encoders) whenever this differs from MOTION_COUNTS_PER_REV.  See
+   docs/motion/right_encoder_scaling.md. */
+#define MOTION_COUNTS_PER_REV_R (2535)
 #define MOTION_WHEELBASE_MM   (127)
 
 /* Hump (W6 6.2 / 6.4, Integration Rules 2.7; M3), while imu_task's
