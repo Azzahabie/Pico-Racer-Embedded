@@ -349,6 +349,9 @@ Decided here, where the design is silent:
   burst inside one 10 ms tick (three MQTT commands in one comms window)
   still reads as a resume; catching it would need a mission number from
   nav.
+- A new mission also forgets which side the line was last seen on, so
+  its first Line Search sweeps left first, as after power-on, instead of
+  toward the side the last mission saw; a resume keeps the side.
 
 Transitions, numbered as in `motion_sm.c` and `tests/motion_sm/`:
 

@@ -1245,6 +1245,48 @@ scenario_line_follow_off_curve (void)
 	CHECK(lf_error(&g_ctx) == 0);
 }
 
+/* L9: the side the line was last seen on is kept over a pause and resume,
+   but a new mission starts with none, so its first search sweeps left
+   (the default) instead of the old mission's side. */
+static void
+scenario_line_dir_new_mission (void)
+{
+	sim_reset("line search: a new mission forgets the last-seen side, a resume keeps it");
+	g_mission = MS_RUNNING;
+	sim_ticks(10);
+	g_line.rl = LINE_RL_RIGHT_DEV;			/* line under the right sensor */
+	g_line.error = -70;
+	sim_ticks(5);
+	CHECK(g_ctx.line_dir == -1);
+	g_line.rl = LINE_RL_JUNCTION;			/* centred again */
+	g_line.error = 0;
+	sim_ticks(5);
+
+	g_mission = MS_PAUSED;				/* GP21, then GP20: a resume */
+	sim_tick();
+	g_mission = MS_RUNNING;
+	sim_tick();
+	CHECK(g_ctx.line_dir == -1);
+
+	g_mission = MS_FINISHED;			/* finish, reset, a new mission */
+	sim_tick();
+	g_mission = MS_READY;
+	sim_tick();
+	g_mission = MS_RUNNING;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_FOLLOW);
+	CHECK(g_ctx.line_dir == 0);
+
+	g_line.rl = LINE_RL_CENTRED;			/* line lost straight away */
+	g_line.dark_ms = 2000u;
+	g_line.lost = true;
+	sim_tick();
+	CHECK(motion_sm_state(&g_ctx.sm) == MOTION_ST_LINE_SEARCH);
+	CHECK(g_ctx.search_dir == 1);			/* left first, not the old right */
+	g_line.lost = false;
+	g_line.dark_ms = 0u;
+}
+
 /* The Line Following correction on its own (S4, 31 Oct): it eases in,
    stays soft, damps a return to centre, turns hard only when held far
    off, and eases out over a barcode. */
@@ -3319,6 +3361,7 @@ main (int argc, char **argv)
 	scenario_line_follow_steer();
 	scenario_line_follow_soft();
 	scenario_line_follow_off_curve();
+	scenario_line_dir_new_mission();
 	scenario_cmd_fault_clear_imu();
 	scenario_cmd_junction_rejected();
 	scenario_turns();

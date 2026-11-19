@@ -2801,7 +2801,9 @@ tele_motion (motion_ctx_t *p_ctx)
    Ready -> Running; Paused -> Running is a resume and keeps it).  nav
    enters Running only from those two, so any other way in (Finished,
    Fault or Calibrating seen last) is a new mission too, even when Ready
-   lasted less than a tick.  Paused -> Finished -> Ready -> Running inside
+   lasted less than a tick.  A new mission also forgets the side the line
+   was last seen on (line_dir), so its first search does not sweep the
+   last mission's side first.  Paused -> Finished -> Ready -> Running inside
    one tick (three MQTT commands in one comms window) still reads as a
    resume; catching it would need a mission number from nav. */
 static void
@@ -2821,6 +2823,7 @@ tick_statechart (motion_ctx_t *p_ctx)
         && (MS_PAUSED != (mission_state_t)p_ctx->mission_prev))
     {
         p_ctx->mission_counts = 0u; /* a new mission */
+        p_ctx->line_dir       = 0;  /* no side seen in it yet (L9) */
     }
     p_ctx->mission_prev = (uint8_t)mission;
     in.b_running        = (MS_RUNNING == mission);
