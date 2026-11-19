@@ -31,6 +31,8 @@ typedef struct {
 	uint32_t both_black_run;	/* junction debounce: GP7 black run */
 	uint32_t clear_run;		/* GP7 white samples since leaving it */
 	bool junction_armed;
+	bool junction_due;		/* fires once the gate's wait ends */
+	bool on_crossbar;		/* fired, GP7 still on that black */
 
 	uint32_t dark_ms;		/* since the last confirmed black */
 	uint32_t left_rail_run;
@@ -46,6 +48,25 @@ typedef struct {
 	uint16_t left_norm;	/* 0 white .. 1000 black               */
 	uint16_t right_norm;
 } line_track_out_t;
+
+/*
+ * What the barcode side tells the junction detector, every sample
+ * (LINE_JUNCTION_RULE 1, from junction_arm_step()):
+ *   in_read   bars of an open barcode read are arriving: GP7's black run
+ *             is a bar, never a junction, however long;
+ *   armed_due a complete barcode armed the junction and GP7's black run
+ *             has confirmed it (LINE_ARMED_CONFIRM_MM): fire now;
+ *   wait      a complete read is waiting for barcode_task's verdict: a
+ *             junction that is due waits (at most
+ *             LINE_ARMED_VERDICT_WAIT_MS), so nav finds the command.
+ * Outside a read, GP7 black LINE_JUNCTION_SAMPLES running still fires (the
+ * length rule, the fallback when no barcode armed it).
+ */
+typedef struct {
+	bool in_read;
+	bool armed_due;
+	bool wait;
+} line_junction_gate_t;
 
 /* Start from the configured thresholds, uncalibrated, junction armed. */
 void line_track_init(line_track_t *trk, const ir_cal_sensor_t *left,
@@ -72,5 +93,12 @@ void line_track_disarm_junction(line_track_t *trk);
 void line_track_step(line_track_t *trk, uint16_t left_raw, uint16_t right_raw,
 		     bool adc_ok, bool barcode_hold, bool mark_black,
 		     line_track_out_t *out);
+
+/* The same with the barcode side's gate (above).  gate NULL is
+   line_track_step(): the length rule alone, LINE_JUNCTION_RULE 0. */
+void line_track_step_gate(line_track_t *trk, uint16_t left_raw,
+			  uint16_t right_raw, bool adc_ok, bool barcode_hold,
+			  bool mark_black, const line_junction_gate_t *gate,
+			  line_track_out_t *out);
 
 #endif

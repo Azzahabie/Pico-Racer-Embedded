@@ -38,6 +38,23 @@ static unsigned feed_mark(unsigned n, uint16_t left, uint16_t right, bool hold,
 	return events;
 }
 
+/* n samples with the barcode side's gate (line_track_step_gate) */
+static unsigned feed_gate(unsigned n, bool mark, bool in_read, bool armed_due,
+			  bool wait)
+{
+	line_junction_gate_t gate = { in_read, armed_due, wait };
+	unsigned events = 0u;
+	unsigned i;
+
+	for (i = 0u; i < n; ++i) {
+		line_track_step_gate(&trk, B, B, true, false, mark, &gate, &out);
+		if (out.junction) {
+			events++;
+		}
+	}
+	return events;
+}
+
 /* n samples with GP7 white */
 static unsigned feed(unsigned n, uint16_t left, uint16_t right, bool hold)
 {
@@ -198,6 +215,48 @@ static void test_junction_course(void)
 	}
 }
 
+/* The gate (LINE_JUNCTION_RULE 1): a black run while the bars of a read
+   arrive is never a junction however long (the length rule fired on it);
+   armed and confirmed fires before J_n; a junction due while a complete
+   read waits for its verdict fires once the wait ends, even if GP7 has
+   left the black by then; a NULL gate is the length rule alone. */
+static void test_junction_gate(void)
+{
+	setup();
+	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
+
+	/* bars arriving: 3 x J_n of black, no event, no crossing */
+	CHECK(feed_gate(3u * LINE_JUNCTION_SAMPLES, true, true, false, false) == 0u);
+	CHECK(!out.crossing);
+	/* the same run once the read is over (or never was): the length rule */
+	CHECK(feed_gate(1u, true, false, false, false) == 1u);
+	CHECK(out.crossing);
+
+	/* armed: fires the sample it is confirmed, long before J_n */
+	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
+	CHECK(feed_gate(10u, true, false, false, false) == 0u);
+	CHECK(feed_gate(1u, true, false, true, false) == 1u);
+	CHECK(out.crossing);			/* on that crossbar */
+	CHECK(feed_gate(LINE_JUNCTION_SAMPLES, true, false, true, false) == 0u);	/* once */
+
+	/* armed, but bars arriving: never */
+	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
+	CHECK(feed_gate(50u, true, true, true, false) == 0u);
+
+	/* due while waiting for the verdict: held, then fires, even on white */
+	CHECK(feed_gate(LINE_JUNCTION_REARM_SAMPLES, false, false, false, false) == 0u);
+	CHECK(feed_gate(LINE_JUNCTION_SAMPLES + 20u, true, false, false, true) == 0u);
+	CHECK(feed_gate(5u, false, false, false, true) == 0u);
+	CHECK(feed_gate(1u, false, false, false, false) == 1u);
+	CHECK(!out.crossing);			/* GP7 already off it */
+	CHECK(feed_gate(100u, false, false, false, false) == 0u);
+
+	/* a mission change drops a held junction */
+	CHECK(feed_gate(1u, true, false, true, true) == 0u);
+	line_track_disarm_junction(&trk);
+	CHECK(feed_gate(50u, false, false, false, false) == 0u);
+}
+
 static void test_line_loss(void)
 {
 	unsigned i;
@@ -351,6 +410,7 @@ int main(void)
 	test_weak_black_not_lost();
 	test_junction();
 	test_junction_course();
+	test_junction_gate();
 	test_line_loss();
 	test_hold_dark();
 	test_faults();

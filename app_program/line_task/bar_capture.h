@@ -42,7 +42,8 @@ typedef enum {
 	BAR_ABORT_TOO_LONG,	/* one width above W_long                   */
 	BAR_ABORT_TIMEOUT,	/* whole read above BARCODE_READ_MAX_TICKS  */
 	BAR_ABORT_OVERFLOW,	/* the message buffer to barcode_task full  */
-	BAR_ABORT_CANCELLED	/* mission state changed mid-read           */
+	BAR_ABORT_CANCELLED,	/* mission state changed mid-read           */
+	BAR_ABORT_JUNCTION	/* the black is a junction's crossbar       */
 } bar_abort_t;
 
 typedef enum {

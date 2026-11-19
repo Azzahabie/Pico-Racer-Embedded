@@ -9,6 +9,12 @@
  * On CAL_REQ from nav_ctrl_task it calibrates over IR_CAL_SAMPLES samples
  * without stopping the 1 ms loop.  A line sensor fault sets
  * FAULT_LINE_SENSOR (S.faults bit 4) and clears it when it ends.
+ *
+ * Junctions (LINE_JUNCTION_RULE 1): a complete barcode read ENDs at its
+ * stop character; once barcode_task has judged it and stored its command
+ * (barcode_judged_word, barcode_cmd_word), the next black under GP7 is
+ * the junction (junction_arm.h).  The travel for that comes from
+ * distance_state (motion_ds.h, one aligned load, core 1 like imu_task).
  */
 
 #include <tk/tkernel.h>
@@ -27,6 +33,9 @@
 #include "bar_capture.h"
 #include "barcode_scanner.h"
 #include "barcode_task.h"
+#include "barcode_action.h"
+#include "junction_arm.h"
+#include "../motor_task/motion_ds.h"
 
 #define IR_SAMPLE_MS		1	/* the 1 ms cadence (CNF_TIMER_PERIOD 1) */
 #define IR_COMMISSION_MS	100	/* print period with LINE_COMMISSIONING_MODE */
@@ -43,6 +52,9 @@ LOCAL volatile uint32_t	g_line_state = LINE_STATE_INITIAL;	/* one store, this ta
 
 LOCAL line_track_t	g_trk;
 LOCAL bar_capture_t	g_cap;
+#if LINE_JUNCTION_RULE
+LOCAL junction_arm_t	g_arm;
+#endif
 
 EXPORT ID ir_sense_init(void)
 {
@@ -139,7 +151,18 @@ LOCAL void capture_step(BOOL black)
 	if(BAR_EV_WIDTH == event) {
 		send_bar(event, width);
 	} else if(BAR_EV_END == event) {
+#if LINE_JUNCTION_RULE
+		/* before the END goes: barcode_task (core 0) may store at once */
+		uint32_t	cmd_before = barcode_cmd_word();
+
 		send_bar(event, g_cap.count);
+		if(g_cap.complete) {
+			junction_arm_read_done(&g_arm, g_cap.read_id, g_cap.letter,
+					       cmd_before);
+		}
+#else
+		send_bar(event, g_cap.count);
+#endif
 	} else if(BAR_EV_ABORT == event) {
 		send_bar(event, (uint16_t)g_cap.reason);
 	} else {
@@ -151,6 +174,43 @@ LOCAL ir_cal_sensor_t default_cal(BOOL black_is_high, uint16_t rise, uint16_t fa
 {
 	return ir_cal_default(black_is_high ? true : false, rise, fall);
 }
+
+#if LINE_JUNCTION_RULE
+/* The barcode-armed junction's console lines (junction_arm.h). */
+LOCAL void print_arm(jarm_event_t event, mission_state_t mission)
+{
+	UB	stored = (UB)('A' + barcode_cmd_letter(g_arm.cmd));
+	const char	*after = (JARM_ARMED == g_arm.phase)
+				 ? "still armed by the barcode before"
+				 : "junction by length only";
+
+	switch(event) {
+	case JARM_EV_ARMED:
+		tm_printf((UB *)"[line] junction armed: barcode '%c' -> %s, the next black under GP7 is the junction\n",
+			  stored, barcode_action_name(barcode_cmd_action(g_arm.cmd)));
+		break;
+	case JARM_EV_REJECTED:
+		tm_printf((UB *)"[line] barcode '%c' read, no command stored: %s\n",
+			  g_arm.letter, after);
+		break;
+	case JARM_EV_NO_VERDICT:
+		tm_printf((UB *)"[line] barcode '%c' read, no verdict from barcode_task in %u ms: %s\n",
+			  g_arm.letter, (UINT)LINE_ARMED_VERDICT_WAIT_MS, after);
+		break;
+	case JARM_EV_DISARM_DISTANCE:
+		tm_printf((UB *)"[line] junction disarmed: no junction within %u mm of barcode '%c' (command kept for nav)\n",
+			  (UINT)LINE_ARMED_HOLD_MM, stored);
+		break;
+	case JARM_EV_DISARM_MISSION:
+		tm_printf((UB *)"[line] junction disarmed: mission %s\n",
+			  nav_state_name(mission));
+		break;
+	case JARM_EV_NONE:
+	default:
+		break;
+	}
+}
+#endif
 
 /* rl 11 is the centred car (both sensors inside the line): ON, not
    CROSSING.  CROSSING is GP7 on a junction's crossbar. */
@@ -188,6 +248,15 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 	UINT		print_ms = 0U;
 	UINT		tele_state = TELE_LINE_UNSENT;	/* S.lin defaults to ON */
 	UINT		last_rl = LINE_RL_CENTRED;
+#if LINE_JUNCTION_RULE
+	line_junction_gate_t	gate;
+	jarm_event_t	arm_event;
+	jarm_event_t	cancel_event;
+	uint32_t	ds_now;
+	uint32_t	ds_prev = motion_ds_read();
+	int32_t		moved;
+	BOOL		armed_junction = FALSE;
+#endif
 	BOOL		black;
 	BOOL		adc_ok;
 	BOOL		fault_reported = FALSE;
@@ -205,6 +274,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 
 	line_track_init(&g_trk, &left_def, &right_def, LINE_STEER_INVERT != 0);
 	bar_capture_init(&g_cap);
+#if LINE_JUNCTION_RULE
+	junction_arm_init(&g_arm);
+#endif
 	ercd = line_reader_init(NULL);
 	if(E_OK > ercd) {
 		tm_printf((UB *)"[line] ADC initialization failed, er=%d\n", ercd);
@@ -246,12 +318,30 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		}
 
 		/* a mission change drops any partial read and stale junction */
+#if LINE_JUNCTION_RULE
+		cancel_event = JARM_EV_NONE;
+#endif
 		if(nav_mission_state() != mission) {
 			mission = nav_mission_state();
 			send_bar(bar_capture_abort(&g_cap, BAR_ABORT_CANCELLED),
 				 (uint16_t)BAR_ABORT_CANCELLED);
 			line_track_disarm_junction(&g_trk);
+#if LINE_JUNCTION_RULE
+			cancel_event = junction_arm_cancel(&g_arm);
+#endif
 		}
+
+#if LINE_JUNCTION_RULE
+		/* the barcode-armed junction: travel from distance_state */
+		ds_now = motion_ds_read();
+		moved = motion_ds_delta_mm(ds_now, ds_prev);
+		ds_prev = ds_now;
+		arm_event = junction_arm_step(&g_arm, barcode_judged_word(),
+					      barcode_cmd_word(),
+					      black ? true : false,
+					      (uint32_t)((moved < 0) ? -moved : moved),
+					      bar_capture_in_read(&g_cap), &gate);
+#endif
 
 		/* reading, not busy: after a width_too_long abort GP7 may stay
 		   black for as long as the car is parked on it */
@@ -262,13 +352,31 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		} else {
 			/* not held */
 		}
+#if LINE_JUNCTION_RULE
+		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
+				     adc_ok ? true : false,
+				     (0U != LINE_BARCODE_HOLD) && (0U < holdoff),
+				     black ? true : false, &gate, &out);
+#else
 		line_track_step(&g_trk, raw.left_guard, raw.right_guard,
 				adc_ok ? true : false,
 				(0U != LINE_BARCODE_HOLD) && (0U < holdoff),
 				black ? true : false, &out);
+#endif
 		g_line_state = out.word;			/* one store */
 
 		if(out.junction) {
+#if LINE_JUNCTION_RULE
+			armed_junction = junction_arm_used(&g_arm) ? TRUE : FALSE;
+			/* the crossbar opened a read of its own: drop it, so it
+			   neither holds line_state for its quiet zone nor prints
+			   a reject (a read past a sheet's 29 widths is kept, for
+			   its width dump) */
+			if(bar_capture_reading(&g_cap) && (0U == g_cap.count)) {
+				send_bar(bar_capture_abort(&g_cap, BAR_ABORT_JUNCTION),
+					 (uint16_t)BAR_ABORT_JUNCTION);
+			}
+#endif
 			tell_nav(NAV_FLG_JUNCTION);
 		}
 
@@ -327,10 +435,26 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 
 		/* the crossbar under GP7 is itself a capture, so this line must
 		   come before the barcode check below */
+#if LINE_JUNCTION_RULE
+		if(out.junction && armed_junction) {
+			tm_printf((UB *)"[line] junction (armed by barcode '%c' %s, GP7 black %u mm) -> nav\n",
+				  (UB)('A' + barcode_cmd_letter(g_arm.cmd)),
+				  barcode_action_name(barcode_cmd_action(g_arm.cmd)),
+				  (UINT)g_arm.black_mm);
+		} else if(out.junction) {
+			tm_printf((UB *)"[line] junction (GP7 black %u ms, length rule) -> nav\n",
+				  (UINT)LINE_JUNCTION_SAMPLES);
+		} else {
+			/* no junction this sample */
+		}
+		print_arm(cancel_event, mission);
+		print_arm(arm_event, mission);
+#else
 		if(out.junction) {
 			tm_printf((UB *)"[line] junction (GP7 black %u ms) -> nav\n",
 				  (UINT)LINE_JUNCTION_SAMPLES);
 		}
+#endif
 
 #if LINE_GP7_DIAG
 		/* before the barcode check below: it must print even while GP7

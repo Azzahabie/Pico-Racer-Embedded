@@ -226,6 +226,8 @@ const char *bar_abort_name(bar_abort_t reason)
 		return "buffer_overflow";
 	case BAR_ABORT_CANCELLED:
 		return "cancelled";
+	case BAR_ABORT_JUNCTION:
+		return "junction";
 	case BAR_ABORT_NONE:
 	default:
 		return "none";

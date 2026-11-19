@@ -156,6 +156,19 @@
 #endif
 #define LINE_JUNCTION_REARM_SAMPLES               (20u)
 
+/* ---- The barcode-armed junction (the team's rule, 19 Nov) ----
+   The course puts a barcode sheet before or at each junction, with bars
+   of different sizes, so no single length J_n can tell every bar from the
+   crossbar.  1 (default): once GP7 has read a complete, valid barcode and
+   barcode_task has stored its command, the next black run GP7 sees is the
+   junction, whatever its length (junction_arm.h).  While the bars of a
+   read arrive, nothing is a junction.  With no barcode armed, the length
+   rule above is the fallback.  0: the length rule alone, as before (A/B).
+   The rule needs BARCODE_END_ON_STOP 1. */
+#ifndef LINE_JUNCTION_RULE
+#define LINE_JUNCTION_RULE                        (1u)
+#endif
+
 /* 1 (default): a one-letter read ENDs as soon as the stop character's
    last bar ends, if its 29 widths decode as a valid *X*, instead of
    after the quiet zone.  A crossbar closer behind the sheet than the
@@ -165,6 +178,41 @@
    for the quiet zone. */
 #ifndef BARCODE_END_ON_STOP
 #define BARCODE_END_ON_STOP                       (1u)
+#endif
+
+/* Armed: the black run is the junction once it has lasted
+   LINE_ARMED_MIN_SAMPLES samples (noise) and LINE_ARMED_CONFIRM_MM of
+   travel (distance_state, the wheels' average).  10 mm is longer than the
+   first bar of any barcode in the size range (every Code 39 barcode
+   starts with a narrow bar, at most 6 mm printed, so a second sheet
+   before the same junction does not fire), and shorter than the 18 mm
+   crossbar, also with the bars read 1 mm off and GP7's speed 20 % off the
+   car's (sim, tests/line).  The car then turns from 10 mm into the
+   crossbar, at any speed (13.3 mm with J_n 280 at base 6, C), which
+   MOTION_TURN_FWD_MM counts from.  PROVISIONAL: a guess to confirm on the
+   car.  0 mm: the first LINE_ARMED_MIN_SAMPLES of black fire. */
+#ifndef LINE_ARMED_MIN_SAMPLES
+#define LINE_ARMED_MIN_SAMPLES                    (5u)
+#endif
+#ifndef LINE_ARMED_CONFIRM_MM
+#define LINE_ARMED_CONFIRM_MM                     (10u)
+#endif
+
+/* D_hold (week6_design_review.md, assumption 2): an armed junction is
+   disarmed after this much travel with no junction (the stored command
+   stays for nav; only the junction falls back to the length rule).
+   150 mm is a GUESS to confirm on the car: it must be longer than the
+   gap from the last bar to the crossbar on the course. */
+#ifndef LINE_ARMED_HOLD_MM
+#define LINE_ARMED_HOLD_MM                        (150u)
+#endif
+
+/* After a complete read, a junction that is due waits at most this long
+   (ms) for barcode_task (core 0) to judge the read and store its command,
+   so nav finds it.  barcode_task wakes on the message; 50 ms is 2.4 mm at
+   base 6 (C). */
+#ifndef LINE_ARMED_VERDICT_WAIT_MS
+#define LINE_ARMED_VERDICT_WAIT_MS                (50u)
 #endif
 
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
@@ -245,11 +293,20 @@
 #if (LINE_BARCODE_HOLD != 0u) && (LINE_BARCODE_HOLD != 1u)
 #error "LINE_BARCODE_HOLD must be 0 or 1"
 #endif
+#if (LINE_JUNCTION_RULE != 0u) && (LINE_JUNCTION_RULE != 1u)
+#error "LINE_JUNCTION_RULE must be 0 or 1"
+#endif
 #if (BARCODE_DECODE_SPLIT != 0u) && (BARCODE_DECODE_SPLIT != 1u)
 #error "BARCODE_DECODE_SPLIT must be 0 or 1"
 #endif
 #if (BARCODE_END_ON_STOP != 0u) && (BARCODE_END_ON_STOP != 1u)
 #error "BARCODE_END_ON_STOP must be 0 or 1"
+#endif
+#if (LINE_JUNCTION_RULE != 0u) && (BARCODE_END_ON_STOP == 0u)
+#error "LINE_JUNCTION_RULE 1 needs BARCODE_END_ON_STOP 1"
+#endif
+#if (LINE_ARMED_MIN_SAMPLES < 1u) || (LINE_ARMED_VERDICT_WAIT_MS < 1u)
+#error "LINE_ARMED_MIN_SAMPLES and LINE_ARMED_VERDICT_WAIT_MS must be at least 1"
 #endif
 
 #endif
