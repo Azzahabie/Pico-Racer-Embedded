@@ -8,6 +8,8 @@
  * from a loaded map arrives as that JUNCTION's action; a refusal
  * (CMD_REJECTED, motion not in Line Following, e.g. during a bypass) keeps
  * it for the next junction; a pause during the turn uses it.
+ * A command stored just before the junction flag (the barcode-armed
+ * junction's order) is the one sent.
  * Calibration: a GP20 fault reset waits NAV_CAL_SETTLE_MS before CAL_REQ;
  * boot and an MQTT reset do not; an MQTT command sent while calibrating is
  * dropped, not applied at Ready.
@@ -266,6 +268,63 @@ static void newer_command_waits(void)
 	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
 	on_junction();
 	CHECK(sent_junction(3u));		/* the U-turn, at the next junction */
+}
+
+/* ir_sense_task's junction flag, read the way nav_ctrl_task's loop reads
+   it (the bit cleared on the wait, then on_junction). */
+static void junction_flag(void)
+{
+	UINT ptn = 0U;
+
+	(void)tk_set_flg(g_nav_flgid, NAV_FLG_JUNCTION);
+	if ((E_OK == tk_wai_flg(g_nav_flgid, NAV_FLG_JUNCTION, TWF_ORW | TWF_BITCLR,
+				&ptn, TMO_POL)) &&
+	    (0U != (ptn & NAV_FLG_JUNCTION))) {
+		on_junction();
+	}
+	CHECK(0U == (g_flg[g_nav_flgid] & NAV_FLG_JUNCTION));
+}
+
+/* The barcode-armed junction (line_task, proposal/line-barcode-beside-line):
+   barcode_task stores the command, and only then does ir_sense_task raise
+   the junction flag, the moment GP7 confirms the crossbar, which can be
+   0 mm behind the sheet.  A command stored just before the flag is the one
+   nav sends at that junction.  The order before it (the flag first, then
+   the store, when the crossbar came before the read's quiet zone ended)
+   sent nothing there and kept the command for the next junction, the
+   wrong place. */
+static void store_then_flag(void)
+{
+	/* a junction used seq 1; the next sheet is stored, then the flag */
+	reset();
+	bar_store(11u, 1u, 1u);			/* 'L', LEFT, seq 1 */
+	junction_flag();
+	CHECK(sent_junction(1u));
+	on_motion_reply(NAV_FLG_MOVE_DONE);
+	bar_store(17u, 2u, 2u);			/* 'R', RIGHT, seq 2 */
+	junction_flag();
+	CHECK(2 == g_sent_n);
+	CHECK(sent_junction(2u));
+	CHECK(NULL != strstr(g_log, "[nav] -> motion: JUNCTION(RIGHT)"));
+	on_motion_reply(NAV_FLG_MOVE_DONE);
+	CHECK(!barcode_cmd_pending(g_bar_word, g_cmd_taken));
+
+	/* the first command of a mission, stored just before the flag */
+	reset();
+	bar_store(20u, 3u, 1u);			/* 'U', U_TURN, seq 1 */
+	junction_flag();
+	CHECK(sent_junction(3u));
+	CHECK(NULL == strstr(g_log, "straight on"));
+
+	/* the old order: flag, then store */
+	reset();
+	junction_flag();
+	CHECK(0 == g_sent_n);
+	CHECK(NULL != strstr(g_log, "no barcode command: straight on"));
+	bar_store(17u, 2u, 1u);			/* stored after that junction */
+	CHECK(barcode_cmd_pending(g_bar_word, g_cmd_taken));
+	junction_flag();			/* used at the NEXT junction */
+	CHECK(sent_junction(2u));
 }
 
 /* A junction while a move is open is ignored; a full buffer sends nothing
@@ -576,6 +635,7 @@ int main(void)
 	done_uses_command();
 	every_action_from_map();
 	newer_command_waits();
+	store_then_flag();
 	edges();
 	pause_mid_turn_uses_command();
 	fault_reset_waits();
