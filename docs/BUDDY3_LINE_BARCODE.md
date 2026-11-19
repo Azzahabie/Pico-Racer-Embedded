@@ -597,6 +597,7 @@ stays: publish before start (MQTT_SCHEMA.md 8.3).
 [line] junction rule: barcode-armed, length rule as fallback (LINE_JUNCTION_RULE 1) | scan gate on: GP7 black opens no read and no length-rule junction in TURNING, BYPASS, LINE_SEARCH or REVERSING, or while the averaged turn rate is 6 deg/s or more (LINE_SCAN_GATE 1)
 [line] GP7 black ignored: turning 18.2 deg/s left (scan gate, limit 6): no read, no length-rule junction (0 more since the last line)
 [line] GP7 black ignored: motion TURNING (scan gate): no read, no length-rule junction (0 more since the last line)
+[line] GP7 black ignored: 3 more since the last line (scan gate)
 [line] scan gate: no distance_state (motor_task_flag 0, bench image?): GP7 scans while turning too (fails open)
 [line] scan gate: distance_state back, no read starts while turning
 ```
@@ -608,9 +609,12 @@ The `junction rule` line prints once at boot, after the `ir_sense_task`
 line (`... | scan gate off (LINE_SCAN_GATE 0)` without the gate). The
 `GP7 black ignored` line prints at most once a second, with the averaged
 turn rate (left = counter-clockwise) or, in a manoeuvre, motion's state,
-and how many more blacks were turned away since the last such line. A
-bench image prints the `no distance_state` line once at start (`counter
-stopped` instead if motion stops publishing).
+and how many more blacks were turned away since the last such line.
+Blacks turned away within that second and not yet counted in a line are
+printed on their own (`N more since the last line`) once the second is
+over, when no read is open, so the count is never lost. A bench image
+prints the `no distance_state` line once at start (`counter stopped`
+instead if motion stops publishing).
 
 `LINE_COMMISSIONING_MODE=1` prints the heartbeat every 100 ms instead of
 2 s. Nothing prints while a barcode is under the car.

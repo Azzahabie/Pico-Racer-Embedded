@@ -255,6 +255,14 @@ LOCAL void print_ignored(UINT more, uint32_t motion)
 	}
 }
 
+/* Blacks turned away since the last line and not printed yet: printed
+   once IR_GATE_PRINT_MS has passed with no new one to print them with. */
+LOCAL void print_ignored_rest(UINT more)
+{
+	tm_printf((UB *)"[line] GP7 black ignored: %u more since the last line (scan gate)\n",
+		  more);
+}
+
 /* distance_state lost or back: the gate fails open without it. */
 LOCAL void print_ds(BOOL available, BOOL motion_up)
 {
@@ -576,7 +584,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 
 #if LINE_SCAN_GATE
 		/* the scan gate's lines: a GP7 black turned away (at most one a
-		   second, counting the rest), and distance_state lost or back */
+		   second, counting the rest, which are printed on their own
+		   once the second is over and no read is open), and
+		   distance_state lost or back */
 		gate_quiet = (gate_quiet > elapsed) ? (gate_quiet - elapsed) : 0U;
 		if(g_cap.ignored != ignored_seen) {
 			ignored_more += (UINT)(uint16_t)(g_cap.ignored - ignored_seen);
@@ -586,6 +596,13 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				ignored_more = 0U;
 				gate_quiet = IR_GATE_PRINT_MS;
 			}
+		} else if((0U == gate_quiet) && (0U < ignored_more) &&
+			  !bar_capture_reading(&g_cap)) {
+			print_ignored_rest(ignored_more);
+			ignored_more = 0U;
+			gate_quiet = IR_GATE_PRINT_MS;
+		} else {
+			/* nothing to print */
 		}
 		if((g_gate.available ? TRUE : FALSE) != ds_reported) {
 			ds_reported = g_gate.available ? TRUE : FALSE;
