@@ -425,6 +425,7 @@ What the code does:
 | Stop | in Running or Paused: STOP_IMU to motion_task, which brakes and holds both wheels at 0 until FAULT_CLEAR(IMU); FAULT_IMU on the shared fault flag; IMU_FAULT to nav_ctrl_task, which goes to FAULT and beeps |
 | Other paths | in hand 1.2 s with the wheels still (`EV_LIFT_FAULT_MS`, §5) and no good reading for 50 ms (NFR-13) raise the same fault |
 | After | the run ends in **FAULT**, not FINISHED (`S` `mis=6`, `faults=imu`). GP20 recalibrates on flat floor and clears the fault |
+| Hump | a hump still open when the fault comes is dropped, past its top or not (§3.2, Statechart 6.4): `hump discarded (fault or abnormal tilt)`, no `===== HUMP` line, `S.hum` one short. The demo hump stays open ~14–15 cm past its crest (§4.5), about 3 s at 48 mm/s (calculated). **Operator rule: wait for the `===== HUMP` line before lifting the car** |
 | Console | `[imu] !!! STOPPING: car tipped over (upside down, z <z> mg) !!!` when z is below 0 at the trip; tipped past T but not yet past 90°, the angle line as before (`... (26.5 deg to the LEFT, right side up)`). Before this message fix an upside-down trip printed `(0.0 deg to the , )`, as \|x, y\| is ~0 on its roof. The boot line `[imu] faults: tilt > 24.9 deg or upside down for 3 samples ...` shows the image has the z rule |
 
 Why z as well: resting on its roof the sideways part of gravity is about 0 again
@@ -438,6 +439,14 @@ lift while driving tipped 26° on the way up and faulted in 21.2 ms (§5, 3 Nov)
 pick-up path cannot fire while the wheels turn, and a lifted car's line sensors read
 black, so line following keeps the wheels turning (4 Nov, `trials_batch2` 04:33,
 `RL=11` while held; item 10 of §6). The inversion is what stops a lifted car.
+
+Why the fault does not count a hump past its top, as a pause does (§3.3): the wheels
+keep driving while the car is lifted, so the tilt of the lift itself, on flat floor,
+can start a "climb" and set it past its top before the fault comes, and a nose-down
+lift part way up the hump can read as the way down. Counting on the fault would then
+add a fake hump or a part height (host model, not a car log). Every demo run ends
+with a lift, so the hump is kept safe by the operator rule above instead: lift only
+after the `===== HUMP` line.
 
 To run (bench, wheels off the floor): calibrate on the floor, put the car on a box,
 start with GP20 (the motors run, as the sensors read black), then lift and invert:

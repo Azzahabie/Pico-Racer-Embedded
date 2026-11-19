@@ -188,6 +188,10 @@ Target ±2 mm or 20 %, limit ±5 mm.
       (~1 s), fast (~0.2 s), and set down on its roof. Every time:
       `STOPPING`, wheels stop and stay stopped, `S faults=imu mis=6`
 - [ ] Course: end a full run by lifting and inverting the car
+- [ ] Operator rule: wait for the `===== HUMP` line before lifting the car.
+      A lift while the hump is still open (the demo hump closes ~14–15 cm
+      past its crest, terrain report §4.5) drops it: `hump discarded (fault
+      or abnormal tilt)`, `S.hum` one short (terrain report §5.2)
 
 ### FR-28 / NFR-19: tilt fault (limit 40 ms)
 
@@ -219,5 +223,7 @@ Target ±2 mm or 20 %, limit ±5 mm.
       after boot, reboot if seen
 - [ ] Live points ready: hump height on the prof's hump, tilt fault and
       its time (under 40 ms), recovery by recalibration (GP20)
+- [ ] End the run (lift and invert) only after the `===== HUMP` line; a
+      lift before it drops the hump
 - [ ] Evidence ready: host tests (`make -C tests`: `imu_hump`, `imu_safety`),
       saved logs, the requirements table

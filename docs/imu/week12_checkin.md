@@ -86,3 +86,5 @@ the integrated car, 1–3 Nov 2026, on branch `imu_task` (commits `1551f7d`,
 - Lift it onto the start in Ready, not during a mission.
 - (19 Nov) The run ends by lifting and inverting the car: expect `STOPPING`,
   the wheels stop, `S faults=imu mis=6`. GP20 on flat floor recalibrates.
+  Wait for the `===== HUMP` line before lifting: a lift while the hump is
+  still open (~14–15 cm past the crest) drops it (terrain report §5.2).
