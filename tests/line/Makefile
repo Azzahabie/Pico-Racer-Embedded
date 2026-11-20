@@ -26,7 +26,18 @@ TASK_DEP := test_barcode_task.c check.h $(SRC_DIR)/barcode_task.c $(SRC_DIR)/bar
 BINS := test_barcode_decode test_barcode_action test_barcode_action_table test_ir_cal \
         test_line_track test_barcode_pipeline test_line_state \
         test_barcode_task test_barcode_task_table test_barcode_task_bad \
-        test_junction_arm test_junction_arm_nogate test_scan_gate
+        test_junction_arm test_junction_arm_nogate test_scan_gate \
+        test_bc_analog test_bc_analog_fixtures test_bc_analog_chain \
+        test_barcode_task_analog
+
+# The analog barcode path (BARCODE_SENSOR_ANALOG 1): the capture, the
+# decoders and the front end; the car traces of 20 Nov
+# (fixtures/); the barcode-armed junction with it; barcode_task's side.
+ANALOG   := -DBARCODE_SENSOR_ANALOG=1
+BC_SRC   := $(SRC_DIR)/bc_analog_front.c $(SRC_DIR)/bc_analog_capture.c $(SRC_DIR)/bc_analog_code39.c
+BC_DEPS  := $(BC_SRC) $(SRC_DIR)/bc_analog_front.h $(SRC_DIR)/bc_analog_capture.h \
+            $(SRC_DIR)/bc_analog_code39.h $(SRC_DIR)/bc_analog_cfg.h $(SRC_DIR)/bc_analog_link.h \
+            ../../app_program/common/line_config.h check.h bc_sim.h
 
 # The chain from GP7 to the junction flag (test_junction_arm.c).
 JA_SRC := $(SRC_DIR)/bar_capture.c $(SRC_DIR)/barcode_rx.c \
@@ -112,6 +123,20 @@ test_junction_h1_off: $(JA_DEPS)
 
 test_junction_scan_off: $(JA_DEPS)
 	$(CC) $(BASE) $(SCAN_OFF) -o $@ test_junction_arm.c $(JA_SRC) -lm
+
+test_bc_analog: test_bc_analog.c $(BC_DEPS)
+	$(CC) $(BASE) $(ANALOG) -o $@ test_bc_analog.c $(BC_SRC)
+
+test_bc_analog_fixtures: test_bc_analog_fixtures.c $(BC_DEPS) fixtures/run1_1506_Z_missing_first4.json
+	$(CC) $(BASE) $(ANALOG) -DEXPECT_RUN4_F -o $@ test_bc_analog_fixtures.c $(BC_SRC)
+
+test_bc_analog_chain: test_bc_analog_chain.c $(BC_DEPS) $(JA_DEPS)
+	$(CC) $(BASE) $(ANALOG) -o $@ test_bc_analog_chain.c $(BC_SRC) \
+	    $(SRC_DIR)/barcode_action.c $(SRC_DIR)/junction_arm.c $(SRC_DIR)/line_track.c $(SRC_DIR)/ir_cal.c
+
+test_barcode_task_analog: $(TASK_DEP) $(BC_DEPS)
+	$(CC) $(TASK) $(TABLE_EX) $(ANALOG) -o $@ test_barcode_task.c $(TASK_SRC) \
+	    $(SRC_DIR)/bc_analog_capture.c $(SRC_DIR)/bc_analog_code39.c
 
 test_scan_gate: $(SG_DEPS)
 	$(CC) $(BASE) -o $@ test_scan_gate.c $(SG_SRC) -lm
