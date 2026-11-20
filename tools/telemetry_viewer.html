@@ -50,6 +50,39 @@ h2 { font-family: var(--display); }
 #cat .cat-cap { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-family: var(--display);
   font-weight: 700; font-size: 14px; line-height: 1.15; }
 #cat .cat-cap .em { font-size: 19px; flex: none; }
+#cat .cat-mood { display: flex; align-items: center; gap: 7px; margin-top: 7px; }
+#cat .cat-mood .lbl { font-size: 10px; color: var(--muted); white-space: nowrap; }
+#cat .cat-mood .track { flex: 1; height: 7px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--line) 80%, transparent); }
+#cat .cat-mood .fill { height: 100%; width: 80%; border-radius: 999px; transition: width .5s ease;
+  background: linear-gradient(90deg, var(--bad), var(--warn) 45%, var(--ok)); }
+/* barcode assignment (type a letter, tap an arrow) */
+#map-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.mchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; border-radius: 999px;
+  border: 1.5px solid var(--line); background: var(--chip); font-family: var(--mono); font-weight: 700; font-size: 13px; }
+.mchip b { font-size: 15px; }
+.mchip button { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px;
+  line-height: 1; padding: 2px 5px; border-radius: 50%; }
+.mchip button:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+#map-chips .none { color: var(--muted); font-size: 12px; font-family: system-ui; }
+.assign-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.a-letter { font-family: var(--mono); font-weight: 700; width: 2.6em; text-align: center; text-transform: uppercase;
+  font-size: 13px; padding: 5px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.dirs { display: flex; gap: 5px; flex-wrap: wrap; }
+.dir { cursor: pointer; display: flex; flex-direction: column; align-items: center; width: 52px; padding: 5px 3px;
+  border-radius: 9px; border: 1.5px solid var(--line); background: var(--panel); color: var(--text); line-height: 1.15; font: inherit; }
+.dir .ar { font-size: 15px; }
+.dir small { font-size: 9.5px; color: var(--muted); }
+.dir:hover { border-color: var(--accent); }
+.dir.on { border-color: transparent; background: var(--accent); color: #fff; }
+.dir.on small { color: #fff; }
+details.adv { margin-top: 10px; }
+details.adv > summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  font-family: var(--display); font-weight: 700; list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary::before { content: "▸"; transition: transform .15s; }
+details.adv[open] > summary::before { transform: rotate(90deg); }
+.adv-body h2 { margin-top: 10px; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
         background: var(--chip); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -201,6 +234,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button id="pause">Pause</button>
       <button id="clear">Clear</button>
       <button id="save">Save shown</button>
+      <button id="copy">Copy shown</button>
       <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
       <button id="bc-toggle" title="Barcode read diagnostics: widths, reject reasons, map, junctions">Barcode</button>
       <span id="count"></span>
@@ -275,6 +309,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     <div id="cat" title="The cat reacts to what the car is doing, live">
       <div class="cat-screen"><span class="cat-chip" id="cat-chip">READY</span><img id="cat-img" alt=""></div>
       <div class="cat-cap"><span class="em" id="cat-emoji">🐱</span><span id="cat-say">waiting for the car…</span></div>
+      <div class="cat-mood"><span class="lbl">mood</span><div class="track"><div class="fill" id="cat-mood"></div></div></div>
     </div>
     <h2>Send to car</h2>
     <div class="presets" id="send-cmds">
@@ -286,35 +321,50 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button data-cmd="reset" title="nav: Finished → Ready, Fault → Calibrating">Reset</button>
       <button data-cmd="finish" title="nav: Running/Paused → Finished">Finish</button>
     </div>
-    <div class="presets" id="map-bind"
-         title="Bind only the barcodes on the course (2-3 on the day); every unnamed letter is Forward. Packs the SAME 7-byte map as the box below.">
-      <span style="align-self:center">Bind letters:</span>
-      <span id="map-rows"></span>
-      <button id="map-add" type="button" title="Add another letter">+ letter</button>
-      <button id="send-bind" title="Pack the bindings (unnamed = F) and send, retained on …/map">Send bindings</button>
+    <h2>Barcode → junction turn</h2>
+    <div id="bc-assign" title="Bind only the barcodes on the course (2-3 on the day); every unnamed letter is Forward.">
+      <div class="chips" id="map-chips"></div>
+      <div class="assign-row">
+        <span class="muted">Letter</span>
+        <input id="a-letter" class="a-letter" type="text" maxlength="1" placeholder="A" aria-label="Barcode letter">
+        <div class="dirs">
+          <button class="dir" data-dir="F" title="Forward"><span class="ar">⬆️</span><small>Fwd</small></button>
+          <button class="dir" data-dir="L" title="Left"><span class="ar">⬅️</span><small>Left</small></button>
+          <button class="dir" data-dir="R" title="Right"><span class="ar">➡️</span><small>Right</small></button>
+          <button class="dir" data-dir="U" title="U-turn"><span class="ar">🔄</span><small>U-turn</small></button>
+        </div>
+      </div>
+      <div class="assign-row" style="margin-top:9px">
+        <button id="send-map" title="Pack the bindings (unnamed = F) and send, retained on …/map">Send map</button>
+        <label class="muted">version <input id="map-mv" type="number" min="0" max="15" value="1" style="width:3.6em"></label>
+      </div>
     </div>
-    <div class="presets">
-      <input id="map-table" maxlength="26" size="26" placeholder="26 of F L R U, A first"
-             title="Raw table, also filled in by the bindings above: action per letter A..Z, F forward, L left, R right, U U-turn">
-      <input id="map-mv" type="number" min="0" max="15" value="1" style="width:4em" title="Table version mv, 0-15">
-      <button id="send-map" title="Retained on …/map">Send map</button>
-    </div>
-    <h2>Bad input test</h2>
-    <div class="presets">
-      <select id="bad-preset" title="Fill the box with a case the car must reject">
-        <option value="">preset…</option>
-        <option value="cmd|00">cmd op 0</option>
-        <option value="cmd|09">cmd reserved bit</option>
-        <option value="cmd|01 02">cmd 2 bytes</option>
-        <option value="map|43 4e 4e 4e 4e 4e">map 6 bytes</option>
-        <option value="map|43 4e 4e 4e 4e 4e 4e 4e">map 8 bytes (radio refuses)</option>
-        <option value="cmd|">cmd empty (radio refuses)</option>
-        <option value="junk|01">unknown topic (car not subscribed)</option>
-      </select>
-      <select id="bad-topic"><option>cmd</option><option>map</option><option>junk</option></select>
-      <input id="bad-hex" size="16" placeholder="hex, e.g. 09" title="Payload bytes in hex, sent exactly as typed">
-      <button id="send-bad" title="Not retained">Send raw</button>
-    </div>
+    <details class="adv">
+      <summary>Advanced</summary>
+      <div class="adv-body">
+        <h2>Raw table</h2>
+        <div class="presets">
+          <input id="map-table" maxlength="26" size="26" placeholder="26 of F L R U, A first"
+                 title="Raw table, also filled by the bindings above: F forward, L left, R right, U U-turn">
+        </div>
+        <h2>Bad input test</h2>
+        <div class="presets">
+          <select id="bad-preset" title="Fill the box with a case the car must reject">
+            <option value="">preset…</option>
+            <option value="cmd|00">cmd op 0</option>
+            <option value="cmd|09">cmd reserved bit</option>
+            <option value="cmd|01 02">cmd 2 bytes</option>
+            <option value="map|43 4e 4e 4e 4e 4e">map 6 bytes</option>
+            <option value="map|43 4e 4e 4e 4e 4e 4e 4e">map 8 bytes (radio refuses)</option>
+            <option value="cmd|">cmd empty (radio refuses)</option>
+            <option value="junk|01">unknown topic (car not subscribed)</option>
+          </select>
+          <select id="bad-topic"><option>cmd</option><option>map</option><option>junk</option></select>
+          <input id="bad-hex" size="16" placeholder="hex, e.g. 09" title="Payload bytes in hex, sent exactly as typed">
+          <button id="send-bad" title="Not retained">Send raw</button>
+        </div>
+      </div>
+    </details>
     <p class="muted" id="send-out"></p>
     <h2>Car state <span class="muted" id="s-age"></span></h2>
     <div class="big" id="mission">—</div>
@@ -913,14 +963,14 @@ bcSetShow(bcShow);
 const CAT_GIF = { driving:"cat/Driving.gif", turning:"cat/Turning.gif", decode:"cat/Decode.gif",
   hump:"cat/Hump.gif", stuck:"cat/Stuck.gif", reject:"cat/Sad.gif", ready:"cat/Connected.gif", boot:"cat/Loading.gif" };
 const CAT_INFO = {
-  driving:{ chip:"DRIVING", col:"var(--ok)",   em:"🏁", say:"Cruising the line" },
-  turning:{ chip:"TURNING", col:"var(--warn)", em:"↩️", say:"Taking the junction" },
-  decode: { chip:"DECODE",  col:"var(--info)", em:"🔖", say:"Reading a barcode" },
-  hump:   { chip:"HUMP",    col:"var(--warn)", em:"🐫", say:"Clearing a hump" },
-  stuck:  { chip:"FAULT",   col:"var(--bad)",  em:"🙀", say:"Stuck / fault!" },
-  reject: { chip:"REJECT",  col:"var(--bad)",  em:"🙅", say:"Barcode unreadable" },
-  ready:  { chip:"READY",   col:"var(--info)", em:"🔌", say:"Connected, waiting" },
-  boot:   { chip:"BOOT",    col:"var(--warn)", em:"⏳", say:"Booting up…" },
+  driving:{ chip:"DRIVING", col:"var(--ok)",   em:"🏁", say:"Cruising the line",   mood:90 },
+  turning:{ chip:"TURNING", col:"var(--warn)", em:"↩️", say:"Taking the junction", mood:76 },
+  decode: { chip:"DECODE",  col:"var(--info)", em:"🔖", say:"Reading a barcode",   mood:84 },
+  hump:   { chip:"HUMP",    col:"var(--warn)", em:"🐫", say:"Clearing a hump",     mood:70 },
+  stuck:  { chip:"FAULT",   col:"var(--bad)",  em:"🙀", say:"Stuck / fault!",      mood:24 },
+  reject: { chip:"REJECT",  col:"var(--bad)",  em:"🙅", say:"Barcode unreadable",  mood:42 },
+  ready:  { chip:"READY",   col:"var(--info)", em:"🔌", say:"Connected, waiting",  mood:88 },
+  boot:   { chip:"BOOT",    col:"var(--warn)", em:"⏳", say:"Booting up…",         mood:70 },
 };
 let catBase = "ready", catTimer = null, catStuck = false;
 function catShow(state) {
@@ -929,6 +979,7 @@ function catShow(state) {
   if (img.getAttribute("src") !== want) img.src = want;
   $("cat-chip").textContent = info.chip; $("cat-chip").style.background = info.col;
   $("cat-emoji").textContent = info.em; $("cat-say").textContent = info.say;
+  $("cat-mood").style.width = (info.mood ?? 80) + "%";
 }
 function catSet(state, transient) {
   clearTimeout(catTimer); catTimer = null; catShow(state);
@@ -1065,44 +1116,33 @@ async function sendToCar(body) {
   $("send-out").textContent = out.ok ? `sent ${out.sent}` : `not sent: ${out.error}`;
 }
 for (const b of document.querySelectorAll("#send-cmds button")) b.onclick = () => sendToCar({ cmd: b.dataset.cmd });
+/* Barcode assignment: type a letter, tap an arrow. Builds the same 26-char
+   table (unnamed letters = F) and sends it through the identical /send map
+   path -- the car sees no difference. The raw box (Advanced) mirrors it. */
+const BC_DIR = { F: "⬆️", L: "⬅️", R: "➡️", U: "🔄" };
+const assign = { A: "L", B: "R" };
+function bcSyncFlru() { const t = Array(26).fill("F"); for (const l in assign) t[l.charCodeAt(0) - 65] = assign[l]; $("map-table").value = t.join(""); }
+function bcHighlight() { const l = $("a-letter").value; for (const b of document.querySelectorAll(".dir")) b.classList.toggle("on", assign[l] === b.dataset.dir); }
+function bcRenderChips() {
+  const keys = Object.keys(assign).sort();
+  $("map-chips").innerHTML = keys.length
+    ? keys.map((l) => `<span class="mchip">${l} <b>${BC_DIR[assign[l]]}</b><button data-rm="${l}" title="remove">✕</button></span>`).join("")
+    : `<span class="none">no letters bound — type one and pick a direction</span>`;
+  $("map-chips").querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { delete assign[b.dataset.rm]; bcRenderChips(); bcSyncFlru(); bcHighlight(); });
+  bcSyncFlru();
+}
+$("a-letter").oninput = () => { const i = $("a-letter"); i.value = i.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 1); bcHighlight(); };
+for (const b of document.querySelectorAll(".dir")) b.onclick = () => {
+  const l = $("a-letter").value;
+  if (!l) { $("send-out").textContent = "type a letter A–Z first"; $("a-letter").focus(); return; }
+  assign[l] = b.dataset.dir; bcRenderChips(); bcHighlight();
+};
+bcRenderChips(); bcHighlight();
 $("send-map").onclick = () => {
+  bcSyncFlru();
   const table = $("map-table").value.trim().toUpperCase();
   if (!/^[FLRU]{26}$/.test(table)) { $("send-out").textContent = "a map needs 26 of F, L, R, U"; return; }
   sendToCar({ map: { mv: Number($("map-mv").value), table } });
-};
-/* Per-letter binding boxes: build the same 26-char table (unnamed letters = F)
-   and send it through the identical /send map path -- the car sees no difference. */
-const MAP_ACTIONS = [["F", "Forward"], ["L", "Left"], ["R", "Right"], ["U", "U-turn"]];
-function mapAddRow(letter, action) {
-  const row = document.createElement("span");
-  row.className = "map-row";
-  const L = document.createElement("select");
-  L.title = "barcode letter";
-  for (let i = 0; i < 26; i++) L.add(new Option(String.fromCharCode(65 + i), String.fromCharCode(65 + i)));
-  if (letter) L.value = letter;
-  const A = document.createElement("select");
-  A.title = "junction action";
-  for (const [v, t] of MAP_ACTIONS) A.add(new Option(t, v));
-  if (action) A.value = action;
-  const x = document.createElement("button");
-  x.type = "button"; x.textContent = "×"; x.title = "remove this letter";
-  x.onclick = () => row.remove();
-  row.append(L, document.createTextNode("→"), A, x);
-  $("map-rows").append(row);
-}
-$("map-add").onclick = () => mapAddRow();
-mapAddRow("A", "L");
-mapAddRow("B", "R");   // two rows to start; "+ letter" adds more for a 3rd barcode
-$("send-bind").onclick = () => {
-  const picks = [...$("map-rows").querySelectorAll(".map-row")]
-    .map((r) => { const s = r.querySelectorAll("select"); return [s[0].value, s[1].value]; });
-  const letters = picks.map(([l]) => l);
-  if (new Set(letters).size !== letters.length) { $("send-out").textContent = "a letter is bound twice"; return; }
-  const table = Array(26).fill("F");
-  for (const [l, a] of picks) table[l.charCodeAt(0) - 65] = a;
-  const str = table.join("");
-  $("map-table").value = str;   // mirror into the raw box so you see exactly what was packed
-  sendToCar({ map: { mv: Number($("map-mv").value), table: str } });
 };
 $("bad-preset").onchange = (e) => {
   if (!e.target.value) return;
@@ -1136,6 +1176,18 @@ $("save").onclick = () => {
   a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
   a.download = `car-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.log`;
   a.click(); URL.revokeObjectURL(a.href);
+};
+$("copy").onclick = async () => {
+  const text = current().filter(visible).map((l) => `[${l.time}] ${l.src}: ${l.text}`).join("\n");
+  const n = text ? text.split("\n").length : 0;
+  const flash = (msg) => { const b = $("copy"); b.textContent = msg; setTimeout(() => (b.textContent = "Copy shown"), 1500); };
+  try { await navigator.clipboard.writeText(text); flash(`Copied ${n}`); }
+  catch {
+    const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); flash(`Copied ${n}`); } catch { flash("Copy blocked"); }
+    ta.remove();
+  }
 };
 const PRESETS = {
   all: () => new Set(),
