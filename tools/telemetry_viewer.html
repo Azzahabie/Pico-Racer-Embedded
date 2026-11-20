@@ -50,6 +50,8 @@ aside { border-right: 1px solid var(--line); padding: 12px; background: var(--pa
 h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
 h2:first-child { margin-top: 0; }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.map-row { display: inline-flex; align-items: center; gap: 3px; }
+.map-row button { padding: 2px 7px; line-height: 1; }
 .tag { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer;
        user-select: none; font-family: var(--mono); font-size: 12px; }
 .tag:hover { background: var(--row-hover); }
@@ -109,6 +111,28 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
 .err { color: var(--bad); font-size: 13px; margin: 4px 0; min-height: 1em; }
 #linechart { display: none; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
 #linechart.show { display: block; }
+#bc-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; z-index: 50;
+  align-items: flex-start; justify-content: center; }
+#bc-modal.show { display: flex; }
+#bc-box { background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 10px; margin: 28px 14px; width: min(920px, 96vw); max-height: 90vh; overflow: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+#bc-box > header { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 1; }
+#bc-box h2 { margin: 0; font-size: 16px; }
+#bc-body { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#bc-body .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
+#bc-body .card.wide { grid-column: 1 / -1; }
+#bc-body .card h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+#bc-headline { font-size: 19px; font-weight: 600; }
+#bc-headline.ok { color: var(--ok); } #bc-headline.bad { color: var(--bad); }
+#bc-count { font-size: 30px; font-weight: 700; }
+#bc-canvas { width: 100%; height: 72px; display: block; background: #fff; border-radius: 4px; }
+#bc-body .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 2px 0; }
+#bc-body .log { max-height: 150px; overflow: auto; font-size: 12px; font-family: ui-monospace, "Cascadia Code", monospace; }
+#bc-body .tally span { display: inline-block; margin-right: 12px; white-space: nowrap; }
+#bc-body .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; }
+@media (max-width: 640px) { #bc-body { grid-template-columns: 1fr; } }
 .lc-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12px; margin-bottom: 6px; }
 .lc-head b { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .lc-val { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -161,6 +185,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button id="clear">Clear</button>
       <button id="save">Save shown</button>
       <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
+      <button id="bc-toggle" title="Barcode read diagnostics: widths, reject reasons, map, junctions">Barcode</button>
       <span id="count"></span>
     </div>
     <div id="linechart">
@@ -181,6 +206,54 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     </div>
     <div id="log"></div>
   </section>
+  <div id="bc-modal" role="dialog" aria-label="Barcode diagnostics">
+    <div id="bc-box">
+      <header>
+        <h2>Barcode diagnostics</h2>
+        <span class="muted" id="bc-src-note"></span>
+        <span style="flex:1"></span>
+        <button id="bc-reset" title="Clear the counters and history">Reset</button>
+        <button id="bc-close">Close</button>
+      </header>
+      <div id="bc-body">
+        <div class="card">
+          <h3>Last read</h3>
+          <div id="bc-headline">—</div>
+          <div class="muted" id="bc-last-detail">waiting for a read…</div>
+        </div>
+        <div class="card">
+          <h3>Widths captured</h3>
+          <div><span id="bc-count">—</span> <span class="muted">/ 29 needed</span></div>
+          <div class="muted" id="bc-width-stats"></div>
+        </div>
+        <div class="card wide">
+          <h3>Captured strip — what GP7 saw</h3>
+          <canvas id="bc-canvas"></canvas>
+          <p class="muted" id="bc-strip-hint" style="margin:6px 0 0"></p>
+        </div>
+        <div class="card">
+          <h3>Tally</h3>
+          <div class="tally" id="bc-tally"></div>
+        </div>
+        <div class="card">
+          <h3>Map / table</h3>
+          <div id="bc-map"></div>
+        </div>
+        <div class="card">
+          <h3>Read history</h3>
+          <div class="log" id="bc-history"></div>
+        </div>
+        <div class="card">
+          <h3>Junction activity</h3>
+          <div class="log" id="bc-junctions"></div>
+        </div>
+        <div class="card wide">
+          <h3>Live GP7 sensor</h3>
+          <div id="bc-gp7-state"></div>
+        </div>
+      </div>
+    </div>
+  </div>
   <aside id="side-right">
     <h2>Send to car</h2>
     <div class="presets" id="send-cmds">
@@ -192,9 +265,16 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       <button data-cmd="reset" title="nav: Finished → Ready, Fault → Calibrating">Reset</button>
       <button data-cmd="finish" title="nav: Running/Paused → Finished">Finish</button>
     </div>
+    <div class="presets" id="map-bind"
+         title="Bind only the barcodes on the course (2-3 on the day); every unnamed letter is Forward. Packs the SAME 7-byte map as the box below.">
+      <span style="align-self:center">Bind letters:</span>
+      <span id="map-rows"></span>
+      <button id="map-add" type="button" title="Add another letter">+ letter</button>
+      <button id="send-bind" title="Pack the bindings (unnamed = F) and send, retained on …/map">Send bindings</button>
+    </div>
     <div class="presets">
       <input id="map-table" maxlength="26" size="26" placeholder="26 of F L R U, A first"
-             title="Action per letter A..Z: F forward, L left, R right, U U-turn">
+             title="Raw table, also filled in by the bindings above: action per letter A..Z, F forward, L left, R right, U U-turn">
       <input id="map-mv" type="number" min="0" max="15" value="1" style="width:4em" title="Table version mv, 0-15">
       <button id="send-map" title="Retained on …/map">Send map</button>
     </div>
@@ -645,6 +725,166 @@ $("lc-canvas").addEventListener("mouseleave", () => { lcHover = null; lcRedraw()
 addEventListener("resize", lcRedraw);
 lcSetShow(lcShow);
 
+/* ---- barcode diagnostics modal -------------------------------------- */
+// Parsed entirely from lines the firmware already prints: the structured
+// `E barcode` / `S` records give the summary over MQTT, while widths, reject
+// reasons, the applied table and junction detail come from the serial
+// ([barcode]/[line]/[gp7]) console (UART or WIFI_NETLOG).  No firmware change.
+const BC_ACT = ["FORWARD", "LEFT", "RIGHT", "U_TURN"];
+const bc = {};
+function bcReset() {
+  bc.last = null; bc.widths = []; bc.wcount = null; bc.wReading = false;
+  bc.history = []; bc.junctions = [];
+  bc.tally = { ok: 0, bad_length: 0, bad_frame: 0, bad_width: 0, bad_pattern: 0,
+               not_one_letter: 0, aborted: 0, unknown: 0, overflow: 0, other: 0 };
+  bc.map = { mv: null, table: null, loaded: false, rejected: false };
+  bc.gp7 = { label: "", level: null, probe: null };
+  bc.anySerial = false;
+}
+bcReset();
+let bcShow = store.get("bcShow", false), bcQueued = false;
+
+function bcTally(reason) { bc.tally[reason in bc.tally ? reason : "other"]++; }
+function bcPush(arr, item, cap) { arr.push(item); if (arr.length > cap) arr.splice(0, arr.length - cap); }
+
+function bcFeed(l) {
+  const s = l.text, time = l.time;
+  if (l.src === "serial") bc.anySerial = true;
+  let m, hit = false;
+  if ((m = /^\[barcode\] '(.)' -> (\w+) \(dir=(\w+)\)/.exec(s))) {
+    bc.last = { ok: true, letter: m[1], action: m[2], dir: m[3], time };
+    bc.tally.ok++; bcPush(bc.history, bc.last, 60); bc.wReading = false; hit = true;
+  } else if ((m = /^\[barcode\] REJECTED: (.+)$/.exec(s))) {
+    const d = m[1]; let reason = "other", letter = null, r;
+    if ((r = /^malformed \((\w+)\)/.exec(d))) reason = r[1];
+    else if (/^aborted/.test(d)) reason = "aborted";
+    else if ((r = /^'(.)' unknown/.exec(d))) { reason = "unknown"; letter = r[1]; }
+    else if (/not_one_letter/.test(d)) reason = "not_one_letter";
+    else if (/widths_lost/.test(d)) reason = "overflow";
+    bc.last = { ok: false, reason, detail: d, letter, count: null, time };
+    bcTally(reason); bcPush(bc.history, bc.last, 60);
+    bc.widths = []; bc.wcount = null; bc.wReading = true; hit = true;
+  } else if ((m = /^\[barcode\]\s+(\d+) widths \(1 letter = 29\)/.exec(s))) {
+    bc.wcount = +m[1]; if (bc.last && !bc.last.ok) bc.last.count = bc.wcount;
+    bc.widths = []; bc.wReading = true; hit = true;
+  } else if (bc.wReading && (m = /^\[barcode\]\s+\d+:\s+(.+)$/.exec(s))) {
+    const re = /([Bw])(\d+)/g; let tm;
+    while ((tm = re.exec(m[1]))) bc.widths.push({ bar: tm[1] === "B", w: +tm[2] });
+    hit = true;
+  } else if ((m = /^\[barcode\] map v(\d+) applied: (\S+)/.exec(s))) {
+    bc.map = { mv: +m[1], table: m[2], loaded: true, rejected: false }; hit = true;
+  } else if (/^\[barcode\] map of \d+ bytes rejected/.test(s)) {
+    bc.map.rejected = true; hit = true;
+  } else if ((m = /^\[line\] junction armed: barcode '(.)' -> (\w+)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `armed '${m[1]}' → ${m[2]}` }, 60); hit = true;
+  } else if ((m = /^\[line\] junction \(armed by barcode '(.)' (\w+), GP7 black (\d+) mm\)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `FIRED '${m[1]}' ${m[2]} (GP7 black ${m[3]} mm)` }, 60); hit = true;
+  } else if ((m = /^\[line\] junction \(GP7 black (\d+) ms(, length rule)?\)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `junction GP7 black ${m[1]} ms${m[2] ? " (length rule)" : ""}` }, 60); hit = true;
+  } else if ((m = /^\[line\] junction disarmed: (.+)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `disarmed: ${m[1]}` }, 60); hit = true;
+  } else if ((m = /^\[line\] barcode '(.)' read, no command stored: (.+)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `'${m[1]}' read, no command (${m[2]})` }, 60); hit = true;
+  } else if ((m = /^\[nav\] junction, no barcode command: (.+)/.exec(s))) {
+    bcPush(bc.junctions, { time, text: `junction, no command: ${m[1]}` }, 60); hit = true;
+  } else if ((m = /^\[gp7\] pull-down=(\d+) pull-up=(\d+) no-pull=(\d+) -> (.+)/.exec(s))) {
+    bc.gp7.probe = { pd: +m[1], pu: +m[2], none: +m[3], verdict: m[4] }; hit = true;
+  } else if ((m = /^E barcode\b.*letter=(\S+)\s+action=(\d+)/.exec(s))) {
+    const letter = (m[1] === "none" || m[1] === "?") ? null : m[1];
+    // A detailed serial reject (with a reason) wins the headline; the E record
+    // carries no reason, so it is only the MQTT-only fallback for an unreadable.
+    if (letter !== null || !bc.last || bc.last.ok) {
+      bc.last = { ok: letter !== null, letter, action: BC_ACT[+m[2]] || "?",
+                  dir: null, reason: letter ? null : "unreadable", mqtt: true, time };
+    }
+    hit = true;
+  }
+  // live GP7 DO state, and map-version echo, can ride on any line
+  if ((m = /barcode DO GP\d+=(\d) \((\w+)\)/.exec(s))) { bc.gp7.level = +m[1]; bc.gp7.label = m[2]; hit = true; }
+  if ((m = /\bmpv=(\d+)/.exec(s)) && l.src !== "serial") { bc.map.mv = +m[1]; }
+  return hit;
+}
+
+function bcDrawStrip() {
+  const cv = $("bc-canvas"); if (!cv) return;
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth || 600, H = cv.clientHeight || 72;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+  const els = bc.widths || [];
+  if (!els.length) { g.fillStyle = "#888"; g.font = "13px system-ui";
+    g.fillText("no widths captured yet (reject with a width dump, over serial)", 8, H / 2); return; }
+  const total = els.reduce((a, e) => a + e.w, 0) || 1;
+  let x = 0;
+  for (const e of els) {
+    const w = (e.w / total) * W;
+    if (e.bar) { g.fillStyle = "#111"; g.fillRect(x, 4, Math.max(1, w), H - 8); }
+    x += w;
+  }
+}
+function bcEsc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function bcDraw() {
+  if (!bcShow) return;
+  const L = bc.last, head = $("bc-headline");
+  if (!L) { head.textContent = "—"; head.className = ""; $("bc-last-detail").textContent = "waiting for a read…"; }
+  else if (L.ok) { head.textContent = `✓ '${L.letter}' → ${L.action || "?"}${L.dir ? ` (${L.dir})` : ""}`;
+    head.className = "ok"; $("bc-last-detail").textContent = `${L.mqtt ? "from MQTT E record" : "accepted, stored for the next junction"} · ${L.time || ""}`; }
+  else { head.textContent = `✗ ${L.reason || "rejected"}`; head.className = "bad";
+    $("bc-last-detail").textContent = `${L.detail || L.reason || ""}${L.letter ? ` · letter '${L.letter}'` : ""} · ${L.time || ""}`; }
+
+  const cnt = bc.wcount, cEl = $("bc-count");
+  cEl.textContent = (cnt == null) ? "—" : cnt;
+  cEl.style.color = (cnt == null) ? "" : (cnt === 29 ? "var(--ok)" : "var(--bad)");
+  if (bc.widths && bc.widths.length) {
+    const ws = bc.widths.map((e) => e.w), nn = Math.min(...ws), xx = Math.max(...ws);
+    $("bc-width-stats").textContent = `${bc.widths.length} elements · narrow ${nn} · widest ${xx} · ${(xx / (nn || 1)).toFixed(1)}× ratio`;
+    $("bc-strip-hint").textContent = "black = bar, white = space, widths to scale (ms of GP7 travel)";
+  } else { $("bc-width-stats").textContent = ""; $("bc-strip-hint").textContent = ""; }
+  bcDrawStrip();
+
+  const t = bc.tally;
+  const rejSpans = Object.entries(t).filter(([k, v]) => k !== "ok" && v)
+    .map(([k, v]) => `<span style="color:var(--bad)">${bcEsc(k)} ${v}</span>`).join("");
+  $("bc-tally").innerHTML = (t.ok || rejSpans)
+    ? `<span style="color:var(--ok)">✓ ${t.ok}</span>${rejSpans}` : `<span class="muted">no reads yet</span>`;
+
+  const mp = bc.map;
+  $("bc-map").innerHTML = mp.loaded
+    ? `<div class="row"><span>version (mv)</span><b>${mp.mv}</b></div>` +
+      `<div class="row"><span>table A→Z</span><code>${bcEsc(mp.table || "")}</code></div>`
+    : `<div class="muted">no map applied yet${mp.mv != null ? ` · S reports mpv ${mp.mv}` : ""}${mp.rejected ? " · last map rejected" : ""}</div>`;
+
+  $("bc-history").innerHTML = bc.history.slice(-30).reverse().map((h) => h.ok
+    ? `<div style="color:var(--ok)">✓ ${bcEsc(h.letter)} → ${bcEsc(h.action || "?")} <span class="muted">${h.time || ""}</span></div>`
+    : `<div style="color:var(--bad)">✗ ${bcEsc(h.reason)}${h.count != null ? ` (${h.count}/29)` : ""} <span class="muted">${h.time || ""}</span></div>`
+  ).join("") || `<span class="muted">no reads yet</span>`;
+
+  $("bc-junctions").innerHTML = bc.junctions.slice(-30).reverse()
+    .map((j) => `<div>${bcEsc(j.text)} <span class="muted">${j.time || ""}</span></div>`).join("")
+    || `<span class="muted">no junction events yet</span>`;
+
+  const g7 = bc.gp7; let g7h = "";
+  if (g7.level != null) g7h += `<div class="row"><span>DO level now</span><b>` +
+    `<span class="dot" style="background:${g7.label === "black" ? "#111" : "#ddd"};border:1px solid #888"></span> ${bcEsc(g7.label || g7.level)}</b></div>`;
+  if (g7.probe) g7h += `<div class="row"><span>wiring probe</span><span>pd=${g7.probe.pd} pu=${g7.probe.pu} none=${g7.probe.none} → ${bcEsc(g7.probe.verdict)}</span></div>`;
+  $("bc-gp7-state").innerHTML = g7h || `<span class="muted">no GP7 line seen yet (needs the [line] raw ADC log, or LINE_GP7_DIAG for the probe)</span>`;
+
+  $("bc-src-note").textContent = bc.anySerial ? "" : "serial/netlog not seen — MQTT gives the summary only";
+}
+function bcRedraw() { if (bcShow && !bcQueued) { bcQueued = true; requestAnimationFrame(() => { bcQueued = false; bcDraw(); }); } }
+function bcSetShow(on) {
+  bcShow = on; store.set("bcShow", on);
+  $("bc-modal").classList.toggle("show", on); $("bc-toggle").classList.toggle("on", on);
+  if (on) bcDraw();
+}
+$("bc-toggle").onclick = () => bcSetShow(!bcShow);
+$("bc-close").onclick = () => bcSetShow(false);
+$("bc-reset").onclick = () => { bcReset(); bcDraw(); };
+$("bc-modal").addEventListener("click", (e) => { if (e.target.id === "bc-modal") bcSetShow(false); });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && bcShow) bcSetShow(false); });
+addEventListener("resize", bcRedraw);
+bcSetShow(bcShow);
+
 /* ---- live stream ---------------------------------------------------- */
 function setPill(id, text) {
   const el = $(id);
@@ -674,6 +914,7 @@ function connect() {
     track(l, true);
     bumpTag(l);
     appendLive(l);
+    if (bcFeed(l)) bcRedraw();
   };
   es.onerror = () => { for (const k of ["mqtt", "serial", "broker"]) setPill("st-" + k, "viewer offline"); };
 }
@@ -718,14 +959,16 @@ function openFile(file) {
     for (const l of fileLines) track(l, false);
     lcFile = fileLines.map(lcSample).filter(Boolean);
     if (lcFile.length && !lcShow) lcSetShow(true);
-    rebuildCounts(); render(); lcRedraw();
+    bcReset(); for (const l of fileLines) bcFeed(l);
+    rebuildCounts(); render(); lcRedraw(); bcRedraw();
   });
 }
 $("file").onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
 $("back-live").onclick = () => {
   fileLines = null; lcFile = null; $("file-banner").classList.remove("show");
   resetState(); for (const l of live) track(l, false);
-  rebuildCounts(); render(); lcRedraw();
+  bcReset(); for (const l of live) bcFeed(l);
+  rebuildCounts(); render(); lcRedraw(); bcRedraw();
 };
 let dragDepth = 0;
 addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("drop").classList.add("show"); });
@@ -761,6 +1004,40 @@ $("send-map").onclick = () => {
   const table = $("map-table").value.trim().toUpperCase();
   if (!/^[FLRU]{26}$/.test(table)) { $("send-out").textContent = "a map needs 26 of F, L, R, U"; return; }
   sendToCar({ map: { mv: Number($("map-mv").value), table } });
+};
+/* Per-letter binding boxes: build the same 26-char table (unnamed letters = F)
+   and send it through the identical /send map path -- the car sees no difference. */
+const MAP_ACTIONS = [["F", "Forward"], ["L", "Left"], ["R", "Right"], ["U", "U-turn"]];
+function mapAddRow(letter, action) {
+  const row = document.createElement("span");
+  row.className = "map-row";
+  const L = document.createElement("select");
+  L.title = "barcode letter";
+  for (let i = 0; i < 26; i++) L.add(new Option(String.fromCharCode(65 + i), String.fromCharCode(65 + i)));
+  if (letter) L.value = letter;
+  const A = document.createElement("select");
+  A.title = "junction action";
+  for (const [v, t] of MAP_ACTIONS) A.add(new Option(t, v));
+  if (action) A.value = action;
+  const x = document.createElement("button");
+  x.type = "button"; x.textContent = "×"; x.title = "remove this letter";
+  x.onclick = () => row.remove();
+  row.append(L, document.createTextNode("→"), A, x);
+  $("map-rows").append(row);
+}
+$("map-add").onclick = () => mapAddRow();
+mapAddRow("A", "L");
+mapAddRow("B", "R");   // two rows to start; "+ letter" adds more for a 3rd barcode
+$("send-bind").onclick = () => {
+  const picks = [...$("map-rows").querySelectorAll(".map-row")]
+    .map((r) => { const s = r.querySelectorAll("select"); return [s[0].value, s[1].value]; });
+  const letters = picks.map(([l]) => l);
+  if (new Set(letters).size !== letters.length) { $("send-out").textContent = "a letter is bound twice"; return; }
+  const table = Array(26).fill("F");
+  for (const [l, a] of picks) table[l.charCodeAt(0) - 65] = a;
+  const str = table.join("");
+  $("map-table").value = str;   // mirror into the raw box so you see exactly what was packed
+  sendToCar({ map: { mv: Number($("map-mv").value), table: str } });
 };
 $("bad-preset").onchange = (e) => {
   if (!e.target.value) return;
