@@ -684,7 +684,7 @@ static void analog_decoded_on_core0(void)
 	add_mark(0);
 	run();
 	CHECK(NULL != strstr(g_log, "[barcode] 'A' -> LEFT (dir=fwd), stored for the next junction\n"));
-	CHECK(NULL != strstr(g_log, "[barcode]   analog read, pass 0, 27 elements"));
+	CHECK(NULL != strstr(g_log, "[barcode]   analog read, pass 0 (swing), 27 elements"));
 	CHECK(cmd_is(g_mark_cmd[0], 'A', BARCODE_ACT_LEFT));
 	CHECK(barcode_judged_word() == barcode_judged_pack(g_bc.read_id));
 	CHECK(bc_link_reply_is(barcode_analog_reply_word(), g_bc.read_id));
@@ -710,10 +710,61 @@ static void analog_rejected(void)
 	CHECK(NULL != strstr(g_log, "[barcode] REJECTED: malformed (analog count, decode 0 us)\n"));
 	CHECK(NULL != strstr(g_log, "[barcode]   15 widths in mm (1 letter = 29)"));
 	CHECK(NULL != strstr(g_log, "[barcode]    0: B4.0 w10.0 B4.0 w4.0 B10.0"));
+	/* ours: the partial decoder's verdict, before the widths */
+	CHECK(log_before("[barcode]   partial: not tried (no reading of 25..35 elements, odd)\n",
+			   "[barcode]   15 widths in mm"));
 	CHECK(BARCODE_LETTER_NONE == barcode_cmd_letter(g_mark_cmd[0]));
 	CHECK(barcode_judged_word() == barcode_judged_pack(g_bc.read_id));
 	CHECK(BC_REJECT == bc_link_reply_result(barcode_analog_reply_word()));
 	CHECK((1 == g_e_n) && (COMM_W_BARCODE_UNREADABLE == g_e_letter[0]));
+}
+
+/* Ours: the car read of 20 Nov 17:44 (M), a 27 that Boon's decoders
+   reject, is *F* backwards with one thin bar lost: the partial decoder
+   reads it (pass 7) and the console says so. */
+static void analog_partial_decoded(void)
+{
+	static const uint32_t p1[27] = {
+		1800u, 10900u, 11800u, 11700u, 11300u, 34800u, 1700u, 9600u, 2600u,
+		8000u, 3100u, 20500u, 12900u, 11700u, 12300u, 10500u, 2300u, 9400u,
+		2400u, 9000u, 14500u, 8500u, 14700u, 9100u, 2500u, 21300u, 1500u
+	};
+
+	reset();
+	bc_feed(p1, 27u);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] 'F' -> FORWARD (dir=rev), stored for the next junction\n"));
+	CHECK(NULL != strstr(g_log, "[barcode]   analog read, pass 7 (partial: 1 missed bar), 27 elements"));
+	CHECK(cmd_is(g_mark_cmd[0], 'F', BARCODE_ACT_FORWARD));
+	CHECK('F' == bc_link_reply_letter(barcode_analog_reply_word()));
+}
+
+/* Ours: *A* with its first data space lost reads exactly as *B* with the
+   space after its first data bar lost (wide + narrow + narrow either
+   way): the partial decoder refuses, and says why. */
+static void analog_partial_refused(void)
+{
+	uint32_t w[32];
+	unsigned n = bc_letter('A', 0u, w);
+
+	w[10] += w[11] + w[12];
+	memmove(&w[11], &w[13], (n - 13u) * sizeof(w[0]));
+	n -= 2u;
+	reset();
+	bc_feed(w, n);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(log_before("[barcode] REJECTED: malformed (analog ", "[barcode]   partial: best"));
+	CHECK(NULL != strstr(g_log, "[barcode]   partial: best 'A' (fwd, 1 missed space), refused: 'B' fits nearly as well (x1.0)\n"));
+	CHECK(BARCODE_LETTER_NONE == barcode_cmd_letter(g_mark_cmd[0]));
+	CHECK(BC_REJECT == bc_link_reply_result(barcode_analog_reply_word()));
 }
 
 /* Cut by a junction: judged for the console only, nothing stored. */
@@ -741,6 +792,8 @@ int main(void)
 	analog_letter_stored();
 	analog_decoded_on_core0();
 	analog_rejected();
+	analog_partial_decoded();
+	analog_partial_refused();
 	analog_cut();
 #endif
 #if !BARCODE_DEFAULT_TABLE_SET

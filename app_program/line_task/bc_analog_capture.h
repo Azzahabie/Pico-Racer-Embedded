@@ -10,7 +10,8 @@
  *  character when its 29 widths decode (BC_END_ON_STOP), the scan gate
  *  (bc_set_gate()), the junction cut (bc_junction()), a mission abort
  *  (bc_abort()), a read id, bc_in_read() and bc_busy() for the junction
- *  side, and the white noise from the quietest of the last three windows.
+ *  side, the white noise from the quietest of the last three windows,
+ *  and the partial-read decoder's verdict in bc_out_t (part, pass 7).
  *
  *  Region B of the Line & Barcode statechart (Boon's Week 6 6.2):
  *  WAIT_QUIET -> ARMED -> CAPTURING -> (VALID | REJECT) -> COOLDOWN.
@@ -36,6 +37,7 @@
 #include <stdbool.h>
 #include "bc_analog_cfg.h"
 #include "bc_analog_code39.h"
+#include "bc_analog_partial.h"
 
 typedef enum
 {
@@ -55,7 +57,10 @@ typedef struct
     uint16_t peak_norm;         /* darkest bar seen (black-level learning) */
     uint8_t  pass;              /* which reading decoded: 0 swing, 1 mid, 2 low, 3 adaptive swing,
                                    4 best match, 5 exact without an end speck,
-                                   6 best match without an end speck */
+                                   6 best match without an end speck,
+                                   7 partial-read decoder (ours) */
+    bc_part_t part;             /* ours: the partial-read decoder's verdict
+                                   (reason BC_PART_NOT_RUN if it did not run) */
 } bc_out_t;
 
 typedef struct
@@ -134,7 +139,8 @@ bc_result_t bc_sample(bc_capture_t * p_bc, uint16_t norm, uint32_t step_um, bc_o
 /* Boon's end-of-code decode (his finish()), on a capture in
    BC_ST_DECODING; changes nothing in it.  Returns BC_VALID (p_out->ch),
    BC_REJECT (p_out->reason) or BC_NONE (not a barcode: a crossing line or
-   a speck).  Core 0: it can take milliseconds (the best match). */
+   a speck).  Ours: then the partial-read decoder (pass 7, p_out->part).
+   Core 0: it can take milliseconds (the best match, the partial). */
 bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out);
 
 /* After bc_finish() (its result r): BC_ST_DECODING -> ARMED for BC_NONE

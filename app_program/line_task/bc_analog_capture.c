@@ -12,8 +12,9 @@
  *  (BC_END_ON_STOP), the scan gate, the
  *  junction cut, the mission abort, the read id and bc_in_read() /
  *  bc_busy(), the white noise taken as the quietest of the last three
- *  windows, and runs_to_widths() in one pass (same result; marked "ours"
- *  below).  Boon's swing reading, darkness
+ *  windows, runs_to_widths() in one pass (same result), and after his
+ *  best match our partial-read decoder (bc_analog_partial.c, pass 7;
+ *  marked "ours" below).  Boon's swing reading, darkness
  *  profile, re-reads, speck trimming, repair and best match are
  *  unchanged.
  *
@@ -418,7 +419,13 @@ static code39_result_t decode_exact(uint32_t const * p_w, uint16_t n, char * p_c
    Ours: run on core 0 (barcode_task) on a capture in BC_ST_DECODING; it
    only reads the capture, so the pass goes to p_out and the state change
    to bc_resume().  A code bc_sample() gave up on (too long, too many
-   elements) is rejected here as Boon's bc_sample() did, without a decode. */
+   elements) is rejected here as Boon's bc_sample() did, without a decode.
+   Ours (21 Nov): if his best match gives nothing either, the partial-read
+   decoder (bc_analog_partial.h) runs on ONE reading, the one whose count
+   is nearest 29 as it was read (not trimmed: once a thin bar is lost the
+   median inner bar trim_specks() compares with is a wide one, and it cut
+   both real end bars of the car read of 20 Nov 17:44, a 27 that is *F*);
+   pass 7.  Its verdict goes to p_out->part for the console either way. */
 bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
 {
     static uint32_t w2[BC_MAX_ELEMENTS + 1u];
@@ -433,6 +440,7 @@ bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
     p_out->length_um  = p_bc->total_um - p_bc->run_um;  /* without the trailing white */
     p_out->peak_norm  = p_bc->peak;
     p_out->pass       = 0u;
+    bc_partial_clear(&p_out->part);                     /* ours */
     if (p_bc->early_reason != 0u)
     {
         p_out->reason    = p_bc->early_reason;
@@ -463,6 +471,8 @@ bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
     {
         uint8_t  k_pick = BC_READINGS;
         uint16_t d_pick = 0xFFFFu;
+        uint8_t  k_part = BC_READINGS;                  /* ours: the partial decoder's */
+        uint16_t d_part = 0xFFFFu;
 
         for (k = 0u; k < BC_READINGS; k++)
         {
@@ -470,11 +480,17 @@ bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
             uint16_t const n2 = bc_reading(p_bc, k, w2);
             uint16_t const nt = trim_specks(w2, n2, &first);
             uint16_t const d  = (nt > 29u) ? (uint16_t)(nt - 29u) : (uint16_t)(29u - nt);
+            uint16_t const d2 = (n2 > 29u) ? (uint16_t)(n2 - 29u) : (uint16_t)(29u - n2);
 
             if ((nt >= 25u) && (nt <= 33u) && ((nt % 2u) != 0u) && (d < d_pick))
             {
                 d_pick = d;
                 k_pick = k;
+            }
+            if ((n2 >= ((BC_PART_GAMBLE != 0u) ? BC_PART_GAMBLE_N_MIN : BC_PART_N_MIN)) && (n2 <= BC_PART_N_MAX) && ((n2 % 2u) != 0u) && (d2 < d_part))
+            {
+                d_part = d2;                            /* ours */
+                k_part = k;
             }
         }
         if (k_pick < BC_READINGS)
@@ -493,6 +509,28 @@ bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
                 p_out->pass       = (nt != n2) ? 6u : 4u;
                 r = CODE39_OK;
             }
+        }
+        /* ours: the partial-read decoder, the last resort */
+        if ((r != CODE39_OK) && (k_part < BC_READINGS))
+        {
+            uint16_t const n2 = bc_reading(p_bc, k_part, w2);
+
+            if (bc_partial_decode(w2, n2, &p_out->part) == CODE39_OK)
+            {
+                p_out->ch         = p_out->part.ch;
+                p_out->b_reversed = p_out->part.b_reversed;
+                p_out->elements   = n2;
+                p_out->pass       = 7u;
+                r = CODE39_OK;
+            }
+        }
+        else if (r != CODE39_OK)
+        {
+            p_out->part.reason = (uint8_t)BC_PART_COUNT;     /* ours: no reading it takes */
+        }
+        else
+        {
+            /* decoded by Boon's best match */
         }
     }
     if (r == CODE39_NOT_BARCODE)
