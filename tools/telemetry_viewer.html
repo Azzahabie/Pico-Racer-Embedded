@@ -192,11 +192,40 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
                   border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 #lc-canvas { display: block; width: 100%; height: 260px; }
 #lc-hint { color: var(--warn); }
-@media (max-width: 900px) {
-  main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
-  aside { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); }
-  #side-right { border-left: 0; border-top: 1px solid var(--line); }
-}
+/* === single-column cat layout (overrides the old 3-column operator grid) === */
+html, body { height: auto; }
+body { display: block; }
+.wrap { max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 44px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 7%, transparent); margin-bottom: 14px; min-width: 0; }
+.panel h2:first-child { margin-top: 0; }
+.deck { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; }
+.mid { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 14px; }
+.deck > .panel, .mid > .panel { margin-bottom: 14px; }
+@media (max-width: 880px) { .deck, .mid { grid-template-columns: 1fr; } }
+.deck #cat { margin-bottom: 0; }
+.big { font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px; }
+.tile { border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; background: var(--bg); min-width: 0; }
+.tile .k { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tile .v { font-family: var(--mono); font-weight: 700; font-size: 19px; font-variant-numeric: tabular-nums; margin-top: 3px; line-height: 1; }
+#tools { position: static; top: auto; border: 0; padding: 0 0 10px; background: transparent; }
+#log { flex: none; max-height: 460px; min-height: 160px; overflow: auto; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); }
+.row { grid-template-columns: 76px 52px 1fr; padding: 1px 10px; }
+#linechart { display: none; }
+#linechart.show { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 14px; margin-bottom: 14px; }
+#lc-canvas { height: 200px; }
+details.filters { margin-bottom: 8px; }
+details.filters > summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); font-family: var(--display); font-weight: 700; list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+details.filters > summary::-webkit-details-marker { display: none; }
+details.filters > summary::before { content: "▸"; transition: transform .15s; }
+details.filters[open] > summary::before { transform: rotate(90deg); }
+#tags { margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -212,105 +241,35 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     <input type="file" id="file" accept=".md,.log,.txt" hidden></label>
   <button id="theme" title="Toggle light / dark">◐</button>
 </header>
-<main>
-  <aside>
-    <h2>Presets</h2>
-    <div class="presets">
-      <button data-preset="all">Show all</button>
-      <button data-preset="quiet">Hide noise</button>
-      <button data-preset="tele">Telemetry only</button>
-      <button data-preset="net">Network only</button>
-    </div>
-    <p class="muted" id="tags-note" hidden>Filter set: it alone decides what is shown, and these tags are ignored. Clear the filter to use them again.</p>
-    <div id="tags"></div>
-    <p class="muted">Click a tag to hide it. Alt+click shows only that tag. Choices are remembered.</p>
-  </aside>
-  <section>
-    <div class="banner" id="file-banner"><span id="file-name"></span>
-      <button id="back-live">Back to live</button></div>
-    <div id="tools">
-      <input id="search" placeholder="Filter text (regex ok), e.g. faults=|GAP|state=">
-      <button id="only-hl" title="Only gaps, rejects, faults, warnings and events">Highlights only</button>
-      <button id="pause">Pause</button>
-      <button id="clear">Clear</button>
-      <button id="save">Save shown</button>
-      <button id="copy">Copy shown</button>
-      <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
-      <button id="bc-toggle" title="Barcode read diagnostics: widths, reject reasons, map, junctions">Barcode</button>
-      <span id="count"></span>
-    </div>
-    <div id="linechart">
-      <div class="lc-head">
-        <b>Line sensors</b>
-        <span class="lc-val" id="lc-26"></span>
-        <span class="lc-val" id="lc-27"></span>
-        <span class="lc-val" id="lc-lost"></span>
-        <span class="muted" id="lc-rate"></span>
-        <span class="spacer"></span>
-        <span class="muted lc-val" id="lc-hover"></span>
-        <label class="muted">Window <select id="lc-win">
-          <option value="10">10 s</option><option value="30">30 s</option><option value="60">1 min</option>
-          <option value="300">5 min</option><option value="0">all</option></select></label>
+<div class="wrap">
+  <div class="banner" id="file-banner"><span id="file-name"></span>
+    <button id="back-live">Back to live</button></div>
+
+  <!-- hero: reactive mascot + car vitals -->
+  <div class="deck">
+    <div class="panel">
+      <div id="cat" title="The cat reacts to what the car is doing, live">
+        <div class="cat-screen"><span class="cat-chip" id="cat-chip">READY</span><img id="cat-img" alt=""></div>
+        <div class="cat-cap"><span class="em" id="cat-emoji">🐱</span><span id="cat-say">waiting for the car…</span></div>
+        <div class="cat-mood"><span class="lbl">mood</span><div class="track"><div class="fill" id="cat-mood"></div></div></div>
       </div>
-      <canvas id="lc-canvas"></canvas>
-      <p class="muted" id="lc-hint"></p>
     </div>
-    <div id="log"></div>
-  </section>
-  <div id="bc-modal" role="dialog" aria-label="Barcode diagnostics">
-    <div id="bc-box">
-      <header>
-        <h2>Barcode diagnostics</h2>
-        <span class="muted" id="bc-src-note"></span>
-        <span style="flex:1"></span>
-        <button id="bc-reset" title="Clear the counters and history">Reset</button>
-        <button id="bc-close">Close</button>
-      </header>
-      <div id="bc-body">
-        <div class="card">
-          <h3>Last read</h3>
-          <div id="bc-headline">—</div>
-          <div class="muted" id="bc-last-detail">waiting for a read…</div>
-        </div>
-        <div class="card">
-          <h3>Widths captured</h3>
-          <div><span id="bc-count">—</span> <span class="muted">/ 29 needed</span></div>
-          <div class="muted" id="bc-width-stats"></div>
-        </div>
-        <div class="card wide">
-          <h3>Captured strip — what GP7 saw</h3>
-          <canvas id="bc-canvas"></canvas>
-          <p class="muted" id="bc-strip-hint" style="margin:6px 0 0"></p>
-        </div>
-        <div class="card">
-          <h3>Tally</h3>
-          <div class="tally" id="bc-tally"></div>
-        </div>
-        <div class="card">
-          <h3>Map / table</h3>
-          <div id="bc-map"></div>
-        </div>
-        <div class="card">
-          <h3>Read history</h3>
-          <div class="log" id="bc-history"></div>
-        </div>
-        <div class="card">
-          <h3>Junction activity</h3>
-          <div class="log" id="bc-junctions"></div>
-        </div>
-        <div class="card wide">
-          <h3>Live GP7 sensor</h3>
-          <div id="bc-gp7-state"></div>
-        </div>
+    <div class="panel">
+      <h2>Car state <span class="muted" id="s-age"></span></h2>
+      <div class="big" id="mission">—</div>
+      <div class="tiles">
+        <div class="tile"><div class="k">Distance cm</div><div class="v" id="vt-dist">—</div></div>
+        <div class="tile"><div class="k">Barcode</div><div class="v" id="vt-bar">—</div></div>
+        <div class="tile"><div class="k">Humps</div><div class="v" id="vt-hum">—</div></div>
+        <div class="tile"><div class="k">Tilt °</div><div class="v" id="vt-tlt">—</div></div>
+        <div class="tile"><div class="k">Obstacle cm</div><div class="v" id="vt-obs">—</div></div>
+        <div class="tile"><div class="k">Map ver</div><div class="v" id="vt-mpv">—</div></div>
       </div>
     </div>
   </div>
-  <aside id="side-right">
-    <div id="cat" title="The cat reacts to what the car is doing, live">
-      <div class="cat-screen"><span class="cat-chip" id="cat-chip">READY</span><img id="cat-img" alt=""></div>
-      <div class="cat-cap"><span class="em" id="cat-emoji">🐱</span><span id="cat-say">waiting for the car…</span></div>
-      <div class="cat-mood"><span class="lbl">mood</span><div class="track"><div class="fill" id="cat-mood"></div></div></div>
-    </div>
+
+  <!-- send to car -->
+  <div class="panel">
     <h2>Send to car</h2>
     <div class="presets" id="send-cmds">
       <button data-cmd="snap" title="Reply: one D snapshot on …/state">Snap</button>
@@ -366,22 +325,125 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
       </div>
     </details>
     <p class="muted" id="send-out"></p>
-    <h2>Car state <span class="muted" id="s-age"></span></h2>
-    <div class="big" id="mission">—</div>
-    <h2>Faults</h2>
-    <div class="chips" id="faults"></div>
-    <h2>Last S record</h2>
-    <dl id="state"><dt>—</dt><dd>no S yet</dd></dl>
-    <h2>Link</h2>
-    <dl id="link"><dt>wifi</dt><dd id="l-wifi">—</dd><dt>mqtt</dt><dd id="l-mqtt">—</dd>
-      <dt>S count</dt><dd id="l-scount">0</dd><dt>gaps</dt><dd id="l-gaps">0</dd>
-      <dt>rejects</dt><dd id="l-rej">0</dd></dl>
-    <h2>Last E motion <span class="muted" id="em-time"></span></h2>
-    <dl id="emotion"><dt>—</dt><dd>no E motion yet</dd></dl>
-    <h2>Recent events</h2>
-    <ul id="events"></ul>
-  </aside>
-</main>
+  </div>
+
+  <!-- faults / events / link -->
+  <div class="mid">
+    <div class="panel">
+      <h2>Faults</h2>
+      <div class="chips" id="faults"></div>
+    </div>
+    <div class="panel">
+      <h2>Recent events</h2>
+      <ul id="events"></ul>
+      <h2>Last E motion <span class="muted" id="em-time"></span></h2>
+      <dl id="emotion"><dt>—</dt><dd>no E motion yet</dd></dl>
+    </div>
+    <div class="panel">
+      <h2>Link</h2>
+      <dl id="link"><dt>wifi</dt><dd id="l-wifi">—</dd><dt>mqtt</dt><dd id="l-mqtt">—</dd>
+        <dt>S count</dt><dd id="l-scount">0</dd><dt>gaps</dt><dd id="l-gaps">0</dd>
+        <dt>rejects</dt><dd id="l-rej">0</dd></dl>
+      <details class="adv"><summary>Full S record</summary>
+        <div class="adv-body"><dl id="state"><dt>—</dt><dd>no S yet</dd></dl></div></details>
+    </div>
+  </div>
+
+  <!-- line sensor chart (toggle with the Line chart button) -->
+  <div id="linechart">
+    <div class="lc-head">
+      <b>Line sensors</b>
+      <span class="lc-val" id="lc-26"></span>
+      <span class="lc-val" id="lc-27"></span>
+      <span class="lc-val" id="lc-lost"></span>
+      <span class="muted" id="lc-rate"></span>
+      <span class="spacer"></span>
+      <span class="muted lc-val" id="lc-hover"></span>
+      <label class="muted">Window <select id="lc-win">
+        <option value="10">10 s</option><option value="30">30 s</option><option value="60">1 min</option>
+        <option value="300">5 min</option><option value="0">all</option></select></label>
+    </div>
+    <canvas id="lc-canvas"></canvas>
+    <p class="muted" id="lc-hint"></p>
+  </div>
+
+  <!-- live console -->
+  <div class="panel">
+    <div id="tools">
+      <input id="search" placeholder="Filter text (regex ok), e.g. faults=|GAP|state=">
+      <button id="only-hl" title="Only gaps, rejects, faults, warnings and events">Highlights only</button>
+      <button id="pause">Pause</button>
+      <button id="clear">Clear</button>
+      <button id="save">Save shown</button>
+      <button id="copy">Copy shown</button>
+      <button id="lc-toggle" title="Chart GP26 / GP27 from the [line] dbg lines">Line chart</button>
+      <button id="bc-toggle" title="Barcode read diagnostics: widths, reject reasons, map, junctions">Barcode</button>
+      <span id="count"></span>
+    </div>
+    <details class="filters">
+      <summary>Filters &amp; source tags</summary>
+      <div class="presets">
+        <button data-preset="all">Show all</button>
+        <button data-preset="quiet">Hide noise</button>
+        <button data-preset="tele">Telemetry only</button>
+        <button data-preset="net">Network only</button>
+      </div>
+      <p class="muted" id="tags-note" hidden>Filter set: it alone decides what is shown, and these tags are ignored. Clear the filter to use them again.</p>
+      <div id="tags"></div>
+      <p class="muted">Click a tag to hide it. Alt+click shows only that tag. Choices are remembered.</p>
+    </details>
+    <div id="log"></div>
+  </div>
+
+  <div id="bc-modal" role="dialog" aria-label="Barcode diagnostics">
+    <div id="bc-box">
+      <header>
+        <h2>Barcode diagnostics</h2>
+        <span class="muted" id="bc-src-note"></span>
+        <span style="flex:1"></span>
+        <button id="bc-reset" title="Clear the counters and history">Reset</button>
+        <button id="bc-close">Close</button>
+      </header>
+      <div id="bc-body">
+        <div class="card">
+          <h3>Last read</h3>
+          <div id="bc-headline">—</div>
+          <div class="muted" id="bc-last-detail">waiting for a read…</div>
+        </div>
+        <div class="card">
+          <h3>Widths captured</h3>
+          <div><span id="bc-count">—</span> <span class="muted">/ 29 needed</span></div>
+          <div class="muted" id="bc-width-stats"></div>
+        </div>
+        <div class="card wide">
+          <h3>Captured strip — what GP7 saw</h3>
+          <canvas id="bc-canvas"></canvas>
+          <p class="muted" id="bc-strip-hint" style="margin:6px 0 0"></p>
+        </div>
+        <div class="card">
+          <h3>Tally</h3>
+          <div class="tally" id="bc-tally"></div>
+        </div>
+        <div class="card">
+          <h3>Map / table</h3>
+          <div id="bc-map"></div>
+        </div>
+        <div class="card">
+          <h3>Read history</h3>
+          <div class="log" id="bc-history"></div>
+        </div>
+        <div class="card">
+          <h3>Junction activity</h3>
+          <div class="log" id="bc-junctions"></div>
+        </div>
+        <div class="card wide">
+          <h3>Live GP7 sensor</h3>
+          <div id="bc-gp7-state"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="drop">Drop a log file to view it</div>
 
 <dialog id="settings">
@@ -578,6 +640,7 @@ function resetState() {
   $("emotion").innerHTML = "<dt>—</dt><dd>no E motion yet</dd>"; $("em-time").textContent = "";
   $("faults").textContent = ""; $("events").textContent = "";
   $("l-wifi").textContent = "—"; $("l-mqtt").textContent = "—";
+  for (const id of ["vt-dist","vt-bar","vt-hum","vt-tlt","vt-obs","vt-mpv"]) { const e = $(id); if (e) e.textContent = "—"; }
   updateCounters(); drawFaults("0");
 }
 function drawFaults(text) {
@@ -600,6 +663,9 @@ function track(l, isLive) {
       $("mission").textContent = MISSION[mis] ?? `mis=${f.mis}`;
       $("mission").className = "big mis-" + mis;
       drawFaults(f.faults || "0");
+      const tv = (id, v) => { const e = $(id); if (e) e.textContent = (v === undefined || v === null || v === "") ? "—" : v; };
+      tv("vt-dist", f.dst); tv("vt-bar", f.bar); tv("vt-hum", f.hum);
+      tv("vt-tlt", f.tlt); tv("vt-obs", f.obs); tv("vt-mpv", f.mpv);
       const rows = [["s", f.s], ["up", (parseInt(f.up, 10) / 1000).toFixed(1) + " s"]];
       for (const k of Object.keys(S_FIELDS)) if (k in f) rows.push([S_FIELDS[k], f[k]]);
       $("state").replaceChildren(...rows.flatMap(([k, v]) => {
