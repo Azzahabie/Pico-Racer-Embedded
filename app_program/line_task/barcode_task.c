@@ -8,6 +8,12 @@
  * Mission changes: a read in progress is dropped on any change (ir_sense_task
  * also aborts it); the stored command survives a pause, and is cleared on a
  * new mission, Finished and Fault.
+ *
+ * BARCODE_SENSOR_ANALOG 1: the analog path's LETTER and ANALOG messages
+ * (bc_analog_link.h) are judged here too.  For ANALOG this task runs
+ * Boon's end-of-code decode (bc_finish()) on ir_sense_task's capture,
+ * stores the command and the judged word, then the reply word, and only
+ * then prints.
  */
 
 #include <tk/tkernel.h>
@@ -18,6 +24,9 @@
 #include "../nav_task/nav_ctrl.h"
 #include "barcode_task.h"
 #include "barcode_rx.h"
+#if BARCODE_SENSOR_ANALOG
+#include "bc_analog_link.h"
+#endif
 
 #define BAR_MBF_BYTES		512	/* ~64 queued 4-byte messages        */
 #define MAP_MBF_BYTES		32	/* two queued 7-byte maps            */
@@ -34,6 +43,16 @@ LOCAL volatile BOOL	g_map_loaded;
 LOCAL uint32_t		g_cmd_seq;
 LOCAL barcode_rx_t	g_rx;		/* ~1.4 KB: static, not on the stack */
 LOCAL barcode_table_t	g_table;
+#if BARCODE_SENSOR_ANALOG
+/* microseconds (RP2040 TIMERAWL, 1 MHz), to print how long a decode took */
+#if defined(__arm__) && defined(TIMER_BASE)
+#define ANALOG_US()	((uint32_t)in_w(TIMER_BASE + 0x28u))
+#else
+#define ANALOG_US()	(0u)		/* host test */
+#endif
+LOCAL volatile uint32_t	g_analog_reply;	/* bc_analog_link.h: one store, this task only */
+LOCAL uint32_t		g_aw[BC_MAX_ELEMENTS + 1u];	/* a rejected read's widths, um */
+#endif
 
 EXPORT ER barcode_task_init(void)
 {
@@ -202,6 +221,182 @@ LOCAL void apply_maps(void)
 	}
 }
 
+#if BARCODE_SENSOR_ANALOG
+EXPORT uint32_t barcode_analog_reply_word(void)
+{
+	return g_analog_reply;
+}
+
+/* Boon's reason codes (bc_analog_code39.h) in REJECTED lines. */
+LOCAL const char *analog_reason_name(uint8_t reason)
+{
+	switch((code39_result_t)reason) {
+	case CODE39_NOT_BARCODE:
+		return "not_barcode";
+	case CODE39_ERR_COUNT:
+		return "count";
+	case CODE39_ERR_RATIO:
+		return "ratio";
+	case CODE39_ERR_PATTERN:
+		return "pattern";
+	case CODE39_ERR_START_STOP:
+		return "start_stop";
+	case CODE39_ERR_LENGTH:
+		return "length";
+	case CODE39_ERR_TOO_LONG:
+		return "too_long";
+	case CODE39_ERR_TOO_MANY:
+		return "too_many";
+	case CODE39_OK:
+	default:
+		return "unknown";
+	}
+}
+
+/* A read's first (swing) widths, in mm to 0.1 mm: B bar, w space. */
+LOCAL void analog_dump(uint16_t n, const uint16_t counts[BC_READINGS])
+{
+	UB	line[128];
+	UB	*p = line;
+	uint16_t	i;
+
+	tm_printf((UB *)"[barcode]   %u widths in mm (1 letter = 29); readings swing/mid/low/adapt20/15/10: %u/%u/%u/%u/%u/%u\n",
+		  (UINT)n, (UINT)counts[0], (UINT)counts[1], (UINT)counts[2],
+		  (UINT)counts[3], (UINT)counts[4], (UINT)counts[5]);
+	for(i = 0u; i < n; ++i) {
+		if(0u == (i % DUMP_PER_LINE)) {
+			p = line;
+			p += tm_sprintf(p, (UB *)"[barcode]   %2u:", (UINT)i);
+		}
+		p += tm_sprintf(p, (UB *)" %c%u.%u", (0u == (i & 1u)) ? 'B' : 'w',
+				(UINT)(g_aw[i] / 1000u), (UINT)((g_aw[i] % 1000u) / 100u));
+		if((0u == ((i + 1u) % DUMP_PER_LINE)) || ((i + 1u) == n)) {
+			*p = '\0';
+			tm_printf((UB *)"%s\n", line);		/* one call per line */
+		}
+	}
+}
+
+/* A letter from the analog path: the table, the command and the judged
+   word (as store_verdict), then the console and telemetry (as report). */
+LOCAL void analog_judge(uint8_t read_id, char letter, bool reversed, uint8_t pass)
+{
+	UB		body[COMM_W_INTAKE_SIZE_BARCODE];
+	barcode_action_t	action = BARCODE_ACT_FORWARD;
+	bool		known = barcode_table_lookup(&g_table, letter, &action);
+
+	if(known) {
+		set_cmd(barcode_letter_index(letter), (uint32_t)action);
+	}
+	g_judged = barcode_judged_pack(read_id);		/* one store */
+	if(known) {
+		tm_printf((UB *)"[barcode] '%c' -> %s (dir=%s), stored for the next junction\n",
+			  letter, barcode_action_name((uint32_t)action),
+			  reversed ? "rev" : "fwd");
+		tm_printf((UB *)"[barcode]   analog read, pass %u\n", (UINT)pass);
+		(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
+			barcode_letter_index(letter), (uint32_t)action));
+		return;
+	}
+	tm_printf((UB *)"[barcode] REJECTED: '%c' unknown (%s)\n", letter,
+		  g_table.loaded ? "not in table" : "no barcode map loaded");
+	(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
+		COMM_W_BARCODE_UNREADABLE, 0U));
+}
+
+/* ANALOG: decode ir_sense_task's capture (it waits in BC_ST_DECODING),
+   store, copy what the console needs, reply, then print. */
+LOCAL void analog_decode(uint8_t read_id, bool cut)
+{
+	UB		body[COMM_W_INTAKE_SIZE_BARCODE];
+	const bc_capture_t	*cap = line_bc_capture();
+	bc_out_t	o;
+	bc_result_t	r;
+	uint16_t	counts[BC_READINGS];
+	uint16_t	n = 0u;
+	uint8_t		k;
+	uint32_t	t0;
+	uint32_t	us;
+
+	BC_LINK_BARRIER();	/* the capture as core 1 left it */
+	t0 = ANALOG_US();
+	r = bc_finish(cap, &o);
+	us = ANALOG_US() - t0;
+	if((BC_REJECT == r) || ((BC_VALID != r) && cut)) {
+		for(k = (uint8_t)(BC_READINGS - 1u); k > 0u; k--) {
+			counts[k] = bc_reading(cap, k, g_aw);
+		}
+		n = bc_reading(cap, 0u, g_aw);
+		counts[0] = n;
+	}
+	if((BC_VALID == r) && !cut) {
+		/* the command and the judged word before the reply */
+		barcode_action_t	action = BARCODE_ACT_FORWARD;
+
+		if(barcode_table_lookup(&g_table, o.ch, &action)) {
+			set_cmd(barcode_letter_index(o.ch), (uint32_t)action);
+		}
+		g_judged = barcode_judged_pack(read_id);
+	} else if(BC_REJECT == r) {
+		g_judged = barcode_judged_pack(read_id);
+	} else {
+		/* not a barcode, or cut by a junction: nothing to arm */
+	}
+	BC_LINK_BARRIER();	/* done with the capture before it goes back */
+	g_analog_reply = bc_link_reply_pack(read_id, r, o.ch);	/* one store */
+
+	if((BC_VALID == r) && !cut) {
+		barcode_action_t	action = BARCODE_ACT_FORWARD;
+
+		if(barcode_table_lookup(&g_table, o.ch, &action)) {
+			tm_printf((UB *)"[barcode] '%c' -> %s (dir=%s), stored for the next junction\n",
+				  o.ch, barcode_action_name((uint32_t)action),
+				  o.b_reversed ? "rev" : "fwd");
+			tm_printf((UB *)"[barcode]   analog read, pass %u, %u elements, %u mm, decoded in %u us\n",
+				  (UINT)o.pass, (UINT)o.elements, (UINT)(o.length_um / 1000u),
+				  (UINT)us);
+			(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
+				barcode_letter_index(o.ch), (uint32_t)action));
+			return;
+		}
+		tm_printf((UB *)"[barcode] REJECTED: '%c' unknown (%s)\n", o.ch,
+			  g_table.loaded ? "not in table" : "no barcode map loaded");
+	} else if(BC_VALID == r) {
+		tm_printf((UB *)"[barcode] '%c' read, but a junction cut the read: not stored (analog, pass %u)\n",
+			  o.ch, (UINT)o.pass);
+	} else if(BC_REJECT == r) {
+		tm_printf((UB *)"[barcode] REJECTED: malformed (analog %s, decode %u us)\n",
+			  analog_reason_name(o.reason), (UINT)us);
+		analog_dump(n, counts);
+	} else if(cut) {
+		tm_printf((UB *)"[barcode] REJECTED: a junction cut the read (analog %s)\n",
+			  analog_reason_name(o.reason));
+		analog_dump(n, counts);
+	} else {
+		return;		/* a crossing line or a speck: nothing to say */
+	}
+	(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
+		COMM_W_BARCODE_UNREADABLE, 0U));
+}
+
+/* The analog path's own messages; false for the others (ABORT goes to
+   barcode_rx.c as for GP7). */
+LOCAL BOOL analog_feed(const UB *msg)
+{
+	uint16_t	value = (uint16_t)(msg[2] | ((uint16_t)msg[3] << 8));
+
+	if(BAR_MSG_LETTER == msg[0]) {
+		analog_judge(msg[1], (char)(value & 0xFFu), (value & 0x100u) != 0u, 0u);
+		return TRUE;
+	}
+	if(BAR_MSG_ANALOG == msg[0]) {
+		analog_decode(msg[1], (value & BAR_ANALOG_CUT) != 0u);
+		return TRUE;
+	}
+	return FALSE;
+}
+#endif
+
 LOCAL void on_mission_change(mission_state_t prev, mission_state_t next)
 {
 	bool	keep;
@@ -254,6 +449,11 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 
 	while(1) {
 		size = tk_rcv_mbf(g_bar_mbfid, msg, BARCODE_WAIT_MS);
+#if BARCODE_SENSOR_ANALOG
+		if((BAR_MSG_SIZE == size) && analog_feed(msg)) {
+			size = 0;	/* judged above */
+		}
+#endif
 		if(BAR_MSG_SIZE == size) {
 			event = barcode_rx_feed(&g_rx, msg);
 			if(BARCODE_RX_NONE != event) {
