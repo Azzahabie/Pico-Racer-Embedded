@@ -3,28 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Car Log Viewer</title>
+<title>Cat Car Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap">
 <style>
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1d2228;
-  --muted: #69727d; --accent: #2f6fde; --row-hover: #f0f3f7;
-  --ok: #1f8a4c; --warn: #b26a00; --bad: #c53030; --info: #6b4fd8;
-  --chip: #eef1f5; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --s26: #2f6fde; --s27: #d9730d;
+  --bg: #f3eefb; --panel: #ffffff; --line: #e4dcf3; --text: #1c1430;
+  --muted: #6a5e86; --accent: #ff3fa0; --row-hover: #f7f1ff;
+  --ok: #11a05f; --warn: #b7760a; --bad: #d8352f; --info: #0e9fc4;
+  --chip: #efe8fb; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --display: "Baloo 2", system-ui, sans-serif;
+  --s26: #ff3fa0; --s27: #0e9fc4;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
-    --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
-    --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
-    --s26: #6c9cff; --s27: #f0a050;
+    --bg: #130c24; --panel: #1d1338; --line: #342856; --text: #f4ecff;
+    --muted: #a99fcd; --accent: #ff5db1; --row-hover: #241a42;
+    --ok: #5bf0a0; --warn: #ffd24a; --bad: #ff7a7a; --info: #5be0ff; --chip: #241a42;
+    --s26: #ff5db1; --s27: #5be0ff;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #111418; --panel: #181c21; --line: #2a3038; --text: #e3e7ec;
-  --muted: #8b95a1; --accent: #6c9cff; --row-hover: #1f242b;
-  --ok: #46c27a; --warn: #e3a33b; --bad: #ff6b6b; --info: #a08cff; --chip: #232931;
-  --s26: #6c9cff; --s27: #f0a050;
+  --bg: #130c24; --panel: #1d1338; --line: #342856; --text: #f4ecff;
+  --muted: #a99fcd; --accent: #ff5db1; --row-hover: #241a42;
+  --ok: #5bf0a0; --warn: #ffd24a; --bad: #ff7a7a; --info: #5be0ff; --chip: #241a42;
+  --s26: #ff5db1; --s27: #5be0ff;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -32,7 +36,20 @@ body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Seg
        display: grid; grid-template-rows: auto 1fr; }
 header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
          background: var(--panel); border-bottom: 1px solid var(--line); }
-header h1 { font-size: 16px; margin: 0 8px 0 0; }
+header h1 { font-family: var(--display); font-weight: 800; font-size: 18px; margin: 0 8px 0 0; letter-spacing: -.01em;
+  display: inline-flex; align-items: center; gap: 8px; }
+header h1::before { content: "🐱"; font-size: 20px; }
+h2 { font-family: var(--display); }
+#cat { margin-bottom: 14px; }
+#cat .cat-screen { position: relative; border-radius: 11px; overflow: hidden; background: #0a0a1f; aspect-ratio: 16 / 10;
+  border: 2px solid color-mix(in srgb, var(--accent) 40%, var(--line)); box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+#cat .cat-screen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#cat .cat-chip { position: absolute; top: 7px; left: 7px; z-index: 2; font-family: var(--mono); font-weight: 700;
+  font-size: 10.5px; letter-spacing: .04em; padding: 3px 7px; border-radius: 6px; color: #09091c; background: var(--ok);
+  text-transform: uppercase; box-shadow: 0 3px 10px rgba(0,0,0,.4); }
+#cat .cat-cap { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-family: var(--display);
+  font-weight: 700; font-size: 14px; line-height: 1.15; }
+#cat .cat-cap .em { font-size: 19px; flex: none; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
         background: var(--chip); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -151,7 +168,7 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
 </head>
 <body>
 <header>
-  <h1>Car Log Viewer</h1>
+  <h1>Cat Car Mission Control</h1>
   <span class="pill" id="st-mqtt">mqtt</span>
   <span class="pill" id="st-serial">serial</span>
   <span class="pill" id="st-broker">broker</span>
@@ -255,6 +272,10 @@ fieldset input:not([type=checkbox]), fieldset select { font: inherit; padding: 5
     </div>
   </div>
   <aside id="side-right">
+    <div id="cat" title="The cat reacts to what the car is doing, live">
+      <div class="cat-screen"><span class="cat-chip" id="cat-chip">READY</span><img id="cat-img" alt=""></div>
+      <div class="cat-cap"><span class="em" id="cat-emoji">🐱</span><span id="cat-say">waiting for the car…</span></div>
+    </div>
     <h2>Send to car</h2>
     <div class="presets" id="send-cmds">
       <button data-cmd="snap" title="Reply: one D snapshot on …/state">Snap</button>
@@ -885,6 +906,49 @@ addEventListener("keydown", (e) => { if (e.key === "Escape" && bcShow) bcSetShow
 addEventListener("resize", bcRedraw);
 bcSetShow(bcShow);
 
+/* ---- reactive cat mascot -------------------------------------------- */
+// The cat swaps GIF from the live feed: faults → stuck, a read → decode,
+// a junction → turning, a hump → hump, a reject → sad, else cruising.
+// GIFs are served by telemetry_viewer.py from tools/cat/.
+const CAT_GIF = { driving:"cat/Driving.gif", turning:"cat/Turning.gif", decode:"cat/Decode.gif",
+  hump:"cat/Hump.gif", stuck:"cat/Stuck.gif", reject:"cat/Sad.gif", ready:"cat/Connected.gif", boot:"cat/Loading.gif" };
+const CAT_INFO = {
+  driving:{ chip:"DRIVING", col:"var(--ok)",   em:"🏁", say:"Cruising the line" },
+  turning:{ chip:"TURNING", col:"var(--warn)", em:"↩️", say:"Taking the junction" },
+  decode: { chip:"DECODE",  col:"var(--info)", em:"🔖", say:"Reading a barcode" },
+  hump:   { chip:"HUMP",    col:"var(--warn)", em:"🐫", say:"Clearing a hump" },
+  stuck:  { chip:"FAULT",   col:"var(--bad)",  em:"🙀", say:"Stuck / fault!" },
+  reject: { chip:"REJECT",  col:"var(--bad)",  em:"🙅", say:"Barcode unreadable" },
+  ready:  { chip:"READY",   col:"var(--info)", em:"🔌", say:"Connected, waiting" },
+  boot:   { chip:"BOOT",    col:"var(--warn)", em:"⏳", say:"Booting up…" },
+};
+let catBase = "ready", catTimer = null, catStuck = false;
+function catShow(state) {
+  const info = CAT_INFO[state]; if (!info) return;
+  const img = $("cat-img"), want = CAT_GIF[state];
+  if (img.getAttribute("src") !== want) img.src = want;
+  $("cat-chip").textContent = info.chip; $("cat-chip").style.background = info.col;
+  $("cat-emoji").textContent = info.em; $("cat-say").textContent = info.say;
+}
+function catSet(state, transient) {
+  clearTimeout(catTimer); catTimer = null; catShow(state);
+  if (transient) catTimer = setTimeout(() => { catTimer = null; if (!catStuck) catShow(catBase); }, 2600);
+}
+function catFeed(l) {
+  const s = l.text;
+  if (/\bFAULT\b|STALL|SENSOR FAULT|no encoder ticks|lifted|LIFT/i.test(s)) { catStuck = true; catBase = "stuck"; catSet("stuck", false); return; }
+  if (/-> RUNNING/.test(s)) { catStuck = false; catBase = "driving"; catSet("driving", false); return; }
+  if (/-> (FINISHED|READY|CALIBRATING|PAUSED)/.test(s)) { catStuck = false; catBase = "ready"; catSet("ready", false); return; }
+  if (catStuck) return;
+  if (/REJECTED:/.test(s)) { catSet("reject", true); return; }
+  if (/\[barcode\] '.' ->|letter=(?!none|\?)/.test(s)) { catSet("decode", true); return; }
+  if (/\[barcode\]\s+\d+ widths/.test(s)) { catSet("decode", true); return; }
+  if (/junction \(|junction.*-> nav/i.test(s)) { catSet("turning", true); return; }
+  if (/\bhump\b/i.test(s)) { catSet("hump", true); return; }
+  if (/\[line\] raw ADC|\[line\] RL=|^S /.test(s)) { if (catBase === "ready") catBase = "driving"; if (!catTimer) catShow(catBase); return; }
+}
+catShow("ready");
+
 /* ---- live stream ---------------------------------------------------- */
 function setPill(id, text) {
   const el = $(id);
@@ -915,6 +979,7 @@ function connect() {
     bumpTag(l);
     appendLive(l);
     if (bcFeed(l)) bcRedraw();
+    catFeed(l);
   };
   es.onerror = () => { for (const k of ["mqtt", "serial", "broker"]) setPill("st-" + k, "viewer offline"); };
 }
@@ -959,7 +1024,7 @@ function openFile(file) {
     for (const l of fileLines) track(l, false);
     lcFile = fileLines.map(lcSample).filter(Boolean);
     if (lcFile.length && !lcShow) lcSetShow(true);
-    bcReset(); for (const l of fileLines) bcFeed(l);
+    bcReset(); for (const l of fileLines) { bcFeed(l); catFeed(l); }
     rebuildCounts(); render(); lcRedraw(); bcRedraw();
   });
 }
@@ -967,7 +1032,7 @@ $("file").onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0])
 $("back-live").onclick = () => {
   fileLines = null; lcFile = null; $("file-banner").classList.remove("show");
   resetState(); for (const l of live) track(l, false);
-  bcReset(); for (const l of live) bcFeed(l);
+  bcReset(); for (const l of live) { bcFeed(l); catFeed(l); }
   rebuildCounts(); render(); lcRedraw(); bcRedraw();
 };
 let dragDepth = 0;

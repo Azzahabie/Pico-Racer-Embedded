@@ -590,6 +590,22 @@ def make_handler(viewer):
                     pass
                 finally:
                     hub.unsubscribe(q)
+            elif self.path.startswith("/cat/"):
+                # The reactive-mascot GIFs, served from tools/cat/ next to the page.
+                name = os.path.basename(self.path[len("/cat/"):])
+                base = getattr(sys, "_MEIPASS", HERE)
+                fp = os.path.join(base, "cat", name)
+                if name.endswith(".gif") and os.path.isfile(fp):
+                    with open(fp, "rb") as f:
+                        body = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/gif")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "max-age=86400")
+                    self.end_headers()
+                    self.wfile.write(body)
+                else:
+                    self.send_error(404)
             else:
                 self.send_error(404)
 
