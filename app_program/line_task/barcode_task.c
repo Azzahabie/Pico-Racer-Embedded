@@ -11,9 +11,11 @@
  *
  * BARCODE_SENSOR_ANALOG 1: the analog path's LETTER and ANALOG messages
  * (bc_analog_link.h) are judged here too.  For ANALOG this task runs
- * The end-of-code decode (bc_finish()) on ir_sense_task's capture,
- * stores the command and the judged word, then the reply word, and only
- * then prints.
+ * The end-of-code decode (bc_finish(), with the partial-read decoder
+ * last) on ir_sense_task's capture, stores the command and the judged
+ * word, then the reply word, and only then prints: the pass that decoded
+ * (and for the partial decoder the elements it found lost), or after a
+ * REJECTED what the partial decoder made of the read and why it refused.
  */
 
 #include <tk/tkernel.h>
@@ -199,6 +201,30 @@ LOCAL void store_verdict(const barcode_verdict_t *v)
 	g_judged = barcode_judged_pack(g_rx.read_id);		/* one store */
 }
 
+#if BARCODE_SENSOR_ANALOG
+/* GAMBLE (bc_analog_partial.h): the candidates are the letters with a
+   turn (not straight on), A first; none: every letter. */
+LOCAL void gamble_candidates(void)
+{
+	char	c[27];
+	UINT	n = 0U;
+	UINT	i;
+
+	if(g_table.loaded) {
+		for(i = 0U; i < 26U; i++) {
+			if((uint8_t)BARCODE_ACT_FORWARD != g_table.action[i]) {
+				c[n++] = (char)('A' + i);
+			}
+		}
+	}
+	c[n] = '\0';
+	bc_partial_set_candidates(c);
+	if(0U != BC_PART_GAMBLE) {
+		tm_printf((UB *)"[barcode] gamble candidates: %s\n", (0U != n) ? c : "every letter");
+	}
+}
+#endif
+
 /* Only between barcodes, so one read always sees one table. */
 LOCAL void apply_maps(void)
 {
@@ -209,6 +235,9 @@ LOCAL void apply_maps(void)
 	size = tk_rcv_mbf(g_map_mbfid, map, TMO_POL);
 	while(0 < size) {
 		if(barcode_table_apply_map(&g_table, map, size)) {
+#if BARCODE_SENSOR_ANALOG
+			gamble_candidates();
+#endif
 			g_map_version = g_table.version;
 			g_map_loaded = TRUE;
 			barcode_table_to_string(&g_table, text);
@@ -253,6 +282,87 @@ LOCAL const char *analog_reason_name(uint8_t reason)
 	}
 }
 
+/* How an analog read was decoded (bc_out_t.pass), for the console. */
+LOCAL const char *analog_pass_name(uint8_t pass)
+{
+	static const char *const names[8] = {
+		"swing", "mid", "low", "adaptive", "best match",
+		"end speck dropped", "best match, end speck dropped",
+		(0U != BC_PART_GAMBLE) ? "GAMBLE" : "partial"
+	};
+
+	return (pass < 8u) ? names[pass] : "?";
+}
+
+/* One count of the partial decoder's defects: ", 2 missed bars". */
+LOCAL UB *partial_count(UB *p, bool *first, uint8_t n, const char *what)
+{
+	if(0u != n) {
+		p += tm_sprintf(p, (UB *)"%s%u %s%s", *first ? "" : ", ", (UINT)n, what,
+				(1u == n) ? "" : "s");
+		*first = false;
+	}
+	return p;
+}
+
+/* What the partial decoder lined up: "1 missed bar, 1 speck". */
+LOCAL UB *partial_how(UB *p, const bc_part_t *pt)
+{
+	bool	first = true;
+
+	p = partial_count(p, &first, pt->missed_bars, "missed bar");
+	p = partial_count(p, &first, pt->missed_spaces, "missed space");
+	p = partial_count(p, &first, pt->specks, "speck");
+	p = partial_count(p, &first, (uint8_t)(pt->clip_front + pt->clip_back),
+			  "clipped element");
+	if(first) {
+		p += tm_sprintf(p, (UB *)"no element lost");
+	}
+	return p;
+}
+
+/* After an analog REJECTED: what the partial decoder made of the read
+   and why it gave no letter (nothing if it did not run). */
+LOCAL void partial_report(const bc_part_t *pt)
+{
+	UB	line[160];
+	UB	*p = line;
+	uint32_t	x10;
+
+	if((uint8_t)BC_PART_NOT_RUN == pt->reason) {
+		return;
+	}
+	p += tm_sprintf(p, (UB *)"[barcode]   partial: ");
+	if((uint8_t)BC_PART_COUNT == pt->reason) {
+		p += tm_sprintf(p, (UB *)"not tried (no reading of %u..%u elements, odd)",
+				(UINT)BC_PART_N_MIN, (UINT)BC_PART_N_MAX);
+	} else if((uint8_t)BC_PART_LEVELS == pt->reason) {
+		p += tm_sprintf(p, (UB *)"refused, narrow and wide widths not a code's");
+	} else if((uint8_t)BC_PART_BUSY == pt->reason) {
+		p += tm_sprintf(p, (UB *)"refused, search limit reached");
+	} else {
+		p += tm_sprintf(p, (UB *)"best '%c' (%s, ", pt->ch,
+				pt->b_reversed ? "rev" : "fwd");
+		p = partial_how(p, pt);
+		p += tm_sprintf(p, (UB *)"), refused: ");
+		x10 = (0u != pt->cost) ? (uint32_t)(((uint64_t)pt->cost2 * 10u) / pt->cost) : 0u;
+		if((uint8_t)BC_PART_MARGIN == pt->reason) {
+			p += tm_sprintf(p, (UB *)"'%c' fits nearly as well (x%u.%u)",
+					(0 != pt->ch2) ? pt->ch2 : '?',
+					(UINT)(x10 / 10u), (UINT)(x10 % 10u));
+		} else if((uint8_t)BC_PART_STAR == pt->reason) {
+			p += tm_sprintf(p, (UB *)"no '*' seen whole");
+		} else if((uint8_t)BC_PART_EDITS == pt->reason) {
+			p += tm_sprintf(p, (UB *)"more than %u elements lost or split",
+					(UINT)BC_PART_K);
+		} else {
+			p += tm_sprintf(p, (UB *)"fit too poor");
+		}
+	}
+	*p = '\0';
+	tm_printf((UB *)"%s\n", line);
+}
+
 /* A read's first (swing) widths, in mm to 0.1 mm: B bar, w space. */
 LOCAL void analog_dump(uint16_t n, const uint16_t counts[BC_READINGS])
 {
@@ -293,7 +403,8 @@ LOCAL void analog_judge(uint8_t read_id, char letter, bool reversed, uint8_t pas
 		tm_printf((UB *)"[barcode] '%c' -> %s (dir=%s), stored for the next junction\n",
 			  letter, barcode_action_name((uint32_t)action),
 			  reversed ? "rev" : "fwd");
-		tm_printf((UB *)"[barcode]   analog read, pass %u\n", (UINT)pass);
+		tm_printf((UB *)"[barcode]   analog read, pass %u (%s)\n", (UINT)pass,
+			  analog_pass_name(pass));
 		(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
 			barcode_letter_index(letter), (uint32_t)action));
 		return;
@@ -349,11 +460,20 @@ LOCAL void analog_decode(uint8_t read_id, bool cut)
 		barcode_action_t	action = BARCODE_ACT_FORWARD;
 
 		if(barcode_table_lookup(&g_table, o.ch, &action)) {
+			UB	how[96];
+
 			tm_printf((UB *)"[barcode] '%c' -> %s (dir=%s), stored for the next junction\n",
 				  o.ch, barcode_action_name((uint32_t)action),
 				  o.b_reversed ? "rev" : "fwd");
-			tm_printf((UB *)"[barcode]   analog read, pass %u, %u elements, %u mm, decoded in %u us\n",
-				  (UINT)o.pass, (UINT)o.elements, (UINT)(o.length_um / 1000u),
+			(void)tm_sprintf(how, (UB *)"%s", analog_pass_name(o.pass));
+			if(7u == o.pass) {
+				UB	*p = how + tm_sprintf(how, (UB *)"partial: ");
+
+				p = partial_how(p, &o.part);
+				*p = '\0';
+			}
+			tm_printf((UB *)"[barcode]   analog read, pass %u (%s), %u elements, %u mm, decoded in %u us\n",
+				  (UINT)o.pass, how, (UINT)o.elements, (UINT)(o.length_um / 1000u),
 				  (UINT)us);
 			(void)comms_tele_send(body, (INT)comm_w_pack_barcode(body,
 				barcode_letter_index(o.ch), (uint32_t)action));
@@ -362,15 +482,17 @@ LOCAL void analog_decode(uint8_t read_id, bool cut)
 		tm_printf((UB *)"[barcode] REJECTED: '%c' unknown (%s)\n", o.ch,
 			  g_table.loaded ? "not in table" : "no barcode map loaded");
 	} else if(BC_VALID == r) {
-		tm_printf((UB *)"[barcode] '%c' read, but a junction cut the read: not stored (analog, pass %u)\n",
-			  o.ch, (UINT)o.pass);
+		tm_printf((UB *)"[barcode] '%c' read, but a junction cut the read: not stored (analog, pass %u, %s)\n",
+			  o.ch, (UINT)o.pass, analog_pass_name(o.pass));
 	} else if(BC_REJECT == r) {
 		tm_printf((UB *)"[barcode] REJECTED: malformed (analog %s, decode %u us)\n",
 			  analog_reason_name(o.reason), (UINT)us);
+		partial_report(&o.part);
 		analog_dump(n, counts);
 	} else if(cut) {
 		tm_printf((UB *)"[barcode] REJECTED: a junction cut the read (analog %s)\n",
 			  analog_reason_name(o.reason));
+		partial_report(&o.part);
 		analog_dump(n, counts);
 	} else {
 		return;		/* a crossing line or a speck: nothing to say */
@@ -426,6 +548,9 @@ EXPORT void barcode_task(INT stacd, void *exinf)
 
 	barcode_rx_init(&g_rx);
 	barcode_table_init(&g_table);
+#if BARCODE_SENSOR_ANALOG
+	gamble_candidates();
+#endif
 	g_map_loaded = g_table.loaded ? TRUE : FALSE;
 	if(E_OK != barcode_task_init()) {
 		tm_printf((UB *)"[barcode] bar_mbf/map_mbf not created: stopped\n");
