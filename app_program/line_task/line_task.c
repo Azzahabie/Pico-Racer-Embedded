@@ -669,6 +669,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		   BC_ANALOG_VERDICT_WAIT_MS */
 		gate.wait = gate.wait ||
 			    (g_bc_handoff && (g_bc_handoff_ms < BC_ANALOG_VERDICT_WAIT_MS));
+		gate.moved_mm = (uint32_t)((moved < 0) ? -moved : moved);
 #else
 		judged = barcode_judged_word();
 		cmd_now = barcode_cmd_word();
@@ -697,8 +698,10 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		/* the scan gate shuts the length rule, never the armed junction */
 #if LINE_SCAN_GATE
 		gate.turning = scan_open ? false : true;
+		gate.manoeuvre = g_gate.manoeuvre || (0u < g_gate.hold_mm);
 #else
 		gate.turning = false;
+		gate.manoeuvre = false;
 #endif
 		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
 				     adc_ok ? true : false,
@@ -708,6 +711,9 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		gate.in_read = false;
 		gate.armed_due = false;
 		gate.wait = false;
+		gate.armed = false;
+		gate.moved_mm = 0u;
+		gate.manoeuvre = g_gate.manoeuvre || (0u < g_gate.hold_mm);
 		gate.turning = scan_open ? false : true;
 		line_track_step_gate(&g_trk, raw.left_guard, raw.right_guard,
 				     adc_ok ? true : false,
@@ -809,13 +815,33 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 				  barcode_action_name(barcode_cmd_action(g_arm.cmd)),
 				  (UINT)g_arm.black_mm);
 		} else if(out.junction) {
+#if defined(LINE_JUNCTION_PAIR) && LINE_JUNCTION_PAIR
+			tm_printf((UB *)"[line] junction (both line sensors black, " BC_NAME " black just before) -> nav\n");
+#else
 			tm_printf((UB *)"[line] junction (" BC_NAME " black %u ms, length rule) -> nav\n",
 				  (UINT)LINE_JUNCTION_SAMPLES);
+#endif
 		} else {
 			/* no junction this sample */
 		}
 		print_arm(cancel_event, mission);
 		print_arm(arm_event, mission);
+#if defined(LINE_JUNCTION_PAIR) && LINE_JUNCTION_PAIR
+		/* debug, also during a read: black runs of 5 mm or more */
+		if(g_trk.dbg_pair_mm >= 5u) {
+			tm_printf((UB *)"[line] pair: BOTH black %u mm (straight %s)\n",
+				  (UINT)g_trk.dbg_pair_mm, g_trk.dbg_turning ? "NO" : "yes");
+		}
+		if(g_trk.dbg_l_mm >= 5u) {
+			tm_printf((UB *)"[line] pair: LEFT black %u mm\n", (UINT)g_trk.dbg_l_mm);
+		}
+		if(g_trk.dbg_r_mm >= 5u) {
+			tm_printf((UB *)"[line] pair: RIGHT black %u mm\n", (UINT)g_trk.dbg_r_mm);
+		}
+		g_trk.dbg_pair_mm = 0u;
+		g_trk.dbg_l_mm = 0u;
+		g_trk.dbg_r_mm = 0u;
+#endif
 #else
 		if(out.junction) {
 			tm_printf((UB *)"[line] junction (" BC_NAME " black %u ms) -> nav\n",

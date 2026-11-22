@@ -92,6 +92,7 @@ jarm_event_t junction_arm_step(junction_arm_t *arm, uint32_t judged,
 
 	gate->in_read = in_read;
 	gate->wait = (arm->phase == JARM_WAIT);
+	gate->armed = (arm->phase == JARM_ARMED);
 	gate->armed_due = (arm->phase == JARM_ARMED) && black &&
 			  (arm->black_ms >= LINE_ARMED_MIN_SAMPLES) &&
 			  (arm->black_mm >= LINE_ARMED_CONFIRM_MM);

@@ -177,6 +177,31 @@
 #define SL_WIDTH_REPORT_CORR_PER_1000	240
 #endif
 
+/* Reported width from the face's edges (20 Nov 2026, test option, 0 = as
+ * above).  The width above uses the outermost hit angle of 5 deg steps, so
+ * the same 90 mm box read 51, 94, 116 and 188 mm on the car (20 Nov
+ * logs).  Instead: each edge of the face is half-way between its last hit
+ * (within SL_FACE_DEPTH_MM of the closest reading, so the box's slanted
+ * side and things behind it do not count) and the next measured slot; the
+ * cone is taken off as an angle, SL_BEAM_HALF_DEG per edge; then
+ * W = d_c x (tan(right - beam) - tan(left + beam)).  12 deg is the fit to
+ * the 21:18 car sweep of the 90 mm box (91 mm); one sweep only, so far. */
+#ifndef SL_WIDTH_EDGE_MID
+#define SL_WIDTH_EDGE_MID	0
+#endif
+#ifndef SL_BEAM_HALF_DEG
+#define SL_BEAM_HALF_DEG	12
+#endif
+#define SL_FACE_DEPTH_MM	25
+/* 1-deg edge re-sweep after the scan (21 Nov 2026): the 5 deg grid could
+ * not tell a 10 cm face from a 15 cm one (car: 177 vs 155 mm, reversed).
+ * Each face edge is swept outward 1 deg at a time from its last 5 deg hit,
+ * 2 pings per angle (both must be the face), up to the next 5 deg slot;
+ * the edge is half-way to the first miss.  ~1-1.5 s more.  0 = off. */
+#ifndef SL_EDGE_REFINE
+#define SL_EDGE_REFINE		0
+#endif
+
 /* ---- "N in a row" rules (Statechart 5) ---- */
 #define SL_N_STOP		2	/* close readings to set STOP_SCAN           */
 #define SL_N_STOP_HUMP		4	/* ... while hump_state is not NONE (8.3)    */
@@ -244,6 +269,12 @@ int32_t		sl_sin1000(int32_t deg);
  * obstacle; a depth jump > SL_DEPTH_JUMP_MM starts a different object. */
 void		sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 			   sl_profile_t *p_prof);
+#if SL_WIDTH_EDGE_MID
+int32_t		sl_cos1000(int32_t deg);
+int32_t		sl_width_from_edges(int32_t d_c, int32_t el2, int32_t er2);
+int32_t		sl_face_last_deg(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+				 int32_t close_deg, int32_t d_c, int32_t dir);
+#endif
 
 /* Where the fine scan starts (FR-15), from the coarse grid: the coarse
  * edges of the object in the car's path, not the outermost coarse hits.

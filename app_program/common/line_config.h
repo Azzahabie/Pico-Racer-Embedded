@@ -489,7 +489,9 @@
 #endif
 
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
+#ifndef LINE_LOST_MS
 #define LINE_LOST_MS                              (1500u)
+#endif
 
 /* ---- Calibration (CAL_REQ from nav_ctrl_task), ADC counts ----
    IR_CAL_SAMPLES ticks are recorded per sensor with the car still.  If a

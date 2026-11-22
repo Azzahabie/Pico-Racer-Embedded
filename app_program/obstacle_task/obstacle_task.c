@@ -366,6 +366,16 @@ LOCAL void servo_centre(void)
 	tk_dly_tsk(SERVO_SETTLE_MS);
 }
 
+/* Side watch (smooth bypass, SCAN_FLG_WATCH): the servo at the box's side,
+ * one ping per cycle sent to motion_task as an AVOID_LOOK; no forward
+ * stop test meanwhile (the box beside the car is not in its way). */
+LOCAL bool	g_watch;
+/* Side watch angle: square on to the box's side needs 90 (the mount was
+ * extended for it, 21 Nov); the sweep stays within SL_LIMIT_DEG. */
+#ifndef SCAN_WATCH_DEG
+#define SCAN_WATCH_DEG	SL_LIMIT_DEG
+#endif
+
 /* State entry actions (Statechart 5). */
 LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 {
@@ -377,6 +387,7 @@ LOCAL void enter(scan_ctx_t *p_ctx, scan_state_t next)
 	}
 	ctx_set_state(p_ctx, next);
 	p_ctx->state_us = now_us();
+	g_watch = false;	/* a state change ends a side watch */
 	ctx_set_flag(p_ctx, CTX_BLOCKED_SENT | CTX_CMD_WARNED, false);
 	sl_runs_reset(&p_ctx->runs);
 
@@ -766,10 +777,126 @@ LOCAL void send_obstacle(const scan_ctx_t *p_ctx)
 	scan_if_send_profile(width_mm, bypass);
 }
 
+#if SL_WIDTH_EDGE_MID && SL_EDGE_REFINE
+/* One 1-deg angle of the edge re-sweep: both of 2 pings on the face. */
+LOCAL bool refine_hit(scan_ctx_t *p_ctx, INT deg, int32_t d_c)
+{
+	UW		dist_mm;
+	UW		width_us;
+	us_status_t	st;
+	INT		n;
+	INT		hits = 0;
+
+	servo_move_to(deg);
+	tk_dly_tsk(US_CYCLE_MS);
+	for(n = 0; n < 2; n++) {
+		if(n > 0) {
+			tk_dly_tsk(US_CYCLE_MS);
+		}
+		dist_mm = 0U;
+		width_us = 0U;
+		st = us_ping(&dist_mm, &width_us);
+		if((US_OK == st) && (dist_mm > 0U) &&
+		   ((int32_t)dist_mm <= d_obs_mm(p_ctx)) &&
+		   ((((int32_t)dist_mm * sl_cos1000(deg)) / 1000) <= (d_c + SL_FACE_DEPTH_MM))) {
+			hits++;
+		}
+	}
+	return (2 == hits);
+}
+
+/* One face edge to 1 deg, as 2 x its angle. */
+LOCAL int32_t refine_edge_x2(scan_ctx_t *p_ctx, int32_t last_deg, INT dir, int32_t d_c)
+{
+	int32_t	last = last_deg;
+	INT	a;
+
+	for(a = 1; a < SL_STEP_DEG; a++) {
+		int32_t	deg = last_deg + (dir * a);
+
+		if((deg < -SERVO_LIMIT_DEG) || (deg > SERVO_LIMIT_DEG)) {
+			break;
+		}
+		if(!refine_hit(p_ctx, (INT)deg, d_c)) {
+			return last + deg;		/* half-way to the first miss */
+		}
+		last = deg;
+	}
+	return (2 * last) + dir;			/* every angle a hit */
+}
+
+/* the box's centre, half degrees (- = left), from the 1 deg edges; invalid
+   when no refine ran.  Bits 24-31 of g_prof_word: centre deg + 128, 0 =
+   none (motion takes the line's direction from it: the box sits on the
+   line, car 14:47: braked coming out of a curve, the learnt direction
+   lagged 6 deg) */
+#define BOX_C_NONE	(0x7FFF)
+LOCAL int32_t		g_box_c_x2 = BOX_C_NONE;
+
+/* Re-sweep both face edges at 1 deg and put that width in the profile. */
+LOCAL void refine_width(scan_ctx_t *p_ctx)
+{
+	sl_profile_t	*pf = &p_ctx->prof;
+	int32_t		d_c;
+	int32_t		ll;
+	int32_t		rl;
+	int32_t		el2;
+	int32_t		er2;
+	int32_t		w5;
+	UB		line[120];
+
+	if(!pf->found || !scan_ok(p_ctx)) {
+		return;
+	}
+	d_c = (int32_t)pf->d_close_mm;
+	ll = sl_face_last_deg(p_ctx->grid, d_obs_mm(p_ctx), (int32_t)pf->close_deg, d_c, -1);
+	rl = sl_face_last_deg(p_ctx->grid, d_obs_mm(p_ctx), (int32_t)pf->close_deg, d_c, +1);
+	el2 = refine_edge_x2(p_ctx, ll, -1, d_c);
+	er2 = refine_edge_x2(p_ctx, rl, +1, d_c);
+	servo_centre();
+	w5 = (int32_t)pf->width_mm;
+	pf->width_mm = (int16_t)sl_width_from_edges(d_c, el2, er2);
+	g_box_c_x2 = (el2 + er2) / 2;
+	(void)tm_sprintf(line, (UB *)"[scan] face edges to 1 deg: %d.%d .. %d.%d deg at %d mm -> width %d mm (5 deg grid said %d)\n",
+			 (INT)(el2 / 2), (INT)(((el2 % 2) != 0) ? 5 : 0),
+			 (INT)(er2 / 2), (INT)(((er2 % 2) != 0) ? 5 : 0),
+			 (INT)d_c, (INT)pf->width_mm, (INT)w5);
+	tm_printf(line);
+}
+#endif
+
+/* The last profile for motion_task's smooth bypass (21 Nov 2026): closest
+ * distance (bits 0-11) and reported width (bits 12-23), mm; 0 = none.
+ * One aligned word, written here, read by motion_task. */
+LOCAL volatile uint32_t	g_prof_word;
+
+EXPORT uint32_t scan_profile_word(void)
+{
+	return g_prof_word;
+}
+
 /* Fine Scan done: profile, action, telemetry record (FR-16, FR-23). */
 LOCAL void make_profile(scan_ctx_t *p_ctx)
 {
 	sl_profile(p_ctx->grid, d_obs_mm(p_ctx), &p_ctx->prof);
+	g_box_c_x2 = BOX_C_NONE;
+#if SL_WIDTH_EDGE_MID && SL_EDGE_REFINE
+	refine_width(p_ctx);
+#endif
+	g_prof_word = p_ctx->prof.found
+		      ? ((((uint32_t)p_ctx->prof.width_mm & 0xFFFU) << 12) |
+			 ((uint32_t)p_ctx->prof.d_close_mm & 0xFFFU))
+		      : 0U;
+	if (p_ctx->prof.found) {
+		int32_t c_x2 = (g_box_c_x2 != BOX_C_NONE)
+			       ? g_box_c_x2
+			       : ((int32_t)p_ctx->prof.left_deg + (int32_t)p_ctx->prof.right_deg);
+		int32_t c = (c_x2 >= 0) ? ((c_x2 + 1) / 2) : -((1 - c_x2) / 2);
+
+		if ((c >= -100) && (c <= 100)) {
+			g_prof_word |= ((uint32_t)(c + 128) & 0xFFU) << 24;
+		}
+	}
 	p_ctx->action = sl_decide(&p_ctx->prof, ctx_flag(p_ctx, CTX_REVERSE_TRIED));
 	print_scan(p_ctx, ms_since(p_ctx->scan_us));
 	send_obstacle(p_ctx);
@@ -1034,8 +1161,29 @@ LOCAL void scan_task_run(void)
 		case ST_AVOIDING:
 			bits = scan_if_wait(SCAN_FLG_TICK | SCAN_FLG_LINE_FOUND |
 					    SCAN_FLG_LINE_LOST | SCAN_FLG_LOOK |
-					    SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED,
+					    SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED |
+					    SCAN_FLG_WATCH | SCAN_FLG_WATCH_END,
 					    TMO_FEVR);
+			if((0U != (bits & (SCAN_FLG_LINE_FOUND | SCAN_FLG_LINE_LOST |
+					   SCAN_FLG_WATCH_END))) && g_watch) {
+				g_watch = false;
+				servo_centre();
+				sl_runs_reset(&ctx.runs);
+				ctx.ds_prev = motion_ds_read();
+				tm_printf((UB *)"[scan] side watch off\n");
+			}
+			if(0U != (bits & SCAN_FLG_WATCH)) {
+				INT	wdeg = (SL_BYPASS_RIGHT == (sl_action_t)ctx.action)
+					       ? -SCAN_WATCH_DEG : SCAN_WATCH_DEG;
+				UB	wline[48];
+
+				g_watch = true;
+				servo_move_to(wdeg);
+				tk_dly_tsk(SERVO_SETTLE_MS);
+				scan_if_clear(SCAN_FLG_TICK);
+				(void)tm_sprintf(wline, (UB *)"[scan] side watch on, %d deg\n", wdeg);
+				tm_printf(wline);
+			}
 			if(0U != (bits & SCAN_FLG_LINE_FOUND)) {
 				/* this avoidance is over */
 				ctx_set_flag(&ctx, CTX_REVERSE_TRIED | CTX_SIDE_SWITCHED |
@@ -1050,6 +1198,20 @@ LOCAL void scan_task_run(void)
 				side_look(&ctx, true);		/* the sidestep lane (D14) */
 			} else if(0U != (bits & SCAN_FLG_LOOK)) {
 				side_look(&ctx, false);		/* bypass probe (D14) */
+			} else if(g_watch) {
+				if(0U != (bits & SCAN_FLG_TICK)) {
+					UW		wd = 0;
+					UW		ww = 0;
+					us_status_t	ws = us_ping(&wd, &ww);
+					avoid_cmd_t	wc;
+
+					wc.type = (uint8_t)AVOID_LOOK;
+					wc.side = (uint8_t)AVOID_SIDE_NONE;
+					wc.dist_mm = sl_look_reply_mm(
+						(US_NO_ECHO == ws) ? (uint16_t)SL_NOT_MEASURED
+						: ((US_OK == ws) ? to_grid(wd) : (uint16_t)SL_FAR));
+					(void)scan_if_send_cmd(&wc);
+				}
 			} else {
 				(void)avoid_ping(&ctx);
 				if(sl_runs_no_echo(&ctx.runs) >= SL_N_NO_ECHO) {

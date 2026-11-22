@@ -53,6 +53,8 @@ typedef struct {
 	bool available;		/* distance_state usable (last step)          */
 	bool manoeuvre;		/* motion in a manoeuvre (last step): shut    */
 	bool open;		/* a read may start (last step)               */
+	uint32_t hold_mm;	/* after a bypass: mm of Line Following still shut */
+	uint32_t ds_prev;	/* distance_state, last step                  */
 } scan_gate_t;
 
 /* ds = motion_ds_read() now: its counter counts as fresh. */
