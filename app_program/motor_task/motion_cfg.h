@@ -145,11 +145,17 @@
 #define MOTION_LF_BASE        (6)
 #endif
 #define MOTION_LF_SCALE       (100)
+#ifndef MOTION_LF_GAIN
 #define MOTION_LF_GAIN        ((5 * MOTION_LF_BASE) / 4)  /* 7 at base 6  */
+#endif
+#ifndef MOTION_LF_DAMP
 #define MOTION_LF_DAMP        ((15 * MOTION_LF_BASE) / 4) /* 22 at base 6 */
+#endif
 #define MOTION_LF_DAMP_TICKS  (5u)  /* change measured over 50 ms        */
 #define MOTION_LF_SOFT_MAX    ((MOTION_LF_BASE - 1) * MOTION_LF_SCALE)
+#ifndef MOTION_LF_SLEW
 #define MOTION_LF_SLEW        (50)  /* 0 to SOFT_MAX in 60 ms            */
+#endif
 #define MOTION_LF_HARD_ERR    (80)
 #define MOTION_LF_HARD_TICKS  (25u) /* 250 ms                            */
 #define MOTION_LF_HARD_MAX    ((MOTION_LF_BASE + 1) * MOTION_LF_SCALE)
@@ -181,8 +187,12 @@
    under a sensor ends it (LINE_FOUND); a full sweep without it is
    LINE_LOST.  PROPOSED: 6 counts per tick per wheel, about 5 cm/s. */
 #define MOTION_LS_SPEED     (6)
+#ifndef MOTION_LS_SWEEP_DEG
 #define MOTION_LS_SWEEP_DEG (45)
+#endif
+#ifndef MOTION_LS_DIR_MIN
 #define MOTION_LS_DIR_MIN   (10)
+#endif
 
 /* ------------------------------------------------------------------ *
  *  Car geometry and distance_state  (motion_ds.h)
@@ -206,7 +216,18 @@
    else Line Search.
    PROPOSED: measure d_sensor (GP7 to the axle) on the car; turn speed as
    the line search. */
-#define MOTION_TURN_FWD_MM    (50)
+#ifndef MOTION_TURN_FWD_MM
+#define MOTION_TURN_FWD_MM    (135)
+#endif
+#ifndef MOTION_TURN_WIN_DEG
+#define MOTION_TURN_WIN_DEG   (35)   /* last deg of a pivot watching for the new line */
+#endif
+#ifndef MOTION_TURN_OVER_DEG
+#define MOTION_TURN_OVER_DEG  (25)   /* past the target without the line: stop */
+#endif
+#ifndef MOTION_TURN_IMU
+#define MOTION_TURN_IMU       (0)    /* 1: the pivot stops on the IMU, lined up with the line */
+#endif
 #define MOTION_TURN_CROSS_MM  (40)
 #define MOTION_TURN_FWD_SPEED (MOTION_LF_BASE)
 #define MOTION_TURN_SPEED     (6)
@@ -272,8 +293,12 @@
 #define MOTION_BYPASS_LOOK_TICKS  (300u)  /* 3 s with no answer: still there */
 #define MOTION_LINE_SENSOR_MM     (125)   /* GP26/GP27 to the axle, measured 1 Nov */
 /* Raised 1 Nov (user OK): legs 10 -> 12 counts per tick, pivots 6 -> 10. */
+#ifndef MOTION_BYPASS_SPEED
 #define MOTION_BYPASS_SPEED       (12)
+#endif
+#ifndef MOTION_BYPASS_TURN_SPEED
 #define MOTION_BYPASS_TURN_SPEED  (10)
+#endif
 
 /* IMU heading reference for the bypass (4 Nov 2026, Buddy 5; see
    docs/motion/right_encoder_scaling.md section 10).  Line following
@@ -305,7 +330,20 @@
    car turned in onto it and missed the line.  Weighted by distance over
    MOTION_HD_LINE_MM, a full sway averages out (calculated: +-20 deg over a
    ~380 mm sway -> ~+-3 deg). */
+#ifndef MOTION_HD_LINE_MM
 #define MOTION_HD_LINE_MM     (400)  /* average over this much travel    */
+#endif
+/* Snap (20 Nov 2026, car): the 400 mm average lagged a curve.  After a 73
+   deg left curve and ~250 mm of straight the line direction was still ~40
+   deg off (log: bypass OUT at -41/-42/+34/-52 deg "to the line" with the
+   car on the line), so every bypass turned 40 deg too far and ran off the
+   play area.  In Line Following, a heading more than MOTION_HD_SNAP_DEG off
+   the average is a curve, not a wobble: the average jumps to it (its
+   travel count is kept).  0 = off (as before). */
+#ifndef MOTION_HD_SNAP_DEG
+#define MOTION_HD_SNAP_DEG    (0)
+#endif
+#define MOTION_HD_SNAP_MM     (60)   /* off by more than SNAP_DEG this far */
 /* Trusted after MOTION_HD_MIN_MM of Line Following.  300 -> 100 on 4 Nov:
    on the test track the box sits ~25 cm into the line, so every bypass
    fell back to the encoders and the right ones circled the box; the
@@ -356,6 +394,293 @@
    centre.  Only with a valid IMU heading and the car still on the line
    (|sideways| < 30 mm); otherwise the zig-zag runs.  No look at the
    obstacle on the way. */
+/* Smooth bypass (20 Nov 2026, user request: "a seamless obstacle
+   avoidance"; test option, 0 = as before).  With a valid IMU heading:
+     1. pivot MOTION_SM_PIVOT_DEG toward the side (the car is braked at the
+        box anyway), then
+     2. one continuous curve, steered every tick by pure pursuit: the
+        heading wanted is toward the point MOTION_SM_LOOK_MM ahead on a path
+        x(s) (s along the line from where it braked, x sideways toward the
+        side):
+          s 0 .. S_OUT:        out to Y on a half cosine
+          S_OUT .. S_IN:       Y, alongside the box
+          S_IN .. S_IN + L_IN: back to 0 on a half cosine
+          beyond:              past the line at MOTION_SM_GLIDE_DEG
+        so the car never stops or pivots again;
+     3. once it has been out (x > Y / 2) and is past S_IN - LOOK, the line
+        sensors seeing the line MOTION_LF_FOUND_TICKS ticks in a row end it:
+        Line Search finds the line at once and Line Following takes over.
+   Y = MOTION_SM_Y_MM + how far scan_task saw the box toward the side
+   (offset - MOTION_ARC_OFFSET_CENTRED, MOTION_SM_SHIFT_MIN..MAX), so the
+   car's side passes a 90 or 130 mm wide box with >= 15 mm (calculated in a
+   simulation of this law on the car's geometry, line direction within 4
+   deg).  The car's middle goes ~18 cm out, its outer side ~26-29 cm (sim);
+   the zig-zag went 36-37 cm (log, 20:38).  The start sideways place is
+   from the heading (the line sensors are on the line,
+   MOTION_LINE_SENSOR_MM ahead).  Gives up (Line Search, toward the line)
+   past MOTION_SM_GIVEUP_MM beyond the path or the IMU failing. */
+#ifndef MOTION_BYPASS_SMOOTH
+#define MOTION_BYPASS_SMOOTH      (0)
+#endif
+#ifndef MOTION_SM_Y_MM
+#define MOTION_SM_Y_MM            (180)
+#endif
+#ifndef MOTION_SM_SHIFT_MIN
+#define MOTION_SM_SHIFT_MIN       (-20)
+#endif
+#define MOTION_SM_SHIFT_MAX       (40)
+#ifndef MOTION_SM_PIVOT_DEG
+#define MOTION_SM_PIVOT_DEG       (35)
+#endif
+#ifndef MOTION_SM_S_OUT_MM
+#define MOTION_SM_S_OUT_MM        (240)
+#endif
+#ifndef MOTION_SM_S_IN_MM
+#define MOTION_SM_S_IN_MM         (600)  /* box far face <= 541 + the look  */
+#endif
+#ifndef MOTION_SM_L_IN_MM
+#define MOTION_SM_L_IN_MM         (520)
+#endif
+#ifndef MOTION_LF_EDGE_LOST
+#define MOTION_LF_EDGE_LOST       (0)    /* 1: off an edge, steer back at once */
+#endif
+#define MOTION_SM_GLIDE_DEG       (15)
+#define MOTION_SM_LOOK_MM         (100)
+#ifndef MOTION_SM_MAX_DEG
+#define MOTION_SM_MAX_DEG         (45)
+#endif
+#define MOTION_SM_STEER_DEG       (3)    /* one count/tick per 3 deg of error */
+#ifndef MOTION_SM_SPEED
+#define MOTION_SM_SPEED           (10)   /* counts per tick, ~79 mm/s       */
+#endif
+#define MOTION_SM_MIN_WHEEL       (2)    /* inner wheel at least this       */
+#define MOTION_SM_GIVEUP_MM       (1200)
+#ifndef MOTION_SM_ONTO
+#define MOTION_SM_ONTO            (1)    /* line met: ONTO + ALONG first    */
+#endif
+#ifndef MOTION_SM_ONTO_MM
+#define MOTION_SM_ONTO_MM         (95)   /* ONTO in the smooth bypass       */
+#endif
+/* Curve speed (motor_task.c man_drive): 0 = off. */
+#ifndef MOTION_LF_BASE_CURVE
+#define MOTION_LF_BASE_CURVE      (0)
+#endif
+#ifndef MOTION_LF_CURVE_ERR
+#define MOTION_LF_CURVE_ERR       (40)
+#endif
+#define MOTION_LF_CURVE_TICKS     (40u)  /* 400 ms */
+#ifndef MOTION_LF_EDGE_MIN_TICKS
+#define MOTION_LF_EDGE_MIN_TICKS  (15u)  /* one sensor alone 150 ms: an edge */
+#endif
+#ifndef MOTION_LF_STRADDLE
+#define MOTION_LF_STRADDLE        (0)    /* 1: sensors either side of line */
+#endif
+/* Straddle steering (other team's b3_config.h values, with permission;
+   curvatures 1e6 / radius mm, speeds mm/s, distances mm driven) */
+#ifndef MOTION_ST_BASE_MMPS
+#define MOTION_ST_BASE_MMPS       (50)
+#endif
+#ifndef MOTION_ST_READ_MMPS
+#define MOTION_ST_READ_MMPS       (24)   /* over a barcode */
+#endif
+#ifndef MOTION_ST_CURVE_MMPS
+#define MOTION_ST_CURVE_MMPS      (35)   /* in a learnt tight curve */
+#endif
+#ifndef MOTION_ST_MIN_WHEEL_MMPS
+#define MOTION_ST_MIN_WHEEL_MMPS  (15)   /* inner wheel at least */
+#endif
+#ifndef MOTION_ST_MIN_WHEEL_PCT
+#define MOTION_ST_MIN_WHEEL_PCT   (44)   /* or this share of the speed, if lower */
+#endif
+#ifndef MOTION_ST_KICK_CURV
+#define MOTION_ST_KICK_CURV       (4400) /* nudge, 227 mm radius */
+#endif
+#define MOTION_ST_KICK_MIN_CURV   (1500)
+#define MOTION_ST_OVERSHOOT_MM    (100)
+#ifndef MOTION_ST_SHRINK_PCT
+#define MOTION_ST_SHRINK_PCT      (92)
+#endif
+#ifndef MOTION_ST_GROW_PCT
+#define MOTION_ST_GROW_PCT        (110)
+#endif
+#define MOTION_ST_KICK_RAMP_MM    (20)
+#ifndef MOTION_ST_LEARN_CURV
+#define MOTION_ST_LEARN_CURV      (300)  /* per 10 mm with a side black */
+#endif
+#define MOTION_ST_TIGHT_FROM_CURV (4000)
+#ifndef MOTION_ST_LEARN_TIGHT_CURV
+#define MOTION_ST_LEARN_TIGHT_CURV (450)
+#endif
+#define MOTION_ST_LEFT_PCT        (150)
+#ifndef MOTION_ST_FORGET_MM
+#define MOTION_ST_FORGET_MM       (80)
+#endif
+#define MOTION_ST_CURVE_END_MM    (40)
+#define MOTION_ST_FULL_CURV       (1500) /* fully slowed: 670 mm radius */
+#ifndef MOTION_ST_SLEW_CURV
+#define MOTION_ST_SLEW_CURV       (400)  /* per mm */
+#endif
+#define MOTION_ST_ESCAPE_MM       (10)
+#define MOTION_ST_BB_CROSS_MM     (30)
+#ifndef MOTION_ST_LOST_MM
+#define MOTION_ST_LOST_MM         (250u) /* no touch this far: lost */
+#endif
+#ifndef MOTION_ST_BC_HOLD
+#define MOTION_ST_BC_HOLD         (0)    /* 1: hold the heading over a barcode */
+#endif
+#define MOTION_ST_BC_KP           (150)  /* heading hold over a barcode, curv per deg */
+#define MOTION_ST_BC_MAX          (3000)
+#ifndef MOTION_ST_OUTER_MM
+#define MOTION_ST_OUTER_MM        (100u) /* quiet after an outside touch in a curve: out */
+#endif
+#ifndef MOTION_ST_EXIT_CURV
+#define MOTION_ST_EXIT_CURV       (700)  /* turning (1.4 m radius or less) when a sensor loses the line */
+#endif
+#ifndef MOTION_ST_OUT_MAX_MM
+#define MOTION_ST_OUT_MAX_MM      (120u) /* pivoting back this far (~110 deg) without the line: Line Search */
+#endif
+#ifndef MOTION_ST_RECOV_LOST_MM
+#define MOTION_ST_RECOV_LOST_MM   (150u) /* after a recovery: no touch this far -> Line Search */
+#endif
+#ifndef MOTION_ST_TRAVERSE_MM
+#define MOTION_ST_TRAVERSE_MM     (40u)  /* other side touched this soon: the line is sweeping across */
+#endif
+#ifndef MOTION_ST_FOUND_MM
+#define MOTION_ST_FOUND_MM        (150u)
+#endif
+/* um driven for d_l + d_r (2 x counts): pi x dia / counts per turn / 2 */
+#define ST_UM_2C(c2) ((int32_t)(((int64_t)(c2) * 355 * MOTION_WHEEL_DIA_MM * 1000) \
+                                / ((int64_t)2 * 113 * MOTION_COUNTS_PER_REV)))
+#ifndef MOTION_LF_REALIGN
+#define MOTION_LF_REALIGN         (0)    /* 1: line up after a search       */
+#endif
+#define MOTION_RA_MIN_DEG         (20)
+/* Barcode re-read (21 Nov 2026, user): a failed read (garbled or cut off)
+   in Line Following -> brake, turn to the line's heading (IMU), reverse
+   straight the distance read + MOTION_RT_MARGIN_MM, then Line Following at
+   MOTION_LF_BASE_READ through it again.  Once per barcode: not again
+   until MOTION_RT_FORGET_MM further on.  The barcode reader is gated off
+   while it backs up (motion_state_read() says REVERSING). */
+#ifndef MOTION_BC_RETRY
+#define MOTION_BC_RETRY           (0)
+#endif
+#define MOTION_RT_MARGIN_MM       (80)
+#define MOTION_RT_MIN_MM          (120)
+#define MOTION_RT_MAX_MM          (450)
+#define MOTION_RT_BACK_SPEED      (6)
+#define MOTION_RT_FORGET_MM       (400)
+/* Smooth bypass sized from the scan (21 Nov 2026, user: the box is turned
+   either way round).  Out: half the measured face width + half the car +
+   MOTION_SM_SIDE_GAP_MM (MOTION_SM_Y_MIN_MM..MAX), + the off-centre shift.
+   Back in: the box's far end from the measured distance + sensor-to-axle +
+   MOTION_SM_BOX_LEN_MM (its depth: the front scan cannot see it, so the
+   longest side is assumed), less 15 mm (the turn starts ~12 cm before it,
+   the look 10 cm ahead).  No profile: the fixed values. */
+#ifndef MOTION_SM_HD_FALLBACK
+#define MOTION_SM_HD_FALLBACK     (1)
+#endif
+#ifndef MOTION_SM_ADAPT
+#define MOTION_SM_ADAPT           (0)
+#endif
+#ifndef MOTION_SM_BOX_LEN_MM
+#define MOTION_SM_BOX_LEN_MM      (150)
+#endif
+#define MOTION_SM_CAR_HALF_MM     (77)
+#ifndef MOTION_SM_SIDE_GAP_MM
+#define MOTION_SM_SIDE_GAP_MM     (75)
+#endif
+#ifndef MOTION_SM_Y_MIN_MM
+#define MOTION_SM_Y_MIN_MM        (185)
+#endif
+#ifndef MOTION_SM_Y_MAX_MM
+#define MOTION_SM_Y_MAX_MM        (240)
+#endif
+#ifndef MOTION_SM_TURN_EARLY_MM
+#define MOTION_SM_TURN_EARLY_MM   (0)    /* turn this far before the far end */
+#endif
+#ifndef MOTION_SM_BOX_DIR
+#define MOTION_SM_BOX_DIR         (0)    /* 1: the bypass takes the line's direction from the box */
+#endif
+#ifndef MOTION_SM_BOX_DIR_MAX
+#define MOTION_SM_BOX_DIR_MAX     (30)
+#endif
+#ifndef MOTION_SM_MISS_X_MM
+#define MOTION_SM_MISS_X_MM       (250)  /* past where the line should be, no line: search */
+#endif
+#ifndef MOTION_SM_CROSS_CHECK_MM
+#define MOTION_SM_CROSS_CHECK_MM  (0)    /* >0: a touch is taken after this mm, unless both black (a crossing line) */
+#endif
+#ifndef MOTION_SM_CROSS_DEG
+#define MOTION_SM_CROSS_DEG       (40)
+#endif
+#ifndef MOTION_SM_SEEN_DEG
+#define MOTION_SM_SEEN_DEG        (8)    /* line counts only heading in this much */
+#endif
+#ifndef MOTION_SM_SEEN_X_MM
+#define MOTION_SM_SEEN_X_MM       (90)   /* smooth: line counts only this near */
+#endif
+#ifndef MOTION_LF_GAP_MM
+#define MOTION_LF_GAP_MM          (0)    /* white: hold heading this far   */
+#endif
+#define MOTION_LF_GAP_K           (25)   /* x SCALE per degree off          */
+#ifndef MOTION_LF_CURVE_RUN
+#define MOTION_LF_CURVE_RUN       (12u)  /* 120 ms at one edge: a curve     */
+#endif
+#ifndef MOTION_LF_CURVE_BOOST_X10
+#define MOTION_LF_CURVE_BOOST_X10 (16)   /* correction x1.6 at curve speed  */
+#endif
+#ifndef MOTION_SM_SETTLE_TICKS
+#define MOTION_SM_SETTLE_TICKS    (20u)  /* 200 ms braked after ALONG       */
+#endif
+#ifndef MOTION_LF_RATE_DAMP
+#define MOTION_LF_RATE_DAMP       (0)    /* x SCALE per count/tick of turn  */
+#endif
+/* Side watch (20 Nov 2026, user request): during the smooth bypass the
+   ultrasonic turns 45 deg toward the box (scan_task SCAN_FLG_WATCH) and
+   pings every 60 ms.  Once it has seen the box (a reading under
+   MOTION_SM_WATCH_NEAR_MM) and then reads clear twice, the way back in
+   starts: at 45 deg the beam meets the box's side ~10 cm ahead of the nose,
+   so the turn starts MOTION_SM_CLEAR_MM later (path S_IN = that + the
+   look), never before MOTION_SM_S_IN_MIN_MM, at the latest
+   MOTION_SM_S_IN_MAX_MM.  Never seen by MOTION_SM_S_IN_MM - look: the
+   distance rule (MOTION_SM_S_IN_MM).  0 = distance rule only. */
+#ifndef MOTION_SM_WATCH
+#define MOTION_SM_WATCH           (0)
+#endif
+#define MOTION_SM_WATCH_NEAR_MM   (250)
+#ifndef MOTION_SM_CLEAR_MM
+#define MOTION_SM_CLEAR_MM        (150)
+#endif
+/* 90 deg side watch (MOTION_SM_WATCH 2, 21 Nov 2026): the sensor square on
+   to the box's side while the car runs alongside it (heading within
+   MOTION_SM_WATCH_PAR_DEG, out within 40 mm of the pass).  A reading
+   closer than the line is the box; once seen, two readings at or beyond
+   the line mean the nose has passed its far end (the beam's footprint
+   reaches ~35 mm past it at 12-15 cm): the box ends ~120 mm ahead of the
+   axle, and the way back starts there (S_IN = s + MOTION_SM_CLEAR_MM +
+   the look, CLEAR = 120).  Never seen: the far end of a
+   MOTION_SM_BOX_LEN_MM deep box from the scan's distance. */
+#define MOTION_SM_WATCH_PAR_DEG   (15)
+#ifndef MOTION_SM_WATCH_DEG
+#define MOTION_SM_WATCH_DEG       (90)   /* = scan_task's SCAN_WATCH_DEG */
+#endif
+/* From the side echoes (21 Nov 2026, after Buddy 5's s5_avoid of the other
+   team, used with permission): widen the pass when the box's side is
+   nearer than planned, place the far end from the echoes, and start the
+   way back as early as the side gap allows. */
+#define MOTION_SM_WIDEN_GAP_MM    (40)   /* car side to the box side, wanted */
+#define MOTION_SM_WIDEN_MAX_MM    (60)   /* out by at most this              */
+#define MOTION_SM_FAR_MARGIN_MM   (20)   /* beyond the furthest echo         */
+#ifndef MOTION_SM_CLEAR_MIN_MM
+#define MOTION_SM_CLEAR_MIN_MM    (215)  /* nose 155 + the 70 deg ray's reach */
+#endif
+#define MOTION_SM_EARLY_GAP_MM    (50)   /* no early turn below this gap     */
+#define MOTION_SM_EARLY_MAX_MM    (30)   /* turn at most this before the end */
+#ifndef MOTION_SM_S_IN_MIN_MM
+#define MOTION_SM_S_IN_MIN_MM     (480)
+#endif
+#define MOTION_SM_S_IN_MAX_MM     (850)
+
 #ifndef MOTION_BYPASS_ARC
 #define MOTION_BYPASS_ARC         (0)
 #endif
@@ -381,7 +706,9 @@
 #ifndef MOTION_OBS_ROUND
 #define MOTION_OBS_ROUND          (0)
 #endif
+#ifndef MOTION_ARC_GAP_MM
 #define MOTION_ARC_GAP_MM         (100)  /* car side to the obstacle's reach */
+#endif
 #define MOTION_ARC_STOP_MM        (240)  /* sensor to its face at the stop (223-252 seen) */
 #define MOTION_ARC_OFFSET_CENTRED (293)  /* scan_task: 45 + C_pass 248, centred */
 #define MOTION_ARC_MAX_SHIFT_MM   (150)  /* centre off the line: at most this */

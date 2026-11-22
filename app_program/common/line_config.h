@@ -24,7 +24,8 @@
 /* Verify the digital DO polarity on hardware. */
 #define BARCODE_BLACK_IS_HIGH                     (1u)
 
-/* GP28 remains reserved for battery sensing (ADC2). */
+/* GP28 remains reserved for battery sensing (ADC2), which is not built;
+   BARCODE_SENSOR_ANALOG 1 (below) reads the analog barcode sensor there. */
 #define BATTERY_SENSE_GPIO                        (28u)
 #define BATTERY_SENSE_ADC_CHANNEL                 (2u)
 
@@ -396,8 +397,102 @@
 #define LINE_SCAN_STALE_MS                        (100u)
 #endif
 
+/* ---- The analog barcode sensor (BARCODE_SENSOR_ANALOG) ----
+   0 (default): the GP7 digital DO path above, unchanged.
+   1: the barcode sensor is an analog IR module (TCRT5000 type) whose AO
+   is on GP28 (ADC2, Grove 7's second wire; the Robo Pico's VBAT-sense
+   jumper is open, so GP28 is free; Grove VCC 3.3 V), read with Boon's
+   barcode code (Buddy 3 of another team in the module, used with his
+   permission, confirmed by Hanis 20 Nov; docs/BUDDY3_LINE_BARCODE.md):
+   bc_analog_front.h turns the reading and distance_state into a
+   0..1000 darkness and the travel of each 1 ms sample,
+   bc_analog_capture.h finds bars by swing and keeps a darkness profile in
+   micrometres of travel, and barcode_task decodes on core 0
+   (bc_analog_code39.h).  The junction side counts a floor-relative
+   black/white level (bc_analog_front.h).  GP7 is not read.  Nothing here
+   has run on the car.
+   A car image: clean tree, then make GCC="arm-none-eabi-gcc
+   -DBARCODE_SENSOR_ANALOG=1" (see LINE_JUNCTION_RULE above). */
+#ifndef BARCODE_SENSOR_ANALOG
+#define BARCODE_SENSOR_ANALOG                     (0u)
+#endif
+#ifndef BC_ANALOG_GPIO
+#define BC_ANALOG_GPIO                            (28u)
+#endif
+#define BC_ANALOG_ADC_CHANNEL                     (BC_ANALOG_GPIO - 26u)
+/* 1: the AO voltage is higher over black (measured 20 Nov: white about
+   200, black higher). */
+#ifndef BC_ANALOG_BLACK_HIGH
+#define BC_ANALOG_BLACK_HIGH                      (1u)
+#endif
+/* The darkness for Boon's capture: (reading - white) x 1000 /
+   BC_ANALOG_SPAN_RAW, 0..1000.  White is the floor below (1) or
+   BC_ANALOG_WHITE_RAW (0).  Measured 20 Nov (M, lab traces): white about
+   200, thick bars 2400-3900, thin bars 600-2500 (faint ones 500-850 on
+   the track).  The span sets how faint a thin bar the first (swing)
+   reading sees: BC_DELTA 250 of 1000 is 575 counts at 2300.  Thicker bars
+   clip at 1000; Boon's re-reads of the darkness profile find fainter bars.
+   On the four car traces of 20 Nov (sim, tests/line
+   test_bc_analog_fixtures, spans 1200-3600 tried) the two 'Z' runs and
+   the track's faint sheet all decode from 2100 to 2500; below 2100 a
+   bump in a narrow space between two thick bars splits it (run3), above
+   2500 the faint thin bars are lost (run4).  2300, the middle; a GUESS
+   for other sheets and sensor heights. */
+#ifndef BC_ANALOG_SPAN_RAW
+#define BC_ANALOG_SPAN_RAW                        (2300u)
+#endif
+#ifndef BC_ANALOG_NORM_FLOOR
+#define BC_ANALOG_NORM_FLOOR                      (1u)
+#endif
+#ifndef BC_ANALOG_WHITE_RAW
+#define BC_ANALOG_WHITE_RAW                       (200u)
+#endif
+/* The junction side's black/white (the lab test image's levels, 20 Nov):
+   black from BC_ANALOG_ON_DELTA above the white floor, white again within
+   BC_ANALOG_OFF_DELTA of it; the floor follows any lighter reading at once
+   and creeps up a count every BC_ANALOG_FLOOR_RISE_MS while white. */
+#ifndef BC_ANALOG_ON_DELTA
+#define BC_ANALOG_ON_DELTA                        (200u)
+#endif
+#ifndef BC_ANALOG_OFF_DELTA
+#define BC_ANALOG_OFF_DELTA                       (120u)
+#endif
+#ifndef BC_ANALOG_FLOOR_RISE_MS
+#define BC_ANALOG_FLOOR_RISE_MS                   (8u)
+#endif
+/* Travel when there is no distance_state (no motion task, as in a bench
+   image): this many um per ms (32 = base 4, about 32 mm/s, M 19 Nov), so
+   a sheet swept by hand at about that speed still reads.  0: none. */
+#ifndef BC_ANALOG_NO_DS_UM_PER_MS
+#define BC_ANALOG_NO_DS_UM_PER_MS                 (32u)
+#endif
+/* 1 (ours, as BARCODE_END_ON_STOP for GP7): a read ENDs as soon as its
+   29th element, the stop character's last bar, ends, if the 29 decode as
+   one *X* either way round; otherwise Boon's end (a white run longer
+   than 40 mm and 2.5 x the widest element) and his re-reads decide.
+   Needed for the armed junction when the crossbar is closer than about
+   40 mm behind the sheet. */
+#ifndef BC_END_ON_STOP
+#define BC_END_ON_STOP                            (1u)
+#endif
+/* 1 (ours): a read two bars short at one end (25 elements: the start's
+   first narrow bar, wide space, narrow bar and narrow space never seen,
+   car trace run1 of 20 Nov) is decoded with the four put back, if that is
+   unambiguous (bc_analog_code39.c). */
+#ifndef BC_REPAIR4
+#define BC_REPAIR4                                (1u)
+#endif
+/* After Boon's end of a code, a junction that is due waits at most this
+   long (ms) for barcode_task's decode on core 0 (the worst case of his
+   re-reads and best match is estimated in docs/BUDDY3_LINE_BARCODE.md). */
+#ifndef BC_ANALOG_VERDICT_WAIT_MS
+#define BC_ANALOG_VERDICT_WAIT_MS                 (200u)
+#endif
+
 /* ---- Line loss: no confirmed black for this long (ms) = lost ---- */
+#ifndef LINE_LOST_MS
 #define LINE_LOST_MS                              (1500u)
+#endif
 
 /* ---- Calibration (CAL_REQ from nav_ctrl_task), ADC counts ----
    IR_CAL_SAMPLES ticks are recorded per sensor with the car still.  If a
@@ -504,6 +599,26 @@
     ((BARCODE_NOT_BAR_RATIO_X10 < 20u) || (BARCODE_NOT_BAR_EARLY_X10 < BARCODE_NOT_BAR_RATIO_X10) || \
      (BARCODE_DROPOUT_DIV < 1u))
 #error "BARCODE_NOT_BAR_RATIO_X10 must be 0 or at least 20, _EARLY_X10 at least as big, BARCODE_DROPOUT_DIV at least 1"
+#endif
+#if (BARCODE_SENSOR_ANALOG != 0u) && (BARCODE_SENSOR_ANALOG != 1u)
+#error "BARCODE_SENSOR_ANALOG must be 0 or 1"
+#endif
+#if BARCODE_SENSOR_ANALOG
+#if (BC_ANALOG_GPIO < 26u) || (BC_ANALOG_GPIO > 28u) || \
+    (BC_ANALOG_GPIO == LINE_SENSOR_LEFT_GPIO) || (BC_ANALOG_GPIO == LINE_SENSOR_RIGHT_GPIO)
+#error "BC_ANALOG_GPIO must be an ADC pin (26-28) other than the line sensors'"
+#endif
+#if (BC_ANALOG_SPAN_RAW < 100u) || (BC_ANALOG_SPAN_RAW > 4095u) || \
+    (BC_ANALOG_OFF_DELTA >= BC_ANALOG_ON_DELTA) || (BC_ANALOG_FLOOR_RISE_MS < 1u) || \
+    (BC_ANALOG_NO_DS_UM_PER_MS > 1000u)
+#error "BC_ANALOG_SPAN_RAW 100..4095, BC_ANALOG_OFF_DELTA below BC_ANALOG_ON_DELTA, BC_ANALOG_FLOOR_RISE_MS at least 1, BC_ANALOG_NO_DS_UM_PER_MS at most 1000"
+#endif
+#if (BC_END_ON_STOP != 0u) && (BC_END_ON_STOP != 1u)
+#error "BC_END_ON_STOP must be 0 or 1"
+#endif
+#if (BC_REPAIR4 != 0u) && (BC_REPAIR4 != 1u)
+#error "BC_REPAIR4 must be 0 or 1"
+#endif
 #endif
 
 #endif

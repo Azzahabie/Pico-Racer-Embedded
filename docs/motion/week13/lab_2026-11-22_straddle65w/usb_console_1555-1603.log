@@ -1,0 +1,537 @@
+[15:55:08.983] [cap] port open /dev/cu.usbmodemMTK3PICO1
+[15:55:08.983] [note] 2026-11-22 15:41:31 Hanis: 65t bypass went round and came back in perfectly even though the car was slanted (2 runs, not logged: Mac on school Wi-Fi). 65t = current good image.
+[15:55:08.983] 00040007e0000 queued
+[15:55:08.983] [comms] E mission s=2 up=0 bytes=550000000000a000 queued
+[15:55:08.983] [comms] E mission s=3 up=0 bytes=750000000000a001 queued
+[15:55:08.983] [line] line found (LOST_MS 60000)
+[15:55:08.983] [comms] E line s=4 up=2 bytes=950040000000200802 queued
+[15:55:08.983] [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, bench OFF (MOTION_BENCH=0): motors stay braked, MOTION_PACKED=1
+[15:55:08.983] [motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 2535 (MOTION_COUNTS_PER_REV_R), no scaling; MOTION_LF_LOST_DIR_MS=300
+[15:55:08.983] [motion] last reset: a reboot by the boot ROM or a debugger (such as after a UF2 copy), not a fault.
+[15:55:08.983] [motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
+[15:55:08.983] [imu] found LSM303D at 0x1d
+[15:55:08.983] [imu] faults: tilt > 24.9 deg or upside down for 3 samples (in a mission), no data for 50 ms
+[15:55:08.984] [note] 2026-11-22 15:46:26 65t run: lost the line at one of the S-curves
+[15:55:08.984] [note] 2026-11-22 15:48:13 65t run 15:45: lost in the left S section: recovery worked (15:46:01-03) but GP28 false reads (barcode bit, 24 mm/s) then suppressed nt counting -> drove 7 s straight, never searched. built lab_straddle65u_iphone.uf2 (hump57): nt counts over barcodes; after a recovery's touch, 150 mm with no touch -> Line Search; TABLE A=L Z=L (LFFFFLFFFFFFFFFFLFFFFFFFFL)
+[15:55:08.984] [note] 2026-11-22 15:48:59 flashed lab_straddle65u_iphone (hump57)
+[15:55:08.984] [note] 2026-11-22 15:54:53 Hanis: after the box, no line -> pivot to check. built lab_straddle65v_iphone.uf2 (hump58): MOTION_SM_MISS_X_MM 80 (was 250) -> DONE + Line Search toward the side it came from, forced real search (st_nt_um max)
+[15:55:09.060] === uT-Kernel 3.0 / RP2040 car ===
+[15:55:09.085] [build] netlog rev 55acd52 R=2535 TABLE=LFFFFLFFFFFFFFFFLFFFFFFFFL patch=gamble_hump58.patch | -DBARCODE_SENSOR_ANALOG=1 -DBC_PART_GAMBLE=1 -DBC_PART_CELLS_MAX=40000 -DHUMP_TRACK_MM=120 -DLINE_BARCODE_HOLD=1 -DLINE_BARCODE_HOLD_STEER=0 -DLINE_SCAN_MAX_TURN_DPS=15 -DLINE_LOST_MS=60000u -DLINE_CRACK_MS=0u -DLINE_JUNCTION_PAIR=1 -DLINE_PAIR_SAMPLES=20u -DLINE_PAIR_MM10=175u -DLINE_PAIR_GP_WINDOW=60000u -DMOTION_TURN_FWD_MM=135 -DMOTION_TURN_IMU=1 -DMOTION_LF_STRADDLE=1 -DMOTION_ST_LOST_MM=1500u -DMOTION_ST_BASE_MMPS=65 -DMOTION_ST_CURVE_MMPS=40 -DMOTION_ST_MIN_WHEEL_MMPS=20 -DMOTION_ST_KICK_CURV=5500 -DMOTION_ST_LEARN_CURV=450 -DMOTION_ST_LEARN_TIGHT_CURV=600 -DMOTION_ST_SLEW_CURV=600 -DMOTION_SM_BOX_DIR=1 -DMOTION_SM_CROSS_CHECK_MM=8 -DMOTION_SM_MISS_X_MM=80 -DMOTION_SM_SEEN_DEG=12 -DMOTION_SM_ONTO_MM=117 -DMOTION_LF_HOLD_ON_BARCODE=0 -DMOTION_LF_BASE=6 -DMOTION_LF_BASE_CURVE=4 -DMOTION_LF_CURVE_BOOST_X10=15 -DMOTION_LF_BASE_READ=3 -DMOTION_LF_GAIN=5 -DMOTION_LF_DAMP=4 -DMOTION_LF_SLEW=25 -DMOTION_LF_RATE_DAMP=12 -DMOTION_LF_EDGE_LOST=1 -DMOTION_LF_EDGE_MIN_TICKS=15u -DMOTION_LF_REALIGN=0 -DMOTION_LF_GAP_MM=60 -DMOTION_LF_LOST_DIR_MS=300 -DMOTION_LS_DIR_MIN=25 -DMOTION_LS_SWEEP_DEG=80 -DMOTION_BC_RETRY=1 -DIR_ADAPT_BLACK_UP_SHIFT=8 -DIR_ADAPT_BLACK_DOWN_SHIFT=13 -DBC_DELTA=160 -DBC_DELTA_MIN=120 -DLINE_JUNCTION_SAMPLES=450 -DLINE_ARMED_HOLD_MM=1000000 -DSL_KNOWN_W_MM=90 -DSL_WIDTH_EDGE_MID=1 -DSL_EDGE_REFINE=1 -DSL_BEAM_HALF_DEG=10 -DMOTION_BYPASS_SMOOTH=1 -DMOTION_SM_ADAPT=0 -DMOTION_SM_HD_FALLBACK=1 -DMOTION_HD_LINE_MM=120 -DMOTION_HD_SNAP_DEG=20 -DMOTION_SM_Y_MM=215 -DMOTION_SM_SHIFT_MIN=0 -DMOTION_SM_S_OUT_MM=210 -DMOTION_SM_S_IN_MM=510 -DMOTION_SM_L_IN_MM=100 -DMOTION_SM_MAX_DEG=60 -DMOTION_SM_SPEED=13 -DMOTION_SM_SEEN_X_MM=250 -DMOTION_SM_WATCH=2 -DMOTION_SM_WATCH_DEG=55 -DMOTION_SM_CLEAR_MM=250 -DSERVO_LIMIT_DEG=55 -DSCAN_WATCH_DEG=55 | built 2026-11-22T15:54
+[15:55:09.085] [netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)
+[15:55:09.085] SMP build: 2 processors
+[15:55:09.262] [wifi] link DOWN
+[15:55:09.262] [mqtt] state=WAIT_ADDR  0.0.0.0:0  conn#=0 lost=0  pub=0 err=0 drop=0  last=0/0
+[15:55:09.571] [comms] H s=5 up=1001 bytes=b600207d000000 queued
+[15:55:09.571] [comms] S s=6 up=1001 bytes=d400207d0000000000043f000040007e0000 queued
+[15:55:09.582] [line] calibration OK: GP26 ok (white 193, black 993, rise 673) GP27 ok (white 168, black 968, rise 648)
+[15:55:09.781] [imu] cal ok: offsets x=17 y=-18 z=52 mg, spread 60 mg
+[15:55:09.781] [imu] -> nav: CAL_OK_IMU
+[15:55:09.782] [nav] CAL_OK_IMU: stale IMU_FAULT cleared
+[15:55:09.782] [nav] mission CALIBRATING -> READY
+[15:55:09.782] [nav] buzzer: 1 x 100 ms
+[15:55:09.782] [comms] E mission s=7 up=1216 bytes=f50000980000a002 dropped(-50)
+[15:55:09.981] [nav] GP20 = start/resume/reset, GP21 = pause
+[15:55:10.565] [comms] H s=8 up=2001 bytes=160120fa000000 dropped(-50)
+[15:55:10.565] [comms] S s=9 up=2001 bytes=340120fa0000000000043f00008000000004 dropped(-50)
+[15:55:10.577] [line] raw ADC GP26=227 GP27=206 norm 31/37 err=0 | barcode AO GP28=224 floor 211 norm 5 (white) 0 mm/s | missed 13 ticks (13 since boot)
+[15:55:10.578] [line] dbg GP26 raw=227 min=202 max=993 norm=31 thr=676/518 on_line=0 | GP27 raw=206 min=176 max=968 norm=37 thr=651/493 on_line=0 | dark_ms=2550 lost=0
+[15:55:11.568] [comms] H s=10 up=3001 bytes=56012077010000 dropped(-50)
+[15:55:11.569] [comms] S s=11 up=3001 bytes=740120770100000000043f00008000000004 dropped(-50)
+[15:55:12.272] [wifi] state=JOINING join#=1 lease#=0 lost=0 t=1735ms
+[15:55:12.569] [comms] H s=12 up=4001 bytes=960120f4010000 dropped(-50)
+[15:55:12.570] [comms] S s=13 up=4001 bytes=b40120f40100000000043f00008000000004 dropped(-50)
+[15:55:12.582] [line] raw ADC GP26=218 GP27=193 norm 8/10 err=0 | barcode AO GP28=233 floor 211 norm 9 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:55:12.582] [line] dbg GP26 raw=218 min=211 max=993 norm=8 thr=680/524 on_line=0 | GP27 raw=193 min=185 max=968 norm=10 thr=654/498 on_line=0 | dark_ms=2550 lost=0
+[15:55:13.562] [comms] H s=14 up=5001 bytes=d6012071020000 dropped(-50)
+[15:55:13.573] [comms] S s=15 up=5001 bytes=f40120710200000000043f00008000000004 dropped(-50)
+[15:55:13.573] [motion] timing (5 s): tick period 6274..23688 us, tick work max 903 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:13.585] [motion] watchdog (5 s): longest gap between feeds 23817 us, resets at 30000 us; E motion sends refused 0
+[15:55:14.564] [comms] H s=16 up=6001 bytes=160220ee020000 dropped(-50)
+[15:55:14.565] [comms] S s=17 up=6001 bytes=340220ee0200000000043f00008000000004 dropped(-50)
+[15:55:14.577] [line] raw ADC GP26=214 GP27=193 norm 0/5 err=0 | barcode AO GP28=231 floor 216 norm 6 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:55:14.578] [line] dbg GP26 raw=214 min=215 max=993 norm=0 thr=681/527 on_line=0 | GP27 raw=193 min=189 max=968 norm=5 thr=655/501 on_line=0 | dark_ms=2550 lost=0
+[15:55:14.776] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:15.271] [wifi] state=WAIT_LEASE join#=1 lease#=1 lost=0 t=4746ms
+[15:55:15.272] [wifi] link UP  rssi=-58  mac=2c:cf:67:db:18:2a
+[15:55:15.272] [wifi] waiting for lease: state=8 tries=0 t=2095ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=1922 stage=7 rd=0
+[15:55:15.569] [comms] H s=18 up=7001 bytes=5602206b030000 dropped(-50)
+[15:55:15.570] [comms] S s=19 up=7001 bytes=7402206b0300000000043f00008000000004 dropped(-50)
+[15:55:16.571] [comms] H s=20 up=8001 bytes=960220e8030000 dropped(-50)
+[15:55:16.571] [comms] S s=21 up=8001 bytes=b40220e80300000000043f00008000000004 dropped(-50)
+[15:55:16.584] [line] raw ADC GP26=224 GP27=192 norm 9/1 err=0 | barcode AO GP28=235 floor 216 norm 8 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:55:16.584] [line] dbg GP26 raw=224 min=217 max=993 norm=9 thr=682/528 on_line=0 | GP27 raw=192 min=191 max=968 norm=1 thr=656/502 on_line=0 | dark_ms=2550 lost=0
+[15:55:17.564] [comms] H s=22 up=9001 bytes=d6022065040000 dropped(-50)
+[15:55:17.564] [comms] S s=23 up=9001 bytes=f40220650400000000043f00008000000004 dropped(-50)
+[15:55:18.268] [wifi] waiting for lease: state=8 tries=0 t=5100ms addr=0.0.0.0 gw=0.0.0.0 dns=0.0.0.0 polls=2922 stage=7 rd=0
+[15:55:18.565] [comms] H s=24 up=10001 bytes=160320e2040000 dropped(-50)
+[15:55:18.566] [comms] S s=25 up=10001 bytes=340320e20400000000043f00008000000004 dropped(-50)
+[15:55:18.579] [motion] timing (5 s): tick period 9902..10091 us, tick work max 860 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:18.579] [motion] watchdog (5 s): longest gap between feeds 10483 us, resets at 30000 us; E motion sends refused 0
+[15:55:18.579] [line] raw ADC GP26=222 GP27=201 norm 5/11 err=0 | barcode AO GP28=225 floor 216 norm 3 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:55:18.580] [line] dbg GP26 raw=222 min=218 max=993 norm=5 thr=682/528 on_line=0 | GP27 raw=201 min=192 max=968 norm=11 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:19.571] [comms] H s=26 up=11001 bytes=5603205f050000 dropped(-50)
+[15:55:19.571] [comms] S s=27 up=11001 bytes=7403205f0500000000043f00008000000004 dropped(-50)
+[15:55:19.781] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:20.562] [comms] H s=28 up=12001 bytes=960320dc050000 dropped(-50)
+[15:55:20.574] [comms] S s=29 up=12001 bytes=b40320dc0500000000043f00008000000004 dropped(-50)
+[15:55:20.575] [line] raw ADC GP26=219 GP27=191 norm 1/0 err=0 | barcode AO GP28=218 floor 214 norm 1 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:55:20.575] [line] dbg GP26 raw=219 min=218 max=993 norm=1 thr=682/528 on_line=0 | GP27 raw=191 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:21.279] [wifi] state=ONLINE join#=1 lease#=1 lost=0 t=12332ms
+[15:55:21.280] [wifi] ip=172.20.10.2  gw=172.20.10.1  dns=172.20.10.1
+[15:55:21.281] [mqtt] state=CONNECTING  172.20.10.3:1883  conn#=0 lost=0  pub=0 err=0 drop=23  last=0/-1
+[15:55:21.567] [comms] H s=30 up=13001 bytes=d6032059060000 dropped(-50)
+[15:55:21.568] [comms] S s=31 up=13001 bytes=f40320590600000000043f00008000000004 dropped(-50)
+[15:55:22.569] [comms] H s=32 up=14001 bytes=160420d6060000 dropped(-50)
+[15:55:22.570] [comms] S s=33 up=14001 bytes=340420d60600000000043f00008000000004 dropped(-50)
+[15:55:22.582] [line] raw ADC GP26=220 GP27=206 norm 1/16 err=-1 | barcode AO GP28=225 floor 215 norm 4 (white) 0 mm/s | missed 1 ticks (14 since boot)
+[15:55:22.582] [line] dbg GP26 raw=220 min=219 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=206 min=193 max=968 norm=16 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:23.562] [comms] H s=34 up=15001 bytes=56042053070000 dropped(-50)
+[15:55:23.574] [comms] S s=35 up=15001 bytes=740420530700000000043f00008000000004 dropped(-50)
+[15:55:23.575] [motion] timing (5 s): tick period 9903..10099 us, tick work max 891 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:23.575] [motion] watchdog (5 s): longest gap between feeds 10457 us, resets at 30000 us; E motion sends refused 0
+[15:55:24.279] [mqtt] state=CONNECTED  172.20.10.3:1883  conn#=1 lost=0  pub=7 err=0 drop=29  last=0/0
+[15:55:24.566] [comms] H s=36 up=16001 bytes=960420d0070000 queued
+[15:55:24.566] [comms] S s=37 up=16001 bytes=b40420d00700000000043f00008000000004 queued
+[15:55:24.578] [line] raw ADC GP26=221 GP27=191 norm 2/0 err=0 | barcode AO GP28=233 floor 212 norm 9 (white) 0 mm/s | missed 0 ticks (14 since boot)
+[15:55:24.579] [line] dbg GP26 raw=221 min=219 max=993 norm=2 thr=683/529 on_line=0 | GP27 raw=191 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:24.776] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:25.568] [comms] H s=38 up=17001 bytes=d604204d080000 queued
+[15:55:25.569] [comms] S s=39 up=17001 bytes=f404204d0800000000043f00008000000004 queued
+[15:55:26.571] [comms] H s=40 up=18001 bytes=160520ca080000 queued
+[15:55:26.571] [comms] S s=41 up=18001 bytes=340520ca0800000000043f00008000000004 queued
+[15:55:26.584] [line] raw ADC GP26=222 GP27=185 norm 3/0 err=0 | barcode AO GP28=229 floor 212 norm 7 (white) 0 mm/s | missed 1 ticks (15 since boot)
+[15:55:26.584] [line] dbg GP26 raw=222 min=219 max=993 norm=3 thr=683/529 on_line=0 | GP27 raw=185 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:27.564] [comms] H s=42 up=19001 bytes=56052047090000 queued
+[15:55:27.565] [comms] S s=43 up=19001 bytes=740520470900000000043f00008000000004 queued
+[15:55:28.566] [comms] H s=44 up=20001 bytes=960520c4090000 queued
+[15:55:28.567] [comms] S s=45 up=20001 bytes=b40520c40900000000043f00008000000004 queued
+[15:55:28.579] [motion] timing (5 s): tick period 9843..10123 us, tick work max 1027 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:28.579] [motion] watchdog (5 s): longest gap between feeds 10590 us, resets at 30000 us; E motion sends refused 0
+[15:55:28.581] [line] raw ADC GP26=205 GP27=186 norm 0/0 err=0 | barcode AO GP28=232 floor 215 norm 7 (white) 0 mm/s | missed 0 ticks (15 since boot)
+[15:55:28.581] [line] dbg GP26 raw=205 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=186 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:29.571] [comms] H s=46 up=21001 bytes=d60520410a0000 queued
+[15:55:29.572] [comms] S s=47 up=21001 bytes=f40520410a00000000043f00008000000004 queued
+[15:55:29.782] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:30.562] [comms] H s=48 up=22001 bytes=160620be0a0000 queued
+[15:55:30.563] [comms] S s=49 up=22001 bytes=340620be0a00000000043f00008000000004 queued
+[15:55:30.586] [line] raw ADC GP26=219 GP27=201 norm 0/10 err=-1 | barcode AO GP28=221 floor 210 norm 4 (white) 0 mm/s | missed 1 ticks (16 since boot)
+[15:55:30.587] [line] dbg GP26 raw=219 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=201 min=193 max=968 norm=10 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:31.566] [comms] H s=50 up=23001 bytes=5606203b0b0000 queued
+[15:55:31.566] [comms] S s=51 up=23001 bytes=7406203b0b00000000043f00008000000004 queued
+[15:55:32.567] [comms] H s=52 up=24001 bytes=960620b80b0000 queued
+[15:55:32.567] [comms] S s=53 up=24001 bytes=b40620b80b00000000043f00008000000004 queued
+[15:55:32.580] [line] raw ADC GP26=226 GP27=214 norm 7/27 err=-2 | barcode AO GP28=236 floor 216 norm 8 (white) 0 mm/s | missed 0 ticks (16 since boot)
+[15:55:32.580] [line] dbg GP26 raw=226 min=220 max=993 norm=7 thr=683/529 on_line=0 | GP27 raw=214 min=193 max=968 norm=27 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:33.571] [comms] H s=54 up=25001 bytes=d60620350c0000 queued
+[15:55:33.572] [comms] S s=55 up=25001 bytes=f40620350c00000000043f00008000000004 queued
+[15:55:33.584] [motion] timing (5 s): tick period 9902..10100 us, tick work max 1041 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:33.584] [motion] watchdog (5 s): longest gap between feeds 10562 us, resets at 30000 us; E motion sends refused 0
+[15:55:34.564] [comms] H s=56 up=26001 bytes=160720b20c0000 queued
+[15:55:34.565] [comms] S s=57 up=26001 bytes=340720b20c00000000043f00008000000004 queued
+[15:55:34.588] [line] raw ADC GP26=229 GP27=197 norm 11/5 err=0 | barcode AO GP28=219 floor 215 norm 1 (white) 0 mm/s | missed 1 ticks (17 since boot)
+[15:55:34.588] [line] dbg GP26 raw=229 min=220 max=993 norm=11 thr=683/529 on_line=0 | GP27 raw=197 min=193 max=968 norm=5 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:34.776] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:35.567] [comms] H s=58 up=27001 bytes=5607202f0d0000 queued
+[15:55:35.568] [comms] S s=59 up=27001 bytes=7407202f0d00000000043f00008000000004 queued
+[15:55:36.569] [comms] H s=60 up=28001 bytes=960720ac0d0000 queued
+[15:55:36.569] [comms] S s=61 up=28001 bytes=b40720ac0d00000000043f00008000000004 queued
+[15:55:36.582] [line] raw ADC GP26=214 GP27=187 norm 0/0 err=0 | barcode AO GP28=232 floor 214 norm 7 (white) 0 mm/s | missed 1 ticks (18 since boot)
+[15:55:36.583] [line] dbg GP26 raw=214 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=187 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:37.563] [comms] H s=62 up=29001 bytes=d60720290e0000 queued
+[15:55:37.563] [comms] S s=63 up=29001 bytes=f40720290e00000000043f00008000000004 queued
+[15:55:38.565] [comms] H s=64 up=30001 bytes=160820a60e0000 queued
+[15:55:38.566] [comms] S s=65 up=30001 bytes=340820a60e00000000043f00008000000004 queued
+[15:55:38.577] [motion] timing (5 s): tick period 8593..11405 us, tick work max 894 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:38.578] [motion] watchdog (5 s): longest gap between feeds 10864 us, resets at 30000 us; E motion sends refused 0
+[15:55:38.589] [line] raw ADC GP26=221 GP27=190 norm 1/0 err=0 | barcode AO GP28=223 floor 214 norm 3 (white) 0 mm/s | missed 1 ticks (19 since boot)
+[15:55:38.590] [line] dbg GP26 raw=221 min=220 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=190 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:39.569] [comms] H s=66 up=31001 bytes=560820230f0000 queued
+[15:55:39.569] [comms] S s=67 up=31001 bytes=740820230f00000000043f00008000000004 queued
+[15:55:39.778] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:40.571] [comms] H s=68 up=32001 bytes=960820a00f0000 queued
+[15:55:40.571] [comms] S s=69 up=32001 bytes=b40820a00f00000000043f00008000000004 queued
+[15:55:40.585] [line] raw ADC GP26=226 GP27=187 norm 9/0 err=0 | barcode AO GP28=236 floor 211 norm 10 (white) 0 mm/s | missed 0 ticks (19 since boot)
+[15:55:40.585] [line] dbg GP26 raw=226 min=219 max=993 norm=9 thr=683/529 on_line=0 | GP27 raw=187 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:41.565] [comms] H s=70 up=33001 bytes=d608201d100000 queued
+[15:55:41.576] [comms] S s=71 up=33001 bytes=f408201d1000000000043f00008000000004 queued
+[15:55:42.566] [comms] H s=72 up=34001 bytes=1609209a100000 queued
+[15:55:42.567] [comms] S s=73 up=34001 bytes=3409209a1000000000043f00008000000004 queued
+[15:55:42.589] [line] raw ADC GP26=212 GP27=198 norm 0/6 err=0 | barcode AO GP28=218 floor 212 norm 2 (white) 0 mm/s | missed 0 ticks (19 since boot)
+[15:55:42.590] [line] dbg GP26 raw=212 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=198 min=193 max=968 norm=6 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:43.568] [comms] H s=74 up=35001 bytes=56092017110000 queued
+[15:55:43.569] [comms] S s=75 up=35001 bytes=740920171100000000043f00008000000004 queued
+[15:55:43.581] [motion] timing (5 s): tick period 8223..11769 us, tick work max 1028 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:43.582] [motion] watchdog (5 s): longest gap between feeds 11912 us, resets at 30000 us; E motion sends refused 0
+[15:55:44.572] [comms] H s=76 up=36001 bytes=96092094110000 queued
+[15:55:44.572] [comms] S s=77 up=36001 bytes=b40920941100000000043f00008000000004 queued
+[15:55:44.585] [line] raw ADC GP26=220 GP27=193 norm 1/0 err=0 | barcode AO GP28=229 floor 214 norm 6 (white) 0 mm/s | missed 1 ticks (20 since boot)
+[15:55:44.586] [line] dbg GP26 raw=220 min=219 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=193 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:44.784] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:45.566] [comms] H s=78 up=37001 bytes=d6092011120000 queued
+[15:55:45.566] [comms] S s=79 up=37001 bytes=f40920111200000000043f00008000000004 queued
+[15:55:46.568] [comms] H s=80 up=38001 bytes=160a208e120000 queued
+[15:55:46.568] [comms] S s=81 up=38001 bytes=340a208e1200000000043f00008000000004 queued
+[15:55:46.592] [line] raw ADC GP26=222 GP27=185 norm 2/0 err=0 | barcode AO GP28=231 floor 218 norm 5 (white) 0 mm/s | missed 0 ticks (20 since boot)
+[15:55:46.592] [line] dbg GP26 raw=222 min=220 max=993 norm=2 thr=683/529 on_line=0 | GP27 raw=185 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:47.572] [comms] H s=82 up=39001 bytes=560a200b130000 queued
+[15:55:47.572] [comms] S s=83 up=39001 bytes=740a200b1300000000043f00008000000004 queued
+[15:55:48.563] [comms] H s=84 up=40001 bytes=960a2088130000 queued
+[15:55:48.575] [comms] S s=85 up=40001 bytes=b40a20881300000000043f00008000000004 queued
+[15:55:48.576] [motion] timing (5 s): tick period 9871..10107 us, tick work max 2613 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:48.588] [motion] watchdog (5 s): longest gap between feeds 11889 us, resets at 30000 us; E motion sends refused 0
+[15:55:48.588] [line] raw ADC GP26=218 GP27=192 norm 0/0 err=0 | barcode AO GP28=235 floor 218 norm 7 (white) 0 mm/s | missed 1 ticks (21 since boot)
+[15:55:48.589] [line] dbg GP26 raw=218 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=192 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:49.568] [comms] H s=86 up=41001 bytes=d60a2005140000 queued
+[15:55:49.568] [comms] S s=87 up=41001 bytes=f40a20051400000000043f00008000000004 queued
+[15:55:49.777] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:50.568] [comms] H s=88 up=42001 bytes=160b2082140000 queued
+[15:55:50.569] [comms] S s=89 up=42001 bytes=340b20821400000000043f00008000000004 queued
+[15:55:50.592] [line] raw ADC GP26=222 GP27=200 norm 2/9 err=0 | barcode AO GP28=231 floor 209 norm 9 (white) 0 mm/s | missed 1 ticks (22 since boot)
+[15:55:50.593] [line] dbg GP26 raw=222 min=220 max=993 norm=2 thr=683/529 on_line=0 | GP27 raw=200 min=193 max=968 norm=9 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:51.572] [comms] H s=90 up=43001 bytes=560b20ff140000 queued
+[15:55:51.572] [comms] S s=91 up=43001 bytes=740b20ff1400000000043f00008000000004 queued
+[15:55:52.563] [comms] H s=92 up=44001 bytes=960b207c150000 queued
+[15:55:52.563] [comms] S s=93 up=44001 bytes=b40b207c1500000000043f00008000000004 queued
+[15:55:52.587] [line] raw ADC GP26=221 GP27=192 norm 1/0 err=0 | barcode AO GP28=214 floor 214 norm 0 (white) 0 mm/s | missed 0 ticks (22 since boot)
+[15:55:52.588] [line] dbg GP26 raw=221 min=220 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=192 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:53.567] [comms] H s=94 up=45001 bytes=d60b20f9150000 queued
+[15:55:53.567] [comms] S s=95 up=45001 bytes=f40b20f91500000000043f00008000000004 queued
+[15:55:53.579] [motion] timing (5 s): tick period 9850..10204 us, tick work max 1581 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:53.579] [motion] watchdog (5 s): longest gap between feeds 11000 us, resets at 30000 us; E motion sends refused 0
+[15:55:54.570] [comms] H s=96 up=46001 bytes=160c2076160000 queued
+[15:55:54.570] [comms] S s=97 up=46001 bytes=340c20761600000000043f00008000000004 queued
+[15:55:54.595] [line] raw ADC GP26=219 GP27=194 norm 0/1 err=0 | barcode AO GP28=233 floor 215 norm 7 (white) 0 mm/s | missed 1 ticks (23 since boot)
+[15:55:54.595] [line] dbg GP26 raw=219 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=194 min=193 max=968 norm=1 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:54.783] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:55:55.564] [comms] H s=98 up=47001 bytes=560c20f3160000 queued
+[15:55:55.565] [comms] S s=99 up=47001 bytes=740c20f31600000000043f00008000000004 queued
+[15:55:56.566] [comms] H s=100 up=48001 bytes=960c2070170000 queued
+[15:55:56.566] [comms] S s=101 up=48001 bytes=b40c20701700000000043f00008000000004 queued
+[15:55:56.590] [line] raw ADC GP26=220 GP27=201 norm 0/10 err=-1 | barcode AO GP28=221 floor 215 norm 2 (white) 0 mm/s | missed 1 ticks (24 since boot)
+[15:55:56.590] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=201 min=193 max=968 norm=10 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:57.570] [comms] H s=102 up=49001 bytes=d60c20ed170000 queued
+[15:55:57.570] [comms] S s=103 up=49001 bytes=f40c20ed1700000000043f00008000000004 queued
+[15:55:58.572] [comms] H s=104 up=50001 bytes=160d206a180000 queued
+[15:55:58.572] [comms] S s=105 up=50001 bytes=340d206a1800000000043f00008000000004 queued
+[15:55:58.586] [motion] timing (5 s): tick period 9889..10099 us, tick work max 1087 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:55:58.586] [motion] watchdog (5 s): longest gap between feeds 10511 us, resets at 30000 us; E motion sends refused 0
+[15:55:58.588] [line] raw ADC GP26=213 GP27=194 norm 0/1 err=0 | barcode AO GP28=230 floor 215 norm 6 (white) 0 mm/s | missed 0 ticks (24 since boot)
+[15:55:58.588] [line] dbg GP26 raw=213 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=194 min=193 max=968 norm=1 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:55:59.567] [comms] H s=106 up=51001 bytes=560d20e7180000 queued
+[15:55:59.567] [comms] S s=107 up=51001 bytes=740d20e71800000000043f00008000000004 queued
+[15:55:59.777] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:00.568] [comms] H s=108 up=52001 bytes=960d2064190000 queued
+[15:56:00.569] [comms] S s=109 up=52001 bytes=b40d20641900000000043f00008000000004 queued
+[15:56:00.592] [line] raw ADC GP26=212 GP27=212 norm 0/24 err=-2 | barcode AO GP28=215 floor 215 norm 0 (white) 0 mm/s | missed 1 ticks (25 since boot)
+[15:56:00.592] [line] dbg GP26 raw=212 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=212 min=193 max=968 norm=24 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:01.572] [comms] H s=110 up=53001 bytes=d60d20e1190000 queued
+[15:56:01.572] [comms] S s=111 up=53001 bytes=f40d20e11900000000043f00008000000004 queued
+[15:56:02.563] [comms] H s=112 up=54001 bytes=160e205e1a0000 queued
+[15:56:02.574] [comms] S s=113 up=54001 bytes=340e205e1a00000000043f00008000000004 queued
+[15:56:02.597] [line] raw ADC GP26=225 GP27=204 norm 7/14 err=0 | barcode AO GP28=221 floor 210 norm 4 (white) 0 mm/s | missed 1 ticks (26 since boot)
+[15:56:02.598] [line] dbg GP26 raw=225 min=219 max=993 norm=7 thr=683/529 on_line=0 | GP27 raw=204 min=193 max=968 norm=14 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:03.566] [comms] H s=114 up=55001 bytes=560e20db1a0000 queued
+[15:56:03.566] [comms] S s=115 up=55001 bytes=740e20db1a00000000043f00008000000004 queued
+[15:56:03.579] [motion] timing (5 s): tick period 9902..10103 us, tick work max 1717 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:03.579] [motion] watchdog (5 s): longest gap between feeds 11051 us, resets at 30000 us; E motion sends refused 0
+[15:56:04.569] [comms] H s=116 up=56001 bytes=960e20581b0000 queued
+[15:56:04.569] [comms] S s=117 up=56001 bytes=b40e20581b00000000043f00008000000004 queued
+[15:56:04.593] [line] raw ADC GP26=215 GP27=177 norm 0/0 err=0 | barcode AO GP28=227 floor 209 norm 7 (white) 0 mm/s | missed 0 ticks (26 since boot)
+[15:56:04.593] [line] dbg GP26 raw=215 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=177 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:04.781] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:05.563] [comms] H s=118 up=57001 bytes=d60e20d51b0000 queued
+[15:56:05.563] [comms] S s=119 up=57001 bytes=f40e20d51b00000000043f00008000000004 queued
+[15:56:06.565] [comms] H s=120 up=58001 bytes=160f20521c0000 queued
+[15:56:06.566] [comms] S s=121 up=58001 bytes=340f20521c00000000043f00008000000004 queued
+[15:56:06.589] [line] raw ADC GP26=227 GP27=200 norm 9/9 err=0 | barcode AO GP28=224 floor 212 norm 5 (white) 0 mm/s | missed 0 ticks (26 since boot)
+[15:56:06.589] [line] dbg GP26 raw=227 min=220 max=993 norm=9 thr=683/529 on_line=0 | GP27 raw=200 min=193 max=968 norm=9 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:07.569] [comms] H s=122 up=59001 bytes=560f20cf1c0000 queued
+[15:56:07.569] [comms] S s=123 up=59001 bytes=740f20cf1c00000000043f00008000000004 queued
+[15:56:08.570] [comms] H s=124 up=60001 bytes=960f204c1d0000 queued
+[15:56:08.570] [comms] S s=125 up=60001 bytes=b40f204c1d00000000043f00008000000004 queued
+[15:56:08.582] [motion] timing (5 s): tick period 9857..10102 us, tick work max 1031 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:08.583] [motion] watchdog (5 s): longest gap between feeds 10607 us, resets at 30000 us; E motion sends refused 0
+[15:56:08.595] [line] raw ADC GP26=217 GP27=208 norm 0/19 err=-1 | barcode AO GP28=234 floor 214 norm 8 (white) 0 mm/s | missed 1 ticks (27 since boot)
+[15:56:08.596] [line] dbg GP26 raw=217 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=208 min=193 max=968 norm=19 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:09.564] [comms] H s=126 up=61001 bytes=d60f20c91d0000 queued
+[15:56:09.576] [comms] S s=127 up=61001 bytes=f40f20c91d00000000043f00008000000004 queued
+[15:56:09.785] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:10.567] [comms] H s=128 up=62001 bytes=161020461e0000 queued
+[15:56:10.567] [comms] S s=129 up=62001 bytes=341020461e00000000043f00008000000004 queued
+[15:56:10.591] [line] raw ADC GP26=223 GP27=180 norm 5/0 err=0 | barcode AO GP28=245 floor 209 norm 15 (white) 0 mm/s | missed 0 ticks (27 since boot)
+[15:56:10.592] [line] dbg GP26 raw=223 min=219 max=993 norm=5 thr=683/529 on_line=0 | GP27 raw=180 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:11.571] [comms] H s=130 up=63001 bytes=561020c31e0000 queued
+[15:56:11.571] [comms] S s=131 up=63001 bytes=741020c31e00000000043f00008000000004 queued
+[15:56:12.562] [comms] H s=132 up=64001 bytes=961020401f0000 queued
+[15:56:12.573] [comms] S s=133 up=64001 bytes=b41020401f00000000043f00008000000004 queued
+[15:56:12.596] [line] raw ADC GP26=227 GP27=195 norm 9/3 err=0 | barcode AO GP28=221 floor 201 norm 8 (white) 0 mm/s | missed 0 ticks (27 since boot)
+[15:56:12.597] [line] dbg GP26 raw=227 min=220 max=993 norm=9 thr=683/529 on_line=0 | GP27 raw=195 min=192 max=968 norm=3 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:13.565] [comms] H s=134 up=65001 bytes=d61020bd1f0000 queued
+[15:56:13.566] [comms] S s=135 up=65001 bytes=f41020bd1f00000000043f00008000000004 queued
+[15:56:13.578] [motion] timing (5 s): tick period 9814..10174 us, tick work max 919 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:13.579] [motion] watchdog (5 s): longest gap between feeds 10532 us, resets at 30000 us; E motion sends refused 0
+[15:56:14.568] [comms] H s=136 up=66001 bytes=1611203a200000 queued
+[15:56:14.569] [comms] S s=137 up=66001 bytes=3411203a2000000000043f00008000000004 queued
+[15:56:14.592] [line] raw ADC GP26=215 GP27=185 norm 0/0 err=0 | barcode AO GP28=224 floor 210 norm 6 (white) 0 mm/s | missed 0 ticks (27 since boot)
+[15:56:14.593] [line] dbg GP26 raw=215 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=185 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:14.780] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:15.572] [comms] H s=138 up=67001 bytes=561120b7200000 queued
+[15:56:15.572] [comms] S s=139 up=67001 bytes=741120b72000000000043f00008000000004 queued
+[15:56:16.563] [comms] H s=140 up=68001 bytes=96112034210000 queued
+[15:56:16.574] [comms] S s=141 up=68001 bytes=b41120342100000000043f00008000000004 queued
+[15:56:16.598] [line] raw ADC GP26=220 GP27=201 norm 0/10 err=-1 | barcode AO GP28=223 floor 211 norm 5 (white) 0 mm/s | missed 0 ticks (27 since boot)
+[15:56:16.598] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=201 min=193 max=968 norm=10 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:17.566] [comms] H s=142 up=69001 bytes=d61120b1210000 queued
+[15:56:17.566] [comms] S s=143 up=69001 bytes=f41120b12100000000043f00008000000004 queued
+[15:56:18.568] [comms] H s=144 up=70001 bytes=1612202e220000 queued
+[15:56:18.568] [comms] S s=145 up=70001 bytes=3412202e2200000000043f00008000000004 queued
+[15:56:18.581] [motion] timing (5 s): tick period 9572..10494 us, tick work max 1706 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:18.581] [motion] watchdog (5 s): longest gap between feeds 10824 us, resets at 30000 us; E motion sends refused 0
+[15:56:18.595] [line] raw ADC GP26=221 GP27=200 norm 1/9 err=0 | barcode AO GP28=223 floor 211 norm 5 (white) 0 mm/s | missed 2 ticks (29 since boot)
+[15:56:18.595] [line] dbg GP26 raw=221 min=220 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=200 min=193 max=968 norm=9 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:18.615] [note] 2026-11-22 15:55:07 flashed lab_straddle65v_iphone (hump58)
+[15:56:18.615] [note] 2026-11-22 15:56:18 65u run 15:51-15:53: box1 perfect (6 mm, -1 deg, width 144), S-curve post-recovery search found line in 0.4 s, Z->left OK, box2 width 150, DONE -40 mm then no touch 3.5 s (beside the line). built lab_straddle65w_iphone.uf2 (hump59): after a bypass, Line Following with no touch within 150 mm -> Line Search toward the side it came from (+ 65v's miss at 80 mm)
+[15:56:19.564] [comms] H s=146 up=71001 bytes=561220ab220000 queued
+[15:56:19.565] [comms] S s=147 up=71001 bytes=741220ab2200000000043f00008000000004 queued
+[15:56:19.786] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:20.567] [comms] H s=148 up=72001 bytes=96122028230000 queued
+[15:56:20.567] [comms] S s=149 up=72001 bytes=b41220282300000000043f00008000000004 queued
+[15:56:20.602] [line] raw ADC GP26=219 GP27=199 norm 0/7 err=0 | barcode AO GP28=223 floor 212 norm 4 (white) 0 mm/s | missed 1 ticks (30 since boot)
+[15:56:20.603] [line] dbg GP26 raw=219 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=199 min=193 max=968 norm=7 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:21.571] [comms] H s=150 up=73001 bytes=d61220a5230000 queued
+[15:56:21.572] [comms] S s=151 up=73001 bytes=f41220a52300000000043f00008000000004 queued
+[15:56:22.562] [comms] H s=152 up=74001 bytes=16132022240000 queued
+[15:56:22.573] [comms] S s=153 up=74001 bytes=341320222400000000043f00008000000004 queued
+[15:56:22.597] [line] raw ADC GP26=233 GP27=203 norm 16/12 err=0 | barcode AO GP28=222 floor 211 norm 4 (white) 0 mm/s | missed 1 ticks (31 since boot)
+[15:56:22.597] [line] dbg GP26 raw=233 min=220 max=993 norm=16 thr=683/529 on_line=0 | GP27 raw=203 min=193 max=968 norm=12 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:23.565] [comms] H s=154 up=75001 bytes=5613209f240000 queued
+[15:56:23.578] [comms] S s=155 up=75001 bytes=7413209f2400000000043f00008000000004 queued
+[15:56:23.578] [motion] timing (5 s): tick period 8168..11762 us, tick work max 3242 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:23.578] [motion] watchdog (5 s): longest gap between feeds 12209 us, resets at 30000 us; E motion sends refused 0
+[15:56:24.569] [comms] H s=156 up=76001 bytes=9613201c250000 queued
+[15:56:24.569] [comms] S s=157 up=76001 bytes=b413201c2500000000043f00008000000004 queued
+[15:56:24.603] [line] raw ADC GP26=224 GP27=204 norm 6/14 err=0 | barcode AO GP28=214 floor 210 norm 1 (white) 0 mm/s | missed 1 ticks (32 since boot)
+[15:56:24.603] [line] dbg GP26 raw=224 min=219 max=993 norm=6 thr=683/529 on_line=0 | GP27 raw=204 min=193 max=968 norm=14 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:24.780] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:25.572] [comms] H s=158 up=77001 bytes=d6132099250000 queued
+[15:56:25.572] [comms] S s=159 up=77001 bytes=f41320992500000000043f00008000000004 queued
+[15:56:26.563] [comms] H s=160 up=78001 bytes=16142016260000 queued
+[15:56:26.563] [comms] S s=161 up=78001 bytes=341420162600000000043f00008000000004 queued
+[15:56:26.598] [line] raw ADC GP26=226 GP27=181 norm 7/0 err=0 | barcode AO GP28=242 floor 210 norm 13 (white) 0 mm/s | missed 1 ticks (33 since boot)
+[15:56:26.599] [line] dbg GP26 raw=226 min=220 max=993 norm=7 thr=683/529 on_line=0 | GP27 raw=181 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:27.567] [comms] H s=162 up=79001 bytes=56142093260000 queued
+[15:56:27.568] [comms] S s=163 up=79001 bytes=741420932600000000043f00008000000004 queued
+[15:56:28.569] [comms] H s=164 up=80001 bytes=96142010270000 queued
+[15:56:28.569] [comms] S s=165 up=80001 bytes=b41420102700000000043f00008000000004 queued
+[15:56:28.581] [motion] timing (5 s): tick period 9774..10226 us, tick work max 1519 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:28.581] [motion] watchdog (5 s): longest gap between feeds 11042 us, resets at 30000 us; E motion sends refused 0
+[15:56:28.605] [line] raw ADC GP26=225 GP27=196 norm 6/3 err=0 | barcode AO GP28=231 floor 213 norm 7 (white) 0 mm/s | missed 1 ticks (34 since boot)
+[15:56:28.606] [line] dbg GP26 raw=225 min=220 max=993 norm=6 thr=683/529 on_line=0 | GP27 raw=196 min=193 max=968 norm=3 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:29.563] [comms] H s=166 up=81001 bytes=d614208d270000 queued
+[15:56:29.564] [comms] S s=167 up=81001 bytes=f414208d2700000000043f00008000000004 queued
+[15:56:29.784] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:30.566] [comms] H s=168 up=82001 bytes=1615200a280000 queued
+[15:56:30.566] [comms] S s=169 up=82001 bytes=3415200a2800000000043f00008000000004 queued
+[15:56:30.601] [line] raw ADC GP26=224 GP27=188 norm 5/0 err=0 | barcode AO GP28=221 floor 209 norm 5 (white) 0 mm/s | missed 0 ticks (34 since boot)
+[15:56:30.601] [line] dbg GP26 raw=224 min=220 max=993 norm=5 thr=683/529 on_line=0 | GP27 raw=188 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:31.570] [comms] H s=170 up=83001 bytes=56152087280000 queued
+[15:56:31.570] [comms] S s=171 up=83001 bytes=741520872800000000043f00008000000004 queued
+[15:56:32.572] [comms] H s=172 up=84001 bytes=96152004290000 queued
+[15:56:32.572] [comms] S s=173 up=84001 bytes=b41520042900000000043f00008000000004 queued
+[15:56:32.607] [line] raw ADC GP26=223 GP27=203 norm 3/12 err=0 | barcode AO GP28=230 floor 210 norm 8 (white) 0 mm/s | missed 0 ticks (34 since boot)
+[15:56:32.607] [line] dbg GP26 raw=223 min=220 max=993 norm=3 thr=683/529 on_line=0 | GP27 raw=203 min=193 max=968 norm=12 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:33.565] [comms] H s=174 up=85001 bytes=d6152081290000 queued
+[15:56:33.566] [comms] S s=175 up=85001 bytes=f41520812900000000043f00008000000004 queued
+[15:56:33.579] [motion] timing (5 s): tick period 9906..10119 us, tick work max 1568 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:33.579] [motion] watchdog (5 s): longest gap between feeds 10946 us, resets at 30000 us; E motion sends refused 0
+[15:56:34.569] [comms] H s=176 up=86001 bytes=161620fe290000 queued
+[15:56:34.569] [comms] S s=177 up=86001 bytes=341620fe2900000000043f00008000000004 queued
+[15:56:34.605] [line] raw ADC GP26=226 GP27=204 norm 7/14 err=0 | barcode AO GP28=217 floor 215 norm 0 (white) 0 mm/s | missed 1 ticks (35 since boot)
+[15:56:34.606] [line] dbg GP26 raw=226 min=220 max=993 norm=7 thr=683/529 on_line=0 | GP27 raw=204 min=193 max=968 norm=14 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:34.782] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:35.563] [comms] H s=178 up=87001 bytes=5616207b2a0000 queued
+[15:56:35.563] [comms] S s=179 up=87001 bytes=7416207b2a00000000043f00008000000004 queued
+[15:56:36.565] [comms] H s=180 up=88001 bytes=961620f82a0000 queued
+[15:56:36.566] [comms] S s=181 up=88001 bytes=b41620f82a00000000043f00008000000004 queued
+[15:56:36.600] [line] raw ADC GP26=221 GP27=181 norm 1/0 err=0 | barcode AO GP28=215 floor 211 norm 1 (white) 0 mm/s | missed 0 ticks (35 since boot)
+[15:56:36.600] [line] dbg GP26 raw=221 min=220 max=993 norm=1 thr=683/529 on_line=0 | GP27 raw=181 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:37.568] [comms] H s=182 up=89001 bytes=d61620752b0000 queued
+[15:56:37.568] [comms] S s=183 up=89001 bytes=f41620752b00000000043f00008000000004 queued
+[15:56:38.570] [comms] H s=184 up=90001 bytes=161720f22b0000 queued
+[15:56:38.570] [comms] S s=185 up=90001 bytes=341720f22b00000000043f00008000000004 queued
+[15:56:38.582] [motion] timing (5 s): tick period 9874..10094 us, tick work max 1682 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:38.582] [motion] watchdog (5 s): longest gap between feeds 10816 us, resets at 30000 us; E motion sends refused 0
+[15:56:38.606] [line] raw ADC GP26=227 GP27=197 norm 9/5 err=0 | barcode AO GP28=222 floor 211 norm 4 (white) 0 mm/s | missed 1 ticks (36 since boot)
+[15:56:38.606] [line] dbg GP26 raw=227 min=220 max=993 norm=9 thr=683/529 on_line=0 | GP27 raw=197 min=193 max=968 norm=5 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:39.564] [comms] H s=186 up=91001 bytes=5617206f2c0000 queued
+[15:56:39.565] [comms] S s=187 up=91001 bytes=7417206f2c00000000043f00008000000004 queued
+[15:56:39.785] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:40.567] [comms] H s=188 up=92001 bytes=961720ec2c0000 queued
+[15:56:40.567] [comms] S s=189 up=92001 bytes=b41720ec2c00000000043f00008000000004 queued
+[15:56:40.602] [line] raw ADC GP26=220 GP27=208 norm 0/19 err=-1 | barcode AO GP28=210 floor 210 norm 0 (white) 0 mm/s | missed 1 ticks (37 since boot)
+[15:56:40.602] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=208 min=193 max=968 norm=19 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:41.570] [comms] H s=190 up=93001 bytes=d61720692d0000 queued
+[15:56:41.570] [comms] S s=191 up=93001 bytes=f41720692d00000000043f00008000000004 queued
+[15:56:42.572] [comms] H s=192 up=94001 bytes=161820e62d0000 queued
+[15:56:42.572] [comms] S s=193 up=94001 bytes=341820e62d00000000043f00008000000004 queued
+[15:56:42.607] [line] raw ADC GP26=222 GP27=197 norm 2/5 err=0 | barcode AO GP28=231 floor 211 norm 8 (white) 0 mm/s | missed 0 ticks (37 since boot)
+[15:56:42.607] [line] dbg GP26 raw=222 min=220 max=993 norm=2 thr=683/529 on_line=0 | GP27 raw=197 min=193 max=968 norm=5 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:43.565] [comms] H s=194 up=95001 bytes=561820632e0000 queued
+[15:56:43.566] [comms] S s=195 up=95001 bytes=741820632e00000000043f00008000000004 queued
+[15:56:43.579] [motion] timing (5 s): tick period 9871..10117 us, tick work max 1595 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:43.579] [motion] watchdog (5 s): longest gap between feeds 10967 us, resets at 30000 us; E motion sends refused 0
+[15:56:44.569] [comms] H s=196 up=96001 bytes=961820e02e0000 queued
+[15:56:44.569] [comms] S s=197 up=96001 bytes=b41820e02e00000000043f00008000000004 queued
+[15:56:44.604] [line] raw ADC GP26=229 GP27=197 norm 11/5 err=0 | barcode AO GP28=216 floor 210 norm 2 (white) 0 mm/s | missed 0 ticks (37 since boot)
+[15:56:44.604] [line] dbg GP26 raw=229 min=220 max=993 norm=11 thr=683/529 on_line=0 | GP27 raw=197 min=193 max=968 norm=5 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:44.781] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:45.563] [comms] H s=198 up=97001 bytes=d618205d2f0000 queued
+[15:56:45.575] [comms] S s=199 up=97001 bytes=f418205d2f00000000043f00008000000004 queued
+[15:56:46.565] [comms] H s=200 up=98001 bytes=161920da2f0000 queued
+[15:56:46.577] [comms] S s=201 up=98001 bytes=341920da2f00000000043f00008000000004 queued
+[15:56:46.600] [line] raw ADC GP26=222 GP27=185 norm 3/0 err=0 | barcode AO GP28=230 floor 217 norm 5 (white) 0 mm/s | missed 0 ticks (37 since boot)
+[15:56:46.600] [line] dbg GP26 raw=222 min=219 max=993 norm=3 thr=683/529 on_line=0 | GP27 raw=185 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:47.568] [comms] H s=202 up=99001 bytes=56192057300000 queued
+[15:56:47.568] [comms] S s=203 up=99001 bytes=741920573000000000043f00008000000004 queued
+[15:56:48.569] [comms] H s=204 up=100001 bytes=961920d4300000 queued
+[15:56:48.569] [comms] S s=205 up=100001 bytes=b41920d43000000000043f00008000000004 queued
+[15:56:48.582] [motion] timing (5 s): tick period 9859..10142 us, tick work max 1773 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:48.582] [motion] watchdog (5 s): longest gap between feeds 10837 us, resets at 30000 us; E motion sends refused 0
+[15:56:48.606] [line] raw ADC GP26=227 GP27=190 norm 9/0 err=0 | barcode AO GP28=220 floor 211 norm 3 (white) 0 mm/s | missed 1 ticks (38 since boot)
+[15:56:48.607] [line] dbg GP26 raw=227 min=220 max=993 norm=9 thr=683/529 on_line=0 | GP27 raw=190 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:49.564] [comms] H s=206 up=101001 bytes=d6192051310000 queued
+[15:56:49.576] [comms] S s=207 up=101001 bytes=f41920513100000000043f00008000000004 queued
+[15:56:49.786] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:50.567] [comms] H s=208 up=102001 bytes=161a20ce310000 queued
+[15:56:50.568] [comms] S s=209 up=102001 bytes=341a20ce3100000000043f00008000000004 queued
+[15:56:50.602] [line] raw ADC GP26=220 GP27=199 norm 0/9 err=0 | barcode AO GP28=231 floor 214 norm 7 (white) 0 mm/s | missed 1 ticks (39 since boot)
+[15:56:50.603] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=199 min=192 max=968 norm=9 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:51.571] [comms] H s=210 up=103001 bytes=561a204b320000 queued
+[15:56:51.572] [comms] S s=211 up=103001 bytes=741a204b3200000000043f00008000000004 queued
+[15:56:52.562] [comms] H s=212 up=104001 bytes=961a20c8320000 queued
+[15:56:52.573] [comms] S s=213 up=104001 bytes=b41a20c83200000000043f00008000000004 queued
+[15:56:52.607] [line] raw ADC GP26=216 GP27=203 norm 0/12 err=-1 | barcode AO GP28=230 floor 215 norm 6 (white) 0 mm/s | missed 1 ticks (40 since boot)
+[15:56:52.607] [line] dbg GP26 raw=216 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=203 min=193 max=968 norm=12 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:53.565] [comms] H s=214 up=105001 bytes=d61a2045330000 queued
+[15:56:53.566] [comms] S s=215 up=105001 bytes=f41a20453300000000043f00008000000004 queued
+[15:56:53.578] [motion] timing (5 s): tick period 8721..11287 us, tick work max 2577 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:53.578] [motion] watchdog (5 s): longest gap between feeds 12062 us, resets at 30000 us; E motion sends refused 0
+[15:56:54.568] [comms] H s=216 up=106001 bytes=161b20c2330000 queued
+[15:56:54.568] [comms] S s=217 up=106001 bytes=341b20c23300000000043f00008000000004 queued
+[15:56:54.613] [line] raw ADC GP26=213 GP27=205 norm 0/15 err=-1 | barcode AO GP28=240 floor 216 norm 10 (white) 0 mm/s | missed 1 ticks (41 since boot)
+[15:56:54.613] [line] dbg GP26 raw=213 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=205 min=193 max=968 norm=15 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:54.779] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:56:55.571] [comms] H s=218 up=107001 bytes=561b203f340000 queued
+[15:56:55.572] [comms] S s=219 up=107001 bytes=741b203f3400000000043f00008000000004 queued
+[15:56:56.562] [comms] H s=220 up=108001 bytes=961b20bc340000 queued
+[15:56:56.573] [comms] S s=221 up=108001 bytes=b41b20bc3400000000043f00008000000004 queued
+[15:56:56.607] [line] raw ADC GP26=204 GP27=187 norm 0/0 err=0 | barcode AO GP28=219 floor 210 norm 3 (white) 0 mm/s | missed 0 ticks (41 since boot)
+[15:56:56.607] [line] dbg GP26 raw=204 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=187 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:57.565] [comms] H s=222 up=109001 bytes=d61b2039350000 queued
+[15:56:57.577] [comms] S s=223 up=109001 bytes=f41b20393500000000043f00008000000004 queued
+[15:56:58.567] [comms] H s=224 up=110001 bytes=161c20b6350000 queued
+[15:56:58.568] [comms] S s=225 up=110001 bytes=341c20b63500000000043f00008000000004 queued
+[15:56:58.580] [motion] timing (5 s): tick period 9875..10100 us, tick work max 982 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:56:58.580] [motion] watchdog (5 s): longest gap between feeds 10594 us, resets at 30000 us; E motion sends refused 0
+[15:56:58.615] [line] raw ADC GP26=234 GP27=214 norm 18/27 err=0 | barcode AO GP28=232 floor 210 norm 9 (white) 0 mm/s | missed 1 ticks (42 since boot)
+[15:56:58.615] [line] dbg GP26 raw=234 min=220 max=993 norm=18 thr=683/529 on_line=0 | GP27 raw=214 min=193 max=968 norm=27 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:56:59.573] [comms] H s=226 up=111001 bytes=561c2033360000 queued
+[15:56:59.573] [comms] S s=227 up=111001 bytes=741c20333600000000043f00008000000004 queued
+[15:56:59.782] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:57:00.563] [comms] H s=228 up=112001 bytes=961c20b0360000 queued
+[15:57:00.563] [comms] S s=229 up=112001 bytes=b41c20b03600000000043f00008000000004 queued
+[15:57:00.609] [line] raw ADC GP26=217 GP27=204 norm 0/14 err=-1 | barcode AO GP28=215 floor 214 norm 0 (white) 0 mm/s | missed 0 ticks (42 since boot)
+[15:57:00.609] [line] dbg GP26 raw=217 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=204 min=193 max=968 norm=14 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:01.566] [comms] H s=230 up=113001 bytes=d61c202d370000 queued
+[15:57:01.567] [comms] S s=231 up=113001 bytes=f41c202d3700000000043f00008000000004 queued
+[15:57:02.568] [comms] H s=232 up=114001 bytes=161d20aa370000 queued
+[15:57:02.569] [comms] S s=233 up=114001 bytes=341d20aa3700000000043f00008000000004 queued
+[15:57:02.615] [line] raw ADC GP26=216 GP27=175 norm 0/0 err=0 | barcode AO GP28=228 floor 212 norm 6 (white) 0 mm/s | missed 1 ticks (43 since boot)
+[15:57:02.615] [line] dbg GP26 raw=216 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=175 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:03.572] [comms] H s=234 up=115001 bytes=561d2027380000 queued
+[15:57:03.572] [comms] S s=235 up=115001 bytes=741d20273800000000043f00008000000004 queued
+[15:57:03.586] [motion] timing (5 s): tick period 9859..10150 us, tick work max 2016 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:57:03.586] [motion] watchdog (5 s): longest gap between feeds 11365 us, resets at 30000 us; E motion sends refused 0
+[15:57:04.565] [comms] H s=236 up=116001 bytes=961d20a4380000 queued
+[15:57:04.566] [comms] S s=237 up=116001 bytes=b41d20a43800000000043f00008000000004 queued
+[15:57:04.612] [line] raw ADC GP26=225 GP27=196 norm 7/3 err=0 | barcode AO GP28=239 floor 216 norm 10 (white) 0 mm/s | missed 1 ticks (44 since boot)
+[15:57:04.612] [line] dbg GP26 raw=225 min=219 max=993 norm=7 thr=683/529 on_line=0 | GP27 raw=196 min=193 max=968 norm=3 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:04.777] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:57:05.569] [comms] H s=238 up=117001 bytes=d61d2021390000 queued
+[15:57:05.569] [comms] S s=239 up=117001 bytes=f41d20213900000000043f00008000000004 queued
+[15:57:06.571] [comms] H s=240 up=118001 bytes=161e209e390000 queued
+[15:57:06.572] [comms] S s=241 up=118001 bytes=341e209e3900000000043f00008000000004 queued
+[15:57:06.617] [line] raw ADC GP26=220 GP27=208 norm 0/19 err=-1 | barcode AO GP28=225 floor 212 norm 5 (white) 0 mm/s | missed 1 ticks (45 since boot)
+[15:57:06.617] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=208 min=193 max=968 norm=19 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:07.563] [comms] H s=242 up=119001 bytes=561e201b3a0000 queued
+[15:57:07.563] [comms] S s=243 up=119001 bytes=741e201b3a00000000043f00008000000004 queued
+[15:57:08.565] [comms] H s=244 up=120001 bytes=961e20983a0000 queued
+[15:57:08.578] [comms] S s=245 up=120001 bytes=b41e20983a00000000043f00008000000004 queued
+[15:57:08.578] [motion] timing (5 s): tick period 9892..10115 us, tick work max 1102 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:57:08.578] [motion] watchdog (5 s): longest gap between feeds 10464 us, resets at 30000 us; E motion sends refused 0
+[15:57:08.613] [line] raw ADC GP26=220 GP27=204 norm 0/14 err=-1 | barcode AO GP28=222 floor 211 norm 4 (white) 0 mm/s | missed 1 ticks (46 since boot)
+[15:57:08.613] [line] dbg GP26 raw=220 min=220 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=204 min=193 max=968 norm=14 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:09.571] [comms] H s=246 up=121001 bytes=d61e20153b0000 queued
+[15:57:09.572] [comms] S s=247 up=121001 bytes=f41e20153b00000000043f00008000000004 queued
+[15:57:09.781] [imu] stopped, level | turns: 0 left, 0 right | humps: none yet
+[15:57:10.563] [comms] H s=248 up=122001 bytes=161f20923b0000 queued
+[15:57:10.575] [comms] S s=249 up=122001 bytes=341f20923b00000000043f00008000000004 queued
+[15:57:10.608] [line] raw ADC GP26=223 GP27=181 norm 5/0 err=0 | barcode AO GP28=215 floor 206 norm 3 (white) 0 mm/s | missed 0 ticks (46 since boot)
+[15:57:10.609] [line] dbg GP26 raw=223 min=219 max=993 norm=5 thr=683/529 on_line=0 | GP27 raw=181 min=193 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:11.567] [comms] H s=250 up=123001 bytes=561f200f3c0000 queued
+[15:57:11.567] [comms] S s=251 up=123001 bytes=741f200f3c00000000043f00008000000004 queued
+[15:57:12.569] [comms] H s=252 up=124001 bytes=961f208c3c0000 queued
+[15:57:12.569] [comms] S s=253 up=124001 bytes=b41f208c3c00000000043f00008000000004 queued
+[15:57:12.616] [line] raw ADC GP26=216 GP27=188 norm 0/0 err=0 | barcode AO GP28=227 floor 211 norm 6 (white) 0 mm/s | missed 1 ticks (47 since boot)
+[15:57:12.616] [line] dbg GP26 raw=216 min=219 max=993 norm=0 thr=683/529 on_line=0 | GP27 raw=188 min=192 max=968 norm=0 thr=657/503 on_line=0 | dark_ms=2550 lost=0
+[15:57:13.573] [comms] H s=254 up=125001 bytes=d61f20093d0000 queued
+[15:57:13.575] [comms] S s=255 up=125001 bytes=f41f20093d00000000043f00008000000004 queued
+[15:57:13.575] [motion] timing (5 s): tick period 9890..10117 us, tick work max 942 us, encoder irq 0/s (longest 0 us), lost ticks 0, dropped reports 0
+[15:57:13.587] [motion] watchdog (5 s): longest gap between feeds 10429 us, resets at 30000 us; E motion sends refused 0
+[15:57:14.597] [cap] port closed (Device not configured): Pico reset, flashed or unplugged
+[15:57:14.654] [cap] no Pico port yet, waiting
+[15:57:34.181] [cap] port open /dev/cu.usbmodemMTK3PICO1
+[15:57:34.182] [note] 2026-11-22 15:57:33 flashed lab_straddle65w_iphone (hump59)
+[15:57:34.182] 00040007e0000 queued
+[15:57:34.182] [comms] E mission s=2 up=0 bytes=550000000000a000 queued
+[15:57:34.182] [comms] E mission s=3 up=0 bytes=750000000000a001 queued
+[15:57:34.182] [line] line found (LOST_MS 60000)
+[15:57:34.182] [comms] E line s=4 up=2 bytes=950040000000200002 queued
+[15:57:34.182] [motion] ready on processor 2, init OK (er=0). PWM 10000 Hz on GP8-GP11, encoders GP0-GP3, bench OFF (MOTION_BENCH=0): motors stay braked, MOTION_PACKED=1
+[15:57:34.182] [motion] counts per wheel turn: left 2535 (MOTION_COUNTS_PER_REV), right 2535 (MOTION_COUNTS_PER_REV_R), no scaling; MOTION_LF_LOST_DIR_MS=300
+[15:57:34.182] [motion] last reset: a reboot by the boot ROM or a debugger (such as after a UF2 copy), not a fault.
+[15:57:34.182] [motion] watchdog armed: the chip resets if a tick does not complete within 30 ms.
+[15:57:34.182] [imu] found LSM303D at 0x1d
+[15:57:34.182] [imu] faults: tilt > 24.9 deg or upside down for 3 samples (in a mission), no data for 50 ms
+[15:57:34.182] === uT-Kernel 3.0 / RP2040 car ===
+[15:57:34.189] [build] netlog rev 55acd52 R=2535 TABLE=LFFFFLFFFFFFFFFFLFFFFFFFFL patch=gamble_hump59.patch | -DBARCODE_SENSOR_ANALOG=1 -DBC_PART_GAMBLE=1 -DBC_PART_CELLS_MAX=40000 -DHUMP_TRACK_MM=120 -DLINE_BARCODE_HOLD=1 -DLINE_BARCODE_HOLD_STEER=0 -DLINE_SCAN_MAX_TURN_DPS=15 -DLINE_LOST_MS=60000u -DLINE_CRACK_MS=0u -DLINE_JUNCTION_PAIR=1 -DLINE_PAIR_SAMPLES=20u -DLINE_PAIR_MM10=175u -DLINE_PAIR_GP_WINDOW=60000u -DMOTION_TURN_FWD_MM=135 -DMOTION_TURN_IMU=1 -DMOTION_LF_STRADDLE=1 -DMOTION_ST_LOST_MM=1500u -DMOTION_ST_BASE_MMPS=65 -DMOTION_ST_CURVE_MMPS=40 -DMOTION_ST_MIN_WHEEL_MMPS=20 -DMOTION_ST_KICK_CURV=5500 -DMOTION_ST_LEARN_CURV=450 -DMOTION_ST_LEARN_TIGHT_CURV=600 -DMOTION_ST_SLEW_CURV=600 -DMOTION_SM_BOX_DIR=1 -DMOTION_SM_CROSS_CHECK_MM=8 -DMOTION_SM_MISS_X_MM=80 -DMOTION_SM_SEEN_DEG=12 -DMOTION_SM_ONTO_MM=117 -DMOTION_LF_HOLD_ON_BARCODE=0 -DMOTION_LF_BASE=6 -DMOTION_LF_BASE_CURVE=4 -DMOTION_LF_CURVE_BOOST_X10=15 -DMOTION_LF_BASE_READ=3 -DMOTION_LF_GAIN=5 -DMOTION_LF_DAMP=4 -DMOTION_LF_SLEW=25 -DMOTION_LF_RATE_DAMP=12 -DMOTION_LF_EDGE_LOST=1 -DMOTION_LF_EDGE_MIN_TICKS=15u -DMOTION_LF_REALIGN=0 -DMOTION_LF_GAP_MM=60 -DMOTION_LF_LOST_DIR_MS=300 -DMOTION_LS_DIR_MIN=25 -DMOTION_LS_SWEEP_DEG=80 -DMOTION_BC_RETRY=1 -DIR_ADAPT_BLACK_UP_SHIFT=8 -DIR_ADAPT_BLACK_DOWN_SHIFT=13 -DBC_DELTA=160 -DBC_DELTA_MIN=120 -DLINE_JUNCTION_SAMPLES=450 -DLINE_ARMED_HOLD_MM=1000000 -DSL_KNOWN_W_MM=90 -DSL_WIDTH_EDGE_MID=1 -DSL_EDGE_REFINE=1 -DSL_BEAM_HALF_DEG=10 -DMOTION_BYPASS_SMOOTH=1 -DMOTION_SM_ADAPT=0 -DMOTION_SM_HD_FALLBACK=1 -DMOTION_HD_LINE_MM=120 -DMOTION_HD_SNAP_DEG=20 -DMOTION_SM_Y_MM=215 -DMOTION_SM_SHIFT_MIN=0 -DMOTION_SM_S_OUT_MM=210 -DMOTION_SM_S_IN_MM=510 -DMOTION_SM_L_IN_MM=100 -DMOTION_SM_MAX_DEG=60 -DMOTION_SM_SPEED=13 -DMOTION_SM_SEEN_X_MM=250 -DMOTION_SM_WATCH=2 -DMOTION_SM_WATCH_DEG=55 -DMOTION_SM_CLEAR_MM=250 -DSERVO_LIMIT_DEG=55 -DSCAN_WATCH_DEG=55 | built 2026-11-22T15:56
+[15:57:34.189] [netlog] DEBUG PROFILE: console also sent over UDP to the broker's host (not for demo day)
+[15:57:34.189] SMP build: 2 processors
+[15:57:34.344] [wifi] link DOWN
+[15:57:34.344] [mqtt] state=WAIT_ADDR  0.0.0.0:0  conn#=0 lost=0  pub=0 err=0 drop=0  last=0/0
+[15:57:34.652] [comms] H s=5 up=1001 bytes=b600207d000000 queued
+[15:57:34.652] [comms] S s=6 up=1001 bytes=d400207d0000000000003f000040007e0000 queued
+[15:57:34.663] [line] calibration OK: GP26 ok (white 202, black 1002, rise 682) GP27 ok (white 163, black 963, rise 643)
+[15:57:34.861] [imu] cal ok: offsets x=17 y=-17 z=51 mg, spread 45 mg
+[15:57:34.862] [imu] -> nav: CAL_OK_IMU
+[15:57:34.862] [nav] CAL_OK_IMU: stale IMU_FAULT cleared
+[15:57:34.862] [nav] mission CALIBRATING -> READY
+[15:57:34.862] [nav] buzzer: 1 x 100 ms
+[15:57:34.862] [comms] E mission s=7 up=1217 bytes=f50020980000a002 dropped(-50)
+[15:57:35.061] [nav] GP20 = start/resume/reset, GP21 = pause
+[15:57:35.644] [comms] H s=8 up=2001 bytes=160120fa000000 dropped(-50)
+[15:57:35.644] [comms] S s=9 up=2001 bytes=340120fa0000000000003f00008000000004 dropped(-50)
+[15:57:35.658] [line] raw ADC GP26=226 GP27=196 norm 23/29 err=0 | barcode AO GP28=241 floor 208 norm 14 (white) 0 mm/s | missed 13 ticks (13 since boot)
+[15:57:35.658] [line] dbg GP26 raw=226 min=207 max=1002 norm=23 thr=683/525 on_line=0 | GP27 raw=196 min=173 max=963 norm=29 thr=647/489 on_line=0 | dark_ms=2550 lost=0
+[15:57:36.648] [comms] H s=10 up=3001 bytes=56012077010000 dropped(-50)
+[15:57:36.648] [comms] S s=11 up=3001 bytes=740120770100000000003f00008000000004 dropped(-50)
+[15:57:37.352] [wifi] state=JOINING join#=1 lease#=0 lost=0 t=1709ms
+[15:57:37.649] [comms] H s=12 up=4001 bytes=960120f4010000 dropped(-50)
+[15:57:37.649] [comms] S s=13 up=4001 bytes=b40120f40100000000003f00008000000004 dropped(-50)
+[15:57:37.663] [line] raw ADC GP26=229 GP27=197 norm 20/17 err=0 | barcode AO GP28=229 floor 211 norm 7 (white) 0 mm/s | missed 0 ticks (13 since boot)
+[15:57:37.663] [line] dbg GP26 raw=229 min=213 max=1002 norm=20 thr=685/529 on_line=0 | GP27 raw=197 min=183 max=963 norm=17 thr=651/495 on_line=0 | dark_ms=2550 lost=0
+[15:57:37.993] [comms] E motion s=14 up=4351 bytes=d501e01f02000000080800f80f dropped(-50)
+[15:57:38.059] [motion] t=4.40s  duty L+0 R+0  count L+1 R+0  speed L+5 R+0 c/s  missed L0 R0
+[15:57:38.059] [motion] distance_state 0x80000000: dist 0 mm (net +0 mm), STEADY (-16 mm/s^2), update 0, turn +0 deg/s
+[15:57:38.108] [cap] port closed (Device not configured): Pico reset, flashed or unplugged
+[15:57:38.165] [cap] no Pico port yet, waiting

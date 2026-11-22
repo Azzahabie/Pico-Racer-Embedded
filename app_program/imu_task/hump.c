@@ -50,6 +50,71 @@
 #define BASE_MAX_MG	40		/* level is only learned this close to
 					   the calibration level, stopped     */
 
+/* ONE WHEEL (ours, 21 Nov): the demo ramp goes under one wheel only, so
+   the car tips sideways and the summed tilt counts the tip as climb
+   (car, 20 Nov: 13.9 and 15.1 mm for a 10 mm ramp; the roll was 85-100
+   mg on top, the nose-up tilt about 50).  With one wheel up h, the axle
+   tilts h / track, so h = HUMP_TRACK_MM x roll.  When the hump's roll
+   (median of its top 100 ms means, against the roll while driving level) reaches
+   HUMP_ONE_WHEEL_MG, that is the height; below it (both wheels on a full
+   width hump) the summed tilt is kept.  0: off. */
+#ifndef HUMP_ONE_WHEEL
+#define HUMP_ONE_WHEEL		1
+#endif
+#ifndef HUMP_TRACK_MM
+#define HUMP_TRACK_MM		127	/* wheel contact to wheel contact */
+#endif
+#ifndef HUMP_ONE_WHEEL_MG
+#define HUMP_ONE_WHEEL_MG	40	/* about 2.3 deg of roll           */
+#endif
+#define ROLL_WIN_MAX		64	/* 100 ms windows kept per hump    */
+LOCAL W		roll_win[ROLL_WIN_MAX];	/* |roll| per window, mg           */
+LOCAL INT	roll_n;
+LOCAL W		roll_base;		/* level roll while DRIVING: the car
+					   reads about -8 mg more moving than
+					   stopped (20 Nov), so not base[1]  */
+LOCAL BOOL	roll_base_ok;
+
+LOCAL void roll_reset(void)
+{
+	roll_n = 0;
+}
+
+LOCAL void roll_note(W ay)
+{
+	W	r = ay - (roll_base_ok ? roll_base : 0);
+
+	r = (r < 0) ? -r : r;
+	if(roll_n < ROLL_WIN_MAX) {
+		roll_win[roll_n++] = r;
+	}
+}
+
+/* The plateau: the median of the windows at 70 % of the largest or more
+   (one window can carry a bump; the top of the ramp is several). */
+LOCAL W roll_plateau(void)
+{
+	W	mx = 0;
+	W	s[ROLL_WIN_MAX];
+	INT	n = 0;
+	INT	i;
+	INT	j;
+
+	for(i = 0; i < roll_n; i++) {
+		if(roll_win[i] > mx) mx = roll_win[i];
+	}
+	for(i = 0; i < roll_n; i++) {
+		if(roll_win[i] * 10 >= mx * 7) {
+			W	v = roll_win[i];
+
+			for(j = n; (j > 0) && (s[j - 1] > v); j--) s[j] = s[j - 1];
+			s[j] = v;
+			n++;
+		}
+	}
+	return (n > 0) ? s[n / 2] : 0;
+}
+
 LOCAL const char * const hump_name[] = { "none", "climbing", "descending" };
 
 LOCAL HUMP_STATE hump_state = HUMP_NONE;
@@ -188,8 +253,23 @@ EXPORT void hump_mission_reset(void)
 LOCAL void hump_finish(void)
 {
 	W	top = (peak_um > -trough_um) ? peak_um : -trough_um;
-	W	mm = (top + 500) / 1000;
-	W	tenths = (top + 50) / 100;	/* 0.1 mm, for tuning logs */
+	W	mm;
+	W	tenths;
+
+	W	plateau = roll_plateau();
+
+	if((HUMP_ONE_WHEEL != 0) && (plateau >= HUMP_ONE_WHEEL_MG)) {
+		W	sum_um = top;
+
+		top = (W)HUMP_TRACK_MM * plateau;	/* mm x mg = um */
+		tm_printf((UB *)"[imu] hump: one wheel up, roll %d mg x track %d mm"
+			       " = %d.%d mm (summed tilt said %d.%d)\n",
+			  plateau, (INT)HUMP_TRACK_MM, (top + 50) / 100 / 10,
+			  (top + 50) / 100 % 10, (sum_um + 50) / 100 / 10,
+			  (sum_um + 50) / 100 % 10);
+	}
+	mm = (top + 500) / 1000;
+	tenths = (top + 50) / 100;	/* 0.1 mm, for tuning logs */
 
 	if(mm >= HUMP_MIN_MM) {
 		hump_count++;
@@ -334,6 +414,15 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 
 	if(hump_state == HUMP_NONE) {
 		if(on_top && top_step(dx, dy, tilt, dmm, ad)) return;
+		if((tilt < HUMP_EXIT_MG) && (ad > 0)) {
+			/* driving level: the roll reference (ONE WHEEL) */
+			if(!roll_base_ok) {
+				roll_base = ay;
+				roll_base_ok = TRUE;
+			} else {
+				roll_base += (ay - roll_base) / 16;
+			}
+		}
 		if(tilt < HUMP_ENTER_MG) {
 			pend_win = 0;
 			if(ad == 0
@@ -381,7 +470,9 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 			pend_sum[0] = pend_sum[1] = 0;
 			pend_h = pend_len = 0;
 			pend_peak = 0;
+			roll_reset();
 		}
+		roll_note(ay);
 		pend_sum[0] += fx;
 		pend_sum[1] += fy;
 		pend_h += (W)tilt * ad;
@@ -404,6 +495,7 @@ EXPORT void hump_step(W ax, W ay, W dmm, BOOL steady)
 	}
 
 	hump_len += ad;
+	roll_note(ay);
 	dot = dx * onset[0] + dy * onset[1];	/* > 0: nose up */
 	rise = (W)tilt * dmm;
 	h_um += (dot >= 0) ? rise : -rise;

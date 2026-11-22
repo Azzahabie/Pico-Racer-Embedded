@@ -44,6 +44,11 @@ line/test_junction_scan_off
 line/test_junction_scan_short
 line/test_scan_gate
 line/test_scan_gate_short
+line/test_bc_analog
+line/test_bc_analog_fixtures
+line/test_bc_analog_chain
+line/test_bc_analog_partial
+line/test_barcode_task_analog
 scan_logic_test
 scan_logic_test_known
 host/test_messages

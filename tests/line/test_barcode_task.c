@@ -5,10 +5,12 @@
    messages built by bar_capture.c from 1 ms samples, maps, mission
    changes, quiet 20 ms waits), and the end of the script leaves the task.
 
-   Built three times (tests/line/Makefile): as committed (no compiled-in
+   Built four times (tests/line/Makefile): as committed (no compiled-in
    table), with the writeup's example compiled in (-DBARCODE_DEFAULT_TABLE_SET=1,
-   "LRFU" + 22 x F: A left, B right, C straight, D U-turn), and with a
-   compiled-in table that has a wrong character. */
+   "LRFU" + 22 x F: A left, B right, C straight, D U-turn), with a
+   compiled-in table that has a wrong character, and with the example and
+   the analog barcode path (-DBARCODE_SENSOR_ANALOG=1: its LETTER and
+   ANALOG messages, Boon's decode on this side, the reply word). */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -585,8 +587,215 @@ static void map_survives_new_mission(void)
 	CHECK(9u == barcode_map_version());
 }
 
+#if BARCODE_SENSOR_ANALOG
+/* ---- the analog path (BARCODE_SENSOR_ANALOG 1) ------------------------ */
+/* ir_sense_task's capture, for barcode_task (bc_analog_link.h) */
+static bc_capture_t g_bc;
+
+const bc_capture_t *line_bc_capture(void)
+{
+	return &g_bc;
+}
+
+/* Feed g_bc a quiet zone, the elements w (um, bar first) at 32 um a
+   sample (bars 900, spaces 40 of 1000), then white until it hands over
+   (BC_ST_DECODING). */
+static void bc_feed(const uint32_t *w, unsigned n)
+{
+	bc_out_t o;
+	unsigned i;
+	uint32_t t;
+
+	bc_init(&g_bc);
+	for (t = 0u; t < 40000u; t += 32u) {
+		(void)bc_sample(&g_bc, 40u, 32u, &o);
+	}
+	for (i = 0u; i < n; ++i) {
+		for (t = 0u; t < w[i]; t += 32u) {
+			(void)bc_sample(&g_bc, ((i % 2u) == 0u) ? 900u : 40u, 32u, &o);
+		}
+	}
+	for (t = 0u; (t < 200000u) && (g_bc.state != (uint8_t)BC_ST_DECODING); t += 32u) {
+		(void)bc_sample(&g_bc, 40u, 32u, &o);
+	}
+	CHECK(g_bc.state == (uint8_t)BC_ST_DECODING);
+}
+
+/* *letter* in um (narrow 4 mm, wide 10 mm), its first `drop` elements
+   lost; returns the count */
+static unsigned bc_letter(char letter, unsigned drop, uint32_t *w)
+{
+	unsigned n = 0u;
+	unsigned s;
+	unsigned i;
+
+	for (s = 0u; s < 3u; ++s) {
+		const char *p = patterns[(1u == s) ? (unsigned)(letter - 'A') : 26u];
+
+		for (i = 0u; i < 9u; ++i) {
+			w[n++] = ('W' == p[i]) ? 10000u : 4000u;
+		}
+		if (s < 2u) {
+			w[n++] = 4000u;
+		}
+	}
+	memmove(w, &w[drop], (n - drop) * sizeof(w[0]));
+	return n - drop;
+}
+
+static void add_analog(uint8_t type, uint8_t read_id, uint16_t value)
+{
+	uint8_t m[BAR_MSG_SIZE];
+
+	bar_msg_pack(m, (bar_event_t)type, read_id, value);
+	add(EV_MSG, m, BAR_MSG_SIZE);
+}
+
+/* LETTER: decoded on core 1; barcode_task looks it up and stores it. */
+static void analog_letter_stored(void)
+{
+	reset();
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_LETTER, 7u, bc_link_letter_value('B', true));
+	add_mark(0);
+	add_analog(BAR_MSG_LETTER, 8u, bc_link_letter_value('Q', false));	/* F in the table */
+	add_mark(1);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] 'B' -> RIGHT (dir=rev), stored for the next junction\n"));
+	CHECK(cmd_is(g_mark_cmd[0], 'B', BARCODE_ACT_RIGHT));
+	CHECK(cmd_is(g_mark_cmd[1], 'Q', BARCODE_ACT_FORWARD));
+	CHECK(barcode_judged_word() == barcode_judged_pack(8u));
+	CHECK((2 == g_e_n) && (1u == g_e_letter[0]) && (BARCODE_ACT_RIGHT == g_e_action[0]));
+}
+
+/* ANALOG: a read one bar short (27 elements: no stop END) is decoded on
+   core 0 by Boon's repair; command, judged word, then the reply. */
+static void analog_decoded_on_core0(void)
+{
+	uint32_t w[32];
+	unsigned n = bc_letter('A', 2u, w);
+
+	reset();
+	bc_feed(w, n);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] 'A' -> LEFT (dir=fwd), stored for the next junction\n"));
+	CHECK(NULL != strstr(g_log, "[barcode]   analog read, pass 0 (swing), 27 elements"));
+	CHECK(cmd_is(g_mark_cmd[0], 'A', BARCODE_ACT_LEFT));
+	CHECK(barcode_judged_word() == barcode_judged_pack(g_bc.read_id));
+	CHECK(bc_link_reply_is(barcode_analog_reply_word(), g_bc.read_id));
+	CHECK(BC_VALID == bc_link_reply_result(barcode_analog_reply_word()));
+	CHECK('A' == bc_link_reply_letter(barcode_analog_reply_word()));
+}
+
+/* A reject prints Boon's reason and the widths in mm, sends letter 31,
+   stores the judged word and no command. */
+static void analog_rejected(void)
+{
+	uint32_t w[32];
+	unsigned n = bc_letter('C', 0u, w);
+
+	n = 15u;			/* half a read */
+	reset();
+	bc_feed(w, n);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] REJECTED: malformed (analog count, decode 0 us)\n"));
+	CHECK(NULL != strstr(g_log, "[barcode]   15 widths in mm (1 letter = 29)"));
+	CHECK(NULL != strstr(g_log, "[barcode]    0: B4.0 w10.0 B4.0 w4.0 B10.0"));
+	/* ours: the partial decoder's verdict, before the widths */
+	CHECK(log_before("[barcode]   partial: not tried (no reading of 25..35 elements, odd)\n",
+			   "[barcode]   15 widths in mm"));
+	CHECK(BARCODE_LETTER_NONE == barcode_cmd_letter(g_mark_cmd[0]));
+	CHECK(barcode_judged_word() == barcode_judged_pack(g_bc.read_id));
+	CHECK(BC_REJECT == bc_link_reply_result(barcode_analog_reply_word()));
+	CHECK((1 == g_e_n) && (COMM_W_BARCODE_UNREADABLE == g_e_letter[0]));
+}
+
+/* Ours: the car read of 20 Nov 17:44 (M), a 27 that Boon's decoders
+   reject, is *F* backwards with one thin bar lost: the partial decoder
+   reads it (pass 7) and the console says so. */
+static void analog_partial_decoded(void)
+{
+	static const uint32_t p1[27] = {
+		1800u, 10900u, 11800u, 11700u, 11300u, 34800u, 1700u, 9600u, 2600u,
+		8000u, 3100u, 20500u, 12900u, 11700u, 12300u, 10500u, 2300u, 9400u,
+		2400u, 9000u, 14500u, 8500u, 14700u, 9100u, 2500u, 21300u, 1500u
+	};
+
+	reset();
+	bc_feed(p1, 27u);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] 'F' -> FORWARD (dir=rev), stored for the next junction\n"));
+	CHECK(NULL != strstr(g_log, "[barcode]   analog read, pass 7 (partial: 1 missed bar), 27 elements"));
+	CHECK(cmd_is(g_mark_cmd[0], 'F', BARCODE_ACT_FORWARD));
+	CHECK('F' == bc_link_reply_letter(barcode_analog_reply_word()));
+}
+
+/* Ours: *A* with its first data space lost reads exactly as *B* with the
+   space after its first data bar lost (wide + narrow + narrow either
+   way): the partial decoder refuses, and says why. */
+static void analog_partial_refused(void)
+{
+	uint32_t w[32];
+	unsigned n = bc_letter('A', 0u, w);
+
+	w[10] += w[11] + w[12];
+	memmove(&w[11], &w[13], (n - 13u) * sizeof(w[0]));
+	n -= 2u;
+	reset();
+	bc_feed(w, n);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, 0u);
+	add_mark(0);
+	run();
+	CHECK(log_before("[barcode] REJECTED: malformed (analog ", "[barcode]   partial: best"));
+	CHECK(NULL != strstr(g_log, "[barcode]   partial: best 'A' (fwd, 1 missed space), refused: 'B' fits nearly as well (x1.0)\n"));
+	CHECK(BARCODE_LETTER_NONE == barcode_cmd_letter(g_mark_cmd[0]));
+	CHECK(BC_REJECT == bc_link_reply_result(barcode_analog_reply_word()));
+}
+
+/* Cut by a junction: judged for the console only, nothing stored. */
+static void analog_cut(void)
+{
+	uint32_t w[32];
+	unsigned n = bc_letter('D', 2u, w);
+
+	reset();
+	bc_feed(w, n);
+	add(EV_WAIT, NULL, 0);
+	add_mission(MS_RUNNING);
+	add_analog(BAR_MSG_ANALOG, g_bc.read_id, (uint16_t)BAR_ANALOG_CUT);
+	add_mark(0);
+	run();
+	CHECK(NULL != strstr(g_log, "[barcode] 'D' read, but a junction cut the read: not stored"));
+	CHECK(BARCODE_LETTER_NONE == barcode_cmd_letter(g_mark_cmd[0]));
+	CHECK(bc_link_reply_is(barcode_analog_reply_word(), g_bc.read_id));
+}
+#endif
+
 int main(void)
 {
+#if BARCODE_SENSOR_ANALOG
+	analog_letter_stored();
+	analog_decoded_on_core0();
+	analog_rejected();
+	analog_partial_decoded();
+	analog_partial_refused();
+	analog_cut();
+#endif
 #if !BARCODE_DEFAULT_TABLE_SET
 	no_table();
 #elif defined(TEST_BAD_TABLE)
@@ -605,6 +814,8 @@ int main(void)
 #elif defined(TEST_BAD_TABLE)
 	maps_queue_full();
 	return check_report("barcode_task (compiled-in table with a bad character)");
+#elif BARCODE_SENSOR_ANALOG
+	return check_report("barcode_task (analog path, compiled-in " BARCODE_DEFAULT_TABLE ")");
 #else
 	return check_report("barcode_task (compiled-in " BARCODE_DEFAULT_TABLE ")");
 #endif
