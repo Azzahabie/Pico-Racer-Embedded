@@ -17,8 +17,12 @@
 #define SERVO_US_PER_DEG	11	/* SG90 ~500..2500 us over ~180 deg     */
 #define SERVO_MIN_US		500	/* never go past these: the servo jams  */
 #define SERVO_MAX_US		2500	/* against its end stop                 */
+#ifndef SERVO_LIMIT_DEG
 #define SERVO_LIMIT_DEG		45	/* scan range is -45..+45 deg           */
+#endif
+#ifndef SERVO_SETTLE_MS
 #define SERVO_SETTLE_MS		150	/* report budget per step (NFR-07)      */
+#endif
 
 /* Mounting calibration (see the calibration test in obstacle_task.c).
  * Fix big errors (> ~20 deg, or facing backwards) by refitting the horn.

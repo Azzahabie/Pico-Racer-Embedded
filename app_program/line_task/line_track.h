@@ -33,12 +33,26 @@ typedef struct {
 	bool junction_armed;
 	bool junction_due;		/* fires once the gate's wait ends */
 	bool on_crossbar;		/* fired, GP7 still on that black */
-	bool run_turning;		/* this GP7 black run began while
+	bool run_turning;
+	uint16_t pair_run;	/* LINE_JUNCTION_PAIR: both line sensors black */
+	uint32_t pair_mm;	/* travel with both black */
+	uint32_t l_mm;		/* travel with the left sensor black (debug) */
+	uint32_t r_mm;		/* travel with the right sensor black (debug) */
+	uint32_t dbg_pair_mm;	/* a run just ended: its length, mm (debug) */
+	uint32_t dbg_l_mm;
+	uint32_t dbg_r_mm;
+	bool dbg_turning;
+	uint16_t gp_ago;	/* samples since the barcode sensor was black */
+	bool pair_fired;	/* this both-black run has fired */		/* this GP7 black run began while
 					   the scan gate was shut */
 
 	uint32_t dark_ms;		/* since the last confirmed black */
 	uint32_t left_rail_run;
 	uint32_t right_rail_run;
+	uint16_t left_hold;	/* crack filter: ms a white left still reads black */
+	uint16_t right_hold;
+	uint16_t left_nhold;	/* the last black reading, held */
+	uint16_t right_nhold;
 	uint32_t counter;
 } line_track_t;
 
@@ -73,6 +87,10 @@ typedef struct {
 	bool armed_due;
 	bool wait;
 	bool turning;
+	bool armed;	/* a barcode has armed the next junction (pair rule) */
+	uint32_t moved_mm;	/* travel this sample (pair rule) */
+	bool manoeuvre;		/* motion turning/bypassing/searching, or just
+				   after a bypass: no junction at all */
 } line_junction_gate_t;
 
 /* Start from the configured thresholds, uncalibrated, junction armed. */
@@ -109,4 +127,13 @@ void line_track_step_gate(line_track_t *trk, uint16_t left_raw,
 			  bool mark_black, const line_junction_gate_t *gate,
 			  line_track_out_t *out);
 
+/* Crack filter (22 Nov 2026, car: the jigsaw seams between the track
+   tiles cross the tape unevenly, so one sensor reads a white crack while
+   the other is still on black, which reads as "the line drifted": a kick
+   at every seam).  A sensor that was black and reads white for less than
+   LINE_CRACK_MS (1 ms samples) still reports black with its last black
+   reading.  The levels' adaptation still sees the real reading.  0 = off. */
+#ifndef LINE_CRACK_MS
+#define LINE_CRACK_MS	(0u)
+#endif
 #endif

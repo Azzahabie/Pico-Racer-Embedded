@@ -147,6 +147,16 @@ LOCAL void dump_widths(void)
 }
 
 /* Console and telemetry, after the verdict is stored (store_verdict). */
+/* Failed reads worth a second try (21 Nov 2026, user: re-read a barcode
+   once, slowly and straight, if the first read fails; motion_task backs up
+   and reads it again, MOTION_BC_RETRY).  A count, one aligned word. */
+LOCAL volatile uint32_t	g_retry_req;
+
+EXPORT uint32_t barcode_retry_req(void)
+{
+	return g_retry_req;
+}
+
 LOCAL void report(const barcode_verdict_t *v)
 {
 	UB	body[COMM_W_INTAKE_SIZE_BARCODE];
@@ -181,6 +191,12 @@ LOCAL void report(const barcode_verdict_t *v)
 				 barcode_reject_name(v->reject));
 	}
 	tm_printf((UB *)"%s", line);
+	if((BARCODE_REJECT_DECODE == v->reject) ||
+	   (BARCODE_REJECT_NOT_ONE_LETTER == v->reject) ||
+	   ((BARCODE_REJECT_ABORTED == v->reject) &&
+	    (BAR_ABORT_CANCELLED != g_rx.abort_reason))) {
+		g_retry_req++;		/* a garbled or cut-off read */
+	}
 	if((BARCODE_REJECT_DECODE == v->reject) ||
 	   (BARCODE_REJECT_NOT_ONE_LETTER == v->reject)) {
 		dump_widths();

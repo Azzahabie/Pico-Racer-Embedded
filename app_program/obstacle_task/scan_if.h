@@ -48,9 +48,15 @@
 #define SCAN_FLG_SIDE_BLOCKED	0x80U	/* set by motion_task: the sidestep lane
 					   is blocked, the car is back on its
 					   heading: re-plan the other side */
+#define SCAN_FLG_WATCH		0x100U	/* set by motion_task (smooth bypass):
+					   turn to the box's side and ping it
+					   every cycle, each reading an
+					   AVOID_LOOK, until WATCH_END */
+#define SCAN_FLG_WATCH_END	0x200U	/* set by motion_task: stop, re-centre */
 #define SCAN_FLG_REPLIES	(SCAN_FLG_REVERSE_DONE | SCAN_FLG_LINE_FOUND | \
 				 SCAN_FLG_LINE_LOST | SCAN_FLG_LOOK | \
-				 SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED)
+				 SCAN_FLG_LOOK_AHEAD | SCAN_FLG_SIDE_BLOCKED | \
+				 SCAN_FLG_WATCH | SCAN_FLG_WATCH_END)
 
 #define SCAN_TICK_MS		60	/* one HC-SR04 cycle */
 
