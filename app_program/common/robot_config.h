@@ -5,7 +5,9 @@
 
 #define LINE_SAMPLE_PERIOD_MS           (1u)
 #define LINE_CONFIRM_SAMPLES            (6u)
+#ifndef LINE_LOST_SAMPLES
 #define LINE_LOST_SAMPLES               (8u)
+#endif
 #define LINE_HEARTBEAT_MS               (2000u)
 #define LINE_COMMISSION_DURATION_MS     (5000u)
 #define LINE_COMMISSION_SAMPLE_PERIOD_MS (100u)

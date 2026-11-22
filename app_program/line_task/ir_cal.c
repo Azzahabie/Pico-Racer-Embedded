@@ -143,6 +143,19 @@ static void follow(uint32_t *level_q, uint16_t dark, uint32_t shift)
 	*level_q = (uint32_t)((int32_t)*level_q + (diff / (int32_t)(1u << shift)));
 }
 
+/* TEST (20 Nov): black follows the readings' upper envelope, up fast and
+   down slowly, so a centred sensor reads about 1000 and the reading falls
+   off smoothly towards the line's edge.  With the plain average of the
+   black samples most on-line readings sat above "black" and clipped at
+   1000, the error stayed 0 until a sensor left the line, then jumped:
+   the car wobbled (car, 20 Nov).  Both equal IR_ADAPT_SHIFT: as before. */
+#ifndef IR_ADAPT_BLACK_UP_SHIFT
+#define IR_ADAPT_BLACK_UP_SHIFT		IR_ADAPT_SHIFT
+#endif
+#ifndef IR_ADAPT_BLACK_DOWN_SHIFT
+#define IR_ADAPT_BLACK_DOWN_SHIFT	IR_ADAPT_SHIFT
+#endif
+
 void ir_cal_adapt(ir_cal_sensor_t *cal, uint16_t raw, bool black)
 {
 	uint32_t white_q = cal->white_q;
@@ -154,7 +167,9 @@ void ir_cal_adapt(ir_cal_sensor_t *cal, uint16_t raw, bool black)
 	}
 	dark = darkness(cal->black_is_high, raw);
 	if (black) {
-		follow(&black_q, dark, IR_ADAPT_SHIFT);
+		follow(&black_q, dark,
+		       (((uint32_t)dark << IR_LEVEL_Q) > black_q) ? IR_ADAPT_BLACK_UP_SHIFT
+							  : IR_ADAPT_BLACK_DOWN_SHIFT);
 	} else if ((uint32_t)dark >= ((uint32_t)cal->white + IR_CAL_MIN_CONTRAST)) {
 		/* "white", but far darker than white: black reads lower than
 		   the thresholds expect */

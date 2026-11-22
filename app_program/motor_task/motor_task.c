@@ -378,6 +378,82 @@ typedef struct
     int32_t  arc_xt;        /* tangent point: sideways, mm            */
     int32_t  arc_yt;        /* tangent point: along the line, mm      */
     int32_t  arc_leg;       /* straight leg to the tangent point, mm  */
+    bool     b_smooth;      /* this bypass runs the smooth curve      */
+    bool     b_sm_out;      /* smooth: has been out (x > Y / 2)       */
+    int32_t  sm_y;          /* smooth: offset alongside the box, mm   */
+    int32_t  sm_x0;         /* smooth: axle off the line at the start */
+    int32_t  sm_rem;        /* smooth: steering remainder, x16        */
+    int32_t  sm_s_in;       /* smooth: where the way back in starts   */
+    bool     b_sm_watch;    /* smooth: the side watch is on           */
+    bool     b_sm_seen;     /* smooth: it has seen the box            */
+    bool     b_sm_new;      /* smooth: a new side reading             */
+    uint8_t  sm_clear_n;    /* smooth: clear readings in a row        */
+    uint16_t sm_watch_mm;   /* smooth: the last side reading          */
+    int32_t  sm_seen_s;     /* smooth: along the line when first seen */
+    int32_t  sm_fb_s_in;    /* smooth: way back in if the side is never seen */
+    int32_t  sm_y_plan;     /* smooth: the planned pass (widening cap)  */
+    int32_t  sm_far_seen;   /* smooth: furthest box echo along the line */
+    int32_t  sm_edge_max;   /* smooth: box side's furthest echo out     */
+    int32_t  sm_need_prev;  /* smooth: last echo's wanted pass, 0 none  */
+    int32_t  hd_snap_trav;  /* travel off the average past the snap   */
+    bool     b_lf_edge;     /* the line was last seen by one sensor  */
+    int32_t  lf_edge_err;   /* the error it read then                */
+    uint16_t lf_curve_ticks; /* curve speed: ticks left               */
+    uint16_t lf_edge_run;   /* ticks in a row at one sensor's edge   */
+    int32_t  lf_gap2c;      /* white so far: d_l + d_r summed         */
+    int32_t  lf_gap_h0;     /* heading when the white began          */
+    uint16_t lf_single_ticks; /* ticks in a row with one sensor on    */
+    /* MOTION_LF_STRADDLE: sensors either side of the line (st_*) */
+    int32_t  st_mem;        /* learnt curve, 1e6 / radius mm, + = left */
+    int32_t  st_steer;      /* curvature steered now                   */
+    int32_t  st_kick;       /* self-tuned nudge for a touch            */
+    int8_t   st_side;       /* -1 left black, +1 right black, 0 none   */
+    int8_t   st_last_touch; /* side of the last touch                  */
+    uint32_t st_touch_um;   /* driven since the last touch began       */
+    uint32_t st_black_um;   /* driven with this side black             */
+    uint32_t st_bb_um;      /* driven with both black                  */
+    uint32_t st_nt_um;      /* driven with neither black (lost after)  */
+    int32_t  st_rem_l;      /* mm/s -> counts per tick remainders      */
+    uint32_t st_end_um;     /* driven since the last touch ended       */
+    int8_t   st_end_side;   /* side of the touch that ended last       */
+    int8_t   st_out;        /* line gone out past this side's sensor   */
+    bool     b_st_trav;     /* this touch began just after the other side's */
+    bool     b_st_bc;       /* holding the heading over a barcode      */
+    bool     b_st_outer;    /* the touch that ended last was the curve's outside */
+    int32_t  turn_h_target; /* MOTION_TURN_IMU: heading to pivot to    */
+    bool     b_turn_lead;   /* the pivot's leading sensor has met the new line */
+    uint32_t sm_touch_um;   /* bypass: driven since this touch began     */
+    bool     b_sm_cross;    /* bypass: this touch is a crossing line     */
+    int32_t  st_dd16;       /* wheels d_r - d_l, averaged, x16         */
+    int32_t  st_ds16;       /* wheels d_r + d_l, averaged, x16         */
+    uint32_t st_out_um;     /* driven while pivoting back to the line  */
+    bool     b_st_recov;    /* the touch now ended a recovery pivot     */
+    bool     b_st_after_recov; /* white since a recovery's touch: lost soon */
+    bool     b_post_bypass; /* a bypass ran: check the line once back   */
+    int32_t  st_bc_h0;      /* heading held, deg left +                */
+    int32_t  st_rem_r;
+    uint8_t  ra_phase;      /* realign after a search: RA_*          */
+    bool     b_ra_valid;    /* ra_h_pre holds the heading before loss */
+    bool     b_ra_pending;  /* just found the line after a search     */
+    bool     b_gap_start;   /* this white began as a gap, not an edge  */
+    int32_t  ra_h_pre;      /* heading when the line went white       */
+    uint32_t ra_ticks;
+    int32_t  ra_l0;
+    int32_t  ra_r0;
+    int32_t  lf_corr_avg;   /* correction, averaged (~160 ms)         */
+    uint8_t  rt_phase;      /* barcode re-read: RT_*                  */
+    bool     b_rt_used;     /* re-read done for this barcode          */
+    bool     b_rt_bar;      /* barcode bit last tick                  */
+    bool     b_rt_seen;     /* slow pass: the read has started        */
+    uint32_t rt_req_seen;   /* barcode_retry_req() last seen          */
+    uint32_t rt_ticks;      /* ticks in this phase                    */
+    int32_t  rt_back_mm;    /* how far to back up                     */
+    int32_t  rt_read_l;     /* wheel counts where the read began      */
+    int32_t  rt_read_r;
+    int32_t  rt_l0;         /* wheel counts at this phase's start     */
+    int32_t  rt_r0;
+    int32_t  lf_rate16;     /* turn rate, d_r - d_l smoothed, x16    */
+    bool     b_sm_settle;   /* smooth: lined up, braked a moment      */
     uint8_t look_state;     /* LOOK_*: the probe's request to scan   */
     uint16_t look_mm;       /* scan_task's AVOID_LOOK reading        */
     uint32_t look_ticks;    /* ticks waited for it                   */
@@ -1504,18 +1580,19 @@ sm_send_replies (uint32_t replies)
 #define BYP_PH_IN_BACK   (16u) /* way in not clear: pivot back along  */
 #define BYP_PH_ARC_LEG   (17u) /* arc: straight out to the circle     */
 #define BYP_PH_ARC       (18u) /* arc: round the box on the circle    */
-#define BYP_PH_DONE      (19u)
+#define BYP_PH_SMOOTH    (19u) /* smooth: one curve round, to the line */
+#define BYP_PH_DONE      (20u)
 
 /* Pivot direction of each phase, x the side (+1 = toward the bypass
    side), and its angle; 0 = straight or braked (the looks, SWITCH, DONE).
    BYP_PH_ARC is neither: arc_drive() sets the wheels. */
 static int8_t const g_byp_turn[BYP_PH_DONE] = {
-    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1, 0, 1, 0, 0
+    1, 0, -1, 0, 0, -1, 0, -1, 0, 1, 0, -1, 0, 0, 1, 0, 1, 0, 0, 0
 };
 static uint8_t const g_byp_deg[BYP_PH_DONE] = {
     MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
     MOTION_BYPASS_SIDE_DEG, 0, 45, 0, 45, 0, MOTION_BYPASS_SIDE_DEG, 0, 0,
-    MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0
+    MOTION_BYPASS_SIDE_DEG, 0, MOTION_BYPASS_SIDE_DEG, 0, 0, 0
 };
 
 /* A bypass pivot's encoder target: scaled for the overshoot measured at
@@ -1535,6 +1612,8 @@ static int32_t hd_lat_mm(motion_ctx_t const *p_ctx); /* IMU heading, below */
 static int32_t hd_lon_mm(motion_ctx_t const *p_ctx);
 static void    byp_report(motion_ctx_t *p_ctx);
 static void    arc_plan(motion_ctx_t *p_ctx);
+static void    sm_plan(motion_ctx_t *p_ctx);
+extern uint32_t scan_profile_word(void); /* obstacle_task.c */
 
 /* Has the manoeuvre of this state reached its target? */
 static bool
@@ -1574,6 +1653,35 @@ lf_reset (motion_ctx_t *p_ctx)
     int32_t  err = line_state_error(p_ctx->line_word);
     uint32_t i;
 
+    p_ctx->lf_curve_ticks = 0u;
+    p_ctx->lf_rate16      = 0;
+    /* straddle: the curve memory starts straight, the nudge stays tuned
+       (it depends on the sensors, not the track) */
+    p_ctx->st_mem        = 0;
+    p_ctx->st_steer      = 0;
+    p_ctx->st_side       = 0;
+    p_ctx->st_last_touch = 0;
+    p_ctx->st_black_um   = 0u;
+    p_ctx->st_bb_um      = 0u;
+    p_ctx->st_rem_l      = 0;
+    p_ctx->st_rem_r      = 0;
+    p_ctx->st_end_um     = 100000000u;
+    p_ctx->st_end_side   = 0;
+    p_ctx->st_out        = 0;
+    p_ctx->b_st_trav     = false;
+    p_ctx->b_st_bc       = false;
+    p_ctx->b_st_outer    = false;
+    p_ctx->st_out_um     = 0u;
+    p_ctx->b_st_recov    = false;
+    p_ctx->b_st_after_recov = false;
+    if (0 == p_ctx->st_kick)
+    {
+        p_ctx->st_kick = MOTION_ST_KICK_CURV;
+    }
+    p_ctx->lf_edge_run    = 0u;
+    p_ctx->lf_gap2c       = 0;
+    p_ctx->lf_corr_avg    = 0;
+
     p_ctx->lf_rem      = 0;
     p_ctx->lf_corr     = 0;
     p_ctx->lf_hist_i   = 0u;
@@ -1605,16 +1713,38 @@ lf_dark_long (uint32_t word)
    turning, at full error, to the side the line was last seen on (with
    MOTION_LF_LOST_DIR_MS above 0, only once the 00 has lasted that long).
    Not during a barcode hold, which also reads rl 00 by design. */
+/* TEST IMAGE (20 Nov): 0 = the barcode bit only slows the car
+   (MOTION_LF_BASE_READ); steering stays live over the barcode. */
+#ifndef MOTION_LF_HOLD_ON_BARCODE
+#define MOTION_LF_HOLD_ON_BARCODE (1)
+#endif
+
 static int32_t
 lf_error (const motion_ctx_t *p_ctx)
 {
     uint32_t word = p_ctx->line_word;
 
+    /* MOTION_LF_EDGE_LOST: slipped off the line's edge (last seen by one
+       sensor): back toward it at once.  Lost from both sensors on it (a
+       white gap between track tiles) waits MOTION_LF_LOST_DIR_MS as before.
+       Waiting 300 ms after an edge too let the car run on, turn back hard
+       and overshoot: a weave across the line (car, 20 Nov 21:46). */
+    /* (21 Nov, car 22:09: the full error at once swung the car 80 deg
+       off the end of the S-curve, past a tile gap.)  Off an edge it now
+       holds the error it last read at the edge, so it keeps turning as it
+       was, and only after MOTION_LF_LOST_DIR_MS takes the full error. */
     if ((LINE_RL_CENTRED == line_state_rl(word))
-        && !line_state_barcode(word) && (0 != p_ctx->line_dir)
-        && lf_dark_long(word))
+        && !(MOTION_LF_HOLD_ON_BARCODE && line_state_barcode(word))
+        && (0 != p_ctx->line_dir))
     {
-        return p_ctx->line_dir * LINE_ST_ERR_MAX;
+        if (lf_dark_long(word))
+        {
+            return p_ctx->line_dir * LINE_ST_ERR_MAX;
+        }
+        if (MOTION_LF_EDGE_LOST && p_ctx->b_lf_edge)
+        {
+            return p_ctx->lf_edge_err;
+        }
     }
     return line_state_error(word);
 }
@@ -1629,6 +1759,10 @@ lf_clamp (int32_t v, int32_t lim)
    MOTION_LF_SCALE counts per tick, + = turn left.  During a barcode hold
    the error is 0 by design (line_state.h), so the history is reset rather
    than read as a fast return to centre. */
+/* MOTION_LF_GAP_MM in d_l + d_r units (2 x counts), pi as 355/113 */
+#define LF_GAP_2C ((int32_t)((2 * (int64_t)MOTION_LF_GAP_MM * MOTION_COUNTS_PER_REV * 113) \
+                             / ((int64_t)355 * MOTION_WHEEL_DIA_MM)))
+
 static int32_t
 lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
 {
@@ -1645,6 +1779,25 @@ lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
         target         = 0;
         cap            = MOTION_LF_SOFT_MAX;
     }
+#if MOTION_LF_GAP_MM > 0
+    else if ((p_ctx->lf_gap2c > 0) && (p_ctx->lf_gap2c < LF_GAP_2C)
+             && !(MOTION_LF_EDGE_LOST && p_ctx->b_lf_edge))
+    {
+        /* (22 Nov, car 01:06: in a right curve the line slipped off the
+           right sensor; holding the averaged steering for 60 mm let the
+           curve run away.  Off an edge the EDGE_LOST hold in lf_error now
+           turns toward it; only a white met with both sensors on the line
+           (a gap) keeps the steering here.) */
+        /* Both white for less than MOTION_LF_GAP_MM (21 Nov, user: the
+           white seams between track panels): keep steering as the car was,
+           on average, just before (straight on a straight, on round a
+           curve), no turn toward the last side yet.  Holding the heading
+           instead stopped the car turning mid-curve (car 21:11), the line
+           curved away and it pivoted after the 30 mm. */
+        target = p_ctx->lf_corr_avg;
+        cap    = MOTION_LF_SOFT_MAX;
+    }
+#endif
     else
     {
         de = err - p_ctx->lf_hist[p_ctx->lf_hist_i];
@@ -1676,8 +1829,23 @@ lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
         }
     }
 
+#if MOTION_LF_RATE_DAMP > 0
+    /* Turn-rate damping (21 Nov, car 20:29: after the bypass the car swung
+       across the line twice a second for 16 s, off it most of the time,
+       ~70 deg/s through the line).  The wheels' count difference is the
+       turn rate; pushing back against it stops a fast swing and hardly
+       touches slow steering (a 2-count difference costs 2 x K). */
+    p_ctx->lf_rate16 += (((p_ctx->d_r - p_ctx->d_l) * 16) - p_ctx->lf_rate16) / 4;
+    target -= (MOTION_LF_RATE_DAMP * p_ctx->lf_rate16) / 16;
+#endif
     target = lf_clamp(target, cap);
     p_ctx->lf_corr += lf_clamp(target - p_ctx->lf_corr, MOTION_LF_SLEW);
+#if MOTION_LF_GAP_MM > 0
+    if (0 == p_ctx->lf_gap2c)
+    {
+        p_ctx->lf_corr_avg += (p_ctx->lf_corr - p_ctx->lf_corr_avg) / 16;
+    }
+#endif
     return p_ctx->lf_corr;
 }
 
@@ -1685,6 +1853,9 @@ lf_correction (motion_ctx_t *p_ctx, int32_t err, bool b_hold)
 static void
 man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
 {
+    p_ctx->rt_phase = 0u; /* any state change ends a barcode re-read */
+    p_ctx->ra_phase = 0u;
+    p_ctx->b_ra_pending = false;
     motion_pid_reset(&p_ctx->pid_l);
     motion_pid_reset(&p_ctx->pid_r);
     motion_stall_reset(&p_ctx->stall_l);
@@ -1717,6 +1888,7 @@ man_start (motion_ctx_t *p_ctx, motion_state_t state, bool b_resumed)
                                 + p_ctx->bypass_off_mm;
         p_ctx->byp_pass_more  = 0;
         arc_plan(p_ctx);
+        sm_plan(p_ctx);
         byp_report(p_ctx);
     }
     else if ((MOTION_ST_TURNING == state) && !b_resumed)
@@ -1764,6 +1936,36 @@ line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
         p_ctx->line_same = 0u;
     }
     p_ctx->line_word = word;
+    if (LINE_RL_CENTRED != line_state_rl(word))
+    {
+        /* one sensor on it (rl 10 or 01): at the line's edge */
+        /* one sensor alone for MOTION_LF_EDGE_MIN_TICKS: the line is
+           sliding off that edge (a curve).  Shorter: the two sensors met a
+           white tile gap one after the other, an uneven cut (car 12:34:
+           72 ms of one sensor from a straight, centred car, then both white;
+           taken as an edge, the car swerved off) */
+        if (LINE_RL_JUNCTION != line_state_rl(word))
+        {
+            if (p_ctx->lf_single_ticks < 1000u)
+            {
+                p_ctx->lf_single_ticks++;
+            }
+        }
+        else
+        {
+            p_ctx->lf_single_ticks = 0u;
+        }
+        p_ctx->b_lf_edge = (LINE_RL_JUNCTION != line_state_rl(word))
+                           && (p_ctx->lf_single_ticks >= MOTION_LF_EDGE_MIN_TICKS);
+        /* only a clear edge reading: as a sensor fades to white the
+           error passes 0 and flipped sign (car 22:20, -59 then +17) */
+        if (p_ctx->b_lf_edge
+            && ((line_state_error(word) >= MOTION_LS_DIR_MIN)
+                || (line_state_error(word) <= -MOTION_LS_DIR_MIN)))
+        {
+            p_ctx->lf_edge_err = line_state_error(word);
+        }
+    }
     if (LINE_RL_CENTRED == line_state_rl(word))
     {
         /* Off the line: two white readings say nothing about the side. */
@@ -1802,6 +2004,40 @@ line_inputs (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
                : line_state_lost(word))
           || line_state_fault(word)
                            || (p_ctx->line_same >= LINE_ST_STALE_TICKS);
+#if MOTION_LF_STRADDLE
+    /* Straddle layout: both white is the car on the line, so "lost" is
+       MOTION_ST_LOST_MM driven forward with neither sensor touching it
+       (a pivot adds nothing).  b_line_seen stays a real touch: the bypass
+       rejoin needs one.  Found also when a touch was under
+       MOTION_ST_FOUND_MM ago (after a bypass or a turn the car ends
+       centred, both white), so Line Search does not sweep for nothing. */
+    {
+        int32_t fwd = p_ctx->d_l + p_ctx->d_r; /* 2 x counts this tick */
+
+        if (LINE_RL_CENTRED != line_state_rl(word))
+        {
+            p_ctx->st_nt_um = 0u;
+        }
+        else if ((fwd > 0) && (p_ctx->st_nt_um < 100000000u))
+        {
+            p_ctx->st_nt_um += (uint32_t)ST_UM_2C(fwd);
+        }
+        else
+        {
+            /* still, backing or pivoting */
+        }
+        p_in->b_line_found = p_in->b_line_found
+                             || (p_ctx->st_nt_um < (MOTION_ST_FOUND_MM * 1000u));
+        p_in->b_line_missing
+            = (p_ctx->st_nt_um >= (MOTION_ST_LOST_MM * 1000u))
+              || ((0 != p_ctx->st_out)
+                  && (p_ctx->st_out_um >= (MOTION_ST_OUT_MAX_MM * 1000u)))
+              || (p_ctx->b_st_after_recov
+                  && (p_ctx->st_nt_um >= (MOTION_ST_RECOV_LOST_MM * 1000u)))
+              || line_state_fault(word)
+              || (p_ctx->line_same >= LINE_ST_STALE_TICKS);
+    }
+#endif
     p_in->b_search_over  = p_ctx->b_search_over;
 }
 
@@ -1883,6 +2119,21 @@ turn_drive (motion_ctx_t *p_ctx)
             p_ctx->turn_phase   = (BARCODE_ACT_FORWARD == p_ctx->turn_action)
                                       ? TURN_PH_DONE
                                       : TURN_PH_PIVOT;
+#if MOTION_TURN_IMU
+            {
+                /* 90 (180) deg from the line's own direction, learnt over
+                   Line Following, so the car ends lined up with the new
+                   line; from the heading now if none was learnt */
+                int32_t h0 = p_ctx->b_hd_line
+                                 ? (int32_t)(p_ctx->hd_line_udeg / 1000000)
+                                 : (int32_t)ev_heading_deg();
+
+                p_ctx->turn_h_target
+                    = h0 + (dir * ((BARCODE_ACT_UTURN == p_ctx->turn_action)
+                                       ? 180 : 90));
+                p_ctx->b_turn_lead = false;
+            }
+#endif
             p_ctx->turn_start_l = p_ctx->pos_l;
             p_ctx->turn_start_r = p_ctx->pos_r;
             motion_pid_reset(&p_ctx->pid_l);
@@ -1896,10 +2147,59 @@ turn_drive (motion_ctx_t *p_ctx)
                    - (p_ctx->pos_l - p_ctx->turn_start_l))
                   / 2)
                  * dir;
+#if MOTION_TURN_IMU
+        {
+            /* deg still to turn, on the IMU (left +); the counts only as a
+               cap (wheel slip made 90 deg of counts 81, car 13:02) */
+            int32_t rem    = (p_ctx->turn_h_target - (int32_t)ev_heading_deg()) * dir;
+            bool    b_done = false;
+#if MOTION_LF_STRADDLE
+            /* Stop ON the new line (car 14:39:13: stopped at 89 deg on the
+               IMU with the new line just outside the right sensor; it then
+               drove off beside it).  In the last MOTION_TURN_WIN_DEG the
+               line sweeps in over the leading sensor (the left one in a
+               left turn); once it has left that sensor it is between the
+               two: stop.  The trailing sensor on it: stop too (still under
+               a sensor).  Never seen: MOTION_TURN_OVER_DEG past the target,
+               then Line Search. */
+            uint32_t rl    = line_state_rl(p_ctx->line_word);
+            uint32_t lead  = (dir > 0) ? LINE_RL_LEFT_DEV : LINE_RL_RIGHT_DEV;
+            uint32_t trail = (dir > 0) ? LINE_RL_RIGHT_DEV : LINE_RL_LEFT_DEV;
+
+            if (rem <= MOTION_TURN_WIN_DEG)
+            {
+                if (0u != (rl & lead))
+                {
+                    p_ctx->b_turn_lead = true;
+                }
+                else if (p_ctx->b_turn_lead
+                         && ((LINE_RL_CENTRED == rl) || (0u != (rl & trail))))
+                {
+                    b_done = true;
+                }
+                else
+                {
+                    /* not there yet */
+                }
+            }
+            if (rem <= -MOTION_TURN_OVER_DEG)
+            {
+                b_done = true;
+            }
+#else
+            b_done = (rem <= MOTION_HD_LEAD_DEG);
+#endif
+            if (b_done || (turned >= PIVOT_COUNTS(deg + 30)))
+            {
+                p_ctx->turn_phase = TURN_PH_DONE;
+            }
+        }
+#else
         if (turned >= PIVOT_COUNTS(deg))
         {
             p_ctx->turn_phase = TURN_PH_DONE;
         }
+#endif
     }
     else
     {
@@ -2021,9 +2321,32 @@ hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
             p_ctx->hd_line_udeg = (int64_t)h * 1000000;
             p_ctx->hd_travel    = 0;
             p_ctx->b_hd_line    = true;
+            p_ctx->hd_snap_trav = 0;
         }
+#if MOTION_HD_SNAP_DEG > 0
+        else if ((motion_abs(h - (int32_t)(p_ctx->hd_line_udeg / 1000000))
+                  > MOTION_HD_SNAP_DEG)
+                 && ((p_ctx->hd_snap_trav + fwd) >= HD_2COUNTS(MOTION_HD_SNAP_MM)))
+        {
+            /* Off the average for MOTION_HD_SNAP_MM running: a curve (a
+               wobble swings back sooner).  The line now runs this way. */
+            p_ctx->hd_line_udeg = (int64_t)h * 1000000;
+            p_ctx->hd_snap_trav = 0;
+        }
+#endif
         else if (fwd > 0)
         {
+#if MOTION_HD_SNAP_DEG > 0
+            if (motion_abs(h - (int32_t)(p_ctx->hd_line_udeg / 1000000))
+                > MOTION_HD_SNAP_DEG)
+            {
+                p_ctx->hd_snap_trav += fwd;
+            }
+            else
+            {
+                p_ctx->hd_snap_trav = 0;
+            }
+#endif
             /* Distance-weighted average: each tick pulls the line direction
                toward the heading by the share of MOTION_HD_LINE_MM driven. */
             p_ctx->hd_line_udeg
@@ -2068,7 +2391,7 @@ hd_tick (motion_ctx_t *p_ctx, motion_state_t state)
    arc's OUT uses arc_deg instead. */
 static int8_t const g_byp_hd_target[BYP_PH_DONE] = {
     MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, -45, 0, 0, 0,
-    -MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, 0
+    -MOTION_BYPASS_SIDE_DEG, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 /* Integer square root (floor). */
@@ -2240,6 +2563,405 @@ arc_drive (motion_ctx_t *p_ctx)
                               MOTION_BYPASS_SPEED + (turn * side), p_ctx->d_r);
 }
 
+/* Smooth bypass (MOTION_BYPASS_SMOOTH, motion_cfg.h).  Sideways place
+   toward the side, mm: the measured sideways move plus where the axle sat
+   at the start. */
+#define SM_S_SEEN_MM (p_ctx->sm_s_in - MOTION_SM_LOOK_MM)
+
+/* Side-watch outcomes for the console (print_byp), not phases. */
+#define BYP_EV_SEEN  (BYP_PH_DONE + 1u)
+#define BYP_EV_CLEAR (BYP_PH_DONE + 2u)
+#define BYP_EV_MISS  (BYP_PH_DONE + 3u)
+
+static void
+sm_watch_end (motion_ctx_t *p_ctx)
+{
+    ID scan_id = scan_if_flag();
+
+    if (p_ctx->b_sm_watch && (scan_id > 0))
+    {
+        (void)tk_set_flg(scan_id, SCAN_FLG_WATCH_END);
+    }
+    p_ctx->b_sm_watch = false;
+}
+
+static void
+sm_watch_report (motion_ctx_t *p_ctx, uint32_t ev, int32_t a, int32_t b)
+{
+    motion_report_t rep;
+
+    report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BYP);
+    rep.val_l  = (int32_t)ev;
+    rep.val_r  = a;
+    rep.rate_l = b;
+    rep.rate_r = 1;
+    report_send(p_ctx, &rep);
+}
+
+/* One tick of the side watch.  MOTION_SM_WATCH 2: 90 deg, square on to the
+   box's side (motion_cfg.h): seen, then clear twice -> the way back in
+   starts where the box ends; never seen -> the 15 cm-deep fallback.
+   MOTION_SM_WATCH 1 (45 deg) only ever pushed the way back later. */
+static void
+sm_watch_tick (motion_ctx_t *p_ctx, int32_t s, int32_t x)
+{
+    int32_t mm;
+    int32_t th = p_ctx->hd_err_deg * p_ctx->bypass_side;
+    /* the line's distance along the beam (MOTION_SM_WATCH_DEG off the
+       car's heading): nearer than that is the box */
+    int32_t thr = (p_ctx->sm_y * 1000) / sin1000_deg(MOTION_SM_WATCH_DEG);
+    bool    b_along = (x >= (p_ctx->sm_y - 40))
+                      && (motion_abs(th) <= MOTION_SM_WATCH_PAR_DEG);
+
+    if (!p_ctx->b_sm_watch)
+    {
+        return;
+    }
+    if (p_ctx->b_sm_new)
+    {
+        p_ctx->b_sm_new = false;
+        mm = (int32_t)p_ctx->sm_watch_mm;
+        if (b_along && (mm > 1) && (mm < thr))
+        {
+            /* nearer than the line: the box beside the car.  Where the
+               echo came from, in the line frame (along s, out toward the
+               side): the sensor sits MOTION_SENSOR_AXLE_MM ahead of the
+               axle, the beam MOTION_SM_WATCH_DEG off the heading toward
+               the line (bdeg: from the line's direction, + = out). */
+            int32_t sxs  = x + ((MOTION_SENSOR_AXLE_MM * sin1000_deg(th)) / 1000);
+            int32_t sss  = s + ((MOTION_SENSOR_AXLE_MM * sin1000_deg(90 - th)) / 1000);
+            int32_t bdeg = th - MOTION_SM_WATCH_DEG;
+            int32_t plat = sxs + ((mm * sin1000_deg(bdeg)) / 1000);
+            int32_t ps   = sss + ((mm * sin1000_deg(90 - bdeg)) / 1000);
+            int32_t need = plat + MOTION_SM_CAR_HALF_MM + MOTION_SM_WIDEN_GAP_MM;
+
+            if (!p_ctx->b_sm_seen)
+            {
+                p_ctx->b_sm_seen = true;
+                p_ctx->sm_seen_s = s;
+                sm_watch_report(p_ctx, BYP_EV_SEEN, s, mm);
+            }
+            p_ctx->sm_clear_n = 0u;
+            if (ps > p_ctx->sm_far_seen)
+            {
+                p_ctx->sm_far_seen = ps; /* the box goes on at least to here */
+            }
+            if (plat > p_ctx->sm_edge_max)
+            {
+                p_ctx->sm_edge_max = plat;
+            }
+            /* widen the pass (their side watch): two echoes in a row say
+               the side is nearer than planned -> out by the smaller, at
+               most MOTION_SM_WIDEN_MAX_MM past the plan; never in */
+            if ((0 != p_ctx->sm_need_prev) && (need > p_ctx->sm_y))
+            {
+                int32_t y = (need < p_ctx->sm_need_prev) ? need : p_ctx->sm_need_prev;
+
+                if (y > (p_ctx->sm_y_plan + MOTION_SM_WIDEN_MAX_MM))
+                {
+                    y = p_ctx->sm_y_plan + MOTION_SM_WIDEN_MAX_MM;
+                }
+                if (y > p_ctx->sm_y)
+                {
+                    p_ctx->sm_y = y;
+                }
+            }
+            p_ctx->sm_need_prev = need;
+        }
+        else if (b_along && p_ctx->b_sm_seen && (mm >= thr))
+        {
+            /* at or beyond the line (511 = nothing in range): past it */
+            p_ctx->sm_need_prev = 0;
+            p_ctx->sm_clear_n++;
+            if (p_ctx->sm_clear_n >= 2u)
+            {
+                /* The far end: at least the furthest echo (+ margin), and at
+                   least where the beam's nearest ray meets the side line now
+                   (the beam stopped hitting the box: it ends behind that,
+                   MOTION_SM_CLEAR_MIN_MM ahead of the axle).  Earliest safe
+                   return (theirs, simplified): the turn may start before the
+                   far end by half the side gap beyond MOTION_SM_EARLY_GAP_MM,
+                   at most MOTION_SM_EARLY_MAX_MM; never behind the car. */
+                int32_t far   = p_ctx->sm_far_seen + MOTION_SM_FAR_MARGIN_MM;
+                int32_t gap   = (p_ctx->sm_y - MOTION_SM_CAR_HALF_MM) - p_ctx->sm_edge_max;
+                int32_t early = (gap - MOTION_SM_EARLY_GAP_MM) / 2;
+                int32_t s_in;
+
+                if (far < (s + MOTION_SM_CLEAR_MIN_MM))
+                {
+                    far = s + MOTION_SM_CLEAR_MIN_MM;
+                }
+                early = (early < 0) ? 0
+                        : ((early > MOTION_SM_EARLY_MAX_MM) ? MOTION_SM_EARLY_MAX_MM : early);
+                s_in = far - early + MOTION_SM_LOOK_MM;
+                if (s_in < (s + MOTION_SM_LOOK_MM))
+                {
+                    s_in = s + MOTION_SM_LOOK_MM; /* turn now */
+                }
+                if (s_in > MOTION_SM_S_IN_MAX_MM)
+                {
+                    s_in = MOTION_SM_S_IN_MAX_MM;
+                }
+                p_ctx->sm_s_in = s_in;
+                sm_watch_report(p_ctx, BYP_EV_CLEAR, far, s_in);
+                sm_watch_end(p_ctx);
+            }
+        }
+        else
+        {
+            /* not alongside yet, or no echo (1): nothing learnt */
+        }
+    }
+    if (p_ctx->b_sm_watch && !p_ctx->b_sm_seen
+        && (s >= (p_ctx->sm_fb_s_in - MOTION_SM_LOOK_MM)))
+    {
+        /* never saw the box's side: back in after a 15 cm-deep box */
+        p_ctx->sm_s_in = p_ctx->sm_fb_s_in;
+        sm_watch_report(p_ctx, BYP_EV_MISS, s, p_ctx->sm_fb_s_in);
+        sm_watch_end(p_ctx);
+    }
+    if (p_ctx->b_sm_watch
+        && (s >= (MOTION_SM_S_IN_MAX_MM - MOTION_SM_LOOK_MM)))
+    {
+        sm_watch_end(p_ctx);
+    }
+}
+
+static int32_t
+sm_x_mm (motion_ctx_t const *p_ctx)
+{
+    return (hd_lat_mm(p_ctx) * p_ctx->bypass_side) + p_ctx->sm_x0;
+}
+
+/* Set up at the start of a BYPASS: smooth only with a heading, from the
+   line (as the arc). */
+static void
+sm_plan (motion_ctx_t *p_ctx)
+{
+#if MOTION_BYPASS_SMOOTH
+    int32_t shift = p_ctx->bypass_off_mm - MOTION_ARC_OFFSET_CENTRED;
+    int32_t th0;
+
+#if MOTION_SM_HD_FALLBACK
+    if (!p_ctx->b_hd_ok && (0u == IMU_W_GET(imu_word_read(), FAULT)))
+    {
+        /* No line direction learned yet (car 20:44: the run started 25 cm
+           from the box, before MOTION_HD_MIN_MM of Line Following, so the
+           zig-zag ran).  The car is braked on the line facing along it:
+           its heading is the line's. */
+        p_ctx->hd_line_udeg = (int64_t)ev_heading_deg() * 1000000;
+        p_ctx->b_hd_line    = true;
+        p_ctx->hd_travel    = HD_2COUNTS(MOTION_HD_MIN_MM);
+        p_ctx->hd_lat_acc   = 0;
+        p_ctx->hd_lon_acc   = 0;
+        p_ctx->hd_err_deg   = 0;
+        p_ctx->b_hd_ok      = true;
+    }
+#endif
+#if MOTION_SM_BOX_DIR
+    {
+        /* The line's direction from the box itself: it sits on the line,
+           so from the car (its line sensors on the line) to the box's
+           centre is the way the line runs there.  The learnt average lags
+           in a curve (car 14:47: braked coming out of a left curve, the
+           box from -35 to +10 deg, the average said 6 deg off, the box
+           ~12: the path came out rotated, crossed a junction's arm 20 cm
+           out and took it for the line). */
+        uint32_t cb = (scan_profile_word() >> 24) & 0xFFu;
+
+        if ((0u != cb) && (0u == IMU_W_GET(imu_word_read(), FAULT)))
+        {
+            int32_t c = (int32_t)cb - 128; /* box centre, deg, - = left */
+
+            if (motion_abs(c) <= MOTION_SM_BOX_DIR_MAX)
+            {
+                int32_t h = (int32_t)ev_heading_deg();  /* left + */
+
+                p_ctx->hd_line_udeg = (int64_t)(h - c) * 1000000;
+                p_ctx->b_hd_line    = true;
+                p_ctx->hd_travel    = HD_2COUNTS(MOTION_HD_MIN_MM);
+                p_ctx->hd_lat_acc   = 0;
+                p_ctx->hd_lon_acc   = 0;
+                p_ctx->hd_err_deg   = c;     /* heading - line */
+                p_ctx->b_hd_ok      = true;
+            }
+        }
+    }
+#endif
+    /* MOTION_SM_HD_FALLBACK 0: no line direction learned (the run started
+       at the box) -> b_smooth false -> the zig-zag, which measures the box
+       itself (car 23:21: started 25 cm from the box, its own heading taken
+       as the line's, the smooth path came out rotated) */
+    th0 = p_ctx->hd_err_deg * p_ctx->bypass_side;
+    p_ctx->b_smooth = p_ctx->b_hd_ok && (motion_abs(hd_lat_mm(p_ctx)) < 30);
+    if (!p_ctx->b_smooth)
+    {
+        return;
+    }
+    p_ctx->b_arc = false;
+    if (shift < MOTION_SM_SHIFT_MIN)
+    {
+        shift = MOTION_SM_SHIFT_MIN;
+    }
+    if (shift > MOTION_SM_SHIFT_MAX)
+    {
+        shift = MOTION_SM_SHIFT_MAX;
+    }
+    p_ctx->sm_y     = MOTION_SM_Y_MM + shift;
+    /* the line sensors are on the line: the axle sits behind them */
+    p_ctx->sm_x0    = -((MOTION_LINE_SENSOR_MM * sin1000_deg(th0)) / 1000);
+    p_ctx->sm_rem   = 0;
+    p_ctx->b_sm_out = false;
+    p_ctx->sm_touch_um = 0u;
+    p_ctx->b_sm_cross  = false;
+    p_ctx->sm_s_in  = MOTION_SM_S_IN_MM;
+#if MOTION_SM_ADAPT
+    {
+        uint32_t        pw  = scan_profile_word();
+        int32_t         d_c = (int32_t)(pw & 0xFFFu);
+        int32_t         w   = (int32_t)((pw >> 12) & 0xFFFu);
+        motion_report_t rep;
+
+        if ((d_c >= 100) && (d_c <= 400))
+        {
+            /* the turn starts (S_IN - look) only once the axle is at the
+               far end of a MOTION_SM_BOX_LEN_MM deep box (car 22:07: it
+               began 6.5 cm before the far end with a tight swing-out and
+               the inner side met the far corner) */
+            int32_t s_in = d_c + MOTION_SENSOR_AXLE_MM + MOTION_SM_BOX_LEN_MM
+                           + MOTION_SM_LOOK_MM - MOTION_SM_TURN_EARLY_MM;
+
+            p_ctx->sm_s_in = (s_in < 450) ? 450 : ((s_in > 750) ? 750 : s_in);
+        }
+        if ((w >= 50) && (w <= 300))
+        {
+            int32_t y = (w / 2) + MOTION_SM_CAR_HALF_MM + MOTION_SM_SIDE_GAP_MM;
+
+            y = (y < MOTION_SM_Y_MIN_MM) ? MOTION_SM_Y_MIN_MM
+                : ((y > MOTION_SM_Y_MAX_MM) ? MOTION_SM_Y_MAX_MM : y);
+            /* only ever wider: the scan reads the box ~1-2 cm left almost
+               every time (the servo's zero, likely), which narrowed the
+               right-hand swing-out (car 22:07: 166 mm) */
+            p_ctx->sm_y = y + ((shift > 0) ? shift : 0);
+        }
+        report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BYP);
+        rep.val_l  = (int32_t)(BYP_PH_DONE + 5u);
+        rep.val_r  = p_ctx->sm_y;
+        rep.rate_l = p_ctx->sm_s_in;
+        rep.rate_r = (int32_t)pw;
+        report_send(p_ctx, &rep);
+    }
+#endif
+    p_ctx->b_sm_watch = false;
+    p_ctx->b_sm_seen  = false;
+    p_ctx->b_sm_new   = false;
+    p_ctx->sm_clear_n = 0u;
+    p_ctx->b_sm_settle = false;
+#if (MOTION_SM_WATCH == 2)
+    {
+        uint32_t pw  = scan_profile_word();
+        int32_t  d_c = (int32_t)(pw & 0xFFFu);
+
+        p_ctx->sm_fb_s_in = ((d_c >= 100) && (d_c <= 400))
+                                ? (d_c + MOTION_SENSOR_AXLE_MM
+                                   + MOTION_SM_BOX_LEN_MM + MOTION_SM_LOOK_MM)
+                                : 650;
+        p_ctx->sm_s_in = MOTION_SM_S_IN_MAX_MM; /* alongside until it knows */
+        p_ctx->sm_y_plan    = p_ctx->sm_y;
+        p_ctx->sm_far_seen  = 0;
+        p_ctx->sm_edge_max  = -1000;
+        p_ctx->sm_need_prev = 0;
+    }
+#endif
+#else
+    p_ctx->b_smooth = false;
+#endif
+}
+
+/* The path's sideways place at s mm along the line. */
+static int32_t
+sm_path_mm (motion_ctx_t const *p_ctx, int32_t s)
+{
+    int32_t y = p_ctx->sm_y;
+    int32_t x;
+
+    if (s <= 0)
+    {
+        x = 0;
+    }
+    else if (s < MOTION_SM_S_OUT_MM)
+    {
+        x = (y * (1000 - sin1000_deg(90 - ((180 * s) / MOTION_SM_S_OUT_MM))))
+            / 2000;
+    }
+    else if (s < p_ctx->sm_s_in)
+    {
+        x = y;
+    }
+    else if (s < (p_ctx->sm_s_in + MOTION_SM_L_IN_MM))
+    {
+        x = (y * (1000 + sin1000_deg(90 - ((180 * (s - p_ctx->sm_s_in))
+                                           / MOTION_SM_L_IN_MM))))
+            / 2000;
+    }
+    else
+    {
+        x = -(((s - p_ctx->sm_s_in - MOTION_SM_L_IN_MM)
+               * sin1000_deg(MOTION_SM_GLIDE_DEG))
+              / sin1000_deg(90 - MOTION_SM_GLIDE_DEG));
+    }
+    return x;
+}
+
+/* One tick on the curve: aim at the path MOTION_SM_LOOK_MM ahead (pure
+   pursuit), one count of wheel difference per MOTION_SM_STEER_DEG of
+   heading error (the fraction carried), soft start. */
+static void
+sm_drive (motion_ctx_t *p_ctx)
+{
+    int32_t side = p_ctx->bypass_side;
+    int32_t s    = hd_lon_mm(p_ctx);
+    int32_t x    = sm_x_mm(p_ctx);
+    int32_t v    = 3 + (int32_t)(p_ctx->look_ticks / 5u);
+    int32_t want;
+    int32_t err;
+    int32_t turn;
+    int32_t cap;
+
+    if (v > MOTION_SM_SPEED)
+    {
+        v = MOTION_SM_SPEED;
+    }
+    want = atan2_deg(sm_path_mm(p_ctx, s + MOTION_SM_LOOK_MM) - x,
+                     MOTION_SM_LOOK_MM);
+    if (want > MOTION_SM_MAX_DEG)
+    {
+        want = MOTION_SM_MAX_DEG;
+    }
+    if (want < -MOTION_SM_MAX_DEG)
+    {
+        want = -MOTION_SM_MAX_DEG;
+    }
+    err = want - (p_ctx->hd_err_deg * side);
+    p_ctx->sm_rem += (err * 16) / MOTION_SM_STEER_DEG;
+    turn = p_ctx->sm_rem / 16;
+    p_ctx->sm_rem -= turn * 16;
+    cap = v - MOTION_SM_MIN_WHEEL;
+    if (turn > cap)
+    {
+        turn = cap;
+    }
+    if (turn < -cap)
+    {
+        turn = -cap;
+    }
+    /* + = toward the side: for a left bypass (+1) the right wheel faster */
+    p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, v - (turn * side),
+                              p_ctx->d_l);
+    p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, v + (turn * side),
+                              p_ctx->d_r);
+}
+
 /* One EVT_BYP line: the phase just entered and where the car is. */
 static void
 byp_report (motion_ctx_t *p_ctx)
@@ -2354,7 +3076,9 @@ bypass_drive (motion_ctx_t *p_ctx)
            twice the encoder count stops it if the IMU misleads. */
         /* the arc's OUT: theta + the lead, so it ends near theta (stopping
            MOTION_HD_LEAD_DEG short aimed the leg inside the circle) */
-        int32_t target = (p_ctx->b_arc && (BYP_PH_OUT == ph))
+        int32_t target = (p_ctx->b_smooth && (BYP_PH_OUT == ph))
+                             ? MOTION_SM_PIVOT_DEG
+                         : (p_ctx->b_arc && (BYP_PH_OUT == ph))
                              ? (p_ctx->arc_deg + MOTION_HD_LEAD_DEG)
                              : (int32_t)g_byp_hd_target[ph];
 
@@ -2377,10 +3101,118 @@ bypass_drive (motion_ctx_t *p_ctx)
     switch (ph)
     {
         case BYP_PH_OUT:
-            if (b_pivot_done)
+            if (b_pivot_done && p_ctx->b_smooth)
+            {
+                p_ctx->sm_rem = 0;
+                byp_next(p_ctx, BYP_PH_SMOOTH);
+#if MOTION_SM_WATCH
+                if (scan_if_flag() > 0)
+                {
+                    (void)tk_set_flg(scan_if_flag(), SCAN_FLG_WATCH);
+                    p_ctx->b_sm_watch = true;
+                }
+#endif
+            }
+            else if (b_pivot_done)
             {
                 byp_next(p_ctx, BYP_PH_LANE_LOOK);
                 byp_ask(p_ctx, SCAN_FLG_LOOK_AHEAD);
+            }
+            break;
+        case BYP_PH_SMOOTH:
+            {
+                int32_t x = sm_x_mm(p_ctx);
+                int32_t s = hd_lon_mm(p_ctx);
+
+                if (x > (p_ctx->sm_y / 2))
+                {
+                    p_ctx->b_sm_out = true;
+                }
+                sm_watch_tick(p_ctx, s, x);
+#if MOTION_SM_CROSS_CHECK_MM > 0
+                /* A crossing line, not the line (car 14:58: a junction's arm
+                   beside the box, both sensors black at once while within
+                   12 deg of the line's direction).  The 25 mm line covers
+                   both sensors (~35 mm apart) only when crossed at 45 deg or
+                   more; nearly side-on it touches one first.  So both black
+                   within MOTION_SM_CROSS_DEG of the line's direction is a
+                   line across it.  A touch is taken only after
+                   MOTION_SM_CROSS_CHECK_MM, time for both to show. */
+                if (LINE_RL_CENTRED != line_state_rl(p_ctx->line_word))
+                {
+                    int32_t f2 = p_ctx->d_l + p_ctx->d_r;
+
+                    if ((f2 > 0) && (p_ctx->sm_touch_um < 100000000u))
+                    {
+                        p_ctx->sm_touch_um += (uint32_t)ST_UM_2C(f2);
+                    }
+                    if ((LINE_RL_JUNCTION == line_state_rl(p_ctx->line_word))
+                        && (motion_abs(p_ctx->hd_err_deg) < MOTION_SM_CROSS_DEG))
+                    {
+                        p_ctx->b_sm_cross = true;
+                    }
+                }
+                else
+                {
+                    p_ctx->sm_touch_um = 0u;
+                    p_ctx->b_sm_cross  = false;
+                }
+#endif
+                /* only near where the line should be (car 21:43, twice: at
+                   18 cm out the line sensors met black beside the box,
+                   probably a barcode sheet, took it for the line, lined
+                   up there and swept into the box) */
+                /* and heading in toward it: black met while running parallel
+                   beside the box is not the line.  A distance-only gate (12 cm)
+                   turned the real line away when the heading estimate was a few
+                   degrees off (simulation, 21 Nov) */
+                if (p_ctx->b_sm_out && (s >= SM_S_SEEN_MM)
+                    && (x <= MOTION_SM_SEEN_X_MM)
+#if MOTION_SM_CROSS_CHECK_MM > 0
+                    && !p_ctx->b_sm_cross
+                    && (p_ctx->sm_touch_um >= (MOTION_SM_CROSS_CHECK_MM * 1000u))
+#endif
+                    && ((p_ctx->hd_err_deg * side) <= -MOTION_SM_SEEN_DEG)
+                    && (p_ctx->line_seen_run >= MOTION_LF_FOUND_TICKS))
+                {
+                    /* back on the line: Line Following takes it from here;
+                       crossed from the side, so lost again it is that way */
+                    /* MOTION_SM_ONTO (user, 20 Nov): on to the line the
+                       sensors just met (ONTO: forward the sensor-to-axle
+                       distance), then turn by the angle it came in at
+                       (ALONG, to the line's heading) and only then Line
+                       Following: a 40 deg entry straight into Line
+                       Following set off a weave (car 23:02). */
+                    sm_watch_end(p_ctx);
+                    byp_next(p_ctx, MOTION_SM_ONTO ? BYP_PH_ONTO : BYP_PH_DONE);
+                    p_ctx->line_dir = side;
+                }
+                else if (!p_ctx->b_hd_ok || (x < -MOTION_SM_MISS_X_MM)
+                         || (s > (p_ctx->sm_s_in + MOTION_SM_L_IN_MM
+                                  + MOTION_SM_GIVEUP_MM)))
+                {
+                    sm_watch_end(p_ctx);
+                    /* no heading, or past where the line should be with no
+                       line taken: stop and pivot to look (Hanis, 22 Nov: was
+                       25 cm past before searching), first back toward the
+                       side it came from, where a line crossed but not taken
+                       would be */
+                    byp_next(p_ctx, BYP_PH_DONE);
+                    p_ctx->line_dir = (x > 0) ? -side : side;
+#if MOTION_LF_STRADDLE
+                    /* a real search: not the "touched it lately" shortcut
+                       (that touch was a line not taken) */
+                    p_ctx->st_nt_um = 100000000u;
+#endif
+                }
+                else
+                {
+                    p_ctx->look_ticks++; /* soft start and the report */
+                    if (0u == (p_ctx->look_ticks % 50u))
+                    {
+                        byp_report(p_ctx);
+                    }
+                }
             }
             break;
         case BYP_PH_LANE_LOOK:
@@ -2569,16 +3401,43 @@ bypass_drive (motion_ctx_t *p_ctx)
             }
             break;
         case BYP_PH_ONTO:
-            if (moved >= MOTION_LINE_SENSOR_MM)
+            /* smooth: a little short of the sensor distance, so after
+               ALONG the sensors are on the line, not just past it (car
+               20:19: 2 cm past, a 3 s Line Search) */
+            if (moved >= (p_ctx->b_smooth ? MOTION_SM_ONTO_MM
+                                          : MOTION_LINE_SENSOR_MM))
             {
                 byp_next(p_ctx, BYP_PH_ALONG);
             }
             break;
         case BYP_PH_ALONG:
-            if (b_pivot_done)
+            /* smooth: lined up, then braked MOTION_SM_SETTLE_TICKS before
+               Line Search / Line Following, so they start from rest (car
+               20:36: started still turning from the pivot, crossed the
+               line and swung across it until lost) */
+            if (b_pivot_done && p_ctx->b_smooth && !p_ctx->b_sm_settle)
+            {
+                p_ctx->b_sm_settle = true;
+                p_ctx->look_ticks  = 0u;
+            }
+            if (p_ctx->b_sm_settle)
+            {
+                p_ctx->look_ticks++;
+                if (p_ctx->look_ticks >= MOTION_SM_SETTLE_TICKS)
+                {
+                    p_ctx->b_sm_settle = false;
+                    byp_next(p_ctx, BYP_PH_DONE);
+                    p_ctx->line_dir = -side;
+                }
+            }
+            else if (b_pivot_done)
             {
                 byp_next(p_ctx, BYP_PH_DONE);
                 p_ctx->line_dir = -side;
+            }
+            else
+            {
+                /* still turning */
             }
             break;
         default:
@@ -2589,6 +3448,7 @@ bypass_drive (motion_ctx_t *p_ctx)
     ph  = p_ctx->bypass_phase;
     dir = (ph < BYP_PH_DONE) ? ((int32_t)g_byp_turn[ph] * side) : 0;
     if ((ph >= BYP_PH_DONE) || (BYP_PH_LOOK == ph)
+        || ((BYP_PH_ALONG == ph) && p_ctx->b_sm_settle)
         || (BYP_PH_LANE_LOOK == ph) || (BYP_PH_SWITCH == ph)
         || (BYP_PH_IN_LOOK == ph))
     {
@@ -2598,6 +3458,10 @@ bypass_drive (motion_ctx_t *p_ctx)
     else if (BYP_PH_ARC == ph)
     {
         arc_drive(p_ctx);
+    }
+    else if (BYP_PH_SMOOTH == ph)
+    {
+        sm_drive(p_ctx);
     }
     else if (0 != dir)
     {
@@ -2615,6 +3479,691 @@ bypass_drive (motion_ctx_t *p_ctx)
     }
 }
 
+/* Barcode re-read (MOTION_BC_RETRY, motion_cfg.h). */
+#define RT_NONE  (0u)
+#define RT_BRAKE (1u)
+#define RT_ALIGN (2u)
+#define RT_BACK  (3u)
+#define RT_SLOW  (4u)
+#define BYP_EV_RETRY (BYP_PH_DONE + 4u)
+
+extern uint32_t barcode_retry_req(void); /* line_task/barcode_task.c */
+
+static void
+rt_next (motion_ctx_t *p_ctx, uint8_t ph)
+{
+    p_ctx->rt_phase = ph;
+    p_ctx->rt_ticks = 0u;
+    p_ctx->rt_l0    = p_ctx->pos_l;
+    p_ctx->rt_r0    = p_ctx->pos_r;
+    motion_pid_reset(&p_ctx->pid_l);
+    motion_pid_reset(&p_ctx->pid_r);
+}
+
+/* One tick in Line Following.  true: it set the wheels (brake, line up,
+   back up); false: Line Following drives (RT_SLOW only slows it). */
+static bool
+rt_drive (motion_ctx_t *p_ctx)
+{
+    bool     b_bar = line_state_barcode(p_ctx->line_word);
+    uint32_t req   = barcode_retry_req();
+    int32_t  moved = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->rt_l0,
+                                       p_ctx->pos_r - p_ctx->rt_r0);
+    bool     b_wheels = false;
+
+    if (b_bar && !p_ctx->b_rt_bar)
+    {
+        p_ctx->rt_read_l = p_ctx->pos_l; /* a read begins here */
+        p_ctx->rt_read_r = p_ctx->pos_r;
+        if (RT_SLOW == p_ctx->rt_phase)
+        {
+            p_ctx->b_rt_seen = true;
+        }
+    }
+    if (!b_bar && p_ctx->b_rt_bar && (RT_SLOW == p_ctx->rt_phase)
+        && p_ctx->b_rt_seen)
+    {
+        rt_next(p_ctx, RT_NONE); /* read again: back to normal speed */
+    }
+    p_ctx->b_rt_bar = b_bar;
+
+    if (req != p_ctx->rt_req_seen)
+    {
+        p_ctx->rt_req_seen = req;
+        if ((RT_NONE == p_ctx->rt_phase) && !p_ctx->b_rt_used)
+        {
+            int32_t back = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->rt_read_l,
+                                             p_ctx->pos_r - p_ctx->rt_read_r)
+                           + MOTION_RT_MARGIN_MM;
+            motion_report_t rep;
+
+            if (back < MOTION_RT_MIN_MM)
+            {
+                back = MOTION_RT_MIN_MM;
+            }
+            if (back > MOTION_RT_MAX_MM)
+            {
+                back = MOTION_RT_MAX_MM;
+            }
+            p_ctx->rt_back_mm = back;
+            p_ctx->b_rt_used  = true;
+            p_ctx->b_rt_seen  = false;
+            rt_next(p_ctx, RT_BRAKE);
+            moved = 0;
+            report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BYP);
+            rep.val_l  = (int32_t)BYP_EV_RETRY;
+            rep.val_r  = back;
+            rep.rate_l = p_ctx->hd_err_deg;
+            rep.rate_r = p_ctx->b_hd_ok ? 1 : 0;
+            report_send(p_ctx, &rep);
+        }
+    }
+
+    p_ctx->rt_ticks++;
+    switch (p_ctx->rt_phase)
+    {
+        case RT_BRAKE:
+            p_ctx->cmd_l = 0;
+            p_ctx->cmd_r = 0;
+            if (p_ctx->rt_ticks >= 20u)
+            {
+                rt_next(p_ctx, RT_ALIGN);
+            }
+            b_wheels = true;
+            break;
+        case RT_ALIGN:
+            /* straighten to the line's heading (IMU); none: as it is */
+            if (!p_ctx->b_hd_ok || (motion_abs(p_ctx->hd_err_deg) <= 3)
+                || (p_ctx->rt_ticks >= 200u))
+            {
+                rt_next(p_ctx, RT_BACK);
+                p_ctx->cmd_l = 0;
+                p_ctx->cmd_r = 0;
+            }
+            else
+            {
+                int32_t dir = (p_ctx->hd_err_deg > 0) ? -1 : 1; /* + = left */
+
+                p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                                          -dir * MOTION_BYPASS_TURN_SPEED,
+                                          p_ctx->d_l);
+                p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                                          dir * MOTION_BYPASS_TURN_SPEED,
+                                          p_ctx->d_r);
+            }
+            b_wheels = true;
+            break;
+        case RT_BACK:
+            if ((moved <= -p_ctx->rt_back_mm) || (p_ctx->rt_ticks >= 1500u))
+            {
+                rt_next(p_ctx, RT_SLOW);
+                lf_reset(p_ctx);
+                p_ctx->cmd_l = 0;
+                p_ctx->cmd_r = 0;
+            }
+            else
+            {
+                /* straight back; with a heading, hold the line's */
+                int32_t c = 0;
+
+                if (p_ctx->b_hd_ok)
+                {
+                    c = p_ctx->hd_err_deg / 3;
+                    if (c > 2)
+                    {
+                        c = 2;
+                    }
+                    if (c < -2)
+                    {
+                        c = -2;
+                    }
+                }
+                p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                                          -MOTION_RT_BACK_SPEED + c, p_ctx->d_l);
+                p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                                          -MOTION_RT_BACK_SPEED - c, p_ctx->d_r);
+            }
+            b_wheels = true;
+            break;
+        case RT_SLOW:
+            if (moved >= (p_ctx->rt_back_mm + 200))
+            {
+                rt_next(p_ctx, RT_NONE); /* went through it: done */
+            }
+            break;
+        default:
+            if (p_ctx->b_rt_used && !b_bar && (moved >= MOTION_RT_FORGET_MM))
+            {
+                p_ctx->b_rt_used = false; /* the next barcode may retry */
+            }
+            break;
+    }
+    return b_wheels;
+}
+
+#if MOTION_LF_STRADDLE
+/* Straddle Line Following (MOTION_LF_STRADDLE, motion_cfg.h), after the
+   other team's b3_line_step (subsystem3, used with permission): the two
+   sensors sit either side of the line, both white = on it.  A black side
+   = the line has slid under that sensor: a nudge back (self-tuned: a touch
+   on the other side soon after shrinks it, the same side again grows it),
+   and a side that stays black teaches a curve memory, so a bend is driven
+   as one smooth arc; on white the memory fades to straight.  Tile gaps
+   and cracks are white: nothing changes.  Curvatures are 1e6 / radius mm,
+   + = left; speeds mm/s, turned into counts per tick with a remainder. */
+static int32_t
+st_abs (int32_t v)
+{
+    return (v < 0) ? -v : v;
+}
+
+static int32_t
+st_clamp (int32_t v, int32_t lim)
+{
+    return (v > lim) ? lim : ((v < -lim) ? -lim : v);
+}
+
+static int32_t
+st_curve_speed (int32_t base, int32_t curv)
+{
+    int32_t mag = st_abs(curv);
+
+    if (base <= MOTION_ST_CURVE_MMPS)
+    {
+        return base;
+    }
+    if (mag > MOTION_ST_FULL_CURV)
+    {
+        mag = MOTION_ST_FULL_CURV;
+    }
+    return base - (((base - MOTION_ST_CURVE_MMPS) * mag) / MOTION_ST_FULL_CURV);
+}
+
+/* the inner wheel's minimum: MOTION_ST_MIN_WHEEL_MMPS, or a share of
+   the speed when slower (at the 24 mm/s barcode speed a fixed 20 left
+   4 mm/s to steer with: a 38 cm radius at best, in the S-curve) */
+static int32_t
+st_min_wheel (int32_t v)
+{
+    int32_t share = (v * MOTION_ST_MIN_WHEEL_PCT) / 100;
+
+    return (share < MOTION_ST_MIN_WHEEL_MMPS) ? share : MOTION_ST_MIN_WHEEL_MMPS;
+}
+
+/* tightest curve at speed v that keeps the inner wheel at the minimum */
+static int32_t
+st_curve_limit (int32_t v)
+{
+    int32_t mw = st_min_wheel(v);
+
+    if (v <= mw)
+    {
+        return 0;
+    }
+    return (int32_t)(((int64_t)2000000 * (v - mw))
+                     / ((int64_t)v * MOTION_WHEELBASE_MM));
+}
+
+static void
+st_tune_kick (motion_ctx_t *p_ctx, int8_t side)
+{
+    int64_t kick = p_ctx->st_kick;
+
+    if ((0 != p_ctx->st_last_touch)
+        && (p_ctx->st_touch_um < (MOTION_ST_OVERSHOOT_MM * 1000u)))
+    {
+        kick = (p_ctx->st_last_touch != side)
+                   ? ((kick * MOTION_ST_SHRINK_PCT) / 100)
+                   : ((kick * MOTION_ST_GROW_PCT) / 100);
+    }
+    else if (p_ctx->st_last_touch == side)
+    {
+        kick = (kick * MOTION_ST_GROW_PCT) / 100;
+    }
+    else
+    {
+        /* first touch, or long after the last: keep it */
+    }
+    if (kick < MOTION_ST_KICK_MIN_CURV)
+    {
+        kick = MOTION_ST_KICK_MIN_CURV;
+    }
+    if (kick > MOTION_ST_KICK_CURV)
+    {
+        kick = MOTION_ST_KICK_CURV;
+    }
+    p_ctx->st_kick       = (int32_t)kick;
+    p_ctx->st_last_touch = side;
+    p_ctx->st_touch_um   = 0u;
+}
+
+/* mm/s to counts per tick, the remainder kept for the next tick */
+static int32_t
+st_cpt (int32_t *p_rem, int32_t mmps)
+{
+    int32_t out;
+
+    *p_rem += mmps * (MOTION_COUNTS_PER_REV * 113);
+    out     = *p_rem / (355 * MOTION_WHEEL_DIA_MM * 100);
+    *p_rem -= out * (355 * MOTION_WHEEL_DIA_MM * 100);
+    return out;
+}
+
+static void
+st_drive (motion_ctx_t *p_ctx, int32_t base)
+{
+    uint32_t rl    = line_state_rl(p_ctx->line_word);
+    bool     l_blk = (0u != (rl & LINE_RL_LEFT_DEV));
+    bool     r_blk = (0u != (rl & LINE_RL_RIGHT_DEV));
+    int8_t   error = 0; /* -1 = left black = steer left */
+    int32_t  fwd   = p_ctx->d_l + p_ctx->d_r;
+    int32_t  ds_um = (fwd > 0) ? ST_UM_2C(fwd) : 0;
+    int32_t  target;
+    int32_t  limit;
+    int32_t  v;
+    int32_t  corr;
+    bool     bend_bb;
+    bool     escape;
+
+    /* Over a barcode (line_state's barcode bit, or the slow re-read): no
+       line steering, the car holds the heading it had when the read began
+       (IMU), so the bars pass straight under the barcode sensor and a bar
+       under a line sensor is no touch.  The curve memory waits. */
+    /* MOTION_ST_BC_HOLD 0 (default): steering stays live over a barcode,
+       as the other team's.  The barcode sensor also takes a curve's line
+       for a barcode (car 13:50:47..13:51:01, S-curve: three "reads", all
+       rejected), and holding the heading there drove the car straight off
+       the curve, twice cutting short a recovery.  On a straight nothing
+       touches the line, so live steering is straight driving anyway. */
+    if (MOTION_ST_BC_HOLD
+        && (line_state_barcode(p_ctx->line_word)
+            || (MOTION_BC_RETRY && (RT_SLOW == p_ctx->rt_phase))))
+    {
+        int32_t herr;
+
+        if (!p_ctx->b_st_bc)
+        {
+            p_ctx->b_st_bc  = true;
+            p_ctx->st_bc_h0 = (int32_t)ev_heading_deg();
+        }
+        herr = p_ctx->st_bc_h0 - (int32_t)ev_heading_deg(); /* + = left */
+        while (herr > 180)
+        {
+            herr -= 360;
+        }
+        while (herr < -180)
+        {
+            herr += 360;
+        }
+        target = st_clamp(herr * MOTION_ST_BC_KP, MOTION_ST_BC_MAX);
+        v      = base;
+        {
+            int32_t step = (MOTION_ST_SLEW_CURV * ds_um) / 1000;
+
+            target = st_clamp(target - p_ctx->st_steer, step) + p_ctx->st_steer;
+        }
+        p_ctx->st_steer = target;
+        corr = (int32_t)(((int64_t)p_ctx->st_steer * v * MOTION_WHEELBASE_MM)
+                         / 2000000);
+        corr = st_clamp(corr, (v > st_min_wheel(v)) ? (v - st_min_wheel(v)) : 0);
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                                  st_cpt(&p_ctx->st_rem_l, v - corr), p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                                  st_cpt(&p_ctx->st_rem_r, v + corr), p_ctx->d_r);
+        return;
+    }
+    p_ctx->b_st_bc = false;
+    /* the turn the wheels make, averaged over ~8 ticks (+ = left) */
+    p_ctx->st_dd16 += (((p_ctx->d_r - p_ctx->d_l) * 16) - p_ctx->st_dd16) / 8;
+    p_ctx->st_ds16 += (((p_ctx->d_r + p_ctx->d_l) * 16) - p_ctx->st_ds16) / 8;
+    if (l_blk && !r_blk)
+    {
+        error = -1;
+    }
+    else if (r_blk && !l_blk)
+    {
+        error = 1;
+    }
+    else
+    {
+        /* both white (on it) or both black (a crossing): straight */
+    }
+    /* The line crossing the whole pair (car 13:17:21: a hard left learnt
+       in a curve, the line went from the left sensor to the right one
+       12 mm later and on out past it; both white then read "on it" and
+       the car drove off).  A touch that begins within MOTION_ST_TRAVERSE_MM
+       of the other side's ending is the line sweeping across; when it ends
+       too, the line is outside that sensor: st_out, steer back hard until
+       any touch. */
+    if (l_blk || r_blk)
+    {
+        if ((0 != error) && (error != p_ctx->st_side))
+        {
+            p_ctx->b_st_trav = (p_ctx->st_end_side == -error)
+                               && (p_ctx->st_end_um < (MOTION_ST_TRAVERSE_MM * 1000u));
+        }
+        if (0 != p_ctx->st_out)
+        {
+            p_ctx->b_st_recov = true; /* this touch ends a recovery pivot */
+        }
+        p_ctx->b_st_after_recov = false;
+        p_ctx->st_out = 0;
+    }
+    else
+    {
+        if (0 != p_ctx->st_side)
+        {
+            /* a single touch has just ended */
+            if (p_ctx->b_st_trav)
+            {
+                p_ctx->st_out = p_ctx->st_side;
+            }
+            /* Which way did the line go?  The car turning AWAY from the
+               sensor that just lost it swings that sensor off past the
+               line: the line is now outside it (car 13:17:22, 13:50:56).
+               Turning toward it, the line came back in between. */
+            if (p_ctx->st_ds16 > 0)
+            {
+                int32_t k = (int32_t)(((int64_t)2000000 * p_ctx->st_dd16)
+                                      / ((int64_t)MOTION_WHEELBASE_MM
+                                         * p_ctx->st_ds16)); /* + = left */
+                int32_t ts = (k >= MOTION_ST_EXIT_CURV) ? -1
+                             : ((k <= -MOTION_ST_EXIT_CURV) ? 1 : 0);
+
+                if ((0 != ts) && (ts == -p_ctx->st_side))
+                {
+                    p_ctx->st_out = p_ctx->st_side;
+                }
+            }
+            if (0 != p_ctx->st_out)
+            {
+                p_ctx->st_out_um = 0u;
+                p_ctx->st_mem    = 0; /* that curve was wrong */
+            }
+            /* after a recovery pivot the car is unsure: no touch again
+               within MOTION_ST_RECOV_LOST_MM is Line Search (car 15:46:03:
+               found the line, drove on 7 s at one heading without it) */
+            p_ctx->b_st_after_recov = p_ctx->b_st_recov;
+            p_ctx->b_st_recov       = false;
+            /* on the outside of a learnt curve (the side against it) */
+            p_ctx->b_st_outer  = (st_abs(p_ctx->st_mem) >= MOTION_ST_FULL_CURV)
+                                 && (((int64_t)p_ctx->st_side * p_ctx->st_mem) > 0);
+            p_ctx->st_end_side = p_ctx->st_side;
+            p_ctx->st_end_um   = 0u;
+            p_ctx->b_st_trav   = false;
+        }
+        else if (p_ctx->st_end_um < 100000000u)
+        {
+            p_ctx->st_end_um += (uint32_t)ds_um;
+            /* the outside sensor touched, then nothing for
+               MOTION_ST_OUTER_MM in the curve: the line slipped out past
+               it (on a straight, or after an inside touch, nothing) */
+            if (p_ctx->b_st_outer && (0 == p_ctx->st_out)
+                && (p_ctx->st_end_um >= (MOTION_ST_OUTER_MM * 1000u)))
+            {
+                p_ctx->st_out     = p_ctx->st_end_side;
+                p_ctx->b_st_outer = false;
+                p_ctx->st_out_um  = 0u;
+                p_ctx->st_mem     = 0;
+            }
+        }
+        else
+        {
+            /* long ago */
+        }
+    }
+    /* both black in a learnt bend is the bend's tape seen at a steep
+       angle, not a crossing: keep the curve */
+    bend_bb = l_blk && r_blk
+              && (st_abs(p_ctx->st_mem) >= MOTION_ST_FULL_CURV)
+              && (((int64_t)p_ctx->st_side * p_ctx->st_mem) <= 0);
+    if (!bend_bb && (error != p_ctx->st_side))
+    {
+        if ((0 == error) && (((int64_t)p_ctx->st_side * p_ctx->st_mem) > 0)
+            && (p_ctx->st_black_um >= (MOTION_ST_CURVE_END_MM * 1000u)))
+        {
+            /* the side against the learnt curve stayed black: the curve
+               has ended, keep the steering it left */
+            p_ctx->st_mem = p_ctx->st_steer;
+        }
+        p_ctx->st_side     = error;
+        p_ctx->st_black_um = 0u;
+        if (0 != error)
+        {
+            st_tune_kick(p_ctx, error);
+        }
+    }
+    if (p_ctx->st_touch_um < (MOTION_ST_OVERSHOOT_MM * 1000u))
+    {
+        p_ctx->st_touch_um += (uint32_t)ds_um;
+    }
+    if (!(l_blk && r_blk))
+    {
+        p_ctx->st_bb_um = 0u;
+    }
+    else if (p_ctx->st_bb_um < (MOTION_ST_BB_CROSS_MM * 1000u))
+    {
+        p_ctx->st_bb_um += (uint32_t)ds_um;
+    }
+    else
+    {
+        /* long enough */
+    }
+
+    if ((0 != p_ctx->st_out) && !l_blk && !r_blk)
+    {
+        /* back toward the side the line went out of: pivot on the inner
+           wheel (stopped), the outer at 2 x the curve speed, until a sensor
+           finds the line; line_inputs gives up to Line Search after
+           MOTION_ST_OUT_MAX_MM */
+        int32_t vp = (base < MOTION_ST_CURVE_MMPS) ? base : MOTION_ST_CURVE_MMPS;
+
+        if (p_ctx->st_out_um < 100000000u)
+        {
+            p_ctx->st_out_um += (uint32_t)ds_um;
+        }
+        p_ctx->st_steer = -p_ctx->st_out * MOTION_ST_KICK_CURV;
+        corr            = -p_ctx->st_out * vp;
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                                  st_cpt(&p_ctx->st_rem_l, vp - corr), p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                                  st_cpt(&p_ctx->st_rem_r, vp + corr), p_ctx->d_r);
+        return;
+    }
+    else if (bend_bb)
+    {
+        target             = p_ctx->st_mem;
+        p_ctx->st_black_um = 0u;
+        if (p_ctx->st_bb_um >= (MOTION_ST_BB_CROSS_MM * 1000u))
+        {
+            target += (p_ctx->st_mem > 0) ? p_ctx->st_kick : -p_ctx->st_kick;
+        }
+    }
+    else if (0 != error)
+    {
+        int64_t side_pct = ((error < 0) && (p_ctx->st_mem >= MOTION_ST_FULL_CURV))
+                               ? (int64_t)MOTION_ST_LEFT_PCT : 100;
+        int64_t base_rate;
+        int64_t rate;
+        int64_t kick = p_ctx->st_kick;
+
+        p_ctx->st_black_um += (uint32_t)ds_um;
+        if (((int64_t)error * p_ctx->st_mem) > 0)
+        {
+            /* black against the learnt curve: forget it */
+            p_ctx->st_mem -= (int32_t)(((int64_t)p_ctx->st_mem * ds_um)
+                                       / ((int64_t)MOTION_ST_FORGET_MM * 1000));
+        }
+        base_rate = ((((int64_t)error * p_ctx->st_mem) < 0)
+                     && (st_abs(p_ctx->st_mem) >= MOTION_ST_TIGHT_FROM_CURV))
+                        ? MOTION_ST_LEARN_TIGHT_CURV : MOTION_ST_LEARN_CURV;
+        rate = (base_rate * side_pct) / 100;
+        p_ctx->st_mem -= (int32_t)(((int64_t)error * rate * ds_um
+                                    * (((int64_t)MOTION_ST_ESCAPE_MM * 1000)
+                                       + (int64_t)p_ctx->st_black_um))
+                                   / ((int64_t)10000 * MOTION_ST_ESCAPE_MM * 1000));
+        if (p_ctx->st_black_um >= (MOTION_ST_KICK_RAMP_MM * 1000u))
+        {
+            kick = MOTION_ST_KICK_CURV;
+        }
+        else
+        {
+            kick += ((MOTION_ST_KICK_CURV - kick) * (int64_t)p_ctx->st_black_um)
+                    / ((int64_t)MOTION_ST_KICK_RAMP_MM * 1000);
+        }
+        kick   = (kick * side_pct) / 100;
+        target = p_ctx->st_mem - (error * (int32_t)kick);
+    }
+    else
+    {
+        /* fades to straight, rounded away from 0 so it gets there */
+        int64_t fade = ((int64_t)p_ctx->st_mem * ds_um)
+                       / ((int64_t)MOTION_ST_FORGET_MM * 1000);
+
+        if ((0 == fade) && (0 != p_ctx->st_mem) && (ds_um > 0))
+        {
+            fade = (p_ctx->st_mem > 0) ? 1 : -1;
+        }
+        p_ctx->st_mem -= (int32_t)fade;
+        target = p_ctx->st_mem;
+    }
+
+    v             = st_curve_speed(base, p_ctx->st_mem);
+    limit         = st_curve_limit(v);
+    p_ctx->st_mem = st_clamp(p_ctx->st_mem, limit);
+    target        = st_clamp(target, limit);
+    {
+        int32_t step = (MOTION_ST_SLEW_CURV * ds_um) / 1000;
+
+        if (target > (p_ctx->st_steer + step))
+        {
+            target = p_ctx->st_steer + step;
+        }
+        if (target < (p_ctx->st_steer - step))
+        {
+            target = p_ctx->st_steer - step;
+        }
+    }
+    p_ctx->st_steer = st_clamp(target, limit);
+
+    corr   = (int32_t)(((int64_t)p_ctx->st_steer * v * MOTION_WHEELBASE_MM)
+                       / 2000000);
+    escape = (0 != error)
+             && (p_ctx->st_black_um >= (MOTION_ST_ESCAPE_MM * 1000u))
+             && (st_abs(p_ctx->st_mem) >= limit) && (v > 0);
+    if (escape)
+    {
+        corr = -error * v; /* hairpin: stop the inner wheel, pivot on it */
+    }
+    else if (corr > (v - st_min_wheel(v)))
+    {
+        corr = (v > st_min_wheel(v)) ? (v - st_min_wheel(v)) : 0;
+    }
+    else if (corr < -(v - st_min_wheel(v)))
+    {
+        corr = (v > st_min_wheel(v)) ? -(v - st_min_wheel(v)) : 0;
+    }
+    else
+    {
+        /* inside the limits */
+    }
+    p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                              st_cpt(&p_ctx->st_rem_l, v - corr), p_ctx->d_l);
+    p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                              st_cpt(&p_ctx->st_rem_r, v + corr), p_ctx->d_r);
+}
+#endif
+
+/* Realign after a search (MOTION_LF_REALIGN, motion_cfg.h): found the line
+   again more than MOTION_RA_MIN_DEG off the heading it had when the line
+   went white -> onto it (axle over the line), pivot back to that heading,
+   a short stop, then Line Following.  The same as the bypass's way back. */
+#define RA_NONE   (0u)
+#define RA_ONTO   (1u)
+#define RA_ALIGN  (2u)
+#define RA_SETTLE (3u)
+
+static void
+ra_next (motion_ctx_t *p_ctx, uint8_t ph)
+{
+    p_ctx->ra_phase = ph;
+    p_ctx->ra_ticks = 0u;
+    p_ctx->ra_l0    = p_ctx->pos_l;
+    p_ctx->ra_r0    = p_ctx->pos_r;
+    motion_pid_reset(&p_ctx->pid_l);
+    motion_pid_reset(&p_ctx->pid_r);
+}
+
+/* true: it set the wheels this tick. */
+static bool
+ra_drive (motion_ctx_t *p_ctx)
+{
+    int32_t err = p_ctx->ra_h_pre - (int32_t)ev_heading_deg(); /* + = turn left */
+    int32_t moved;
+
+    if (p_ctx->b_ra_pending)
+    {
+        p_ctx->b_ra_pending = false;
+        if (motion_abs(err) >= MOTION_RA_MIN_DEG)
+        {
+            motion_report_t rep;
+
+            ra_next(p_ctx, RA_ONTO);
+            report_fill(p_ctx, &rep, REP_EVENT, (uint8_t)EVT_BYP);
+            rep.val_l  = (int32_t)(BYP_PH_DONE + 6u);
+            rep.val_r  = err;
+            rep.rate_l = 0;
+            rep.rate_r = 1;
+            report_send(p_ctx, &rep);
+        }
+    }
+    if (RA_NONE == p_ctx->ra_phase)
+    {
+        return false;
+    }
+    p_ctx->ra_ticks++;
+    moved = motion_ds_dist_mm(p_ctx->pos_l - p_ctx->ra_l0,
+                              p_ctx->pos_r - p_ctx->ra_r0);
+    if (RA_ONTO == p_ctx->ra_phase)
+    {
+        if ((moved >= MOTION_SM_ONTO_MM) || (p_ctx->ra_ticks >= 300u))
+        {
+            ra_next(p_ctx, RA_ALIGN);
+        }
+        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_LF_BASE, p_ctx->d_l);
+        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_LF_BASE, p_ctx->d_r);
+    }
+    else if (RA_ALIGN == p_ctx->ra_phase)
+    {
+        if ((motion_abs(err) <= MOTION_HD_LEAD_DEG) || (p_ctx->ra_ticks >= 300u))
+        {
+            ra_next(p_ctx, RA_SETTLE);
+            p_ctx->cmd_l = 0;
+            p_ctx->cmd_r = 0;
+        }
+        else
+        {
+            int32_t dir = (err > 0) ? 1 : -1; /* + = left */
+
+            p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l,
+                                      -dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_l);
+            p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r,
+                                      dir * MOTION_BYPASS_TURN_SPEED, p_ctx->d_r);
+        }
+    }
+    else
+    {
+        p_ctx->cmd_l = 0;
+        p_ctx->cmd_r = 0;
+        if (p_ctx->ra_ticks >= 15u)
+        {
+            ra_next(p_ctx, RA_NONE);
+            lf_reset(p_ctx);
+        }
+    }
+    return true;
+}
+
 /* What the wheels do this tick in the current state. */
 static void
 man_drive (motion_ctx_t *p_ctx, motion_state_t state)
@@ -2630,19 +4179,163 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
     }
     else if (MOTION_ST_LINE_FOLLOW == state)
     {
+#if MOTION_LF_REALIGN
+        if (ra_drive(p_ctx))
+        {
+            return; /* onto the line and back to its heading */
+        }
+#endif
+#if MOTION_BC_RETRY
+        if (rt_drive(p_ctx))
+        {
+            return; /* braking, lining up or backing up for a re-read */
+        }
+#endif
+#if MOTION_LF_STRADDLE
+        {
+            int32_t st_base = MOTION_ST_BASE_MMPS;
+
+            if (line_state_barcode(p_ctx->line_word)
+                || (MOTION_BC_RETRY && (RT_SLOW == p_ctx->rt_phase)))
+            {
+                st_base = MOTION_ST_READ_MMPS; /* slower over a barcode */
+            }
+            st_drive(p_ctx, st_base);
+            return;
+        }
+#endif
         /* correction > 0: turn left (slow the left wheel, speed up the
            right).  With LINE_STEER_INVERT that is the left sensor darker.
            The remainder carries to the next tick, so a correction below
            one count still steers on average (S4: an error below 13 gave
            no correction at all). */
+#if MOTION_LF_GAP_MM > 0
+        if ((LINE_RL_CENTRED == line_state_rl(p_ctx->line_word))
+            && !line_state_barcode(p_ctx->line_word))
+        {
+            if (0 == p_ctx->lf_gap2c)
+            {
+                p_ctx->lf_gap_h0   = (int32_t)ev_heading_deg();
+                p_ctx->b_gap_start = !p_ctx->b_lf_edge;
+            }
+            p_ctx->lf_gap2c += ((p_ctx->d_l + p_ctx->d_r) > 0)
+                                   ? (p_ctx->d_l + p_ctx->d_r) : 1;
+        }
+        else
+        {
+#if MOTION_LF_REALIGN
+            /* the line back after a gap the car swerved in: line up with
+               the heading it had before the gap (not after an edge slip:
+               in a curve the line has turned, and Line Following follows) */
+            if ((p_ctx->lf_gap2c > 0) && p_ctx->b_gap_start
+                && (motion_abs(p_ctx->lf_gap_h0 - (int32_t)ev_heading_deg())
+                    >= MOTION_RA_MIN_DEG))
+            {
+                p_ctx->ra_h_pre     = p_ctx->lf_gap_h0;
+                p_ctx->b_ra_pending = true;
+            }
+#endif
+            p_ctx->lf_gap2c = 0;
+        }
+#endif
         p_ctx->lf_rem += lf_correction(p_ctx, lf_error(p_ctx),
-                                       line_state_barcode(p_ctx->line_word));
+                                       MOTION_LF_HOLD_ON_BARCODE
+                                       && line_state_barcode(p_ctx->line_word));
         corr = p_ctx->lf_rem / MOTION_LF_SCALE;
         p_ctx->lf_rem -= corr * MOTION_LF_SCALE;
-        p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, MOTION_LF_BASE - corr,
-                                       p_ctx->d_l);
-        p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, MOTION_LF_BASE + corr,
-                                       p_ctx->d_r);
+        {
+            /* TEST IMAGE (20 Nov): slower over a barcode (line_state's
+               barcode bit, LINE_BARCODE_HOLD 1), so the slow analog
+               barcode sensor sees thin bars darker.  Widths are measured
+               in mm (the analog reader), so the change of speed does not
+               distort them.  0: off. */
+            int32_t base = MOTION_LF_BASE;
+            int32_t c;
+#if MOTION_LF_BASE_CURVE > 0
+            /* Curve speed (21 Nov, car 20:20: in a tight right curve the
+               line sat on one sensor's edge for 2 s, error ~-60, and the
+               correction that gives at base 6 turned too wide; the line
+               slid off and was lost).  Line on one sensor's edge with a
+               clear error, or lost from an edge: MOTION_LF_BASE_CURVE for
+               MOTION_LF_CURVE_TICKS, the correction kept whole, so the same
+               error turns much tighter.  Straights stay at the base. */
+            {
+                uint32_t rl = line_state_rl(p_ctx->line_word);
+                int32_t  e  = line_state_error(p_ctx->line_word);
+
+                /* only a line that stays at one edge MOTION_LF_CURVE_RUN ticks
+                   is a curve (car 20:57: at base 8 every wobble touched an
+                   edge, curve mode held a hard turn over each white patch:
+                   a pivot every time, and the line lost) */
+                if (((LINE_RL_LEFT_DEV == rl) || (LINE_RL_RIGHT_DEV == rl))
+                    && ((e >= MOTION_LF_CURVE_ERR) || (e <= -MOTION_LF_CURVE_ERR)))
+                {
+                    if (p_ctx->lf_edge_run < 1000u)
+                    {
+                        p_ctx->lf_edge_run++;
+                    }
+                }
+                else if (LINE_RL_CENTRED != rl)
+                {
+                    p_ctx->lf_edge_run = 0u;
+                }
+                else
+                {
+                    /* white: keep the count (a gap inside a curve) */
+                }
+                if (p_ctx->lf_edge_run >= MOTION_LF_CURVE_RUN)
+                {
+                    p_ctx->lf_curve_ticks = MOTION_LF_CURVE_TICKS;
+                }
+                else if ((LINE_RL_CENTRED == rl) && p_ctx->b_lf_edge
+                         && (p_ctx->lf_curve_ticks > 0u))
+                {
+                    p_ctx->lf_curve_ticks = MOTION_LF_CURVE_TICKS;
+                }
+                else if (p_ctx->lf_curve_ticks > 0u)
+                {
+                    p_ctx->lf_curve_ticks--;
+                }
+                else
+                {
+                    /* on a straight */
+                }
+            }
+            c = corr;
+            if (p_ctx->lf_curve_ticks > 0u)
+            {
+                /* and steer harder (car 20:45: at base 4 the error ~-60
+                   still turned ~15 cm radius, wider than the S-curve) */
+                base = MOTION_LF_BASE_CURVE;
+                c    = (corr * MOTION_LF_CURVE_BOOST_X10) / 10;
+                if (c > (base + 2))
+                {
+                    c = base + 2;
+                }
+                if (c < -(base + 2))
+                {
+                    c = -(base + 2);
+                }
+            }
+#endif
+#if defined(MOTION_LF_BASE_READ) && (MOTION_LF_BASE_READ > 0)
+            if (line_state_barcode(p_ctx->line_word)
+                || (MOTION_BC_RETRY && (RT_SLOW == p_ctx->rt_phase)))
+            {
+                base = MOTION_LF_BASE_READ;
+                /* the gain and cap are tuned for MOTION_LF_BASE: at the
+                   read base scale the correction down with the speed, or
+                   the same error turns twice as tight and the inner wheel
+                   reverses (car, 20 Nov: wobble over barcodes) */
+                c = (corr * base) / MOTION_LF_BASE;
+            }
+#endif
+
+            p_ctx->cmd_l = pid_capped(p_ctx, &p_ctx->pid_l, base - c,
+                                           p_ctx->d_l);
+            p_ctx->cmd_r = pid_capped(p_ctx, &p_ctx->pid_r, base + c,
+                                           p_ctx->d_r);
+        }
     }
     else if (MOTION_ST_LINE_SEARCH == state)
     {
@@ -2717,6 +4410,11 @@ take_commands (motion_ctx_t *p_ctx, motion_sm_in_t *p_in)
             {
                 p_ctx->look_mm    = mm;
                 p_ctx->look_state = LOOK_ANSWERED;
+            }
+            else if (p_ctx->b_sm_watch)
+            {
+                p_ctx->sm_watch_mm = mm;
+                p_ctx->b_sm_new    = true;
             }
         }
         else if (motion_avoid_cmd_unpack(word, &op, &side, &mm))
@@ -2857,6 +4555,7 @@ tick_statechart (motion_ctx_t *p_ctx)
     {
         p_ctx->mission_counts = 0u; /* a new mission */
         p_ctx->line_dir       = 0;  /* no side seen in it yet (L9) */
+        p_ctx->st_nt_um       = 0u; /* straddle: placed on the line */
     }
     p_ctx->mission_prev = (uint8_t)mission;
     in.b_running        = (MS_RUNNING == mission);
@@ -2869,7 +4568,13 @@ tick_statechart (motion_ctx_t *p_ctx)
     line_inputs(p_ctx, &in);
 
     motion_sm_step(&p_ctx->sm, &in, &out);
+#if MOTION_BC_RETRY
+    g_state_word = ((p_ctx->rt_phase >= RT_BRAKE) && (p_ctx->rt_phase <= RT_BACK))
+                       ? (uint32_t)MOTION_ST_REVERSING /* gate the reader */
+                       : (uint32_t)motion_sm_state(&p_ctx->sm); /* one store */
+#else
     g_state_word = (uint32_t)motion_sm_state(&p_ctx->sm); /* one store */
+#endif
 
     /* FAULT_CLEAR(MOTION) took it out of Motion Fault: forget the fault,
        or the next driving tick would raise it again. */
@@ -2914,6 +4619,51 @@ tick_statechart (motion_ctx_t *p_ctx)
             p_ctx->turn_action = p_ctx->turn_req;
         }
         man_start(p_ctx, motion_sm_state(&p_ctx->sm), out.b_resumed);
+#if MOTION_LF_STRADDLE
+        /* Back on the line after a bypass: check it is really there (car
+           15:53: lined up 4 cm past the line, no touch for 3.5 s, ran beside
+           it).  No touch within MOTION_ST_RECOV_LOST_MM -> Line Search, first
+           back toward the side it came from (line_dir). */
+        if (MOTION_ST_BYPASS == motion_sm_state(&p_ctx->sm))
+        {
+            p_ctx->b_post_bypass = true;
+        }
+        else if ((MOTION_ST_LINE_FOLLOW == motion_sm_state(&p_ctx->sm))
+                 && p_ctx->b_post_bypass)
+        {
+            p_ctx->b_post_bypass    = false;
+            p_ctx->b_st_after_recov = true;
+            p_ctx->st_nt_um         = 0u;
+        }
+        else if (MOTION_ST_LINE_SEARCH != motion_sm_state(&p_ctx->sm))
+        {
+            p_ctx->b_post_bypass = false;
+        }
+        else
+        {
+            /* searching after the bypass: keep it for Line Following */
+        }
+#endif
+#if MOTION_LF_REALIGN
+        if ((MOTION_ST_LINE_FOLLOW == before)
+            && (MOTION_ST_LINE_SEARCH == motion_sm_state(&p_ctx->sm)))
+        {
+            /* the heading the car had when the line went white: the line's */
+            p_ctx->ra_h_pre   = (p_ctx->lf_gap2c > 0) ? p_ctx->lf_gap_h0
+                                                      : (int32_t)ev_heading_deg();
+            p_ctx->b_ra_valid = (p_ctx->lf_gap2c > 0) && p_ctx->b_gap_start;
+        }
+        else if ((MOTION_ST_LINE_SEARCH == before)
+                 && (MOTION_ST_LINE_FOLLOW == motion_sm_state(&p_ctx->sm)))
+        {
+            p_ctx->b_ra_pending = p_ctx->b_ra_valid;
+            p_ctx->b_ra_valid   = false;
+        }
+        else
+        {
+            p_ctx->b_ra_valid = false; /* a bypass or a turn: they line up */
+        }
+#endif
     }
     man_drive(p_ctx, motion_sm_state(&p_ctx->sm));
     if (0u != (out.replies & MOTION_SM_REP_MOTION_FAULT))
@@ -3605,11 +5355,61 @@ print_byp (UB *p_line, motion_report_t const *p_rep)
         "OUT",   "LANE_LOOK", "LANE_BACK", "SWITCH",  "SIDESTEP",
         "PARALLEL", "STEP",   "PROBE_IN",  "LOOK",    "PROBE_OUT",
         "CLEAR", "TURN_IN",   "STEP_IN",   "ONTO",    "ALONG",
-        "IN_LOOK", "IN_BACK", "ARC_LEG", "ARC", "DONE"
+        "IN_LOOK", "IN_BACK", "ARC_LEG", "ARC", "SMOOTH", "DONE"
     };
     uint32_t    ph   = (uint32_t)p_rep->val_l;
     char const *name = (ph <= BYP_PH_DONE) ? names[ph] : "?";
 
+    if (BYP_EV_SEEN == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] side sensor: box seen at %d mm"
+                         " along, %d mm away", (INT)p_rep->val_r,
+                         (INT)p_rep->rate_l);
+        print_line(p_line);
+        return;
+    }
+    if (BYP_EV_CLEAR == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] side sensor: box ends at %d mm"
+                         " along, back in from %d mm",
+                         (INT)p_rep->val_r, (INT)p_rep->rate_l);
+        print_line(p_line);
+        return;
+    }
+    if ((BYP_PH_DONE + 6u) == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] line found %+d deg off its"
+                         " heading before the loss: onto it, line up",
+                         (INT)p_rep->val_r);
+        print_line(p_line);
+        return;
+    }
+    if ((BYP_PH_DONE + 5u) == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] bypass plan: box %d mm away,"
+                         " face %d mm -> out %d mm, back in from %d mm",
+                         (INT)((uint32_t)p_rep->rate_r & 0xFFFu),
+                         (INT)(((uint32_t)p_rep->rate_r >> 12) & 0xFFFu),
+                         (INT)p_rep->val_r, (INT)p_rep->rate_l);
+        print_line(p_line);
+        return;
+    }
+    if ((BYP_PH_DONE + 4u) == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] barcode re-read: line up (heading"
+                         " %+d deg), back %d mm, then through it slowly",
+                         (INT)p_rep->rate_l, (INT)p_rep->val_r);
+        print_line(p_line);
+        return;
+    }
+    if (BYP_EV_MISS == ph)
+    {
+        (void)tm_sprintf(p_line, (UB *)"[motion] side sensor: box never seen by"
+                         " %d mm along, back in by distance (%d)",
+                         (INT)p_rep->val_r, (INT)p_rep->rate_l);
+        print_line(p_line);
+        return;
+    }
     (void)tm_sprintf(p_line,
                      (UB *)"[motion] bypass %s: %d mm out, heading %+d deg"
                            " to the line, %s",

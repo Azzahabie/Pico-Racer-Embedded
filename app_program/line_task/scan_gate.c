@@ -14,6 +14,14 @@
    with. */
 #define MS_MAX (100000u)
 
+/* After a bypass the gate stays shut for this much Line Following: no
+   barcode read and no junction until the car is back on the line and
+   lined up (Hanis, 22 Nov: getting back on track comes first; car 14:58:
+   a junction's arm beside the box fired the stored turn mid-bypass). */
+#ifndef LINE_SCAN_AFTER_BYPASS_MM
+#define LINE_SCAN_AFTER_BYPASS_MM	(200u)
+#endif
+
 void scan_gate_init(scan_gate_t *gate, uint32_t ds)
 {
 	gate->stage1 = 0;
@@ -22,6 +30,8 @@ void scan_gate_init(scan_gate_t *gate, uint32_t ds)
 	gate->counter = motion_ds_counter(ds);
 	gate->stale_ms = 0u;
 	gate->available = true;
+	gate->hold_mm = 0u;
+	gate->ds_prev = ds;
 	gate->manoeuvre = false;
 	gate->open = true;
 }
@@ -82,6 +92,22 @@ bool scan_gate_step(scan_gate_t *gate, uint32_t ds, uint32_t motion,
 	/* a manoeuvre shuts the gate; when it ends the average starts again
 	   from 0, so the straight after it scans at once */
 	gate->manoeuvre = scan_gate_manoeuvre(motion);
+	{
+		int32_t moved = motion_ds_delta_mm(ds, gate->ds_prev);
+
+		gate->ds_prev = ds;
+		if (moved < 0) {
+			moved = -moved;
+		}
+		if (motion == (uint32_t)MOTION_ST_BYPASS) {
+			gate->hold_mm = LINE_SCAN_AFTER_BYPASS_MM;
+		} else if (!gate->manoeuvre && (gate->hold_mm > 0u)) {
+			gate->hold_mm = ((uint32_t)moved >= gate->hold_mm)
+					? 0u : (gate->hold_mm - (uint32_t)moved);
+		} else {
+			/* nothing held, or still searching after it */
+		}
+	}
 	if (was_manoeuvre && !gate->manoeuvre) {
 		gate->stage1 = 0;
 		gate->stage2 = 0;
@@ -96,7 +122,7 @@ bool scan_gate_step(scan_gate_t *gate, uint32_t ds, uint32_t motion,
 		gate->stage2 = low_pass(gate->stage2, gate->stage1);
 	}
 	size = (gate->stage2 < 0) ? -gate->stage2 : gate->stage2;
-	gate->open = !gate->manoeuvre &&
+	gate->open = !gate->manoeuvre && (0u == gate->hold_mm) &&
 		     (size < ((int32_t)LINE_SCAN_MAX_TURN_DPS * SCAN_GATE_SCALE));
 	return gate->open;
 }

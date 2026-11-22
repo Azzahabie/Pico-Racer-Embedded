@@ -72,6 +72,115 @@ static int32_t report_corr_mm(int32_t dist_mm)
 	return (dist_mm * SL_WIDTH_REPORT_CORR_PER_1000) / 1000;
 }
 
+#if SL_WIDTH_EDGE_MID
+/* 1000 x tan(deg), 0..60 deg */
+static const int16_t g_tan1000_tbl[61] = {
+	0, 17, 35, 52, 70, 87, 105, 123, 141, 158, 176, 194, 213, 231, 249,
+	268, 287, 306, 325, 344, 364, 384, 404, 424, 445, 466, 488, 510, 532,
+	554, 577, 601, 625, 649, 675, 700, 727, 754, 781, 810, 839, 869, 900,
+	933, 966, 1000, 1036, 1072, 1111, 1150, 1192, 1235, 1280, 1327, 1376,
+	1428, 1483, 1540, 1600, 1664, 1732
+};
+
+/* 1000 x cos(deg), deg = 0, 5 .. 45 */
+static const int16_t g_cos1000_5[10] = {
+	1000, 996, 985, 966, 940, 906, 866, 819, 766, 707
+};
+
+/* 1000 x tan(a2 / 2 deg): half degrees, the halves averaged */
+static int32_t tan1000_half(int32_t a2)
+{
+	int32_t	mag = (a2 < 0) ? -a2 : a2;
+	int32_t	lo;
+	int32_t	t;
+
+	if(mag > 120) {
+		mag = 120;
+	}
+	lo = mag / 2;
+	t = ((mag % 2) != 0)
+	    ? (((int32_t)g_tan1000_tbl[lo] + (int32_t)g_tan1000_tbl[(lo < 60) ? (lo + 1) : 60]) / 2)
+	    : (int32_t)g_tan1000_tbl[lo];
+	return (a2 < 0) ? -t : t;
+}
+
+/* 1000 x cos(deg), 0..60 deg */
+static const int16_t g_cos1000_1[61] = {
+	1000, 1000, 999, 999, 998, 996, 995, 993, 990, 988, 985, 982, 978,
+	974, 970, 966, 961, 956, 951, 946, 940, 934, 927, 921, 914, 906, 899,
+	891, 883, 875, 866, 857, 848, 839, 829, 819, 809, 799, 788, 777, 766,
+	755, 743, 731, 719, 707, 695, 682, 669, 656, 643, 629, 616, 602, 588,
+	574, 559, 545, 530, 515, 500
+};
+
+int32_t sl_cos1000(int32_t deg)
+{
+	int32_t	a = (deg < 0) ? -deg : deg;
+
+	return (int32_t)g_cos1000_1[(a > 60) ? 60 : a];
+}
+
+/* W from two face edges given as 2 x their angles (see SL_WIDTH_EDGE_MID). */
+int32_t sl_width_from_edges(int32_t d_c, int32_t el2, int32_t er2)
+{
+	int32_t	w = (d_c * (tan1000_half(er2 - (2 * SL_BEAM_HALF_DEG)) -
+			    tan1000_half(el2 + (2 * SL_BEAM_HALF_DEG)))) / 1000;
+
+	return (w < 0) ? 0 : w;
+}
+
+/* The outermost hit of the face on one side, in degrees (the same walk as
+ * face_edge_x2). */
+int32_t sl_face_last_deg(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+			 int32_t close_deg, int32_t d_c, int32_t dir)
+{
+	int32_t	last = SL_IDX(close_deg);
+	int32_t	idx = last + dir;
+
+	while((idx >= 0) && (idx < SL_SLOTS)) {
+		if(is_hit(grid[idx], d_obs_mm) &&
+		   ((((int32_t)grid[idx] * sl_cos1000(SL_DEG(idx))) / 1000)
+		    <= (d_c + SL_FACE_DEPTH_MM))) {
+			last = idx;
+		} else if(SL_NOT_MEASURED != grid[idx]) {
+			break;
+		} else {
+			/* not measured */
+		}
+		idx += dir;
+	}
+	return SL_DEG(last);
+}
+
+/* One edge of the face, as 2 x its angle: out from close_idx over hits
+ * within SL_FACE_DEPTH_MM of d_c (unmeasured slots skipped), then half-way
+ * to the next measured slot (a miss or a deeper hit); half a step out if
+ * the scan ends first. */
+static int32_t face_edge_x2(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
+			    int32_t close_idx, int32_t d_c, int32_t dir)
+{
+	int32_t	last = close_idx;
+	int32_t	idx = close_idx + dir;
+
+	while((idx >= 0) && (idx < SL_SLOTS)) {
+		/* depth straight ahead (d cos theta): a flat face reads
+		   longer toward its edges (car 23:01: 273 mm at 25 deg on a
+		   242 mm face), which is not "behind" it */
+		if(is_hit(grid[idx], d_obs_mm) &&
+		   ((((int32_t)grid[idx] * (int32_t)g_cos1000_5[abs_val(SL_DEG(idx)) / SL_STEP_DEG]) / 1000)
+		    <= (d_c + SL_FACE_DEPTH_MM))) {
+			last = idx;
+		} else if(SL_NOT_MEASURED != grid[idx]) {
+			return SL_DEG(last) + SL_DEG(idx);
+		} else {
+			/* not measured: keep going */
+		}
+		idx += dir;
+	}
+	return (2 * SL_DEG(last)) + (dir * SL_STEP_DEG);
+}
+#endif
+
 /* Closest hit. Hits inside the car's corridor (|d sin theta| <= C_pass)
  * win over hits outside it, so an object off to the side cannot hide one
  * that is straight ahead. On a tie prefer the angle nearest to 0.
@@ -237,6 +346,18 @@ void sl_profile(const uint16_t grid[SL_SLOTS], int32_t d_obs_mm,
 				      report_corr_mm((int32_t)grid[right_idx])) -
 				     (lateral_mm((int32_t)grid[left_idx], left_idx) +
 				      report_corr_mm((int32_t)grid[left_idx])));
+#if SL_WIDTH_EDGE_MID
+	{
+		int32_t	d_c = (int32_t)p_prof->d_close_mm;
+		int32_t	c_idx = SL_IDX((int32_t)p_prof->close_deg);
+		int32_t	el2 = face_edge_x2(grid, d_obs_mm, c_idx, d_c, -1);
+		int32_t	er2 = face_edge_x2(grid, d_obs_mm, c_idx, d_c, +1);
+
+		p_prof->width_mm = (int16_t)((d_c *
+			(tan1000_half(er2 - (2 * SL_BEAM_HALF_DEG)) -
+			 tan1000_half(el2 + (2 * SL_BEAM_HALF_DEG)))) / 1000);
+	}
+#endif
 	if(p_prof->width_mm < 0) {
 		p_prof->width_mm = 0;		/* tiny object: cone wider */
 	}
