@@ -1,0 +1,1077 @@
+[15:57:00.602] H s=228 up=112001ms  7B [96 1c 20 b0 36 00 00] +0.984s
+[15:57:00.625] S s=229 up=112001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [b4 1c 20 b0 36 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.023s
+[15:57:01.597] H s=230 up=113001ms  7B [d6 1c 20 2d 37 00 00] +0.972s
+[15:57:01.604] S s=231 up=113001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [f4 1c 20 2d 37 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.007s
+[15:57:02.572] H s=232 up=114001ms  7B [16 1d 20 aa 37 00 00] +0.969s
+[15:57:02.605] S s=233 up=114001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [34 1d 20 aa 37 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.032s
+[15:57:03.569] H s=234 up=115001ms  7B [56 1d 20 27 38 00 00] +0.964s
+[15:57:03.591] S s=235 up=115001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [74 1d 20 27 38 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.022s
+[15:57:04.592] H s=236 up=116001ms  7B [96 1d 20 a4 38 00 00] +1.000s
+[15:57:04.618] S s=237 up=116001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [b4 1d 20 a4 38 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.026s
+[15:57:05.612] H s=238 up=117001ms  7B [d6 1d 20 21 39 00 00] +0.994s
+[15:57:05.640] S s=239 up=117001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [f4 1d 20 21 39 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.029s
+[15:57:06.646] H s=240 up=118001ms  7B [16 1e 20 9e 39 00 00] +1.006s
+[15:57:06.660] S s=241 up=118001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [34 1e 20 9e 39 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.014s
+[15:57:07.771] H s=242 up=119001ms  7B [56 1e 20 1b 3a 00 00] +1.111s
+[15:57:08.085] S s=243 up=119001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [74 1e 20 1b 3a 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.313s
+[15:57:08.695] H s=244 up=120001ms  7B [96 1e 20 98 3a 00 00] +0.611s
+[15:57:08.713] S s=245 up=120001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [b4 1e 20 98 3a 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.018s
+[15:57:09.609] H s=246 up=121001ms  7B [d6 1e 20 15 3b 00 00] +0.897s
+[15:57:09.616] S s=247 up=121001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [f4 1e 20 15 3b 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.007s
+[15:57:10.569] H s=248 up=122001ms  7B [16 1f 20 92 3b 00 00] +0.952s
+[15:57:10.594] S s=249 up=122001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [34 1f 20 92 3b 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.025s
+[15:57:11.570] H s=250 up=123001ms  7B [56 1f 20 0f 3c 00 00] +0.976s
+[15:57:11.580] S s=251 up=123001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [74 1f 20 0f 3c 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.010s
+[15:57:12.687] H s=252 up=124001ms  7B [96 1f 20 8c 3c 00 00] +1.107s
+[15:57:12.703] S s=253 up=124001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [b4 1f 20 8c 3c 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.015s
+[15:57:13.576] H s=254 up=125001ms  7B [d6 1f 20 09 3d 00 00] +0.873s
+[15:57:13.584] S s=255 up=125001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=2 mpv=0 drp=0 tlt=0 trn=0  18B [f4 1f 20 09 3d 00 00 00 00 04 3f 00 00 80 00 00 00 04] +0.008s
+[15:57:14.633] H s=256 up=126001ms  7B [16 20 20 86 3d 00 00] +1.049s
+[15:57:53.405] H s=0 up=0ms  7B [16 00 00 00 00 00 00] +38.772s  GAP: expected s=257
+[15:57:53.453] S s=1 up=0ms faults=0 mot=0 dst=0 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [34 00 00 00 00 00 00 00 00 00 3f 00 00 40 00 7e 00 00] +0.049s
+[15:57:53.497] E mission s=2 up=0ms state=0  8B [55 00 00 00 00 00 a0 00] +0.044s
+[15:57:53.498] E mission s=3 up=0ms state=1  8B [75 00 00 00 00 00 a0 01] +0.001s
+[15:57:53.558] E line s=4 up=2ms state=0 deviation=2  9B [95 00 40 00 00 00 20 08 02] +0.060s
+[15:57:53.559] H s=5 up=1001ms  7B [b6 00 20 7d 00 00 00] +0.001s
+[15:57:53.559] S s=6 up=1001ms faults=0 mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [d4 00 20 7d 00 00 00 00 00 04 3f 00 00 40 00 7e 00 00] +0.000s
+[15:57:53.559] H s=34 up=15001ms  7B [56 04 20 53 07 00 00] +0.000s  GAP: expected s=7
+[15:57:53.581] S s=35 up=15001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [74 04 20 53 07 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.022s
+[15:57:54.505] H s=36 up=16001ms  7B [96 04 20 d0 07 00 00] +0.924s
+[15:57:54.538] S s=37 up=16001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [b4 04 20 d0 07 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.033s
+[15:57:55.502] H s=38 up=17001ms  7B [d6 04 20 4d 08 00 00] +0.965s
+[15:57:55.515] S s=39 up=17001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [f4 04 20 4d 08 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.013s
+[15:57:56.617] H s=40 up=18001ms  7B [16 05 20 ca 08 00 00] +1.102s
+[15:57:56.651] S s=41 up=18001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [34 05 20 ca 08 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.034s
+[15:57:57.505] H s=42 up=19001ms  7B [56 05 20 47 09 00 00] +0.853s
+[15:57:57.518] S s=43 up=19001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [74 05 20 47 09 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.013s
+[15:57:58.166] E motion s=44 up=19521ms state=0 speed_l=0 speed_r=0 dist_mm=0 turn_rate=1 fault=0 ovf=0  13B [95 05 20 88 09 00 00 00 08 08 00 08 10] +0.648s
+[15:57:58.510] H s=45 up=20001ms  7B [b6 05 20 c4 09 00 00] +0.344s
+[15:57:58.597] S s=46 up=20001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=1  18B [d4 05 20 c4 09 00 80 00 00 04 3f 00 00 80 01 fe 00 04] +0.087s
+[15:57:59.043] E motion s=47 up=20521ms state=0 speed_l=0 speed_r=0 dist_mm=1 turn_rate=0 fault=0 ovf=0  13B [f5 05 20 05 0a 00 00 00 08 18 00 00 10] +0.446s
+[15:57:59.603] H s=48 up=21001ms  7B [16 06 20 41 0a 00 00] +0.560s
+[15:57:59.641] S s=49 up=21001ms faults=imu mot=0 dst=0 lin=0 dev=2 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [34 06 20 41 0a 00 80 00 00 04 3f 00 00 80 01 7e 00 04] +0.038s
+[15:57:59.642] E line s=50 up=21066ms state=2 deviation=0  9B [55 06 40 49 0a 00 20 02 02] +0.001s
+[15:58:00.622] E motion s=51 up=21931ms state=0 speed_l=0 speed_r=0 dist_mm=1 turn_rate=1 fault=0 ovf=0  13B [75 06 60 b5 0a 00 00 00 08 18 00 08 10] +0.980s
+[15:58:00.650] H s=52 up=22001ms  7B [96 06 20 be 0a 00 00] +0.028s
+[15:58:00.650] S s=53 up=22001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [b4 06 20 be 0a 00 80 00 00 01 3f 00 00 80 01 7e 00 04] +0.001s
+[15:58:01.543] E motion s=54 up=22932ms state=0 speed_l=0 speed_r=0 dist_mm=1 turn_rate=0 fault=0 ovf=0  13B [d5 06 80 32 0b 00 00 00 08 18 00 00 10] +0.892s
+[15:58:01.551] H s=55 up=23001ms  7B [f6 06 20 3b 0b 00 00] +0.009s
+[15:58:01.552] S s=56 up=23001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [14 07 20 3b 0b 00 80 00 00 01 3f 00 00 80 01 7e 00 04] +0.001s
+[15:58:02.448] E motion s=57 up=23931ms state=0 speed_l=0 speed_r=0 dist_mm=1 turn_rate=0 fault=0 ovf=0  13B [35 07 60 af 0b 00 00 00 08 18 00 00 10] +0.896s
+[15:58:02.526] H s=58 up=24001ms  7B [56 07 20 b8 0b 00 00] +0.078s
+[15:58:02.526] S s=59 up=24001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [74 07 20 b8 0b 00 80 00 00 01 3f 00 00 80 01 7e 00 04] +0.000s
+[15:58:02.817] E line s=60 up=24239ms state=0 deviation=1  9B [95 07 e0 d5 0b 00 20 04 02] +0.290s
+[15:58:02.932] E imu s=61 up=24418ms class=6 hump_count=0 hump_height_mm=0  9B [b5 07 40 ec 0b 00 60 06 00] +0.116s
+[15:58:03.022] E imu s=62 up=24517ms class=0 hump_count=0 hump_height_mm=0  9B [d5 07 a0 f8 0b 00 60 00 00] +0.090s
+[15:58:03.488] E motion s=63 up=24931ms state=0 speed_l=0 speed_r=0 dist_mm=2 turn_rate=0 fault=0 ovf=0  13B [f5 07 60 2c 0c 00 00 00 08 28 00 00 10] +0.466s
+[15:58:03.548] H s=64 up=25001ms  7B [16 08 20 35 0c 00 00] +0.060s
+[15:58:03.548] S s=65 up=25001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [34 08 20 35 0c 00 80 00 00 02 3f 00 00 80 01 7e 00 04] +0.000s
+[15:58:04.719] H s=66 up=26001ms  7B [56 08 20 b2 0c 00 00] +1.171s
+[15:58:04.730] S s=67 up=26001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [74 08 20 b2 0c 00 80 00 00 02 3f 00 00 80 01 7e 00 04] +0.011s
+[15:58:05.536] H s=68 up=27001ms  7B [96 08 20 2f 0d 00 00] +0.806s
+[15:58:05.743] S s=69 up=27001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=6 mpv=0 drp=0 tlt=n/a trn=0  18B [b4 08 20 2f 0d 00 80 00 00 02 3f 00 00 80 01 7e 00 04] +0.206s
+[15:58:23.505] H s=0 up=0ms  7B [16 00 00 00 00 00 00] +17.763s  GAP: expected s=70
+[15:58:23.515] S s=1 up=0ms faults=0 mot=0 dst=0 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [34 00 00 00 00 00 00 00 00 00 3f 00 00 40 00 7e 00 00] +0.010s
+[15:58:23.556] E mission s=2 up=0ms state=0  8B [55 00 00 00 00 00 a0 00] +0.040s
+[15:58:23.556] E mission s=3 up=0ms state=1  8B [75 00 00 00 00 00 a0 01] +0.001s
+[15:58:23.567] E line s=4 up=2ms state=0 deviation=1  9B [95 00 40 00 00 00 20 04 02] +0.011s
+[15:58:23.568] H s=5 up=1001ms  7B [b6 00 20 7d 00 00 00] +0.001s
+[15:58:23.568] S s=6 up=1001ms faults=0 mot=0 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [d4 00 20 7d 00 00 00 00 00 02 3f 00 00 40 00 7e 00 00] +0.000s
+[15:58:24.492] H s=48 up=17001ms  7B [16 06 20 4d 08 00 00] +0.924s  GAP: expected s=7
+[15:58:24.549] S s=49 up=17001ms faults=0 mot=6 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [34 06 20 4d 08 00 00 30 00 02 3f 00 00 c0 00 00 00 04] +0.057s
+[15:58:25.495] H s=50 up=18001ms  7B [56 06 20 ca 08 00 00] +0.945s
+[15:58:25.549] S s=51 up=18001ms faults=0 mot=6 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 06 20 ca 08 00 00 30 00 02 3f 00 00 c0 00 00 00 04] +0.054s
+[15:58:26.487] H s=52 up=19001ms  7B [96 06 20 47 09 00 00] +0.938s
+[15:58:26.585] S s=53 up=19001ms faults=0 mot=6 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [b4 06 20 47 09 00 00 30 00 02 3f 00 00 c0 00 00 00 04] +0.098s
+[15:58:27.149] E obstacle s=54 up=19398ms width_cm=17 bypass=1  9B [d5 06 c0 78 09 00 80 11 01] +0.564s
+[15:58:27.266] E motion s=55 up=19404ms state=3 speed_l=0 speed_r=0 dist_mm=197 turn_rate=0 fault=0 ovf=0  13B [f5 06 80 79 09 00 00 03 08 58 0c 00 10] +0.117s
+[15:58:27.266] E imu s=56 up=19576ms class=1 hump_count=0 hump_height_mm=0  9B [15 07 00 8f 09 00 60 01 00] +0.001s
+[15:58:28.544] H s=57 up=20001ms  7B [36 07 20 c4 09 00 00] +1.277s
+[15:58:28.580] S s=58 up=20001ms faults=0 mot=3 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=73  18B [54 07 20 c4 09 00 00 18 00 02 3f 00 10 d1 00 80 24 04] +0.036s
+[15:58:28.581] E imu s=59 up=20235ms class=6 hump_count=0 hump_height_mm=0  9B [75 07 60 e1 09 00 60 06 00] +0.001s
+[15:58:28.581] E motion s=60 up=20392ms state=3 speed_l=3 speed_r=6 dist_mm=205 turn_rate=15 fault=0 ovf=0  13B [95 07 00 f5 09 00 00 33 68 d8 0c 78 10] +0.001s
+[15:58:28.619] E imu s=61 up=20445ms class=5 hump_count=0 hump_height_mm=0  9B [b5 07 a0 fb 09 00 60 05 00] +0.038s
+[15:58:28.620] E imu s=62 up=20595ms class=1 hump_count=0 hump_height_mm=0  9B [d5 07 60 0e 0a 00 60 01 00] +0.001s
+[15:58:28.620] H s=63 up=21001ms  7B [f6 07 20 41 0a 00 00] +0.000s
+[15:58:28.620] S s=64 up=21001ms faults=0 mot=3 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=15  18B [14 08 20 41 0a 00 00 18 00 02 3f 00 10 d1 00 80 07 04] +0.000s
+[15:58:28.703] E imu s=65 up=21217ms class=6 hump_count=0 hump_height_mm=0  9B [35 08 20 5c 0a 00 60 06 00] +0.083s
+[15:58:28.875] E motion s=66 up=21392ms state=3 speed_l=10 speed_r=11 dist_mm=301 turn_rate=4 fault=0 ovf=0  13B [55 08 00 72 0a 00 00 a3 b8 d8 12 20 10] +0.172s
+[15:58:29.488] H s=67 up=22001ms  7B [76 08 20 be 0a 00 00] +0.613s
+[15:58:29.523] S s=68 up=22001ms faults=0 mot=3 dst=10 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-11  18B [94 08 20 be 0a 00 00 18 05 02 3f 00 10 d1 00 82 fa 03] +0.035s
+[15:58:29.922] E motion s=69 up=22392ms state=3 speed_l=13 speed_r=8 dist_mm=404 turn_rate=-24 fault=0 ovf=0  13B [b5 08 00 ef 0a 00 00 d3 88 48 19 40 0f] +0.399s
+[15:58:29.954] E imu s=70 up=22405ms class=1 hump_count=0 hump_height_mm=0  9B [d5 08 a0 f0 0a 00 60 01 00] +0.032s
+[15:58:30.486] H s=71 up=23001ms  7B [f6 08 20 3b 0b 00 00] +0.532s
+[15:58:30.634] S s=72 up=23001ms faults=0 mot=3 dst=20 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-27  18B [14 09 20 3b 0b 00 00 18 0a 02 3f 00 10 d1 00 80 f2 03] +0.147s
+[15:58:30.887] E motion s=73 up=23392ms state=3 speed_l=13 speed_r=7 dist_mm=507 turn_rate=-26 fault=0 ovf=0  13B [35 09 00 6c 0b 00 00 d3 78 b8 1f 30 0f] +0.253s
+[15:58:31.491] H s=74 up=24001ms  7B [56 09 20 b8 0b 00 00] +0.604s
+[15:58:31.509] S s=75 up=24001ms faults=0 mot=3 dst=31 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-12  18B [74 09 20 b8 0b 00 00 98 0f 02 3f 00 10 d1 00 00 fa 03] +0.018s
+[15:58:31.754] E imu s=76 up=24206ms class=6 hump_count=0 hump_height_mm=0  9B [95 09 c0 d1 0b 00 60 06 00] +0.245s
+[15:58:31.892] E motion s=77 up=24392ms state=3 speed_l=11 speed_r=9 dist_mm=610 turn_rate=-9 fault=0 ovf=0  13B [b5 09 00 e9 0b 00 00 b3 98 28 26 b8 0f] +0.138s
+[15:58:32.493] H s=78 up=25001ms  7B [d6 09 20 35 0c 00 00] +0.601s
+[15:58:32.527] S s=79 up=25001ms faults=0 mot=3 dst=41 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [f4 09 20 35 0c 00 00 98 14 02 3f 00 10 d1 00 82 ff 03] +0.034s
+[15:58:32.880] E motion s=80 up=25392ms state=3 speed_l=10 speed_r=10 dist_mm=713 turn_rate=-1 fault=0 ovf=0  13B [15 0a 00 66 0c 00 00 a3 a8 98 2c f8 0f] +0.353s
+[15:58:33.499] H s=81 up=26001ms  7B [36 0a 20 b2 0c 00 00] +0.619s
+[15:58:33.557] S s=82 up=26001ms faults=0 mot=3 dst=51 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [54 0a 20 b2 0c 00 00 98 19 02 3f 00 10 d1 00 80 00 04] +0.057s
+[15:58:33.907] E motion s=83 up=26393ms state=3 speed_l=10 speed_r=10 dist_mm=816 turn_rate=0 fault=0 ovf=0  13B [75 0a 20 e3 0c 00 00 a3 a8 08 33 00 10] +0.351s
+[15:58:34.307] E imu s=84 up=26796ms class=1 hump_count=0 hump_height_mm=0  9B [95 0a 80 15 0d 00 60 01 00] +0.400s
+[15:58:34.515] H s=85 up=27001ms  7B [b6 0a 20 2f 0d 00 00] +0.205s
+[15:58:34.562] S s=86 up=27001ms faults=0 mot=3 dst=61 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-68  18B [d4 0a 20 2f 0d 00 00 98 1e 02 3f 00 10 d1 00 00 de 03] +0.049s
+[15:58:34.889] E motion s=87 up=27392ms state=3 speed_l=16 speed_r=5 dist_mm=921 turn_rate=-51 fault=0 ovf=0  13B [f5 0a 00 60 0d 00 00 03 59 98 39 68 0e] +0.327s
+[15:58:35.405] E imu s=88 up=27916ms class=6 hump_count=0 hump_height_mm=0  9B [15 0b 80 a1 0d 00 60 06 00] +0.516s
+[15:58:35.499] H s=89 up=28001ms  7B [36 0b 20 ac 0d 00 00] +0.094s
+[15:58:35.532] S s=90 up=28001ms faults=0 mot=3 dst=72 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-4  18B [54 0b 20 ac 0d 00 00 18 24 02 3f 00 10 d1 00 00 fe 03] +0.033s
+[15:58:36.059] E motion s=91 up=28393ms state=3 speed_l=9 speed_r=12 dist_mm=1023 turn_rate=14 fault=0 ovf=0  13B [75 0b 20 dd 0d 00 00 93 c8 f8 3f 70 10] +0.526s
+[15:58:36.269] E imu s=92 up=28755ms class=5 hump_count=0 hump_height_mm=0  9B [95 0b 60 0a 0e 00 60 05 00] +0.211s
+[15:58:36.461] E imu s=93 up=28975ms class=6 hump_count=0 hump_height_mm=0  9B [b5 0b e0 25 0e 00 60 06 00] +0.192s
+[15:58:36.490] H s=94 up=29001ms  7B [d6 0b 20 29 0e 00 00] +0.029s
+[15:58:36.566] S s=95 up=29001ms faults=0 mot=3 dst=82 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [f4 0b 20 29 0e 00 00 18 29 02 3f 00 10 d1 00 00 00 04] +0.076s
+[15:58:36.892] E motion s=96 up=29392ms state=3 speed_l=9 speed_r=10 dist_mm=1104 turn_rate=2 fault=0 ovf=0  13B [15 0c 00 5a 0e 00 00 93 a8 08 45 10 10] +0.326s
+[15:58:37.490] H s=97 up=30001ms  7B [36 0c 20 a6 0e 00 00] +0.599s
+[15:58:37.532] S s=98 up=30001ms faults=0 mot=3 dst=90 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=21  18B [54 0c 20 a6 0e 00 00 18 2d 02 3f 00 10 d1 00 82 0a 04] +0.041s
+[15:58:37.575] E imu s=99 up=30086ms class=1 hump_count=0 hump_height_mm=0  9B [75 0c c0 b0 0e 00 60 01 00] +0.043s
+[15:58:37.894] E motion s=100 up=30392ms state=3 speed_l=-7 speed_r=7 dist_mm=1153 turn_rate=67 fault=0 ovf=0  13B [95 0c 00 d7 0e 00 00 93 77 18 48 18 12] +0.319s
+[15:58:38.496] E imu s=101 up=30995ms class=0 hump_count=0 hump_height_mm=0  9B [b5 0c 60 22 0f 00 60 00 00] +0.602s
+[15:58:38.515] H s=102 up=31001ms  7B [d6 0c 20 23 0f 00 00] +0.019s
+[15:58:38.515] S s=103 up=31001ms faults=0 mot=3 dst=95 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=0  18B [f4 0c 20 23 0f 00 00 98 2f 02 3f 00 10 d1 00 02 00 04] +0.001s
+[15:58:38.516] E motion s=104 up=31012ms state=4 speed_l=0 speed_r=0 dist_mm=1154 turn_rate=0 fault=0 ovf=0  13B [15 0d 80 24 0f 00 00 04 08 28 48 00 10] +0.000s
+[15:58:38.554] E motion s=105 up=31023ms state=1 speed_l=0 speed_r=0 dist_mm=1154 turn_rate=0 fault=0 ovf=0  13B [35 0d e0 25 0f 00 00 01 08 28 48 00 10] +0.038s
+[15:58:38.781] E imu s=106 up=31296ms class=5 hump_count=0 hump_height_mm=0  9B [55 0d 00 48 0f 00 60 05 00] +0.227s
+[15:58:38.965] E imu s=107 up=31455ms class=6 hump_count=0 hump_height_mm=0  9B [75 0d e0 5b 0f 00 60 06 00] +0.184s
+[15:58:39.492] H s=108 up=32001ms  7B [96 0d 20 a0 0f 00 00] +0.528s
+[15:58:39.560] S s=109 up=32001ms faults=0 mot=1 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [b4 0d 20 a0 0f 00 00 08 00 02 3f 00 10 d1 00 80 ff 03] +0.068s
+[15:58:39.561] E motion s=110 up=32013ms state=1 speed_l=6 speed_r=7 dist_mm=1208 turn_rate=1 fault=0 ovf=0  13B [d5 0d a0 a1 0f 00 00 61 78 88 4b 08 10] +0.001s
+[15:58:40.501] H s=111 up=33001ms  7B [f6 0d 20 1d 10 00 00] +0.940s
+[15:58:40.522] S s=112 up=33001ms faults=0 mot=1 dst=5 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [14 0e 20 1d 10 00 00 88 02 02 3f 00 10 d1 00 80 ff 03] +0.021s
+[15:58:40.522] E motion s=113 up=33013ms state=1 speed_l=6 speed_r=7 dist_mm=1273 turn_rate=1 fault=0 ovf=0  13B [35 0e a0 1e 10 00 00 61 78 98 4f 08 10] +0.001s
+[15:58:40.988] E motion s=114 up=33502ms state=4 speed_l=6 speed_r=7 dist_mm=1304 turn_rate=1 fault=0 ovf=0  13B [55 0e c0 5b 10 00 00 64 78 88 51 08 10] +0.466s
+[15:58:41.300] E motion s=115 up=33813ms state=1 speed_l=2 speed_r=-2 dist_mm=1307 turn_rate=-18 fault=0 ovf=0  13B [75 0e a0 82 10 00 00 21 e8 b7 51 70 0f] +0.312s
+[15:58:41.487] H s=116 up=34001ms  7B [96 0e 20 9a 10 00 00] +0.187s
+[15:58:41.525] S s=117 up=34001ms faults=0 mot=1 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=3 trn=4  18B [b4 0e 20 9a 10 00 00 08 00 02 3f 00 10 d1 00 06 02 04] +0.038s
+[15:58:42.298] E motion s=118 up=34802ms state=1 speed_l=5 speed_r=6 dist_mm=1350 turn_rate=2 fault=0 ovf=0  13B [d5 0e 40 fe 10 00 00 51 68 68 54 10 10] +0.773s
+[15:58:42.502] H s=119 up=35001ms  7B [f6 0e 20 17 11 00 00] +0.205s
+[15:58:42.514] S s=120 up=35001ms faults=0 mot=1 dst=4 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=3  18B [14 0f 20 17 11 00 00 08 02 02 3f 00 10 d1 00 80 01 04] +0.011s
+[15:58:43.291] E motion s=121 up=35802ms state=1 speed_l=7 speed_r=5 dist_mm=1407 turn_rate=-6 fault=0 ovf=0  13B [35 0f 40 7b 11 00 00 71 58 f8 57 d0 0f] +0.777s
+[15:58:43.522] H s=122 up=36001ms  7B [56 0f 20 94 11 00 00] +0.231s
+[15:58:43.532] S s=123 up=36001ms faults=0 mot=1 dst=10 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [74 0f 20 94 11 00 00 08 05 02 3f 00 10 d1 00 80 fe 03] +0.010s
+[15:58:44.302] E motion s=124 up=36802ms state=1 speed_l=6 speed_r=6 dist_mm=1467 turn_rate=-1 fault=0 ovf=0  13B [95 0f 40 f8 11 00 00 61 68 b8 5b f8 0f] +0.770s
+[15:58:44.507] H s=125 up=37001ms  7B [b6 0f 20 11 12 00 00] +0.205s
+[15:58:44.519] S s=126 up=37001ms faults=0 mot=1 dst=16 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [d4 0f 20 11 12 00 00 08 08 02 3f 00 10 d1 00 80 00 04] +0.012s
+[15:58:45.292] E motion s=127 up=37803ms state=1 speed_l=6 speed_r=6 dist_mm=1529 turn_rate=1 fault=0 ovf=0  13B [f5 0f 60 75 12 00 00 61 68 98 5f 08 10] +0.773s
+[15:58:45.500] H s=128 up=38001ms  7B [16 10 20 8e 12 00 00] +0.208s
+[15:58:45.535] S s=129 up=38001ms faults=0 mot=1 dst=22 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [34 10 20 8e 12 00 00 08 0b 02 3f 00 10 d1 00 80 fe 03] +0.036s
+[15:58:46.317] E motion s=130 up=38803ms state=1 speed_l=7 speed_r=7 dist_mm=1593 turn_rate=-1 fault=0 ovf=0  13B [55 10 60 f2 12 00 00 71 78 98 63 f8 0f] +0.782s
+[15:58:46.520] H s=131 up=39001ms  7B [76 10 20 0b 13 00 00] +0.202s
+[15:58:46.555] S s=132 up=39001ms faults=0 mot=1 dst=28 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [94 10 20 0b 13 00 00 08 0e 02 3f 00 10 d1 00 00 00 04] +0.035s
+[15:58:47.485] E motion s=133 up=39803ms state=1 speed_l=7 speed_r=7 dist_mm=1658 turn_rate=0 fault=0 ovf=0  13B [b5 10 60 6f 13 00 00 71 78 a8 67 00 10] +0.930s
+[15:58:48.794] H s=134 up=40001ms  7B [d6 10 20 88 13 00 00] +1.309s
+[15:58:48.794] S s=135 up=40001ms faults=0 mot=1 dst=35 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [f4 10 20 88 13 00 00 88 11 02 3f 00 10 d1 00 80 00 04] +0.001s
+[15:58:48.795] E motion s=136 up=40803ms state=1 speed_l=7 speed_r=6 dist_mm=1723 turn_rate=-1 fault=0 ovf=0  13B [15 11 60 ec 13 00 00 71 68 b8 6b f8 0f] +0.000s
+[15:58:48.938] H s=137 up=41001ms  7B [36 11 20 05 14 00 00] +0.143s
+[15:58:48.938] S s=138 up=41001ms faults=0 mot=1 dst=41 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [54 11 20 05 14 00 00 88 14 02 3f 00 10 d1 00 00 00 04] +0.001s
+[15:58:49.288] E motion s=139 up=41802ms state=1 speed_l=6 speed_r=6 dist_mm=1784 turn_rate=1 fault=0 ovf=0  13B [75 11 40 69 14 00 00 61 68 88 6f 08 10] +0.350s
+[15:58:49.525] H s=140 up=42001ms  7B [96 11 20 82 14 00 00] +0.237s
+[15:58:49.574] S s=141 up=42001ms faults=0 mot=1 dst=47 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [b4 11 20 82 14 00 00 88 17 02 3f 00 10 d1 00 80 00 04] +0.049s
+[15:58:50.291] E motion s=142 up=42803ms state=1 speed_l=6 speed_r=6 dist_mm=1843 turn_rate=-1 fault=0 ovf=0  13B [d5 11 60 e6 14 00 00 61 68 38 73 f8 0f] +0.717s
+[15:58:50.494] H s=143 up=43001ms  7B [f6 11 20 ff 14 00 00] +0.203s
+[15:58:50.516] S s=144 up=43001ms faults=0 mot=1 dst=53 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-11  18B [14 12 20 ff 14 00 00 88 1a 02 3f 00 10 d1 00 80 fa 03] +0.023s
+[15:58:51.338] E motion s=145 up=43803ms state=1 speed_l=5 speed_r=4 dist_mm=1890 turn_rate=-4 fault=0 ovf=0  13B [35 12 60 63 15 00 00 51 48 28 76 e0 0f] +0.822s
+[15:58:51.533] H s=146 up=44001ms  7B [56 12 20 7c 15 00 00] +0.194s
+[15:58:51.639] S s=147 up=44001ms faults=0 mot=1 dst=58 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [74 12 20 7c 15 00 00 08 1d 02 3f 00 10 d1 00 80 fe 03] +0.106s
+[15:58:52.291] E motion s=148 up=44802ms state=1 speed_l=6 speed_r=2 dist_mm=1934 turn_rate=-15 fault=0 ovf=0  13B [95 12 40 e0 15 00 00 61 28 e8 78 88 0f] +0.652s
+[15:58:52.500] H s=149 up=45002ms  7B [b6 12 40 f9 15 00 00] +0.209s
+[15:58:52.529] S s=150 up=45002ms faults=0 mot=1 dst=62 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-9  18B [d4 12 40 f9 15 00 00 08 1f 02 3f 00 10 d1 00 80 fb 03] +0.029s
+[15:58:53.302] E motion s=151 up=45802ms state=1 speed_l=6 speed_r=3 dist_mm=1974 turn_rate=-16 fault=0 ovf=0  13B [f5 12 40 5d 16 00 00 61 38 68 7b 80 0f] +0.773s
+[15:58:53.504] H s=152 up=46001ms  7B [16 13 20 76 16 00 00] +0.202s
+[15:58:53.529] S s=153 up=46001ms faults=0 mot=1 dst=66 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-17  18B [34 13 20 76 16 00 00 08 21 02 3f 00 10 d1 00 80 f7 03] +0.025s
+[15:58:54.032] E imu s=154 up=46545ms class=1 hump_count=0 hump_height_mm=0  9B [55 13 20 ba 16 00 60 01 00] +0.503s
+[15:58:54.301] E motion s=155 up=46802ms state=1 speed_l=6 speed_r=2 dist_mm=2014 turn_rate=-19 fault=0 ovf=0  13B [75 13 40 da 16 00 00 61 28 e8 7d 68 0f] +0.269s
+[15:58:54.488] H s=156 up=47001ms  7B [96 13 20 f3 16 00 00] +0.188s
+[15:58:54.541] S s=157 up=47001ms faults=0 mot=1 dst=70 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-16  18B [b4 13 20 f3 16 00 00 08 23 02 3f 00 10 d1 00 00 f8 03] +0.053s
+[15:58:55.248] E imu s=158 up=47756ms class=6 hump_count=0 hump_height_mm=0  9B [d5 13 80 51 17 00 60 06 00] +0.706s
+[15:58:55.326] E motion s=159 up=47802ms state=1 speed_l=5 speed_r=3 dist_mm=2054 turn_rate=-8 fault=0 ovf=0  13B [f5 13 40 57 17 00 00 51 38 68 80 c0 0f] +0.079s
+[15:58:55.530] H s=160 up=48001ms  7B [16 14 20 70 17 00 00] +0.203s
+[15:58:55.572] S s=161 up=48001ms faults=0 mot=1 dst=74 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=9  18B [34 14 20 70 17 00 00 08 25 02 3f 00 10 d1 00 80 04 04] +0.042s
+[15:58:56.081] E imu s=162 up=48595ms class=1 hump_count=0 hump_height_mm=0  9B [55 14 60 ba 17 00 60 01 00] +0.509s
+[15:58:56.355] E motion s=163 up=48802ms state=1 speed_l=8 speed_r=3 dist_mm=2099 turn_rate=-21 fault=0 ovf=0  13B [75 14 40 d4 17 00 00 81 38 38 83 58 0f] +0.274s
+[15:58:56.552] H s=164 up=49001ms  7B [96 14 20 ed 17 00 00] +0.197s
+[15:58:56.567] S s=165 up=49001ms faults=0 mot=1 dst=79 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-16  18B [b4 14 20 ed 17 00 00 88 27 02 3f 00 10 d1 00 00 f8 03] +0.015s
+[15:58:56.863] E imu s=166 up=49255ms class=6 hump_count=0 hump_height_mm=0  9B [d5 14 e0 0c 18 00 60 06 00] +0.296s
+[15:58:57.313] E motion s=167 up=49803ms state=1 speed_l=4 speed_r=4 dist_mm=2142 turn_rate=-3 fault=0 ovf=0  13B [f5 14 60 51 18 00 00 41 48 e8 85 e8 0f] +0.450s
+[15:58:59.253] H s=168 up=50001ms  7B [16 15 20 6a 18 00 00] +1.940s
+[15:58:59.254] S s=169 up=50001ms faults=0 mot=1 dst=83 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [34 15 20 6a 18 00 00 88 29 02 3f 00 10 d1 00 80 fe 03] +0.001s
+[15:58:59.254] E motion s=170 up=50802ms state=1 speed_l=5 speed_r=5 dist_mm=2190 turn_rate=-1 fault=0 ovf=0  13B [55 15 40 ce 18 00 00 51 58 e8 88 f8 0f] +0.001s
+[15:58:59.300] H s=171 up=51001ms  7B [76 15 20 e7 18 00 00] +0.045s
+[15:58:59.300] S s=172 up=51001ms faults=0 mot=1 dst=88 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [94 15 20 e7 18 00 00 08 2c 02 3f 00 10 d1 00 80 ff 03] +0.001s
+[15:58:59.309] E motion s=173 up=51802ms state=1 speed_l=6 speed_r=6 dist_mm=2246 turn_rate=0 fault=0 ovf=0  13B [b5 15 40 4b 19 00 00 61 68 68 8c 00 10] +0.008s
+[15:58:59.509] H s=174 up=52001ms  7B [d6 15 20 64 19 00 00] +0.200s
+[15:58:59.568] S s=175 up=52001ms faults=0 mot=1 dst=93 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [f4 15 20 64 19 00 00 88 2e 02 3f 00 10 d1 00 80 ff 03] +0.060s
+[15:58:59.608] E motion s=176 up=52053ms state=4 speed_l=6 speed_r=6 dist_mm=2260 turn_rate=-1 fault=0 ovf=0  13B [15 16 a0 6a 19 00 00 64 68 48 8d f8 0f] +0.040s
+[15:58:59.974] E imu s=177 up=52456ms class=1 hump_count=0 hump_height_mm=0  9B [35 16 00 9d 19 00 60 01 00] +0.366s
+[15:59:00.020] E motion s=178 up=52473ms state=1 speed_l=4 speed_r=-4 dist_mm=2263 turn_rate=-38 fault=0 ovf=0  13B [55 16 20 9f 19 00 00 41 c8 77 8d d0 0e] +0.045s
+[15:59:00.328] E imu s=179 up=52825ms class=6 hump_count=0 hump_height_mm=0  9B [75 16 20 cb 19 00 60 06 00] +0.308s
+[15:59:00.512] H s=180 up=53001ms  7B [96 16 20 e1 19 00 00] +0.185s
+[15:59:00.548] S s=181 up=53001ms faults=0 mot=1 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=12  18B [b4 16 20 e1 19 00 00 08 00 02 3f 00 10 d1 00 00 06 04] +0.036s
+[15:59:00.959] E motion s=182 up=53462ms state=1 speed_l=4 speed_r=5 dist_mm=2305 turn_rate=3 fault=0 ovf=0  13B [d5 16 c0 1a 1a 00 00 41 58 18 90 18 10] +0.411s
+[15:59:01.494] H s=183 up=54001ms  7B [f6 16 20 5e 1a 00 00] +0.534s
+[15:59:01.514] S s=184 up=54001ms faults=0 mot=1 dst=4 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-13  18B [14 17 20 5e 1a 00 00 08 02 02 3f 00 10 d1 00 80 f9 03] +0.020s
+[15:59:01.845] E imu s=185 up=54345ms class=1 hump_count=0 hump_height_mm=0  9B [35 17 20 89 1a 00 60 01 00] +0.331s
+[15:59:01.955] E motion s=186 up=54463ms state=1 speed_l=7 speed_r=0 dist_mm=2353 turn_rate=-30 fault=0 ovf=0  13B [55 17 e0 97 1a 00 00 71 08 18 93 10 0f] +0.110s
+[15:59:02.266] E imu s=187 up=54727ms class=6 hump_count=0 hump_height_mm=0  9B [75 17 e0 b8 1a 00 60 06 00] +0.311s
+[15:59:02.485] H s=188 up=55001ms  7B [96 17 20 db 1a 00 00] +0.219s
+[15:59:02.589] S s=189 up=55001ms faults=0 mot=1 dst=9 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=11  18B [b4 17 20 db 1a 00 00 88 04 02 3f 00 10 d1 00 80 05 04] +0.104s
+[15:59:02.697] E imu s=190 up=55205ms class=1 hump_count=0 hump_height_mm=0  9B [d5 17 a0 f4 1a 00 60 01 00] +0.108s
+[15:59:02.927] E imu s=191 up=55435ms class=6 hump_count=0 hump_height_mm=0  9B [f5 17 60 11 1b 00 60 06 00] +0.230s
+[15:59:02.952] E motion s=192 up=55462ms state=1 speed_l=6 speed_r=3 dist_mm=2401 turn_rate=-13 fault=0 ovf=0  13B [15 18 c0 14 1b 00 00 61 38 18 96 98 0f] +0.025s
+[15:59:03.145] E imu s=193 up=55655ms class=1 hump_count=0 hump_height_mm=0  9B [35 18 e0 2c 1b 00 60 01 00] +0.193s
+[15:59:03.500] H s=194 up=56001ms  7B [56 18 20 58 1b 00 00] +0.355s
+[15:59:03.549] S s=195 up=56001ms faults=0 mot=1 dst=13 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-21  18B [74 18 20 58 1b 00 00 88 06 02 3f 00 10 d1 00 82 f5 03] +0.049s
+[15:59:03.952] E motion s=196 up=56463ms state=1 speed_l=6 speed_r=2 dist_mm=2447 turn_rate=-19 fault=0 ovf=0  13B [95 18 e0 91 1b 00 00 61 28 f8 98 68 0f] +0.402s
+[15:59:04.501] H s=197 up=57001ms  7B [b6 18 20 d5 1b 00 00] +0.549s
+[15:59:04.529] S s=198 up=57001ms faults=0 mot=1 dst=18 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-14  18B [d4 18 20 d5 1b 00 00 08 09 02 3f 00 10 d1 00 00 f9 03] +0.029s
+[15:59:04.644] E imu s=199 up=57136ms class=6 hump_count=0 hump_height_mm=0  9B [f5 18 00 e6 1b 00 60 06 00] +0.115s
+[15:59:04.952] E motion s=200 up=57463ms state=1 speed_l=5 speed_r=3 dist_mm=2487 turn_rate=-11 fault=0 ovf=0  13B [15 19 e0 0e 1c 00 00 51 38 78 9b a8 0f] +0.308s
+[15:59:05.500] H s=201 up=58001ms  7B [36 19 20 52 1c 00 00] +0.548s
+[15:59:05.548] S s=202 up=58001ms faults=0 mot=1 dst=22 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-19  18B [54 19 20 52 1c 00 00 08 0b 02 3f 00 10 d1 00 80 f6 03] +0.048s
+[15:59:05.974] E motion s=203 up=58462ms state=1 speed_l=6 speed_r=3 dist_mm=2527 turn_rate=-14 fault=0 ovf=0  13B [75 19 c0 8b 1c 00 00 61 38 f8 9d 90 0f] +0.426s
+[15:59:06.672] H s=204 up=59001ms  7B [96 19 20 cf 1c 00 00] +0.699s
+[15:59:06.684] S s=205 up=59001ms faults=0 mot=1 dst=26 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-5  18B [b4 19 20 cf 1c 00 00 08 0d 02 3f 00 10 d1 00 82 fd 03] +0.012s
+[15:59:06.981] E motion s=206 up=59463ms state=1 speed_l=4 speed_r=5 dist_mm=2567 turn_rate=6 fault=0 ovf=0  13B [d5 19 e0 08 1d 00 00 41 58 78 a0 30 10] +0.297s
+[15:59:07.342] E imu s=207 up=59845ms class=1 hump_count=0 hump_height_mm=0  9B [f5 19 a0 38 1d 00 60 01 00] +0.361s
+[15:59:07.491] H s=208 up=60001ms  7B [16 1a 20 4c 1d 00 00] +0.149s
+[15:59:07.700] S s=209 up=60001ms faults=0 mot=1 dst=30 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=24  18B [34 1a 20 4c 1d 00 00 08 0f 02 3f 00 10 d1 00 00 0c 04] +0.209s
+[15:59:08.744] E imu s=210 up=60178ms class=6 hump_count=0 hump_height_mm=0  9B [55 1a 40 62 1d 00 60 06 00] +1.044s
+[15:59:08.745] E motion s=211 up=60463ms state=1 speed_l=7 speed_r=3 dist_mm=2618 turn_rate=-15 fault=0 ovf=0  13B [75 1a e0 85 1d 00 00 71 38 a8 a3 88 0f] +0.001s
+[15:59:08.745] H s=212 up=61001ms  7B [96 1a 20 c9 1d 00 00] +0.000s
+[15:59:08.745] S s=213 up=61001ms faults=0 mot=1 dst=35 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=9  18B [b4 1a 20 c9 1d 00 00 88 11 02 3f 00 10 d1 00 80 04 04] +0.000s
+[15:59:08.949] E motion s=214 up=61463ms state=1 speed_l=2 speed_r=6 dist_mm=2667 turn_rate=20 fault=0 ovf=0  13B [d5 1a e0 02 1e 00 00 21 68 b8 a6 a0 10] +0.204s
+[15:59:09.233] E imu s=215 up=61745ms class=1 hump_count=0 hump_height_mm=0  9B [f5 1a 20 26 1e 00 60 01 00] +0.285s
+[15:59:09.501] H s=216 up=62001ms  7B [16 1b 20 46 1e 00 00] +0.268s
+[15:59:09.561] S s=217 up=62001ms faults=0 mot=1 dst=40 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=36  18B [34 1b 20 46 1e 00 00 08 14 02 3f 00 10 d1 00 00 12 04] +0.060s
+[15:59:09.846] E imu s=218 up=62345ms class=6 hump_count=0 hump_height_mm=0  9B [55 1b 20 71 1e 00 60 06 00] +0.285s
+[15:59:09.973] E motion s=219 up=62463ms state=1 speed_l=5 speed_r=4 dist_mm=2711 turn_rate=-4 fault=0 ovf=0  13B [75 1b e0 7f 1e 00 00 51 48 78 a9 e0 0f] +0.127s
+[15:59:10.215] E imu s=220 up=62725ms class=1 hump_count=0 hump_height_mm=0  9B [95 1b a0 a0 1e 00 60 01 00] +0.242s
+[15:59:10.461] E imu s=221 up=62955ms class=6 hump_count=0 hump_height_mm=0  9B [b5 1b 60 bd 1e 00 60 06 00] +0.246s
+[15:59:10.516] H s=222 up=63001ms  7B [d6 1b 20 c3 1e 00 00] +0.055s
+[15:59:10.546] S s=223 up=63001ms faults=0 mot=1 dst=44 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=10  18B [f4 1b 20 c3 1e 00 00 08 16 02 3f 00 10 d1 00 00 05 04] +0.030s
+[15:59:10.689] E imu s=224 up=63195ms class=1 hump_count=0 hump_height_mm=0  9B [15 1c 60 db 1e 00 60 01 00] +0.143s
+[15:59:13.251] E motion s=225 up=63463ms state=1 speed_l=3 speed_r=7 dist_mm=2759 turn_rate=19 fault=0 ovf=0  13B [35 1c e0 fc 1e 00 00 31 78 78 ac 98 10] +2.562s
+[15:59:13.312] E imu s=226 up=63765ms class=6 hump_count=0 hump_height_mm=0  9B [55 1c a0 22 1f 00 60 06 00] +0.061s
+[15:59:13.313] H s=227 up=64001ms  7B [76 1c 20 40 1f 00 00] +0.001s
+[15:59:13.314] S s=228 up=64001ms faults=0 mot=1 dst=49 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=5  18B [94 1c 20 40 1f 00 00 88 18 02 3f 00 10 d1 00 80 02 04] +0.001s
+[15:59:13.426] E motion s=229 up=64463ms state=1 speed_l=6 speed_r=3 dist_mm=2807 turn_rate=-14 fault=0 ovf=0  13B [b5 1c e0 79 1f 00 00 61 38 78 af 90 0f] +0.112s
+[15:59:13.427] E imu s=230 up=64785ms class=1 hump_count=0 hump_height_mm=0  9B [d5 1c 20 a2 1f 00 60 01 00] +0.001s
+[15:59:13.428] H s=231 up=65001ms  7B [f6 1c 20 bd 1f 00 00] +0.001s
+[15:59:13.428] S s=232 up=65001ms faults=0 mot=1 dst=54 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-18  18B [14 1d 20 bd 1f 00 00 08 1b 02 3f 00 10 d1 00 02 f7 03] +0.001s
+[15:59:13.450] E imu s=233 up=65166ms class=6 hump_count=0 hump_height_mm=0  9B [35 1d c0 d1 1f 00 60 06 00] +0.022s
+[15:59:13.451] E motion s=234 up=65463ms state=1 speed_l=3 speed_r=6 dist_mm=2852 turn_rate=12 fault=0 ovf=0  13B [55 1d e0 f6 1f 00 00 31 68 48 b2 60 10] +0.001s
+[15:59:13.452] E imu s=235 up=65695ms class=1 hump_count=0 hump_height_mm=0  9B [75 1d e0 13 20 00 60 01 00] +0.001s
+[15:59:13.519] E imu s=236 up=65956ms class=6 hump_count=0 hump_height_mm=0  9B [95 1d 80 34 20 00 60 06 00] +0.067s
+[15:59:13.520] H s=237 up=66001ms  7B [b6 1d 20 3a 20 00 00] +0.001s
+[15:59:13.520] S s=238 up=66001ms faults=0 mot=1 dst=58 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-15  18B [d4 1d 20 3a 20 00 00 08 1d 02 3f 00 10 d1 00 82 f8 03] +0.000s
+[15:59:13.678] E imu s=239 up=66175ms class=1 hump_count=0 hump_height_mm=0  9B [f5 1d e0 4f 20 00 60 01 00] +0.158s
+[15:59:13.987] E motion s=240 up=66463ms state=1 speed_l=8 speed_r=4 dist_mm=2898 turn_rate=-18 fault=0 ovf=0  13B [15 1e e0 73 20 00 00 81 48 28 b5 70 0f] +0.309s
+[15:59:14.538] H s=241 up=67001ms  7B [36 1e 20 b7 20 00 00] +0.551s
+[15:59:14.723] S s=242 up=67001ms faults=0 mot=1 dst=63 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-19  18B [54 1e 20 b7 20 00 00 88 1f 02 3f 00 10 d1 00 80 f6 03] +0.185s
+[15:59:14.970] E motion s=243 up=67463ms state=1 speed_l=6 speed_r=2 dist_mm=2941 turn_rate=-17 fault=0 ovf=0  13B [75 1e e0 f0 20 00 00 61 28 d8 b7 78 0f] +0.247s
+[15:59:15.602] H s=244 up=68001ms  7B [96 1e 20 34 21 00 00] +0.632s
+[15:59:15.666] S s=245 up=68001ms faults=0 mot=1 dst=67 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-16  18B [b4 1e 20 34 21 00 00 88 21 02 3f 00 10 d1 00 00 f8 03] +0.063s
+[15:59:15.782] E imu s=246 up=68176ms class=6 hump_count=0 hump_height_mm=0  9B [d5 1e 00 4a 21 00 60 06 00] +0.117s
+[15:59:15.971] E motion s=247 up=68463ms state=1 speed_l=4 speed_r=4 dist_mm=2980 turn_rate=-1 fault=0 ovf=0  13B [f5 1e e0 6d 21 00 00 41 48 48 ba f8 0f] +0.189s
+[15:59:16.503] E imu s=248 up=68995ms class=1 hump_count=0 hump_height_mm=0  9B [15 1f 60 b0 21 00 60 01 00] +0.532s
+[15:59:16.524] H s=249 up=69001ms  7B [36 1f 20 b1 21 00 00] +0.021s
+[15:59:16.525] S s=250 up=69001ms faults=0 mot=1 dst=71 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=26  18B [54 1f 20 b1 21 00 00 88 23 02 3f 00 10 d1 00 00 0d 04] +0.001s
+[15:59:17.416] E imu s=251 up=69255ms class=6 hump_count=0 hump_height_mm=0  9B [75 1f e0 d0 21 00 60 06 00] +0.891s
+[15:59:17.536] E motion s=252 up=69463ms state=1 speed_l=7 speed_r=1 dist_mm=3024 turn_rate=-24 fault=0 ovf=0  13B [95 1f e0 ea 21 00 00 71 18 08 bd 40 0f] +0.120s
+[15:59:17.537] E imu s=253 up=69495ms class=1 hump_count=0 hump_height_mm=0  9B [b5 1f e0 ee 21 00 60 01 00] +0.001s
+[15:59:17.537] H s=254 up=70001ms  7B [d6 1f 20 2e 22 00 00] +0.000s
+[15:59:17.583] S s=255 up=70001ms faults=0 mot=1 dst=76 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-11  18B [f4 1f 20 2e 22 00 00 08 26 02 3f 00 10 d1 00 82 fa 03] +0.047s
+[15:59:17.584] E imu s=256 up=70056ms class=6 hump_count=0 hump_height_mm=0  9B [15 20 00 35 22 00 60 06 00] +0.001s
+[15:59:17.958] E motion s=257 up=70462ms state=1 speed_l=6 speed_r=5 dist_mm=3076 turn_rate=-4 fault=0 ovf=0  13B [35 20 c0 67 22 00 00 61 58 48 c0 e0 0f] +0.374s
+[15:59:18.510] H s=258 up=71001ms  7B [56 20 20 ab 22 00 00] +0.552s
+[15:59:18.561] S s=259 up=71001ms faults=0 mot=1 dst=81 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-2  18B [74 20 20 ab 22 00 00 88 28 02 3f 00 10 d1 00 00 ff 03] +0.051s
+[15:59:18.972] E motion s=260 up=71463ms state=1 speed_l=6 speed_r=6 dist_mm=3133 turn_rate=-1 fault=0 ovf=0  13B [95 20 e0 e4 22 00 00 61 68 d8 c3 f8 0f] +0.411s
+[15:59:19.515] H s=261 up=72001ms  7B [b6 20 20 28 23 00 00] +0.543s
+[15:59:19.562] S s=262 up=72001ms faults=0 mot=1 dst=87 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [d4 20 20 28 23 00 00 88 2b 02 3f 00 10 d1 00 80 ff 03] +0.046s
+[15:59:19.866] E motion s=263 up=72362ms state=4 speed_l=6 speed_r=6 dist_mm=3187 turn_rate=-1 fault=0 ovf=0  13B [f5 20 40 55 23 00 00 64 68 38 c7 f8 0f] +0.305s
+[15:59:20.296] E motion s=264 up=72782ms state=1 speed_l=4 speed_r=-4 dist_mm=3192 turn_rate=-34 fault=0 ovf=0  13B [15 21 c0 89 23 00 00 41 c8 87 c7 f0 0e] +0.430s
+[15:59:20.316] E imu s=265 up=72795ms class=1 hump_count=0 hump_height_mm=0  9B [35 21 60 8b 23 00 60 01 00] +0.020s
+[15:59:20.489] H s=266 up=73001ms  7B [56 21 20 a5 23 00 00] +0.173s
+[15:59:20.603] S s=267 up=73001ms faults=0 mot=1 dst=0 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 21 20 a5 23 00 00 08 00 02 3f 00 10 d1 00 00 00 04] +0.114s
+[15:59:20.643] E imu s=268 up=73065ms class=5 hump_count=0 hump_height_mm=0  9B [95 21 20 ad 23 00 60 05 00] +0.040s
+[15:59:20.662] E imu s=269 up=73166ms class=6 hump_count=0 hump_height_mm=0  9B [b5 21 c0 b9 23 00 60 06 00] +0.019s
+[15:59:21.292] E motion s=270 up=73773ms state=1 speed_l=3 speed_r=4 dist_mm=3231 turn_rate=4 fault=0 ovf=0  13B [d5 21 a0 05 24 00 00 31 48 f8 c9 20 10] +0.629s
+[15:59:21.501] H s=271 up=74001ms  7B [f6 21 20 22 24 00 00] +0.210s
+[15:59:21.560] S s=272 up=74001ms faults=0 mot=1 dst=3 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-3  18B [14 22 20 22 24 00 00 88 01 02 3f 00 10 d1 00 82 fe 03] +0.059s
+[15:59:22.280] E imu s=273 up=74765ms class=1 hump_count=0 hump_height_mm=0  9B [35 22 a0 81 24 00 60 01 00] +0.720s
+[15:59:22.340] E motion s=274 up=74773ms state=1 speed_l=7 speed_r=0 dist_mm=3277 turn_rate=-34 fault=0 ovf=0  13B [55 22 a0 82 24 00 00 71 08 d8 cc f0 0e] +0.060s
+[15:59:22.498] H s=275 up=75001ms  7B [76 22 20 9f 24 00 00] +0.158s
+[15:59:22.528] S s=276 up=75001ms faults=0 mot=1 dst=8 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-19  18B [94 22 20 9f 24 00 00 08 04 02 3f 00 10 d1 00 82 f6 03] +0.030s
+[15:59:22.690] E imu s=277 up=75166ms class=6 hump_count=0 hump_height_mm=0  9B [b5 22 c0 b3 24 00 60 06 00] +0.162s
+[15:59:23.100] E imu s=278 up=75605ms class=1 hump_count=0 hump_height_mm=0  9B [d5 22 a0 ea 24 00 60 01 00] +0.410s
+[15:59:23.279] E motion s=279 up=75773ms state=1 speed_l=5 speed_r=4 dist_mm=3324 turn_rate=-6 fault=0 ovf=0  13B [f5 22 a0 ff 24 00 00 51 48 c8 cf d0 0f] +0.179s
+[15:59:23.322] E imu s=280 up=75818ms class=6 hump_count=0 hump_height_mm=0  9B [15 23 40 05 25 00 60 06 00] +0.044s
+[15:59:23.490] H s=281 up=76001ms  7B [36 23 20 1c 25 00 00] +0.168s
+[15:59:23.666] S s=282 up=76001ms faults=0 mot=1 dst=13 lin=0 dev=1 bar=none act=0 hum=0 hgt=0 obs=17 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-25  18B [54 23 20 1c 25 00 00 88 06 02 3f 00 10 d1 00 80 f3 03] +0.176s
+[15:59:23.666] E imu s=283 up=76047ms class=1 hump_count=0 hump_height_mm=0  9B [75 23 e0 21 25 00 60 01 00] +0.001s
+[15:59:24.307] E motion s=284 up=76773ms state=1 speed_l=6 speed_r=2 dist_mm=3370 turn_rate=-16 fault=0 ovf=0  13B [95 23 a0 7c 25 00 00 61 28 a8 d2 80 0f] +0.640s
+[15:59:54.078] H s=0 up=0ms  7B [16 00 00 00 00 00 00] +29.771s  GAP: expected s=285
+[15:59:54.087] S s=1 up=0ms faults=0 mot=0 dst=0 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [34 00 00 00 00 00 00 00 00 00 3f 00 00 40 00 7e 00 00] +0.009s
+[15:59:54.126] E mission s=2 up=0ms state=0  8B [55 00 00 00 00 00 a0 00] +0.039s
+[15:59:54.127] E mission s=3 up=0ms state=1  8B [75 00 00 00 00 00 a0 01] +0.001s
+[15:59:54.190] E line s=4 up=2ms state=0 deviation=0  9B [95 00 40 00 00 00 20 00 02] +0.063s
+[15:59:54.191] H s=5 up=1001ms  7B [b6 00 20 7d 00 00 00] +0.001s
+[15:59:54.192] S s=6 up=1001ms faults=0 mot=0 dst=0 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=1 mpv=0 drp=0 tlt=n/a trn=n/a  18B [d4 00 20 7d 00 00 00 00 00 00 3f 00 00 40 00 7e 00 00] +0.000s
+[15:59:54.251] E motion s=46 up=15512ms state=1 speed_l=2 speed_r=2 dist_mm=251 turn_rate=0 fault=0 ovf=0  13B [d5 05 00 93 07 00 00 21 28 b8 0f 00 10] +0.060s  GAP: expected s=7
+[15:59:54.690] H s=47 up=16001ms  7B [f6 05 20 d0 07 00 00] +0.439s
+[15:59:54.759] S s=48 up=16001ms faults=0 mot=1 dst=25 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [14 06 20 d0 07 00 00 88 0c 00 3f 00 00 c0 00 82 00 04] +0.069s
+[15:59:55.212] E motion s=49 up=16513ms state=1 speed_l=3 speed_r=3 dist_mm=276 turn_rate=0 fault=0 ovf=0  13B [35 06 20 10 08 00 00 31 38 48 11 00 10] +0.452s
+[15:59:55.706] H s=50 up=17001ms  7B [56 06 20 4d 08 00 00] +0.494s
+[15:59:55.724] S s=51 up=17001ms faults=0 mot=1 dst=27 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 06 20 4d 08 00 00 88 0d 00 3f 00 00 c0 00 00 00 04] +0.018s
+[15:59:56.216] E motion s=52 up=17513ms state=1 speed_l=2 speed_r=3 dist_mm=299 turn_rate=1 fault=0 ovf=0  13B [95 06 20 8d 08 00 00 21 38 b8 12 08 10] +0.493s
+[15:59:56.698] H s=53 up=18002ms  7B [b6 06 40 ca 08 00 00] +0.482s
+[15:59:56.712] S s=54 up=18002ms faults=0 mot=1 dst=29 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [d4 06 40 ca 08 00 00 88 0e 00 3f 00 00 c0 00 00 00 04] +0.014s
+[15:59:57.211] E motion s=55 up=18512ms state=1 speed_l=3 speed_r=3 dist_mm=323 turn_rate=-1 fault=0 ovf=0  13B [f5 06 00 0a 09 00 00 31 38 38 14 f8 0f] +0.499s
+[15:59:57.691] H s=56 up=19001ms  7B [16 07 20 47 09 00 00] +0.480s
+[15:59:57.751] S s=57 up=19001ms faults=0 mot=1 dst=32 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [34 07 20 47 09 00 00 08 10 00 3f 00 00 c0 00 00 00 04] +0.060s
+[15:59:58.201] E motion s=58 up=19512ms state=1 speed_l=2 speed_r=2 dist_mm=347 turn_rate=-1 fault=0 ovf=0  13B [55 07 00 87 09 00 00 21 28 b8 15 f8 0f] +0.449s
+[15:59:58.695] H s=59 up=20001ms  7B [76 07 20 c4 09 00 00] +0.494s
+[15:59:58.736] S s=60 up=20001ms faults=0 mot=1 dst=34 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [94 07 20 c4 09 00 00 08 11 00 3f 00 00 c0 00 80 ff 03] +0.041s
+[15:59:59.208] E motion s=61 up=20512ms state=1 speed_l=2 speed_r=2 dist_mm=371 turn_rate=1 fault=0 ovf=0  13B [b5 07 00 04 0a 00 00 21 28 38 17 08 10] +0.472s
+[15:59:59.706] H s=62 up=21001ms  7B [d6 07 20 41 0a 00 00] +0.498s
+[15:59:59.713] S s=63 up=21001ms faults=0 mot=1 dst=37 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [f4 07 20 41 0a 00 00 88 12 00 3f 00 00 c0 00 82 00 04] +0.007s
+[16:00:00.289] E motion s=64 up=21512ms state=1 speed_l=2 speed_r=2 dist_mm=395 turn_rate=0 fault=0 ovf=0  13B [15 08 00 81 0a 00 00 21 28 b8 18 00 10] +0.576s
+[16:00:00.694] H s=65 up=22001ms  7B [36 08 20 be 0a 00 00] +0.405s
+[16:00:00.701] S s=66 up=22001ms faults=0 mot=1 dst=39 lin=0 dev=0 bar=none act=0 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [54 08 20 be 0a 00 00 88 13 00 3f 00 00 c0 00 00 00 04] +0.007s
+[16:00:00.843] E barcode s=67 up=22154ms letter=Z action=1  8B [75 08 40 d1 0a 00 40 39] +0.143s
+[16:00:01.212] E motion s=68 up=22513ms state=1 speed_l=3 speed_r=4 dist_mm=419 turn_rate=1 fault=0 ovf=0  13B [95 08 20 fe 0a 00 00 31 48 38 1a 08 10] +0.368s
+[16:00:01.295] E imu s=69 up=22606ms class=5 hump_count=0 hump_height_mm=0  9B [b5 08 c0 09 0b 00 60 05 00] +0.084s
+[16:00:01.413] E imu s=70 up=22727ms class=6 hump_count=0 hump_height_mm=0  9B [d5 08 e0 18 0b 00 60 06 00] +0.117s
+[16:00:01.705] H s=71 up=23001ms  7B [f6 08 20 3b 0b 00 00] +0.293s
+[16:00:01.724] S s=72 up=23001ms faults=0 mot=1 dst=41 lin=0 dev=0 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [14 09 20 3b 0b 00 00 88 14 00 73 00 00 c0 00 80 ff 03] +0.019s
+[16:00:02.216] E motion s=73 up=23513ms state=1 speed_l=7 speed_r=7 dist_mm=484 turn_rate=-1 fault=0 ovf=0  13B [35 09 20 7b 0b 00 00 71 78 48 1e f8 0f] +0.491s
+[16:00:02.690] H s=74 up=24001ms  7B [56 09 20 b8 0b 00 00] +0.474s
+[16:00:02.726] S s=75 up=24001ms faults=0 mot=1 dst=48 lin=0 dev=0 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [74 09 20 b8 0b 00 00 08 18 00 73 00 00 c0 00 80 00 04] +0.036s
+[16:00:03.217] E motion s=76 up=24513ms state=1 speed_l=7 speed_r=6 dist_mm=548 turn_rate=-2 fault=0 ovf=0  13B [95 09 20 f8 0b 00 00 71 68 48 22 f0 0f] +0.491s
+[16:00:03.732] H s=77 up=25001ms  7B [b6 09 20 35 0c 00 00] +0.515s
+[16:00:03.754] S s=78 up=25001ms faults=0 mot=1 dst=54 lin=0 dev=0 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [d4 09 20 35 0c 00 00 08 1b 00 73 00 00 c0 00 00 00 04] +0.022s
+[16:00:04.223] E motion s=79 up=25513ms state=1 speed_l=7 speed_r=6 dist_mm=614 turn_rate=-1 fault=0 ovf=0  13B [f5 09 20 75 0c 00 00 71 68 68 26 f8 0f] +0.469s
+[16:00:04.690] H s=80 up=26001ms  7B [16 0a 20 b2 0c 00 00] +0.466s
+[16:00:04.698] S s=81 up=26001ms faults=0 mot=1 dst=61 lin=0 dev=0 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [34 0a 20 b2 0c 00 00 88 1e 00 73 00 00 c0 00 80 ff 03] +0.008s
+[16:00:05.201] E motion s=82 up=26513ms state=1 speed_l=7 speed_r=7 dist_mm=679 turn_rate=-2 fault=0 ovf=0  13B [55 0a 20 f2 0c 00 00 71 78 78 2a f0 0f] +0.503s
+[16:00:05.695] E line s=83 up=26997ms state=2 deviation=-3  9B [75 0a a0 2e 0d 00 20 f6 01] +0.495s
+[16:00:05.713] H s=84 up=27001ms  7B [96 0a 20 2f 0d 00 00] +0.018s
+[16:00:05.714] S s=85 up=27001ms faults=0 mot=1 dst=67 lin=2 dev=-3 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [b4 0a 20 2f 0d 00 00 88 21 fb 72 00 00 c0 00 00 00 04] +0.000s
+[16:00:05.780] E line s=86 up=27064ms state=0 deviation=-5  9B [d5 0a 00 37 0d 00 20 ec 01] +0.066s
+[16:00:06.005] E barcode s=87 up=27294ms letter=none action=0  8B [f5 0a c0 53 0d 00 40 1f] +0.225s
+[16:00:06.024] E motion s=88 up=27295ms state=2 speed_l=2 speed_r=3 dist_mm=702 turn_rate=1 fault=0 ovf=0  13B [15 0b e0 53 0d 00 00 22 38 e8 2b 08 10] +0.020s
+[16:00:06.293] E imu s=89 up=27606ms class=5 hump_count=0 hump_height_mm=0  9B [35 0b c0 7a 0d 00 60 05 00] +0.269s
+[16:00:06.416] E imu s=90 up=27727ms class=6 hump_count=0 hump_height_mm=0  9B [55 0b e0 89 0d 00 60 06 00] +0.123s
+[16:00:06.701] H s=91 up=28001ms  7B [76 0b 20 ac 0d 00 00] +0.285s
+[16:00:06.715] S s=92 up=28001ms faults=0 mot=2 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [94 0b 20 ac 0d 00 00 10 00 f6 72 00 00 c0 00 80 00 04] +0.014s
+[16:00:06.988] E motion s=93 up=28282ms state=2 speed_l=5 speed_r=5 dist_mm=739 turn_rate=0 fault=0 ovf=0  13B [b5 0b 40 cf 0d 00 00 52 58 38 2e 00 10] +0.273s
+[16:00:07.689] H s=94 up=29001ms  7B [d6 0b 20 29 0e 00 00] +0.701s
+[16:00:07.728] S s=95 up=29001ms faults=0 mot=2 dst=3 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [f4 0b 20 29 0e 00 00 90 01 f6 72 00 00 c0 00 80 ff 03] +0.039s
+[16:00:07.972] E motion s=96 up=29282ms state=2 speed_l=5 speed_r=5 dist_mm=787 turn_rate=-1 fault=0 ovf=0  13B [15 0c 40 4c 0e 00 00 52 58 38 31 f8 0f] +0.244s
+[16:00:08.690] H s=97 up=30001ms  7B [36 0c 20 a6 0e 00 00] +0.717s
+[16:00:08.725] S s=98 up=30001ms faults=0 mot=2 dst=8 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=1 trn=0  18B [54 0c 20 a6 0e 00 00 10 04 f6 72 00 00 c0 00 02 00 04] +0.035s
+[16:00:08.974] E motion s=99 up=30281ms state=2 speed_l=5 speed_r=5 dist_mm=834 turn_rate=0 fault=0 ovf=0  13B [75 0c 20 c9 0e 00 00 52 58 28 34 00 10] +0.250s
+[16:00:09.487] E imu s=100 up=30737ms class=1 hump_count=0 hump_height_mm=0  9B [95 0c 20 02 0f 00 60 01 00] +0.512s
+[16:00:09.690] H s=101 up=31001ms  7B [b6 0c 20 23 0f 00 00] +0.204s
+[16:00:09.705] S s=102 up=31001ms faults=0 mot=2 dst=13 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=42  18B [d4 0c 20 23 0f 00 00 90 06 f6 72 00 00 c0 00 00 15 04] +0.015s
+[16:00:10.019] E motion s=103 up=31281ms state=2 speed_l=-4 speed_r=5 dist_mm=841 turn_rate=42 fault=0 ovf=0  13B [f5 0c 20 46 0f 00 00 c2 57 98 34 50 11] +0.314s
+[16:00:10.695] H s=104 up=32001ms  7B [16 0d 20 a0 0f 00 00] +0.676s
+[16:00:10.728] S s=105 up=32001ms faults=0 mot=2 dst=13 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=42  18B [34 0d 20 a0 0f 00 00 90 06 f6 72 00 00 c0 00 00 15 04] +0.034s
+[16:00:11.000] E motion s=106 up=32282ms state=2 speed_l=-5 speed_r=5 dist_mm=843 turn_rate=45 fault=0 ovf=0  13B [55 0d 40 c3 0f 00 00 b2 57 b8 34 68 11] +0.271s
+[16:00:11.331] E motion s=107 up=32643ms state=1 speed_l=-5 speed_r=5 dist_mm=844 turn_rate=44 fault=0 ovf=0  13B [75 0d 60 f0 0f 00 00 b1 57 c8 34 60 11] +0.332s
+[16:00:11.634] E imu s=108 up=32937ms class=5 hump_count=0 hump_height_mm=0  9B [95 0d 20 15 10 00 60 05 00] +0.303s
+[16:00:11.700] H s=109 up=33001ms  7B [b6 0d 20 1d 10 00 00] +0.066s
+[16:00:11.721] S s=110 up=33001ms faults=0 mot=1 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=1 trn=2  18B [d4 0d 20 1d 10 00 00 08 00 f6 72 00 00 c0 00 02 01 04] +0.021s
+[16:00:11.753] E imu s=111 up=33067ms class=6 hump_count=0 hump_height_mm=0  9B [f5 0d 60 25 10 00 60 06 00] +0.032s
+[16:00:12.250] E motion s=112 up=33552ms state=6 speed_l=7 speed_r=7 dist_mm=892 turn_rate=1 fault=0 ovf=0  13B [15 0e 00 62 10 00 00 76 78 c8 37 08 10] +0.497s
+[16:00:12.437] E imu s=113 up=33747ms class=0 hump_count=0 hump_height_mm=0  9B [35 0e 60 7a 10 00 60 00 00] +0.187s
+[16:00:12.701] H s=114 up=34001ms  7B [56 0e 20 9a 10 00 00] +0.264s
+[16:00:12.740] S s=115 up=34001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 0e 20 9a 10 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.039s
+[16:00:13.325] E motion s=116 up=34542ms state=6 speed_l=0 speed_r=0 dist_mm=893 turn_rate=0 fault=0 ovf=0  13B [95 0e c0 dd 10 00 00 06 08 d8 37 00 10] +0.585s
+[16:00:13.732] H s=117 up=35001ms  7B [b6 0e 20 17 11 00 00] +0.407s
+[16:00:13.785] S s=118 up=35001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [d4 0e 20 17 11 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.053s
+[16:00:14.689] H s=119 up=36001ms  7B [f6 0e 20 94 11 00 00] +0.904s
+[16:00:14.762] S s=120 up=36001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [14 0f 20 94 11 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.073s
+[16:00:15.692] H s=121 up=37001ms  7B [36 0f 20 11 12 00 00] +0.929s
+[16:00:15.709] S s=122 up=37001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [54 0f 20 11 12 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.017s
+[16:00:16.816] H s=123 up=38001ms  7B [76 0f 20 8e 12 00 00] +1.107s
+[16:00:16.838] S s=124 up=38001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [94 0f 20 8e 12 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.022s
+[16:00:17.693] H s=125 up=39001ms  7B [b6 0f 20 0b 13 00 00] +0.855s
+[16:00:17.702] S s=126 up=39001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [d4 0f 20 0b 13 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.009s
+[16:00:18.760] H s=127 up=40001ms  7B [f6 0f 20 88 13 00 00] +1.059s
+[16:00:18.767] S s=128 up=40001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [14 10 20 88 13 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.007s
+[16:00:19.725] H s=129 up=41001ms  7B [36 10 20 05 14 00 00] +0.958s
+[16:00:19.740] S s=130 up=41001ms faults=0 mot=6 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=0 byp=0 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [54 10 20 05 14 00 00 30 00 f6 72 00 00 c0 00 00 00 04] +0.015s
+[16:00:20.446] E obstacle s=131 up=41749ms width_cm=16 bypass=1  9B [75 10 a0 62 14 00 80 10 01] +0.706s
+[16:00:20.497] E motion s=132 up=41755ms state=3 speed_l=0 speed_r=0 dist_mm=893 turn_rate=0 fault=0 ovf=0  13B [95 10 60 63 14 00 00 03 08 d8 37 00 10] +0.052s
+[16:00:20.705] E imu s=133 up=41996ms class=1 hump_count=0 hump_height_mm=0  9B [b5 10 80 81 14 00 60 01 00] +0.207s
+[16:00:20.727] H s=134 up=42000ms  7B [d6 10 00 82 14 00 00] +0.023s
+[16:00:20.728] S s=135 up=42000ms faults=0 mot=3 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=39  18B [f4 10 00 82 14 00 00 18 00 f6 72 00 00 d1 00 80 13 04] +0.001s
+[16:00:21.443] E motion s=136 up=42742ms state=3 speed_l=4 speed_r=10 dist_mm=907 turn_rate=30 fault=0 ovf=0  13B [15 11 c0 de 14 00 00 43 a8 b8 38 f0 10] +0.715s
+[16:00:21.688] H s=137 up=43001ms  7B [36 11 20 ff 14 00 00] +0.245s
+[16:00:21.713] S s=138 up=43001ms faults=0 mot=3 dst=1 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=24  18B [54 11 20 ff 14 00 00 98 00 f6 72 00 00 d1 00 02 0c 04] +0.024s
+[16:00:22.123] E imu s=139 up=43427ms class=6 hump_count=0 hump_height_mm=0  9B [75 11 60 34 15 00 60 06 00] +0.410s
+[16:00:22.451] E motion s=140 up=43742ms state=3 speed_l=10 speed_r=10 dist_mm=1008 turn_rate=1 fault=0 ovf=0  13B [95 11 c0 5b 15 00 00 a3 a8 08 3f 08 10] +0.328s
+[16:00:22.695] H s=141 up=44001ms  7B [b6 11 20 7c 15 00 00] +0.244s
+[16:00:22.712] S s=142 up=44001ms faults=0 mot=3 dst=11 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-4  18B [d4 11 20 7c 15 00 00 98 05 f6 72 00 00 d1 00 02 fe 03] +0.016s
+[16:00:23.430] E motion s=143 up=44742ms state=3 speed_l=13 speed_r=9 dist_mm=1112 turn_rate=-20 fault=0 ovf=0  13B [f5 11 c0 d8 15 00 00 d3 98 88 45 60 0f] +0.718s
+[16:00:23.601] E imu s=144 up=44886ms class=1 hump_count=0 hump_height_mm=0  9B [15 12 c0 ea 15 00 60 01 00] +0.171s
+[16:00:23.702] H s=145 up=45001ms  7B [36 12 20 f9 15 00 00] +0.101s
+[16:00:23.734] S s=146 up=45001ms faults=0 mot=3 dst=21 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-25  18B [54 12 20 f9 15 00 00 98 0a f6 72 00 00 d1 00 82 f3 03] +0.032s
+[16:00:24.439] E motion s=147 up=45742ms state=3 speed_l=13 speed_r=7 dist_mm=1215 turn_rate=-27 fault=0 ovf=0  13B [75 12 c0 55 16 00 00 d3 78 f8 4b 28 0f] +0.705s
+[16:00:24.704] H s=148 up=46001ms  7B [96 12 20 76 16 00 00] +0.266s
+[16:00:24.710] S s=149 up=46001ms faults=0 mot=3 dst=32 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-21  18B [b4 12 20 76 16 00 00 18 10 f6 72 00 00 d1 00 80 f5 03] +0.005s
+[16:00:25.215] E imu s=150 up=46496ms class=6 hump_count=0 hump_height_mm=0  9B [d5 12 00 b4 16 00 60 06 00] +0.505s
+[16:00:25.440] E motion s=151 up=46744ms state=3 speed_l=11 speed_r=10 dist_mm=1318 turn_rate=-8 fault=0 ovf=0  13B [f5 12 00 d3 16 00 00 b3 a8 68 52 c0 0f] +0.225s
+[16:00:25.688] H s=152 up=47001ms  7B [16 13 20 f3 16 00 00] +0.248s
+[16:00:25.750] S s=153 up=47001ms faults=0 mot=3 dst=42 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-6  18B [34 13 20 f3 16 00 00 18 15 f6 72 00 00 d1 00 00 fd 03] +0.062s
+[16:00:26.465] E motion s=154 up=47743ms state=3 speed_l=10 speed_r=11 dist_mm=1421 turn_rate=4 fault=0 ovf=0  13B [55 13 e0 4f 17 00 00 a3 b8 d8 58 20 10] +0.715s
+[16:00:26.691] H s=155 up=48001ms  7B [76 13 20 70 17 00 00] +0.227s
+[16:00:26.715] S s=156 up=48001ms faults=0 mot=3 dst=52 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [94 13 20 70 17 00 00 18 1a f6 72 00 00 d1 00 80 00 04] +0.024s
+[16:00:27.432] E motion s=157 up=48744ms state=3 speed_l=10 speed_r=11 dist_mm=1524 turn_rate=1 fault=0 ovf=0  13B [b5 13 00 cd 17 00 00 a3 b8 48 5f 08 10] +0.717s
+[16:00:27.694] H s=158 up=49001ms  7B [d6 13 20 ed 17 00 00] +0.262s
+[16:00:27.707] S s=159 up=49001ms faults=0 mot=3 dst=63 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [f4 13 20 ed 17 00 00 98 1f f6 72 00 00 d1 00 80 fe 03] +0.013s
+[16:00:27.983] E imu s=160 up=49266ms class=1 hump_count=0 hump_height_mm=0  9B [15 14 40 0e 18 00 60 01 00] +0.276s
+[16:00:28.490] E motion s=161 up=49742ms state=3 speed_l=18 speed_r=3 dist_mm=1628 turn_rate=-69 fault=0 ovf=0  13B [35 14 c0 49 18 00 00 23 39 c8 65 d8 0d] +0.508s
+[16:00:28.697] H s=162 up=50001ms  7B [56 14 20 6a 18 00 00] +0.207s
+[16:00:28.723] S s=163 up=50001ms faults=0 mot=3 dst=73 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-41  18B [74 14 20 6a 18 00 00 98 24 f6 72 00 00 d1 00 82 eb 03] +0.026s
+[16:00:29.134] E imu s=164 up=50426ms class=6 hump_count=0 hump_height_mm=0  9B [95 14 40 9f 18 00 60 06 00] +0.411s
+[16:00:29.434] E motion s=165 up=50742ms state=3 speed_l=10 speed_r=11 dist_mm=1731 turn_rate=8 fault=0 ovf=0  13B [b5 14 c0 c6 18 00 00 a3 b8 38 6c 40 10] +0.301s
+[16:00:29.702] H s=166 up=51001ms  7B [d6 14 20 e7 18 00 00] +0.267s
+[16:00:29.724] S s=167 up=51001ms faults=0 mot=3 dst=83 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=16  18B [f4 14 20 e7 18 00 00 98 29 f6 72 00 00 d1 00 00 08 04] +0.022s
+[16:00:30.172] E imu s=168 up=51486ms class=5 hump_count=0 hump_height_mm=0  9B [15 15 c0 23 19 00 60 05 00] +0.449s
+[16:00:30.362] E imu s=169 up=51676ms class=6 hump_count=0 hump_height_mm=0  9B [35 15 80 3b 19 00 60 06 00] +0.190s
+[16:00:30.437] E motion s=170 up=51742ms state=3 speed_l=10 speed_r=9 dist_mm=1815 turn_rate=-1 fault=0 ovf=0  13B [55 15 c0 43 19 00 00 a3 98 78 71 f8 0f] +0.075s
+[16:00:30.697] H s=171 up=52001ms  7B [76 15 20 64 19 00 00] +0.260s
+[16:00:30.708] S s=172 up=52001ms faults=0 mot=3 dst=92 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [94 15 20 64 19 00 00 18 2e f6 72 00 00 d1 00 80 00 04] +0.012s
+[16:00:32.691] E motion s=173 up=52742ms state=3 speed_l=-3 speed_r=1 dist_mm=1898 turn_rate=20 fault=0 ovf=0  13B [b5 15 c0 c0 19 00 00 d3 17 a8 76 a0 10] +1.982s
+[16:00:32.711] E imu s=174 up=52847ms class=1 hump_count=0 hump_height_mm=0  9B [d5 15 e0 cd 19 00 60 01 00] +0.020s
+[16:00:32.711] H s=175 up=53001ms  7B [f6 15 20 e1 19 00 00] +0.000s
+[16:00:32.711] S s=176 up=53001ms faults=0 mot=3 dst=100 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=64  18B [14 16 20 e1 19 00 00 18 32 f6 72 00 00 d1 00 00 20 04] +0.000s
+[16:00:32.724] E imu s=177 up=53657ms class=0 hump_count=0 hump_height_mm=0  9B [35 16 20 33 1a 00 60 00 00] +0.012s
+[16:00:32.724] E motion s=178 up=53671ms state=4 speed_l=0 speed_r=0 dist_mm=1900 turn_rate=0 fault=0 ovf=0  13B [55 16 e0 34 1a 00 00 04 08 c8 76 00 10] +0.001s
+[16:00:32.725] E motion s=179 up=53682ms state=1 speed_l=0 speed_r=0 dist_mm=1900 turn_rate=0 fault=0 ovf=0  13B [75 16 40 36 1a 00 00 01 08 c8 76 00 10] +0.000s
+[16:00:32.773] E imu s=180 up=53956ms class=5 hump_count=0 hump_height_mm=0  9B [95 16 80 58 1a 00 60 05 00] +0.048s
+[16:00:32.774] H s=181 up=54001ms  7B [b6 16 20 5e 1a 00 00] +0.001s
+[16:00:32.774] S s=182 up=54001ms faults=0 mot=1 dst=0 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=2  18B [d4 16 20 5e 1a 00 00 08 00 f6 72 00 00 d1 00 02 01 04] +0.001s
+[16:00:32.814] E imu s=183 up=54057ms class=6 hump_count=0 hump_height_mm=0  9B [f5 16 20 65 1a 00 60 06 00] +0.040s
+[16:00:33.363] E motion s=184 up=54673ms state=1 speed_l=7 speed_r=7 dist_mm=1954 turn_rate=0 fault=0 ovf=0  13B [15 17 20 b2 1a 00 00 71 78 28 7a 00 10] +0.548s
+[16:00:33.701] H s=185 up=55001ms  7B [36 17 20 db 1a 00 00] +0.338s
+[16:00:33.736] S s=186 up=55001ms faults=0 mot=1 dst=5 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [54 17 20 db 1a 00 00 88 02 f6 72 00 00 d1 00 00 00 04] +0.036s
+[16:00:34.358] E motion s=187 up=55672ms state=1 speed_l=7 speed_r=5 dist_mm=2018 turn_rate=-8 fault=0 ovf=0  13B [75 17 00 2f 1b 00 00 71 58 28 7e c0 0f] +0.622s
+[16:00:34.691] H s=188 up=56001ms  7B [96 17 20 58 1b 00 00] +0.333s
+[16:00:34.702] S s=189 up=56001ms faults=0 mot=1 dst=11 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-14  18B [b4 17 20 58 1b 00 00 88 05 f6 72 00 00 d1 00 00 f9 03] +0.011s
+[16:00:35.371] E motion s=190 up=56672ms state=1 speed_l=4 speed_r=3 dist_mm=2060 turn_rate=-4 fault=0 ovf=0  13B [d5 17 00 ac 1b 00 00 41 38 c8 80 e0 0f] +0.669s
+[16:00:35.690] H s=191 up=57001ms  7B [f6 17 20 d5 1b 00 00] +0.319s
+[16:00:35.698] S s=192 up=57001ms faults=0 mot=1 dst=16 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-6  18B [14 18 20 d5 1b 00 00 08 08 f6 72 00 00 d1 00 00 fd 03] +0.007s
+[16:00:36.374] E motion s=193 up=57672ms state=1 speed_l=6 speed_r=2 dist_mm=2100 turn_rate=-15 fault=0 ovf=0  13B [35 18 00 29 1c 00 00 61 28 48 83 88 0f] +0.676s
+[16:00:36.688] H s=194 up=58001ms  7B [56 18 20 52 1c 00 00] +0.314s
+[16:00:36.711] S s=195 up=58001ms faults=0 mot=1 dst=20 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-11  18B [74 18 20 52 1c 00 00 08 0a f6 72 00 00 d1 00 80 fa 03] +0.023s
+[16:00:37.360] E motion s=196 up=58673ms state=1 speed_l=6 speed_r=2 dist_mm=2141 turn_rate=-19 fault=0 ovf=0  13B [95 18 20 a6 1c 00 00 61 28 d8 85 68 0f] +0.649s
+[16:00:37.708] H s=197 up=59001ms  7B [b6 18 20 cf 1c 00 00] +0.347s
+[16:00:37.722] S s=198 up=59001ms faults=0 mot=1 dst=24 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-21  18B [d4 18 20 cf 1c 00 00 08 0c f6 72 00 00 d1 00 80 f5 03] +0.014s
+[16:00:38.366] E motion s=199 up=59672ms state=1 speed_l=6 speed_r=2 dist_mm=2181 turn_rate=-16 fault=0 ovf=0  13B [f5 18 00 23 1d 00 00 61 28 58 88 80 0f] +0.645s
+[16:00:38.691] H s=200 up=60001ms  7B [16 19 20 4c 1d 00 00] +0.325s
+[16:00:40.703] S s=201 up=60001ms faults=0 mot=1 dst=28 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-15  18B [34 19 20 4c 1d 00 00 08 0e f6 72 00 00 d1 00 80 f8 03] +2.012s
+[16:00:40.712] E motion s=202 up=60673ms state=1 speed_l=3 speed_r=7 dist_mm=2220 turn_rate=21 fault=0 ovf=0  13B [55 19 20 a0 1d 00 00 31 78 c8 8a a8 10] +0.009s
+[16:00:40.712] E imu s=203 up=60678ms class=1 hump_count=0 hump_height_mm=0  9B [75 19 c0 a0 1d 00 60 01 00] +0.001s
+[16:00:40.713] E imu s=204 up=60877ms class=6 hump_count=0 hump_height_mm=0  9B [95 19 a0 b9 1d 00 60 06 00] +0.001s
+[16:00:40.713] H s=205 up=61001ms  7B [b6 19 20 c9 1d 00 00] +0.000s
+[16:00:40.732] S s=206 up=61001ms faults=0 mot=1 dst=32 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-17  18B [d4 19 20 c9 1d 00 00 08 10 f6 72 00 00 d1 00 80 f7 03] +0.018s
+[16:00:40.732] E imu s=207 up=61116ms class=1 hump_count=0 hump_height_mm=0  9B [f5 19 80 d7 1d 00 60 01 00] +0.001s
+[16:00:40.733] E motion s=208 up=61673ms state=1 speed_l=6 speed_r=2 dist_mm=2268 turn_rate=-17 fault=0 ovf=0  13B [15 1a 20 1d 1e 00 00 61 28 c8 8d 78 0f] +0.000s
+[16:00:40.743] E imu s=209 up=61856ms class=6 hump_count=0 hump_height_mm=0  9B [35 1a 00 34 1e 00 60 06 00] +0.010s
+[16:00:40.743] H s=210 up=62001ms  7B [56 1a 20 46 1e 00 00] +0.000s
+[16:00:40.743] S s=211 up=62001ms faults=0 mot=1 dst=36 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-7  18B [74 1a 20 46 1e 00 00 08 12 f6 72 00 00 d1 00 80 fc 03] +0.000s
+[16:00:41.390] E motion s=212 up=62673ms state=1 speed_l=5 speed_r=4 dist_mm=2308 turn_rate=-4 fault=0 ovf=0  13B [95 1a 20 9a 1e 00 00 51 48 48 90 e0 0f] +0.647s
+[16:00:41.690] H s=213 up=63001ms  7B [b6 1a 20 c3 1e 00 00] +0.300s
+[16:00:41.722] S s=214 up=63001ms faults=0 mot=1 dst=40 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-4  18B [d4 1a 20 c3 1e 00 00 08 14 f6 72 00 00 d1 00 00 fe 03] +0.032s
+[16:00:42.375] E motion s=215 up=63672ms state=1 speed_l=5 speed_r=5 dist_mm=2355 turn_rate=-2 fault=0 ovf=0  13B [f5 1a 00 17 1f 00 00 51 58 38 93 f0 0f] +0.653s
+[16:00:42.689] H s=216 up=64001ms  7B [16 1b 20 40 1f 00 00] +0.314s
+[16:00:42.728] S s=217 up=64001ms faults=0 mot=1 dst=45 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-1  18B [34 1b 20 40 1f 00 00 88 16 f6 72 00 00 d1 00 80 ff 03] +0.039s
+[16:00:43.360] E motion s=218 up=64672ms state=1 speed_l=5 speed_r=7 dist_mm=2411 turn_rate=9 fault=0 ovf=0  13B [55 1b 00 94 1f 00 00 51 78 b8 96 48 10] +0.632s
+[16:00:43.689] H s=219 up=65001ms  7B [76 1b 20 bd 1f 00 00] +0.330s
+[16:00:43.709] S s=220 up=65001ms faults=0 mot=1 dst=51 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [94 1b 20 bd 1f 00 00 88 19 f6 72 00 00 d1 00 00 01 04] +0.020s
+[16:00:44.364] E motion s=221 up=65672ms state=1 speed_l=6 speed_r=6 dist_mm=2473 turn_rate=0 fault=0 ovf=0  13B [b5 1b 00 11 20 00 00 61 68 98 9a 00 10] +0.655s
+[16:00:44.689] H s=222 up=66001ms  7B [d6 1b 20 3a 20 00 00] +0.326s
+[16:00:44.702] S s=223 up=66001ms faults=0 mot=1 dst=57 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=0  18B [f4 1b 20 3a 20 00 00 88 1c f6 72 00 00 d1 00 02 00 04] +0.013s
+[16:00:45.373] E motion s=224 up=66673ms state=1 speed_l=5 speed_r=5 dist_mm=2532 turn_rate=-3 fault=0 ovf=0  13B [15 1c 20 8e 20 00 00 51 58 48 9e e8 0f] +0.670s
+[16:00:45.700] H s=225 up=67001ms  7B [36 1c 20 b7 20 00 00] +0.328s
+[16:00:45.728] S s=226 up=67001ms faults=0 mot=1 dst=63 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [54 1c 20 b7 20 00 00 88 1f f6 72 00 00 d1 00 82 ff 03] +0.027s
+[16:00:46.365] E motion s=227 up=67672ms state=1 speed_l=6 speed_r=6 dist_mm=2587 turn_rate=-1 fault=0 ovf=0  13B [75 1c 00 0b 21 00 00 61 68 b8 a1 f8 0f] +0.637s
+[16:00:46.737] H s=228 up=68001ms  7B [96 1c 20 34 21 00 00] +0.372s
+[16:00:46.748] S s=229 up=68001ms faults=0 mot=1 dst=68 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-5  18B [b4 1c 20 34 21 00 00 08 22 f6 72 00 00 d1 00 82 fd 03] +0.012s
+[16:00:47.434] E motion s=230 up=68672ms state=1 speed_l=5 speed_r=6 dist_mm=2643 turn_rate=5 fault=0 ovf=0  13B [d5 1c 00 88 21 00 00 51 68 38 a5 28 10] +0.686s
+[16:00:47.699] H s=231 up=69001ms  7B [f6 1c 20 b1 21 00 00] +0.264s
+[16:00:47.723] S s=232 up=69001ms faults=0 mot=1 dst=74 lin=0 dev=-5 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=3 trn=3  18B [14 1d 20 b1 21 00 00 08 25 f6 72 00 00 d1 00 86 01 04] +0.025s
+[16:00:48.005] E imu s=233 up=69316ms class=2 hump_count=0 hump_height_mm=0  9B [35 1d 80 d8 21 00 60 02 00] +0.282s
+[16:00:48.151] E line s=234 up=69439ms state=2 deviation=-27  9B [55 1d e0 e7 21 00 20 96 01] +0.146s
+[16:00:48.361] E motion s=235 up=69672ms state=1 speed_l=2 speed_r=2 dist_mm=2678 turn_rate=0 fault=0 ovf=0  13B [75 1d 00 05 22 00 00 21 28 68 a7 00 10] +0.210s
+[16:00:48.691] H s=236 up=70001ms  7B [96 1d 20 2e 22 00 00] +0.329s
+[16:00:48.702] S s=237 up=70001ms faults=0 mot=1 dst=77 lin=2 dev=-27 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=5 trn=-2  18B [b4 1d 20 2e 22 00 00 88 26 cb 72 00 00 d1 00 0a ff 03] +0.012s
+[16:00:49.364] E motion s=238 up=70672ms state=1 speed_l=2 speed_r=3 dist_mm=2702 turn_rate=3 fault=0 ovf=0  13B [d5 1d 00 82 22 00 00 21 38 e8 a8 18 10] +0.662s
+[16:00:49.691] H s=239 up=71001ms  7B [f6 1d 20 ab 22 00 00] +0.327s
+[16:00:49.713] S s=240 up=71001ms faults=0 mot=1 dst=80 lin=2 dev=-27 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=5 trn=4  18B [14 1e 20 ab 22 00 00 08 28 cb 72 00 00 d1 00 0a 02 04] +0.022s
+[16:00:49.772] E line s=241 up=71074ms state=0 deviation=-98  9B [35 1e 40 b4 22 00 20 78 00] +0.059s
+[16:00:50.363] E motion s=242 up=71672ms state=1 speed_l=3 speed_r=2 dist_mm=2730 turn_rate=-7 fault=0 ovf=0  13B [55 1e 00 ff 22 00 00 31 28 a8 aa c8 0f] +0.591s
+[16:00:50.698] H s=243 up=72001ms  7B [76 1e 20 28 23 00 00] +0.335s
+[16:00:50.714] S s=244 up=72001ms faults=0 mot=1 dst=83 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=3 trn=-1  18B [94 1e 20 28 23 00 00 88 29 3c 72 00 00 d1 00 86 ff 03] +0.016s
+[16:00:51.361] E motion s=245 up=72672ms state=1 speed_l=3 speed_r=2 dist_mm=2754 turn_rate=-6 fault=0 ovf=0  13B [b5 1e 00 7c 23 00 00 31 28 28 ac d0 0f] +0.647s
+[16:00:51.692] H s=246 up=73001ms  7B [d6 1e 20 a5 23 00 00] +0.331s
+[16:00:51.726] S s=247 up=73001ms faults=0 mot=1 dst=85 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=2 trn=-1  18B [f4 1e 20 a5 23 00 00 88 2a 3c 72 00 00 d1 00 84 ff 03] +0.033s
+[16:00:52.366] E motion s=248 up=73672ms state=1 speed_l=2 speed_r=3 dist_mm=2779 turn_rate=4 fault=0 ovf=0  13B [15 1f 00 f9 23 00 00 21 38 b8 ad 20 10] +0.640s
+[16:00:52.690] H s=249 up=74001ms  7B [36 1f 20 22 24 00 00] +0.324s
+[16:00:52.697] S s=250 up=74001ms faults=0 mot=1 dst=87 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=7  18B [54 1f 20 22 24 00 00 88 2b 3c 72 00 00 d1 00 82 03 04] +0.008s
+[16:00:53.373] E motion s=251 up=74672ms state=1 speed_l=0 speed_r=4 dist_mm=2803 turn_rate=18 fault=0 ovf=0  13B [75 1f 00 76 24 00 00 01 48 38 af 90 10] +0.675s
+[16:00:53.703] H s=252 up=75001ms  7B [96 1f 20 9f 24 00 00] +0.330s
+[16:00:53.713] S s=253 up=75001ms faults=0 mot=1 dst=90 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [b4 1f 20 9f 24 00 00 08 2d 3c 72 00 00 d1 00 00 01 04] +0.011s
+[16:00:54.366] E motion s=254 up=75672ms state=1 speed_l=3 speed_r=2 dist_mm=2826 turn_rate=-6 fault=0 ovf=0  13B [d5 1f 00 f3 24 00 00 31 28 a8 b0 d0 0f] +0.652s
+[16:00:54.690] H s=255 up=76001ms  7B [f6 1f 20 1c 25 00 00] +0.325s
+[16:00:54.697] S s=256 up=76001ms faults=0 mot=1 dst=92 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-5  18B [14 20 20 1c 25 00 00 08 2e 3c 72 00 00 d1 00 82 fd 03] +0.007s
+[16:00:55.359] E motion s=257 up=76672ms state=1 speed_l=3 speed_r=2 dist_mm=2850 turn_rate=-6 fault=0 ovf=0  13B [35 20 00 70 25 00 00 31 28 28 b2 d0 0f] +0.661s
+[16:00:55.692] H s=258 up=77001ms  7B [56 20 20 99 25 00 00] +0.333s
+[16:00:55.718] S s=259 up=77001ms faults=0 mot=1 dst=95 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-3  18B [74 20 20 99 25 00 00 88 2f 3c 72 00 00 d1 00 82 fe 03] +0.026s
+[16:00:56.364] E motion s=260 up=77672ms state=1 speed_l=3 speed_r=2 dist_mm=2875 turn_rate=-2 fault=0 ovf=0  13B [95 20 00 ed 25 00 00 31 28 b8 b3 f0 0f] +0.646s
+[16:00:56.688] H s=261 up=78001ms  7B [b6 20 20 16 26 00 00] +0.324s
+[16:00:56.711] S s=262 up=78001ms faults=0 mot=1 dst=97 lin=0 dev=-98 bar=Z act=1 hum=0 hgt=0 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [d4 20 20 16 26 00 00 88 30 3c 72 00 00 d1 00 00 00 04] +0.023s
+[16:00:57.205] E imu s=263 up=78518ms class=2 hump_count=1 hump_height_mm=9  9B [f5 20 c0 56 26 00 60 8a 04] +0.494s
+[16:00:57.304] E imu s=264 up=78618ms class=6 hump_count=1 hump_height_mm=9  9B [15 21 40 63 26 00 60 8e 04] +0.099s
+[16:00:57.362] E motion s=265 up=78672ms state=1 speed_l=2 speed_r=4 dist_mm=2907 turn_rate=12 fault=0 ovf=0  13B [35 21 00 6a 26 00 00 21 48 b8 b5 60 10] +0.058s
+[16:00:57.700] H s=266 up=79001ms  7B [56 21 20 93 26 00 00] +0.339s
+[16:00:57.710] S s=267 up=79001ms faults=0 mot=1 dst=100 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=9  18B [74 21 20 93 26 00 00 08 32 3c 72 91 00 d1 00 80 04 04] +0.009s
+[16:00:58.373] E motion s=268 up=79673ms state=1 speed_l=7 speed_r=1 dist_mm=2954 turn_rate=-29 fault=0 ovf=0  13B [95 21 20 e7 26 00 00 71 18 a8 b8 18 0f] +0.663s
+[16:00:58.404] E imu s=269 up=79679ms class=1 hump_count=1 hump_height_mm=9  9B [b5 21 e0 e7 26 00 60 89 04] +0.031s
+[16:00:58.689] H s=270 up=80001ms  7B [d6 21 20 10 27 00 00] +0.286s
+[16:00:58.699] S s=271 up=80001ms faults=0 mot=1 dst=105 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-4  18B [f4 21 20 10 27 00 00 88 34 3c 72 91 00 d1 00 02 fe 03] +0.010s
+[16:00:58.757] E imu s=272 up=80037ms class=6 hump_count=1 hump_height_mm=9  9B [15 22 a0 14 27 00 60 8e 04] +0.058s
+[16:00:59.376] E motion s=273 up=80672ms state=1 speed_l=3 speed_r=5 dist_mm=3003 turn_rate=12 fault=0 ovf=0  13B [35 22 00 64 27 00 00 31 58 b8 bb 60 10] +0.619s
+[16:00:59.710] H s=274 up=81001ms  7B [56 22 20 8d 27 00 00] +0.334s
+[16:00:59.721] S s=275 up=81001ms faults=0 mot=1 dst=110 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=6  18B [74 22 20 8d 27 00 00 08 37 3c 72 91 00 d1 00 00 03 04] +0.011s
+[16:01:00.360] E motion s=276 up=81673ms state=1 speed_l=7 speed_r=5 dist_mm=3047 turn_rate=-13 fault=0 ovf=0  13B [95 22 20 e1 27 00 00 71 58 78 be 98 0f] +0.640s
+[16:01:00.667] E imu s=277 up=81966ms class=1 hump_count=1 hump_height_mm=9  9B [b5 22 c0 05 28 00 60 89 04] +0.307s
+[16:01:00.694] H s=278 up=82001ms  7B [d6 22 20 0a 28 00 00] +0.027s
+[16:01:00.730] S s=279 up=82001ms faults=0 mot=1 dst=114 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-27  18B [f4 22 20 0a 28 00 00 08 39 3c 72 91 00 d1 00 80 f2 03] +0.036s
+[16:01:01.115] E imu s=280 up=82418ms class=6 hump_count=1 hump_height_mm=9  9B [15 23 40 3e 28 00 60 8e 04] +0.385s
+[16:01:01.363] E motion s=281 up=82672ms state=1 speed_l=3 speed_r=5 dist_mm=3095 turn_rate=11 fault=0 ovf=0  13B [35 23 00 5e 28 00 00 31 58 78 c1 58 10] +0.248s
+[16:01:01.625] E imu s=282 up=82936ms class=1 hump_count=1 hump_height_mm=9  9B [55 23 00 7f 28 00 60 89 04] +0.262s
+[16:01:01.689] H s=283 up=83001ms  7B [76 23 20 87 28 00 00] +0.064s
+[16:01:01.698] S s=284 up=83001ms faults=0 mot=1 dst=119 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=18  18B [94 23 20 87 28 00 00 88 3b 3c 72 91 00 d1 00 02 09 04] +0.008s
+[16:01:01.855] E imu s=285 up=83156ms class=6 hump_count=1 hump_height_mm=9  9B [b5 23 80 9a 28 00 60 8e 04] +0.158s
+[16:01:02.097] E imu s=286 up=83396ms class=1 hump_count=1 hump_height_mm=9  9B [d5 23 80 b8 28 00 60 89 04] +0.242s
+[16:01:03.822] E motion s=287 up=83673ms state=1 speed_l=8 speed_r=4 dist_mm=3139 turn_rate=-19 fault=0 ovf=0  13B [f5 23 20 db 28 00 00 81 48 38 c4 68 0f] +1.724s
+[16:01:03.842] H s=288 up=84001ms  7B [16 24 20 04 29 00 00] +0.020s
+[16:01:03.842] S s=289 up=84001ms faults=0 mot=1 dst=123 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-16  18B [34 24 20 04 29 00 00 88 3d 3c 72 91 00 d1 00 00 f8 03] +0.001s
+[16:01:03.843] E motion s=290 up=84672ms state=1 speed_l=6 speed_r=2 dist_mm=3183 turn_rate=-21 fault=0 ovf=0  13B [55 24 00 58 29 00 00 61 28 f8 c6 58 0f] +0.000s
+[16:01:03.853] H s=291 up=85001ms  7B [76 24 20 81 29 00 00] +0.010s
+[16:01:03.854] S s=292 up=85001ms faults=0 mot=1 dst=128 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-21  18B [94 24 20 81 29 00 00 08 40 3c 72 91 00 d1 00 80 f5 03] +0.000s
+[16:01:04.358] E motion s=293 up=85672ms state=1 speed_l=5 speed_r=3 dist_mm=3223 turn_rate=-9 fault=0 ovf=0  13B [b5 24 00 d5 29 00 00 51 38 78 c9 b8 0f] +0.505s
+[16:01:04.428] E imu s=294 up=85727ms class=6 hump_count=1 hump_height_mm=9  9B [d5 24 e0 db 29 00 60 8e 04] +0.070s
+[16:01:04.696] H s=295 up=86002ms  7B [f6 24 40 fe 29 00 00] +0.269s
+[16:01:04.705] S s=296 up=86002ms faults=0 mot=1 dst=132 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=14  18B [14 25 40 fe 29 00 00 08 42 3c 72 91 00 d1 00 00 07 04] +0.008s
+[16:01:05.251] E imu s=297 up=86556ms class=1 hump_count=1 hump_height_mm=9  9B [35 25 80 43 2a 00 60 89 04] +0.546s
+[16:01:05.362] E motion s=298 up=86672ms state=1 speed_l=7 speed_r=0 dist_mm=3267 turn_rate=-31 fault=0 ovf=0  13B [55 25 00 52 2a 00 00 71 08 38 cc 08 0f] +0.111s
+[16:01:05.688] H s=299 up=87001ms  7B [76 25 20 7b 2a 00 00] +0.327s
+[16:01:05.697] S s=300 up=87001ms faults=0 mot=1 dst=136 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-19  18B [94 25 20 7b 2a 00 00 08 44 3c 72 91 00 d1 00 82 f6 03] +0.008s
+[16:01:06.361] E motion s=301 up=87672ms state=1 speed_l=6 speed_r=2 dist_mm=3312 turn_rate=-19 fault=0 ovf=0  13B [b5 25 00 cf 2a 00 00 61 28 08 cf 68 0f] +0.664s
+[16:01:06.690] H s=302 up=88001ms  7B [d6 25 20 f8 2a 00 00] +0.329s
+[16:01:06.709] S s=303 up=88001ms faults=0 mot=1 dst=141 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-19  18B [f4 25 20 f8 2a 00 00 88 46 3c 72 91 00 d1 00 80 f6 03] +0.019s
+[16:01:07.361] E motion s=304 up=88672ms state=1 speed_l=6 speed_r=1 dist_mm=3351 turn_rate=-22 fault=0 ovf=0  13B [15 26 00 4c 2b 00 00 61 18 78 d1 50 0f] +0.651s
+[16:01:07.697] H s=305 up=89001ms  7B [36 26 20 75 2b 00 00] +0.337s
+[16:01:07.705] S s=306 up=89001ms faults=0 mot=1 dst=145 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-18  18B [54 26 20 75 2b 00 00 88 48 3c 72 91 00 d1 00 02 f7 03] +0.007s
+[16:01:08.364] E motion s=307 up=89672ms state=1 speed_l=5 speed_r=2 dist_mm=3391 turn_rate=-13 fault=0 ovf=0  13B [75 26 00 c9 2b 00 00 51 28 f8 d3 98 0f] +0.660s
+[16:01:08.494] E imu s=308 up=89806ms class=6 hump_count=1 hump_height_mm=9  9B [95 26 c0 d9 2b 00 60 8e 04] +0.130s
+[16:01:08.691] H s=309 up=90001ms  7B [b6 26 20 f2 2b 00 00] +0.196s
+[16:01:08.720] S s=310 up=90001ms faults=0 mot=1 dst=149 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-11  18B [d4 26 20 f2 2b 00 00 88 4a 3c 72 91 00 d1 00 80 fa 03] +0.029s
+[16:01:09.376] E motion s=311 up=90672ms state=1 speed_l=5 speed_r=3 dist_mm=3431 turn_rate=-7 fault=0 ovf=0  13B [f5 26 00 46 2c 00 00 51 38 78 d6 c8 0f] +0.656s
+[16:01:09.690] H s=312 up=91001ms  7B [16 27 20 6f 2c 00 00] +0.314s
+[16:01:09.715] S s=313 up=91001ms faults=0 mot=1 dst=153 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-6  18B [34 27 20 6f 2c 00 00 88 4c 3c 72 91 00 d1 00 02 fd 03] +0.025s
+[16:01:10.363] E motion s=314 up=91673ms state=1 speed_l=3 speed_r=6 dist_mm=3476 turn_rate=13 fault=0 ovf=0  13B [55 27 20 c3 2c 00 00 31 68 48 d9 68 10] +0.648s
+[16:01:10.702] H s=315 up=92001ms  7B [76 27 20 ec 2c 00 00] +0.339s
+[16:01:10.724] S s=316 up=92001ms faults=0 mot=1 dst=157 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=4  18B [94 27 20 ec 2c 00 00 88 4e 3c 72 91 00 d1 00 00 02 04] +0.022s
+[16:01:11.376] E motion s=317 up=92673ms state=1 speed_l=4 speed_r=6 dist_mm=3525 turn_rate=7 fault=0 ovf=0  13B [b5 27 20 40 2d 00 00 41 68 58 dc 38 10] +0.652s
+[16:01:11.702] H s=318 up=93001ms  7B [d6 27 20 69 2d 00 00] +0.325s
+[16:01:11.722] S s=319 up=93001ms faults=0 mot=1 dst=162 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=16  18B [f4 27 20 69 2d 00 00 08 51 3c 72 91 00 d1 00 00 08 04] +0.020s
+[16:01:12.360] E motion s=320 up=93673ms state=1 speed_l=3 speed_r=5 dist_mm=3566 turn_rate=11 fault=0 ovf=0  13B [15 28 20 bd 2d 00 00 31 58 e8 de 58 10] +0.638s
+[16:01:12.692] H s=321 up=94001ms  7B [36 28 20 e6 2d 00 00] +0.332s
+[16:01:12.727] S s=322 up=94001ms faults=0 mot=1 dst=166 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=10  18B [54 28 20 e6 2d 00 00 08 53 3c 72 91 00 d1 00 00 05 04] +0.035s
+[16:01:13.369] E motion s=323 up=94673ms state=1 speed_l=3 speed_r=5 dist_mm=3606 turn_rate=9 fault=0 ovf=0  13B [75 28 20 3a 2e 00 00 31 58 68 e1 48 10] +0.643s
+[16:01:13.692] H s=324 up=95001ms  7B [96 28 20 63 2e 00 00] +0.323s
+[16:01:13.703] S s=325 up=95001ms faults=0 mot=1 dst=170 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=16  18B [b4 28 20 63 2e 00 00 08 55 3c 72 91 00 d1 00 00 08 04] +0.011s
+[16:01:14.369] E motion s=326 up=95672ms state=1 speed_l=3 speed_r=5 dist_mm=3646 turn_rate=10 fault=0 ovf=0  13B [d5 28 00 b7 2e 00 00 31 58 e8 e3 50 10] +0.666s
+[16:01:14.699] H s=327 up=96001ms  7B [f6 28 20 e0 2e 00 00] +0.329s
+[16:01:14.709] S s=328 up=96001ms faults=0 mot=1 dst=174 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=12  18B [14 29 20 e0 2e 00 00 08 57 3c 72 91 00 d1 00 00 06 04] +0.010s
+[16:01:15.245] E imu s=329 up=96546ms class=1 hump_count=1 hump_height_mm=9  9B [35 29 40 24 2f 00 60 89 04] +0.536s
+[16:01:15.400] E motion s=330 up=96673ms state=1 speed_l=1 speed_r=7 dist_mm=3686 turn_rate=29 fault=0 ovf=0  13B [55 29 20 34 2f 00 00 11 78 68 e6 e8 10] +0.155s
+[16:01:15.700] H s=331 up=97001ms  7B [76 29 20 5d 2f 00 00] +0.299s
+[16:01:15.723] S s=332 up=97001ms faults=0 mot=1 dst=178 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=19  18B [94 29 20 5d 2f 00 00 08 59 3c 72 91 00 d1 00 80 09 04] +0.023s
+[16:01:16.368] E motion s=333 up=97672ms state=1 speed_l=2 speed_r=6 dist_mm=3726 turn_rate=15 fault=0 ovf=0  13B [b5 29 00 b1 2f 00 00 21 68 e8 e8 78 10] +0.645s
+[16:01:16.812] H s=334 up=98001ms  7B [d6 29 20 da 2f 00 00] +0.444s
+[16:01:16.852] S s=335 up=98001ms faults=0 mot=1 dst=182 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=20  18B [f4 29 20 da 2f 00 00 08 5b 3c 72 91 00 d1 00 00 0a 04] +0.040s
+[16:01:17.360] E motion s=336 up=98672ms state=1 speed_l=2 speed_r=6 dist_mm=3766 turn_rate=21 fault=0 ovf=0  13B [15 2a 00 2e 30 00 00 21 68 68 eb a8 10] +0.508s
+[16:01:17.707] H s=337 up=99001ms  7B [36 2a 20 57 30 00 00] +0.347s
+[16:01:17.728] S s=338 up=99001ms faults=0 mot=1 dst=186 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=7  18B [54 2a 20 57 30 00 00 08 5d 3c 72 91 00 d1 00 80 03 04] +0.022s
+[16:01:17.729] E imu s=339 up=99010ms class=6 hump_count=1 hump_height_mm=9  9B [75 2a 40 58 30 00 60 8e 04] +0.001s
+[16:01:18.390] E motion s=340 up=99672ms state=1 speed_l=7 speed_r=2 dist_mm=3806 turn_rate=-22 fault=0 ovf=0  13B [95 2a 00 ab 30 00 00 71 28 e8 ed 50 0f] +0.661s
+[16:01:18.446] E imu s=341 up=99756ms class=1 hump_count=1 hump_height_mm=9  9B [b5 2a 80 b5 30 00 60 89 04] +0.056s
+[16:01:18.771] H s=342 up=100001ms  7B [d6 2a 20 d4 30 00 00] +0.325s
+[16:01:18.856] S s=343 up=100001ms faults=0 mot=1 dst=190 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=2 trn=-9  18B [f4 2a 20 d4 30 00 00 08 5f 3c 72 91 00 d1 00 84 fb 03] +0.085s
+[16:01:18.856] E imu s=344 up=100077ms class=6 hump_count=1 hump_height_mm=9  9B [15 2b a0 dd 30 00 60 8e 04] +0.000s
+[16:01:19.390] E motion s=345 up=100673ms state=1 speed_l=3 speed_r=5 dist_mm=3855 turn_rate=9 fault=0 ovf=0  13B [35 2b 20 28 31 00 00 31 58 f8 f0 48 10] +0.534s
+[16:01:19.690] H s=346 up=101001ms  7B [56 2b 20 51 31 00 00] +0.301s
+[16:01:19.713] S s=347 up=101001ms faults=0 mot=1 dst=195 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 2b 20 51 31 00 00 88 61 3c 72 91 00 d1 00 00 00 04] +0.022s
+[16:01:20.365] E motion s=348 up=101672ms state=1 speed_l=6 speed_r=2 dist_mm=3904 turn_rate=-16 fault=0 ovf=0  13B [95 2b 00 a5 31 00 00 61 28 08 f4 80 0f] +0.652s
+[16:01:20.672] E imu s=349 up=101976ms class=1 hump_count=1 hump_height_mm=9  9B [b5 2b 00 cb 31 00 60 89 04] +0.307s
+[16:01:20.713] H s=350 up=102002ms  7B [d6 2b 40 ce 31 00 00] +0.041s
+[16:01:20.736] S s=351 up=102002ms faults=0 mot=1 dst=200 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-34  18B [f4 2b 40 ce 31 00 00 08 64 3c 72 91 00 d1 00 02 ef 03] +0.022s
+[16:01:21.113] E imu s=352 up=102406ms class=6 hump_count=1 hump_height_mm=9  9B [15 2c c0 00 32 00 60 8e 04] +0.377s
+[16:01:21.363] E motion s=353 up=102672ms state=1 speed_l=2 speed_r=5 dist_mm=3948 turn_rate=13 fault=0 ovf=0  13B [35 2c 00 22 32 00 00 21 58 c8 f6 68 10] +0.250s
+[16:01:21.519] E imu s=354 up=102826ms class=1 hump_count=1 hump_height_mm=9  9B [55 2c 40 35 32 00 60 89 04] +0.156s
+[16:01:21.695] H s=355 up=103001ms  7B [76 2c 20 4b 32 00 00] +0.175s
+[16:01:21.719] S s=356 up=103001ms faults=0 mot=1 dst=204 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [94 2c 20 4b 32 00 00 08 66 3c 72 91 00 d1 00 82 00 04] +0.024s
+[16:01:21.764] E imu s=357 up=103056ms class=6 hump_count=1 hump_height_mm=9  9B [b5 2c 00 52 32 00 60 8e 04] +0.044s
+[16:01:21.965] E imu s=358 up=103276ms class=1 hump_count=1 hump_height_mm=9  9B [d5 2c 80 6d 32 00 60 89 04] +0.201s
+[16:01:22.363] E motion s=359 up=103672ms state=1 speed_l=7 speed_r=3 dist_mm=3995 turn_rate=-19 fault=0 ovf=0  13B [f5 2c 00 9f 32 00 00 71 38 b8 f9 68 0f] +0.398s
+[16:01:22.690] H s=360 up=104001ms  7B [16 2d 20 c8 32 00 00] +0.326s
+[16:01:22.703] S s=361 up=104001ms faults=0 mot=1 dst=209 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-12  18B [34 2d 20 c8 32 00 00 88 68 3c 72 91 00 d1 00 00 fa 03] +0.013s
+[16:01:22.799] E imu s=362 up=104106ms class=6 hump_count=1 hump_height_mm=9  9B [55 2d 40 d5 32 00 60 8e 04] +0.096s
+[16:01:23.361] E motion s=363 up=104672ms state=1 speed_l=4 speed_r=3 dist_mm=4036 turn_rate=-4 fault=0 ovf=0  13B [75 2d 00 1c 33 00 00 41 38 48 fc e0 0f] +0.563s
+[16:01:23.786] H s=364 up=105002ms  7B [96 2d 40 45 33 00 00] +0.424s
+[16:01:23.821] S s=365 up=105002ms faults=0 mot=1 dst=213 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-4  18B [b4 2d 40 45 33 00 00 88 6a 3c 72 91 00 d1 00 00 fe 03] +0.035s
+[16:01:25.420] E motion s=366 up=105672ms state=1 speed_l=6 speed_r=5 dist_mm=4082 turn_rate=-4 fault=0 ovf=0  13B [d5 2d 00 99 33 00 00 61 58 28 ff e0 0f] +1.599s
+[16:01:25.445] H s=367 up=106001ms  7B [f6 2d 20 c2 33 00 00] +0.025s
+[16:01:25.446] S s=368 up=106001ms faults=0 mot=1 dst=218 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-2  18B [14 2e 20 c2 33 00 00 08 6d 3c 72 91 00 d1 00 00 ff 03] +0.001s
+[16:01:25.447] E motion s=369 up=106672ms state=1 speed_l=5 speed_r=4 dist_mm=4132 turn_rate=-6 fault=0 ovf=0  13B [35 2e 00 16 34 00 00 51 48 48 02 d1 0f] +0.001s
+[16:01:25.732] H s=370 up=107001ms  7B [56 2e 20 3f 34 00 00] +0.285s
+[16:01:25.757] S s=371 up=107001ms faults=0 mot=1 dst=223 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-3  18B [74 2e 20 3f 34 00 00 88 6f 3c 72 91 00 d1 00 82 fe 03] +0.025s
+[16:01:26.373] E motion s=372 up=107672ms state=1 speed_l=6 speed_r=5 dist_mm=4179 turn_rate=-4 fault=0 ovf=0  13B [95 2e 00 93 34 00 00 61 58 38 05 e1 0f] +0.615s
+[16:01:26.696] H s=373 up=108005ms  7B [b6 2e a0 bc 34 00 00] +0.324s
+[16:01:26.714] S s=374 up=108005ms faults=0 mot=1 dst=227 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [d4 2e a0 bc 34 00 00 88 71 3c 72 91 00 d1 00 80 fe 03] +0.018s
+[16:01:27.373] E motion s=375 up=108672ms state=1 speed_l=6 speed_r=6 dist_mm=4234 turn_rate=-1 fault=0 ovf=0  13B [f5 2e 00 10 35 00 00 61 68 a8 08 f9 0f] +0.658s
+[16:01:27.765] H s=376 up=109001ms  7B [16 2f 20 39 35 00 00] +0.392s
+[16:01:27.800] S s=377 up=109001ms faults=0 mot=1 dst=233 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [34 2f 20 39 35 00 00 88 74 3c 72 91 00 d1 00 82 ff 03] +0.035s
+[16:01:28.360] E motion s=378 up=109672ms state=1 speed_l=6 speed_r=6 dist_mm=4293 turn_rate=-1 fault=0 ovf=0  13B [55 2f 00 8d 35 00 00 61 68 58 0c f9 0f] +0.560s
+[16:01:28.723] H s=379 up=110001ms  7B [76 2f 20 b6 35 00 00] +0.363s
+[16:01:28.734] S s=380 up=110001ms faults=0 mot=1 dst=239 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-11  18B [94 2f 20 b6 35 00 00 88 77 3c 72 91 00 d1 00 82 fa 03] +0.011s
+[16:01:29.446] E motion s=381 up=110672ms state=1 speed_l=6 speed_r=3 dist_mm=4340 turn_rate=-14 fault=0 ovf=0  13B [b5 2f 00 0a 36 00 00 61 38 48 0f 91 0f] +0.712s
+[16:01:29.784] H s=382 up=111001ms  7B [d6 2f 20 33 36 00 00] +0.338s
+[16:01:29.793] S s=383 up=111001ms faults=0 mot=1 dst=244 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-7  18B [f4 2f 20 33 36 00 00 08 7a 3c 72 91 00 d1 00 82 fc 03] +0.009s
+[16:01:30.362] E motion s=384 up=111673ms state=1 speed_l=6 speed_r=3 dist_mm=4380 turn_rate=-14 fault=0 ovf=0  13B [15 30 20 87 36 00 00 61 38 c8 11 91 0f] +0.569s
+[16:01:30.689] H s=385 up=112001ms  7B [36 30 20 b0 36 00 00] +0.327s
+[16:01:30.703] S s=386 up=112001ms faults=0 mot=1 dst=248 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-18  18B [54 30 20 b0 36 00 00 08 7c 3c 72 91 00 d1 00 00 f7 03] +0.014s
+[16:01:31.161] E imu s=387 up=112336ms class=1 hump_count=1 hump_height_mm=9  9B [75 30 00 da 36 00 60 89 04] +0.459s
+[16:01:31.363] E motion s=388 up=112672ms state=1 speed_l=6 speed_r=0 dist_mm=4419 turn_rate=-26 fault=0 ovf=0  13B [95 30 00 04 37 00 00 61 08 38 14 31 0f] +0.202s
+[16:01:31.693] H s=389 up=113001ms  7B [b6 30 20 2d 37 00 00] +0.330s
+[16:01:31.708] S s=390 up=113001ms faults=0 mot=1 dst=251 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-9  18B [d4 30 20 2d 37 00 00 88 7d 3c 72 91 00 d1 00 80 fb 03] +0.015s
+[16:01:31.728] E imu s=391 up=113019ms class=6 hump_count=1 hump_height_mm=9  9B [f5 30 60 2f 37 00 60 8e 04] +0.019s
+[16:01:32.409] E motion s=392 up=113672ms state=1 speed_l=7 speed_r=2 dist_mm=4463 turn_rate=-21 fault=0 ovf=0  13B [15 31 00 81 37 00 00 71 28 f8 16 59 0f] +0.681s
+[16:01:32.450] E imu s=393 up=113756ms class=1 hump_count=1 hump_height_mm=9  9B [35 31 80 8b 37 00 60 89 04] +0.041s
+[16:01:32.700] H s=394 up=114001ms  7B [56 31 20 aa 37 00 00] +0.250s
+[16:01:32.724] S s=395 up=114001ms faults=0 mot=1 dst=255 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-17  18B [74 31 20 aa 37 00 00 88 7f 3c 72 91 00 d1 00 80 f7 03] +0.024s
+[16:01:33.416] E motion s=396 up=114672ms state=1 speed_l=5 speed_r=3 dist_mm=4509 turn_rate=-9 fault=0 ovf=0  13B [95 31 00 fe 37 00 00 51 38 d8 19 b9 0f] +0.692s
+[16:01:33.439] E imu s=397 up=114736ms class=6 hump_count=1 hump_height_mm=9  9B [b5 31 00 06 38 00 60 8e 04] +0.023s
+[16:01:33.722] H s=398 up=115001ms  7B [d6 31 20 27 38 00 00] +0.283s
+[16:01:33.749] S s=399 up=115001ms faults=0 mot=1 dst=255 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-6  18B [f4 31 20 27 38 00 00 88 7f 3c 72 91 00 d1 00 02 fd 03] +0.027s
+[16:01:34.389] E motion s=400 up=115672ms state=1 speed_l=4 speed_r=4 dist_mm=4548 turn_rate=-2 fault=0 ovf=0  13B [15 32 00 7b 38 00 00 41 48 48 1c f1 0f] +0.641s
+[16:01:34.751] H s=401 up=116001ms  7B [36 32 20 a4 38 00 00] +0.361s
+[16:01:34.789] S s=402 up=116001ms faults=0 mot=1 dst=255 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [54 32 20 a4 38 00 00 88 7f 3c 72 91 00 d1 00 82 ff 03] +0.039s
+[16:01:35.362] E motion s=403 up=116673ms state=1 speed_l=5 speed_r=5 dist_mm=4594 turn_rate=-4 fault=0 ovf=0  13B [75 32 20 f8 38 00 00 51 58 28 1f e1 0f] +0.573s
+[16:01:35.695] H s=404 up=117004ms  7B [96 32 80 21 39 00 00] +0.333s
+[16:01:35.705] S s=405 up=117004ms faults=0 mot=1 dst=255 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [b4 32 80 21 39 00 00 88 7f 3c 72 91 00 d1 00 82 ff 03] +0.010s
+[16:01:36.343] E motion s=406 up=117642ms state=4 speed_l=6 speed_r=5 dist_mm=4646 turn_rate=-2 fault=0 ovf=0  13B [d5 32 40 71 39 00 00 64 58 68 22 f1 0f] +0.638s
+[16:01:36.790] H s=407 up=118001ms  7B [f6 32 20 9e 39 00 00] +0.448s
+[16:01:36.815] S s=408 up=118001ms faults=0 mot=4 dst=0 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-19  18B [14 33 20 9e 39 00 00 20 00 3c 72 91 00 d1 00 82 f6 03] +0.025s
+[16:01:36.816] E motion s=409 up=118042ms state=1 speed_l=3 speed_r=-3 dist_mm=4650 turn_rate=-29 fault=0 ovf=0  13B [35 33 40 a3 39 00 00 31 d8 a7 22 19 0f] +0.001s
+[16:01:37.716] H s=410 up=119001ms  7B [56 33 20 1b 3a 00 00] +0.900s
+[16:01:37.741] S s=411 up=119001ms faults=0 mot=1 dst=0 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [74 33 20 1b 3a 00 00 08 00 3c 72 91 00 d1 00 00 01 04] +0.025s
+[16:01:37.742] E motion s=412 up=119033ms state=1 speed_l=2 speed_r=3 dist_mm=4687 turn_rate=1 fault=0 ovf=0  13B [95 33 20 1f 3a 00 00 21 38 f8 24 09 10] +0.001s
+[16:01:38.694] H s=413 up=120001ms  7B [b6 33 20 98 3a 00 00] +0.952s
+[16:01:38.722] S s=414 up=120001ms faults=0 mot=1 dst=3 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [d4 33 20 98 3a 00 00 88 01 3c 72 91 00 d1 00 80 fe 03] +0.028s
+[16:01:38.763] E motion s=415 up=120033ms state=1 speed_l=3 speed_r=2 dist_mm=4711 turn_rate=-4 fault=0 ovf=0  13B [f5 33 20 9c 3a 00 00 31 28 78 26 e1 0f] +0.041s
+[16:01:39.690] H s=416 up=121001ms  7B [16 34 20 15 3b 00 00] +0.927s
+[16:01:39.698] S s=417 up=121001ms faults=0 mot=1 dst=6 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-14  18B [34 34 20 15 3b 00 00 08 03 3c 72 91 00 d1 00 00 f9 03] +0.008s
+[16:01:39.719] E motion s=418 up=121032ms state=1 speed_l=3 speed_r=0 dist_mm=4734 turn_rate=-13 fault=0 ovf=0  13B [55 34 00 19 3b 00 00 31 08 e8 27 99 0f] +0.021s
+[16:01:40.702] H s=419 up=122001ms  7B [76 34 20 92 3b 00 00] +0.983s
+[16:01:40.711] S s=420 up=122001ms faults=0 mot=1 dst=8 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=5  18B [94 34 20 92 3b 00 00 08 04 3c 72 91 00 d1 00 80 02 04] +0.009s
+[16:01:40.723] E motion s=421 up=122033ms state=1 speed_l=1 speed_r=3 dist_mm=4759 turn_rate=6 fault=0 ovf=0  13B [b5 34 20 96 3b 00 00 11 38 78 29 31 10] +0.011s
+[16:01:41.902] H s=422 up=123001ms  7B [d6 34 20 0f 3c 00 00] +1.180s
+[16:01:41.939] S s=423 up=123001ms faults=0 mot=1 dst=10 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=3  18B [f4 34 20 0f 3c 00 00 08 05 3c 72 91 00 d1 00 80 01 04] +0.037s
+[16:01:41.940] E motion s=424 up=123032ms state=1 speed_l=2 speed_r=3 dist_mm=4783 turn_rate=4 fault=0 ovf=0  13B [15 35 00 13 3c 00 00 21 38 f8 2a 21 10] +0.001s
+[16:01:42.690] H s=425 up=124001ms  7B [36 35 20 8c 3c 00 00] +0.751s
+[16:01:42.756] S s=426 up=124001ms faults=0 mot=1 dst=13 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-5  18B [54 35 20 8c 3c 00 00 88 06 3c 72 91 00 d1 00 82 fd 03] +0.065s
+[16:01:42.756] E motion s=427 up=124032ms state=1 speed_l=4 speed_r=2 dist_mm=4807 turn_rate=-7 fault=0 ovf=0  13B [75 35 00 90 3c 00 00 41 28 78 2c c9 0f] +0.001s
+[16:01:43.689] H s=428 up=125001ms  7B [96 35 20 09 3d 00 00] +0.932s
+[16:01:43.699] S s=429 up=125001ms faults=0 mot=1 dst=15 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=8  18B [b4 35 20 09 3d 00 00 88 07 3c 72 91 00 d1 00 00 04 04] +0.010s
+[16:01:43.754] E motion s=430 up=125032ms state=1 speed_l=2 speed_r=3 dist_mm=4831 turn_rate=7 fault=0 ovf=0  13B [d5 35 00 0d 3d 00 00 21 38 f8 2d 39 10] +0.055s
+[16:01:44.700] H s=431 up=126001ms  7B [f6 35 20 86 3d 00 00] +0.946s
+[16:01:44.710] S s=432 up=126001ms faults=0 mot=1 dst=18 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=10  18B [14 36 20 86 3d 00 00 08 09 3c 72 91 00 d1 00 00 05 04] +0.010s
+[16:01:44.721] E motion s=433 up=126032ms state=1 speed_l=1 speed_r=3 dist_mm=4855 turn_rate=9 fault=0 ovf=0  13B [35 36 00 8a 3d 00 00 11 38 78 2f 49 10] +0.010s
+[16:01:45.904] H s=434 up=127001ms  7B [56 36 20 03 3e 00 00] +1.183s
+[16:01:45.968] S s=435 up=127001ms faults=0 mot=1 dst=20 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-1  18B [74 36 20 03 3e 00 00 08 0a 3c 72 91 00 d1 00 82 ff 03] +0.064s
+[16:01:45.968] E motion s=436 up=127032ms state=1 speed_l=2 speed_r=2 dist_mm=4879 turn_rate=-2 fault=0 ovf=0  13B [95 36 00 07 3e 00 00 21 28 f8 30 f1 0f] +0.001s
+[16:01:47.029] H s=437 up=128001ms  7B [b6 36 20 80 3e 00 00] +1.060s
+[16:01:47.029] S s=438 up=128001ms faults=0 mot=1 dst=22 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-16  18B [d4 36 20 80 3e 00 00 08 0b 3c 72 91 00 d1 00 00 f8 03] +0.001s
+[16:01:47.030] E motion s=439 up=128032ms state=1 speed_l=3 speed_r=0 dist_mm=4902 turn_rate=-15 fault=0 ovf=0  13B [f5 36 00 84 3e 00 00 31 08 68 32 89 0f] +0.000s
+[16:01:47.688] H s=440 up=129001ms  7B [16 37 20 fd 3e 00 00] +0.659s
+[16:01:47.708] S s=441 up=129001ms faults=0 mot=1 dst=25 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=8  18B [34 37 20 fd 3e 00 00 88 0c 3c 72 91 00 d1 00 02 04 04] +0.020s
+[16:01:47.750] E motion s=442 up=129032ms state=1 speed_l=1 speed_r=3 dist_mm=4927 turn_rate=9 fault=0 ovf=0  13B [55 37 00 01 3f 00 00 11 38 f8 33 49 10] +0.042s
+[16:01:48.692] H s=443 up=130001ms  7B [76 37 20 7a 3f 00 00] +0.942s
+[16:01:48.707] S s=444 up=130001ms faults=0 mot=1 dst=27 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=6  18B [94 37 20 7a 3f 00 00 88 0d 3c 72 91 00 d1 00 00 03 04] +0.015s
+[16:01:48.734] E motion s=445 up=130032ms state=1 speed_l=1 speed_r=3 dist_mm=4951 turn_rate=6 fault=0 ovf=0  13B [b5 37 00 7e 3f 00 00 11 38 78 35 31 10] +0.027s
+[16:01:49.714] H s=446 up=131001ms  7B [d6 37 20 f7 3f 00 00] +0.980s
+[16:01:49.726] S s=447 up=131001ms faults=0 mot=1 dst=30 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-4  18B [f4 37 20 f7 3f 00 00 08 0f 3c 72 91 00 d1 00 00 fe 03] +0.012s
+[16:01:49.726] E motion s=448 up=131033ms state=1 speed_l=3 speed_r=2 dist_mm=4974 turn_rate=-6 fault=0 ovf=0  13B [15 38 20 fb 3f 00 00 31 28 e8 36 d1 0f] +0.001s
+[16:01:50.811] H s=449 up=132001ms  7B [36 38 20 74 40 00 00] +1.084s
+[16:01:50.842] S s=450 up=132001ms faults=0 mot=1 dst=32 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [54 38 20 74 40 00 00 08 10 3c 72 91 00 d1 00 80 fe 03] +0.031s
+[16:01:50.843] E motion s=451 up=132032ms state=1 speed_l=3 speed_r=2 dist_mm=4999 turn_rate=-4 fault=0 ovf=0  13B [75 38 00 78 40 00 00 31 28 78 38 e1 0f] +0.001s
+[16:01:51.697] H s=452 up=133001ms  7B [96 38 20 f1 40 00 00] +0.854s
+[16:01:51.705] S s=453 up=133001ms faults=0 mot=1 dst=34 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [b4 38 20 f1 40 00 00 08 11 3c 72 91 00 d1 00 00 01 04] +0.008s
+[16:01:51.743] E motion s=454 up=133032ms state=1 speed_l=2 speed_r=3 dist_mm=5023 turn_rate=3 fault=0 ovf=0  13B [d5 38 00 f5 40 00 00 21 38 f8 39 19 10] +0.038s
+[16:01:52.543] E imu s=455 up=133846ms class=1 hump_count=1 hump_height_mm=9  9B [f5 38 c0 5a 41 00 60 89 04] +0.800s
+[16:01:52.701] E imu s=456 up=133987ms class=6 hump_count=1 hump_height_mm=9  9B [15 39 60 6c 41 00 60 8e 04] +0.158s
+[16:01:52.807] H s=457 up=134001ms  7B [36 39 20 6e 41 00 00] +0.106s
+[16:01:52.808] S s=458 up=134001ms faults=0 mot=1 dst=37 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=8  18B [54 39 20 6e 41 00 00 88 12 3c 72 91 00 d1 00 00 04 04] +0.001s
+[16:01:52.809] E motion s=459 up=134032ms state=1 speed_l=1 speed_r=3 dist_mm=5047 turn_rate=9 fault=0 ovf=0  13B [75 39 00 72 41 00 00 11 38 78 3b 49 10] +0.001s
+[16:01:53.512] E barcode s=460 up=134776ms letter=Z action=1  8B [95 39 00 cf 41 00 40 39] +0.703s
+[16:01:53.689] H s=461 up=135001ms  7B [b6 39 20 eb 41 00 00] +0.177s
+[16:01:53.713] S s=462 up=135001ms faults=0 mot=1 dst=39 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-8  18B [d4 39 20 eb 41 00 00 88 13 3c 72 91 00 d1 00 00 fc 03] +0.025s
+[16:01:53.728] E motion s=463 up=135033ms state=1 speed_l=3 speed_r=2 dist_mm=5071 turn_rate=-8 fault=0 ovf=0  13B [f5 39 20 ef 41 00 00 31 28 f8 3c c1 0f] +0.015s
+[16:01:54.707] H s=464 up=136002ms  7B [16 3a 40 68 42 00 00] +0.979s
+[16:01:54.715] S s=465 up=136002ms faults=0 mot=1 dst=42 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [34 3a 40 68 42 00 00 08 15 3c 72 91 00 d1 00 00 01 04] +0.008s
+[16:01:54.770] E motion s=466 up=136034ms state=1 speed_l=4 speed_r=6 dist_mm=5110 turn_rate=6 fault=0 ovf=0  13B [55 3a 40 6c 42 00 00 41 68 68 3f 31 10] +0.055s
+[16:01:55.047] E imu s=467 up=136346ms class=1 hump_count=1 hump_height_mm=9  9B [75 3a 40 93 42 00 60 89 04] +0.277s
+[16:01:55.351] E imu s=468 up=136647ms class=6 hump_count=1 hump_height_mm=9  9B [95 3a e0 b8 42 00 60 8e 04] +0.305s
+[16:01:55.694] H s=469 up=137001ms  7B [b6 3a 20 e5 42 00 00] +0.343s
+[16:01:55.761] S s=470 up=137001ms faults=0 mot=1 dst=46 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-14  18B [d4 3a 20 e5 42 00 00 08 17 3c 72 91 00 d1 00 00 f9 03] +0.067s
+[16:01:55.762] E motion s=471 up=137033ms state=1 speed_l=7 speed_r=3 dist_mm=5162 turn_rate=-14 fault=0 ovf=0  13B [f5 3a 20 e9 42 00 00 71 38 a8 42 91 0f] +0.001s
+[16:01:56.689] H s=472 up=138001ms  7B [16 3b 20 62 43 00 00] +0.927s
+[16:01:56.719] S s=473 up=138001ms faults=0 mot=1 dst=51 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=6  18B [34 3b 20 62 43 00 00 88 19 3c 72 91 00 d1 00 00 03 04] +0.030s
+[16:01:56.760] E motion s=474 up=138033ms state=1 speed_l=5 speed_r=7 dist_mm=5209 turn_rate=8 fault=0 ovf=0  13B [55 3b 20 66 43 00 00 51 78 98 45 41 10] +0.041s
+[16:01:56.991] E imu s=475 up=138296ms class=1 hump_count=1 hump_height_mm=9  9B [75 3b 00 87 43 00 60 89 04] +0.231s
+[16:01:59.046] H s=476 up=139001ms  7B [96 3b 20 df 43 00 00] +2.055s
+[16:01:59.075] S s=477 up=139001ms faults=0 mot=1 dst=55 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-15  18B [b4 3b 20 df 43 00 00 88 1b 3c 72 91 00 d1 00 80 f8 03] +0.029s
+[16:01:59.076] E motion s=478 up=139033ms state=1 speed_l=7 speed_r=3 dist_mm=5260 turn_rate=-14 fault=0 ovf=0  13B [d5 3b 20 e3 43 00 00 71 38 c8 48 91 0f] +0.001s
+[16:01:59.077] E imu s=479 up=139177ms class=6 hump_count=1 hump_height_mm=9  9B [f5 3b 20 f5 43 00 60 8e 04] +0.001s
+[16:01:59.113] H s=480 up=140002ms  7B [16 3c 40 5c 44 00 00] +0.037s
+[16:01:59.114] S s=481 up=140002ms faults=0 mot=1 dst=61 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=20  18B [34 3c 40 5c 44 00 00 88 1e 3c 72 91 00 d1 00 02 0a 04] +0.001s
+[16:01:59.114] E motion s=482 up=140032ms state=1 speed_l=2 speed_r=7 dist_mm=5308 turn_rate=21 fault=0 ovf=0  13B [55 3c 00 60 44 00 00 21 78 c8 4b a9 10] +0.000s
+[16:01:59.115] E imu s=483 up=140116ms class=1 hump_count=1 hump_height_mm=9  9B [75 3c 80 6a 44 00 60 89 04] +0.001s
+[16:01:59.143] E imu s=484 up=140456ms class=6 hump_count=1 hump_height_mm=9  9B [95 3c 00 95 44 00 60 8e 04] +0.029s
+[16:01:59.690] H s=485 up=141001ms  7B [b6 3c 20 d9 44 00 00] +0.547s
+[16:01:59.719] S s=486 up=141001ms faults=0 mot=1 dst=65 lin=0 dev=-98 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-12  18B [d4 3c 20 d9 44 00 00 88 20 3c 72 91 00 d1 00 00 fa 03] +0.029s
+[16:01:59.739] E motion s=487 up=141032ms state=1 speed_l=6 speed_r=3 dist_mm=5357 turn_rate=-10 fault=0 ovf=0  13B [f5 3c 00 dd 44 00 00 61 38 d8 4e b1 0f] +0.020s
+[16:02:00.688] E line s=488 up=141997ms state=2 deviation=73  9B [15 3d a0 55 45 00 20 26 03] +0.949s
+[16:02:00.712] H s=489 up=142002ms  7B [36 3d 40 56 45 00 00] +0.025s
+[16:02:00.713] S s=490 up=142002ms faults=0 mot=1 dst=70 lin=2 dev=73 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=2  18B [54 3d 40 56 45 00 00 08 23 93 73 91 00 d1 00 00 01 04] +0.001s
+[16:02:00.720] E motion s=491 up=142032ms state=1 speed_l=2 speed_r=3 dist_mm=5395 turn_rate=4 fault=0 ovf=0  13B [75 3d 00 5a 45 00 00 21 38 38 51 21 10] +0.007s
+[16:02:00.852] E line s=492 up=142143ms state=0 deviation=39  9B [95 3d e0 67 45 00 20 9c 02] +0.132s
+[16:02:01.207] E barcode s=493 up=142518ms letter=none action=0  8B [b5 3d c0 96 45 00 40 1f] +0.355s
+[16:02:01.224] E motion s=494 up=142523ms state=2 speed_l=0 speed_r=3 dist_mm=5406 turn_rate=16 fault=0 ovf=0  13B [d5 3d 60 97 45 00 00 02 38 e8 51 81 10] +0.017s
+[16:02:01.693] H s=495 up=143001ms  7B [f6 3d 20 d3 45 00 00] +0.469s
+[16:02:01.707] S s=496 up=143001ms faults=0 mot=2 dst=0 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [14 3e 20 d3 45 00 00 10 00 4e 73 91 00 d1 00 82 00 04] +0.013s
+[16:02:02.209] E motion s=497 up=143511ms state=2 speed_l=5 speed_r=5 dist_mm=5444 turn_rate=1 fault=0 ovf=0  13B [35 3e e0 12 46 00 00 52 58 48 54 09 10] +0.503s
+[16:02:02.700] H s=498 up=144001ms  7B [56 3e 20 50 46 00 00] +0.491s
+[16:02:02.728] S s=499 up=144001ms faults=0 mot=2 dst=3 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [74 3e 20 50 46 00 00 90 01 4e 73 91 00 d1 00 82 00 04] +0.028s
+[16:02:03.203] E motion s=500 up=144511ms state=2 speed_l=5 speed_r=5 dist_mm=5491 turn_rate=-1 fault=0 ovf=0  13B [95 3e e0 8f 46 00 00 52 58 38 57 f9 0f] +0.475s
+[16:02:03.690] H s=501 up=145001ms  7B [b6 3e 20 cd 46 00 00] +0.487s
+[16:02:03.749] S s=502 up=145001ms faults=0 mot=2 dst=8 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [d4 3e 20 cd 46 00 00 10 04 4e 73 91 00 d1 00 82 00 04] +0.059s
+[16:02:04.218] E motion s=503 up=145511ms state=2 speed_l=5 speed_r=5 dist_mm=5539 turn_rate=-1 fault=0 ovf=0  13B [f5 3e e0 0c 47 00 00 52 58 38 5a f9 0f] +0.468s
+[16:02:04.701] E imu s=504 up=145996ms class=1 hump_count=1 hump_height_mm=9  9B [15 3f 80 49 47 00 60 89 04] +0.483s
+[16:02:04.730] H s=505 up=146001ms  7B [36 3f 20 4a 47 00 00] +0.029s
+[16:02:04.731] S s=506 up=146001ms faults=0 mot=2 dst=13 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=42  18B [54 3f 20 4a 47 00 00 90 06 4e 73 91 00 d1 00 00 15 04] +0.001s
+[16:02:05.213] E motion s=507 up=146512ms state=2 speed_l=-5 speed_r=5 dist_mm=5547 turn_rate=45 fault=0 ovf=0  13B [75 3f 00 8a 47 00 00 b2 57 b8 5a 69 11] +0.482s
+[16:02:05.692] H s=508 up=147001ms  7B [96 3f 20 c7 47 00 00] +0.479s
+[16:02:05.703] S s=509 up=147001ms faults=0 mot=2 dst=14 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=41  18B [b4 3f 20 c7 47 00 00 10 07 4e 73 91 00 d1 00 80 14 04] +0.011s
+[16:02:06.205] E motion s=510 up=147512ms state=2 speed_l=-5 speed_r=5 dist_mm=5549 turn_rate=44 fault=0 ovf=0  13B [d5 3f 00 07 48 00 00 b2 57 d8 5a 61 11] +0.502s
+[16:02:06.511] E motion s=511 up=147812ms state=1 speed_l=-5 speed_r=5 dist_mm=5550 turn_rate=42 fault=0 ovf=0  13B [f5 3f 80 2c 48 00 00 b1 57 e8 5a 51 11] +0.306s
+[16:02:06.689] H s=512 up=148001ms  7B [16 40 20 44 48 00 00] +0.178s
+[16:02:06.714] S s=513 up=148001ms faults=0 mot=1 dst=0 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-2  18B [34 40 20 44 48 00 00 08 00 4e 73 91 00 d1 00 00 ff 03] +0.025s
+[16:02:06.784] E imu s=514 up=148097ms class=5 hump_count=1 hump_height_mm=9  9B [55 40 20 50 48 00 60 8d 04] +0.070s
+[16:02:06.956] E imu s=515 up=148257ms class=6 hump_count=1 hump_height_mm=9  9B [75 40 20 64 48 00 60 8e 04] +0.172s
+[16:02:07.500] E motion s=516 up=148803ms state=1 speed_l=7 speed_r=6 dist_mm=5604 turn_rate=-3 fault=0 ovf=0  13B [95 40 60 a8 48 00 00 71 68 48 5e e9 0f] +0.544s
+[16:02:07.715] H s=517 up=149001ms  7B [b6 40 20 c1 48 00 00] +0.215s
+[16:02:07.739] S s=518 up=149001ms faults=0 mot=1 dst=5 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=2 trn=-1  18B [d4 40 20 c1 48 00 00 88 02 4e 73 91 00 d1 00 84 ff 03] +0.024s
+[16:02:08.491] E motion s=519 up=149802ms state=1 speed_l=4 speed_r=3 dist_mm=5658 turn_rate=-5 fault=0 ovf=0  13B [f5 40 40 25 49 00 00 41 38 a8 61 d9 0f] +0.752s
+[16:02:08.695] H s=520 up=150001ms  7B [16 41 20 3e 49 00 00] +0.203s
+[16:02:08.704] S s=521 up=150001ms faults=0 mot=1 dst=10 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [34 41 20 3e 49 00 00 08 05 4e 73 91 00 d1 00 80 fe 03] +0.009s
+[16:02:09.489] E motion s=522 up=150802ms state=1 speed_l=5 speed_r=4 dist_mm=5702 turn_rate=-4 fault=0 ovf=0  13B [55 41 40 a2 49 00 00 51 48 68 64 e1 0f] +0.785s
+[16:02:09.689] H s=523 up=151001ms  7B [76 41 20 bb 49 00 00] +0.199s
+[16:02:09.698] S s=524 up=151001ms faults=0 mot=1 dst=15 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=4  18B [94 41 20 bb 49 00 00 88 07 4e 73 91 00 d1 00 02 02 04] +0.010s
+[16:02:10.502] E motion s=525 up=151803ms state=1 speed_l=6 speed_r=6 dist_mm=5761 turn_rate=1 fault=0 ovf=0  13B [b5 41 60 1f 4a 00 00 61 68 18 68 09 10] +0.803s
+[16:02:10.688] H s=526 up=152001ms  7B [d6 41 20 38 4a 00 00] +0.186s
+[16:02:10.711] S s=527 up=152001ms faults=0 mot=1 dst=21 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [f4 41 20 38 4a 00 00 88 0a 4e 73 91 00 d1 00 80 00 04] +0.023s
+[16:02:11.494] E motion s=528 up=152802ms state=1 speed_l=6 speed_r=6 dist_mm=5823 turn_rate=1 fault=0 ovf=0  13B [15 42 40 9c 4a 00 00 61 68 f8 6b 09 10] +0.783s
+[16:02:11.694] H s=529 up=153001ms  7B [36 42 20 b5 4a 00 00] +0.200s
+[16:02:11.729] S s=530 up=153001ms faults=0 mot=1 dst=27 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [54 42 20 b5 4a 00 00 88 0d 4e 73 91 00 d1 00 80 00 04] +0.036s
+[16:02:12.490] E motion s=531 up=153802ms state=1 speed_l=6 speed_r=5 dist_mm=5884 turn_rate=-4 fault=0 ovf=0  13B [75 42 40 19 4b 00 00 61 58 c8 6f e1 0f] +0.760s
+[16:02:12.690] H s=532 up=154001ms  7B [96 42 20 32 4b 00 00] +0.200s
+[16:02:12.699] S s=533 up=154001ms faults=0 mot=1 dst=33 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-2  18B [b4 42 20 32 4b 00 00 88 10 4e 73 91 00 d1 00 02 ff 03] +0.009s
+[16:02:13.489] E motion s=534 up=154802ms state=1 speed_l=6 speed_r=6 dist_mm=5943 turn_rate=-1 fault=0 ovf=0  13B [d5 42 40 96 4b 00 00 61 68 78 73 f9 0f] +0.790s
+[16:02:13.690] H s=535 up=155001ms  7B [f6 42 20 af 4b 00 00] +0.201s
+[16:02:13.698] S s=536 up=155001ms faults=0 mot=1 dst=39 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [14 43 20 af 4b 00 00 88 13 4e 73 91 00 d1 00 00 00 04] +0.008s
+[16:02:14.498] E motion s=537 up=155803ms state=1 speed_l=6 speed_r=6 dist_mm=6005 turn_rate=0 fault=0 ovf=0  13B [35 43 60 13 4c 00 00 61 68 58 77 01 10] +0.799s
+[16:02:14.706] H s=538 up=156002ms  7B [56 43 40 2c 4c 00 00] +0.208s
+[16:02:14.782] S s=539 up=156002ms faults=0 mot=1 dst=45 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=1  18B [74 43 40 2c 4c 00 00 88 16 4e 73 91 00 d1 00 80 00 04] +0.076s
+[16:02:15.497] E motion s=540 up=156802ms state=1 speed_l=6 speed_r=6 dist_mm=6068 turn_rate=1 fault=0 ovf=0  13B [95 43 40 90 4c 00 00 61 68 48 7b 09 10] +0.716s
+[16:02:15.691] H s=541 up=157001ms  7B [b6 43 20 a9 4c 00 00] +0.193s
+[16:02:15.705] S s=542 up=157001ms faults=0 mot=1 dst=51 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=1  18B [d4 43 20 a9 4c 00 00 88 19 4e 73 91 00 d1 00 82 00 04] +0.014s
+[16:02:16.511] E motion s=543 up=157803ms state=1 speed_l=6 speed_r=7 dist_mm=6133 turn_rate=6 fault=0 ovf=0  13B [f5 43 60 0d 4d 00 00 61 78 58 7f 31 10] +0.806s
+[16:02:16.688] H s=544 up=158001ms  7B [16 44 20 26 4d 00 00] +0.177s
+[16:02:16.716] S s=545 up=158001ms faults=0 mot=1 dst=58 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=3  18B [34 44 20 26 4d 00 00 08 1d 4e 73 91 00 d1 00 80 01 04] +0.028s
+[16:02:17.489] E motion s=546 up=158802ms state=1 speed_l=7 speed_r=5 dist_mm=6192 turn_rate=-7 fault=0 ovf=0  13B [55 44 40 8a 4d 00 00 71 58 08 83 c9 0f] +0.773s
+[16:02:17.691] H s=547 up=159001ms  7B [76 44 20 a3 4d 00 00] +0.202s
+[16:02:17.743] S s=548 up=159001ms faults=0 mot=1 dst=64 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-11  18B [94 44 20 a3 4d 00 00 08 20 4e 73 91 00 d1 00 80 fa 03] +0.052s
+[16:02:18.490] E motion s=549 up=159802ms state=1 speed_l=5 speed_r=3 dist_mm=6236 turn_rate=-7 fault=0 ovf=0  13B [b5 44 40 07 4e 00 00 51 38 c8 85 c9 0f] +0.747s
+[16:02:18.697] H s=550 up=160001ms  7B [d6 44 20 20 4e 00 00] +0.207s
+[16:02:18.709] S s=551 up=160001ms faults=0 mot=1 dst=68 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-7  18B [f4 44 20 20 4e 00 00 08 22 4e 73 91 00 d1 00 80 fc 03] +0.012s
+[16:02:19.490] E motion s=552 up=160802ms state=1 speed_l=6 speed_r=2 dist_mm=6276 turn_rate=-19 fault=0 ovf=0  13B [15 45 40 84 4e 00 00 61 28 48 88 69 0f] +0.782s
+[16:02:19.700] H s=553 up=161001ms  7B [36 45 20 9d 4e 00 00] +0.210s
+[16:02:19.710] S s=554 up=161001ms faults=0 mot=1 dst=72 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-18  18B [54 45 20 9d 4e 00 00 08 24 4e 73 91 00 d1 00 00 f7 03] +0.009s
+[16:02:19.962] E imu s=555 up=161276ms class=1 hump_count=1 hump_height_mm=9  9B [75 45 80 bf 4e 00 60 89 04] +0.253s
+[16:02:20.520] E motion s=556 up=161802ms state=1 speed_l=6 speed_r=1 dist_mm=6316 turn_rate=-21 fault=0 ovf=0  13B [95 45 40 01 4f 00 00 61 18 c8 8a 59 0f] +0.558s
+[16:02:20.827] H s=557 up=162001ms  7B [b6 45 20 1a 4f 00 00] +0.308s
+[16:02:20.850] S s=558 up=162001ms faults=0 mot=1 dst=76 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-12  18B [d4 45 20 1a 4f 00 00 08 26 4e 73 91 00 d1 00 00 fa 03] +0.023s
+[16:02:20.850] E imu s=559 up=162086ms class=6 hump_count=1 hump_height_mm=9  9B [f5 45 c0 24 4f 00 60 8e 04] +0.000s
+[16:02:21.496] E motion s=560 up=162802ms state=1 speed_l=7 speed_r=2 dist_mm=6358 turn_rate=-22 fault=0 ovf=0  13B [15 46 40 7e 4f 00 00 71 28 68 8d 51 0f] +0.645s
+[16:02:21.538] E imu s=561 up=162846ms class=1 hump_count=1 hump_height_mm=9  9B [35 46 c0 83 4f 00 60 89 04] +0.042s
+[16:02:21.704] H s=562 up=163001ms  7B [56 46 20 97 4f 00 00] +0.166s
+[16:02:21.748] S s=563 up=163001ms faults=0 mot=1 dst=80 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-31  18B [74 46 20 97 4f 00 00 08 28 4e 73 91 00 d1 00 80 f0 03] +0.044s
+[16:02:22.492] E motion s=564 up=163803ms state=1 speed_l=5 speed_r=3 dist_mm=6403 turn_rate=-9 fault=0 ovf=0  13B [95 46 60 fb 4f 00 00 51 38 38 90 b9 0f] +0.744s
+[16:02:22.507] E imu s=565 up=163818ms class=6 hump_count=1 hump_height_mm=9  9B [b5 46 40 fd 4f 00 60 8e 04] +0.016s
+[16:02:22.688] H s=566 up=164001ms  7B [d6 46 20 14 50 00 00] +0.181s
+[16:02:22.732] S s=567 up=164001ms faults=0 mot=1 dst=85 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-6  18B [f4 46 20 14 50 00 00 88 2a 4e 73 91 00 d1 00 02 fd 03] +0.044s
+[16:02:23.491] E motion s=568 up=164803ms state=1 speed_l=4 speed_r=4 dist_mm=6443 turn_rate=-2 fault=0 ovf=0  13B [15 47 60 78 50 00 00 41 48 b8 92 f1 0f] +0.758s
+[16:02:23.691] H s=569 up=165001ms  7B [36 47 20 91 50 00 00] +0.200s
+[16:02:23.715] S s=570 up=165001ms faults=0 mot=1 dst=89 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-2  18B [54 47 20 91 50 00 00 88 2c 4e 73 91 00 d1 00 00 ff 03] +0.023s
+[16:02:24.500] E motion s=571 up=165802ms state=1 speed_l=5 speed_r=5 dist_mm=6489 turn_rate=-4 fault=0 ovf=0  13B [75 47 40 f5 50 00 00 51 58 98 95 e1 0f] +0.785s
+[16:02:24.699] H s=572 up=166001ms  7B [96 47 20 0e 51 00 00] +0.199s
+[16:02:24.730] S s=573 up=166001ms faults=0 mot=1 dst=93 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-3  18B [b4 47 20 0e 51 00 00 88 2e 4e 73 91 00 d1 00 80 fe 03] +0.031s
+[16:02:25.491] E motion s=574 up=166802ms state=1 speed_l=6 speed_r=5 dist_mm=6544 turn_rate=-3 fault=0 ovf=0  13B [d5 47 40 72 51 00 00 61 58 08 99 e9 0f] +0.761s
+[16:02:25.695] H s=575 up=167001ms  7B [f6 47 20 8b 51 00 00] +0.204s
+[16:02:25.704] S s=576 up=167001ms faults=0 mot=1 dst=99 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-9  18B [14 48 20 8b 51 00 00 88 31 4e 73 91 00 d1 00 82 fb 03] +0.010s
+[16:02:26.493] E motion s=577 up=167803ms state=1 speed_l=5 speed_r=5 dist_mm=6592 turn_rate=-2 fault=0 ovf=0  13B [35 48 60 ef 51 00 00 51 58 08 9c f1 0f] +0.789s
+[16:02:26.691] H s=578 up=168001ms  7B [56 48 20 08 52 00 00] +0.198s
+[16:02:26.703] S s=579 up=168001ms faults=0 mot=1 dst=104 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-2  18B [74 48 20 08 52 00 00 08 34 4e 73 91 00 d1 00 02 ff 03] +0.013s
+[16:02:27.504] E motion s=580 up=168802ms state=1 speed_l=7 speed_r=6 dist_mm=6647 turn_rate=-4 fault=0 ovf=0  13B [95 48 40 6c 52 00 00 71 68 78 9f e1 0f] +0.800s
+[16:02:27.705] H s=581 up=169001ms  7B [b6 48 20 85 52 00 00] +0.201s
+[16:02:27.725] S s=582 up=169001ms faults=0 mot=1 dst=109 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=3 trn=-1  18B [d4 48 20 85 52 00 00 88 36 4e 73 91 00 d1 00 86 ff 03] +0.021s
+[16:02:28.509] E motion s=583 up=169802ms state=1 speed_l=6 speed_r=3 dist_mm=6699 turn_rate=-16 fault=0 ovf=0  13B [f5 48 40 e9 52 00 00 61 38 b8 a2 81 0f] +0.784s
+[16:02:28.708] H s=584 up=170001ms  7B [16 49 20 02 53 00 00] +0.199s
+[16:02:28.735] S s=585 up=170001ms faults=0 mot=1 dst=114 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-18  18B [34 49 20 02 53 00 00 08 39 4e 73 91 00 d1 00 02 f7 03] +0.026s
+[16:02:29.492] E motion s=586 up=170802ms state=1 speed_l=6 speed_r=3 dist_mm=6739 turn_rate=-14 fault=0 ovf=0  13B [55 49 40 66 53 00 00 61 38 38 a5 91 0f] +0.757s
+[16:02:29.695] H s=587 up=171005ms  7B [76 49 a0 7f 53 00 00] +0.203s
+[16:02:29.755] S s=588 up=171005ms faults=0 mot=1 dst=118 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-10  18B [94 49 a0 7f 53 00 00 08 3b 4e 73 91 00 d1 00 02 fb 03] +0.060s
+[16:02:30.492] E motion s=589 up=171802ms state=1 speed_l=6 speed_r=3 dist_mm=6778 turn_rate=-12 fault=0 ovf=0  13B [b5 49 40 e3 53 00 00 61 38 a8 a7 a1 0f] +0.737s
+[16:02:30.689] H s=590 up=172001ms  7B [d6 49 20 fc 53 00 00] +0.197s
+[16:02:30.711] S s=591 up=172001ms faults=0 mot=1 dst=122 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-17  18B [f4 49 20 fc 53 00 00 08 3d 4e 73 91 00 d1 00 80 f7 03] +0.022s
+[16:02:31.235] E imu s=592 up=172546ms class=1 hump_count=1 hump_height_mm=9  9B [15 4a 40 40 54 00 60 89 04] +0.524s
+[16:02:31.500] E motion s=593 up=172803ms state=1 speed_l=6 speed_r=2 dist_mm=6819 turn_rate=-19 fault=0 ovf=0  13B [35 4a 60 60 54 00 00 61 28 38 aa 69 0f] +0.265s
+[16:02:31.704] H s=594 up=173001ms  7B [56 4a 20 79 54 00 00] +0.204s
+[16:02:31.716] S s=595 up=173001ms faults=0 mot=1 dst=126 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-19  18B [74 4a 20 79 54 00 00 08 3f 4e 73 91 00 d1 00 80 f6 03] +0.013s
+[16:02:32.045] E imu s=596 up=173356ms class=6 hump_count=1 hump_height_mm=9  9B [95 4a 80 a5 54 00 60 8e 04] +0.329s
+[16:02:32.499] E motion s=597 up=173802ms state=1 speed_l=4 speed_r=4 dist_mm=6858 turn_rate=3 fault=0 ovf=0  13B [b5 4a 40 dd 54 00 00 41 48 a8 ac 19 10] +0.453s
+[16:02:32.706] H s=598 up=174001ms  7B [d6 4a 20 f6 54 00 00] +0.208s
+[16:02:32.729] S s=599 up=174001ms faults=0 mot=1 dst=130 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=7  18B [f4 4a 20 f6 54 00 00 08 41 4e 73 91 00 d1 00 80 03 04] +0.023s
+[16:02:33.155] E imu s=600 up=174436ms class=1 hump_count=1 hump_height_mm=9  9B [15 4b 80 2c 55 00 60 89 04] +0.427s
+[16:02:33.423] E imu s=601 up=174736ms class=6 hump_count=1 hump_height_mm=9  9B [35 4b 00 52 55 00 60 8e 04] +0.268s
+[16:02:33.507] E motion s=602 up=174803ms state=1 speed_l=6 speed_r=3 dist_mm=6904 turn_rate=-14 fault=0 ovf=0  13B [55 4b 60 5a 55 00 00 61 38 88 af 91 0f] +0.083s
+[16:02:33.690] H s=603 up=175001ms  7B [76 4b 20 73 55 00 00] +0.183s
+[16:02:33.728] S s=604 up=175001ms faults=0 mot=1 dst=135 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-9  18B [94 4b 20 73 55 00 00 88 43 4e 73 91 00 d1 00 82 fb 03] +0.038s
+[16:02:34.499] E motion s=605 up=175803ms state=1 speed_l=4 speed_r=6 dist_mm=6958 turn_rate=11 fault=0 ovf=0  13B [b5 4b 60 d7 55 00 00 41 68 e8 b2 59 10] +0.772s
+[16:02:34.689] H s=606 up=176001ms  7B [d6 4b 20 f0 55 00 00] +0.189s
+[16:02:34.709] S s=607 up=176001ms faults=0 mot=1 dst=140 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=17  18B [f4 4b 20 f0 55 00 00 08 46 4e 73 91 00 d1 00 80 08 04] +0.021s
+[16:02:35.024] E imu s=608 up=176336ms class=1 hump_count=1 hump_height_mm=9  9B [15 4c 00 1a 56 00 60 89 04] +0.314s
+[16:02:35.491] E motion s=609 up=176803ms state=1 speed_l=4 speed_r=7 dist_mm=7001 turn_rate=14 fault=0 ovf=0  13B [35 4c 60 54 56 00 00 41 78 98 b5 71 10] +0.467s
+[16:02:35.613] E imu s=610 up=176926ms class=6 hump_count=1 hump_height_mm=9  9B [55 4c c0 63 56 00 60 8e 04] +0.122s
+[16:02:35.694] H s=611 up=177002ms  7B [76 4c 40 6d 56 00 00] +0.081s
+[16:02:35.703] S s=612 up=177002ms faults=0 mot=1 dst=145 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [94 4c 40 6d 56 00 00 88 48 4e 73 91 00 d1 00 00 00 04] +0.009s
+[16:02:36.003] E imu s=613 up=177306ms class=1 hump_count=1 hump_height_mm=9  9B [b5 4c 40 93 56 00 60 89 04] +0.300s
+[16:02:36.215] E imu s=614 up=177527ms class=6 hump_count=1 hump_height_mm=9  9B [d5 4c e0 ae 56 00 60 8e 04] +0.212s
+[16:02:36.493] E imu s=615 up=177766ms class=1 hump_count=1 hump_height_mm=9  9B [f5 4c c0 cc 56 00 60 89 04] +0.279s
+[16:02:36.512] E motion s=616 up=177803ms state=1 speed_l=3 speed_r=7 dist_mm=7047 turn_rate=20 fault=0 ovf=0  13B [15 4d 60 d1 56 00 00 31 78 78 b8 a1 10] +0.019s
+[16:02:36.697] H s=617 up=178001ms  7B [36 4d 20 ea 56 00 00] +0.185s
+[16:02:36.720] S s=618 up=178001ms faults=0 mot=1 dst=149 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=14  18B [54 4d 20 ea 56 00 00 88 4a 4e 73 91 00 d1 00 00 07 04] +0.023s
+[16:02:37.193] E imu s=619 up=178446ms class=6 hump_count=1 hump_height_mm=9  9B [75 4d c0 21 57 00 60 8e 04] +0.473s
+[16:02:37.512] E motion s=620 up=178803ms state=1 speed_l=4 speed_r=4 dist_mm=7092 turn_rate=1 fault=0 ovf=0  13B [95 4d 60 4e 57 00 00 41 48 48 bb 09 10] +0.319s
+[16:02:37.742] H s=621 up=179001ms  7B [b6 4d 20 67 57 00 00] +0.231s
+[16:02:37.754] S s=622 up=179001ms faults=0 mot=1 dst=154 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-10  18B [d4 4d 20 67 57 00 00 08 4d 4e 73 91 00 d1 00 02 fb 03] +0.012s
+[16:02:38.293] E imu s=623 up=179606ms class=1 hump_count=1 hump_height_mm=9  9B [f5 4d c0 b2 57 00 60 89 04] +0.539s
+[16:02:38.495] E motion s=624 up=179803ms state=1 speed_l=8 speed_r=0 dist_mm=7138 turn_rate=-36 fault=0 ovf=0  13B [15 4e 60 cb 57 00 00 81 08 28 be e1 0e] +0.202s
+[16:02:38.697] H s=625 up=180001ms  7B [36 4e 20 e4 57 00 00] +0.202s
+[16:02:38.725] S s=626 up=180001ms faults=0 mot=1 dst=158 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=1 trn=-12  18B [54 4e 20 e4 57 00 00 08 4f 4e 73 91 00 d1 00 02 fa 03] +0.028s
+[16:02:38.777] E imu s=627 up=180087ms class=6 hump_count=1 hump_height_mm=9  9B [75 4e e0 ee 57 00 60 8e 04] +0.051s
+[16:02:39.247] E imu s=628 up=180536ms class=1 hump_count=1 hump_height_mm=9  9B [95 4e 00 27 58 00 60 89 04] +0.470s
+[16:02:39.484] E imu s=629 up=180796ms class=6 hump_count=1 hump_height_mm=9  9B [b5 4e 80 47 58 00 60 8e 04] +0.236s
+[16:02:39.498] E motion s=630 up=180802ms state=1 speed_l=6 speed_r=3 dist_mm=7186 turn_rate=-11 fault=0 ovf=0  13B [d5 4e 40 48 58 00 00 61 38 28 c1 a9 0f] +0.014s
+[16:02:39.762] H s=631 up=181001ms  7B [f6 4e 20 61 58 00 00] +0.264s
+[16:02:39.812] S s=632 up=181001ms faults=0 mot=1 dst=163 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-25  18B [14 4f 20 61 58 00 00 88 51 4e 73 91 00 d1 00 80 f3 03] +0.050s
+[16:02:39.813] E imu s=633 up=181010ms class=1 hump_count=1 hump_height_mm=9  9B [35 4f 40 62 58 00 60 89 04] +0.002s
+[16:02:40.529] E motion s=634 up=181802ms state=1 speed_l=6 speed_r=2 dist_mm=7231 turn_rate=-19 fault=0 ovf=0  13B [55 4f 40 c5 58 00 00 61 28 f8 c3 69 0f] +0.716s
+[16:02:40.695] H s=635 up=182001ms  7B [76 4f 20 de 58 00 00] +0.167s
+[16:02:40.715] S s=636 up=182001ms faults=0 mot=1 dst=168 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-20  18B [94 4f 20 de 58 00 00 08 54 4e 73 91 00 d1 00 00 f6 03] +0.020s
+[16:02:41.258] E imu s=637 up=182516ms class=6 hump_count=1 hump_height_mm=9  9B [b5 4f 80 1e 59 00 60 8e 04] +0.543s
+[16:02:41.609] E motion s=638 up=182802ms state=1 speed_l=5 speed_r=3 dist_mm=7271 turn_rate=-8 fault=0 ovf=0  13B [d5 4f 40 42 59 00 00 51 38 78 c6 c1 0f] +0.352s
+[16:02:41.714] H s=639 up=183001ms  7B [f6 4f 20 5b 59 00 00] +0.105s
+[16:02:41.774] S s=640 up=183001ms faults=0 mot=1 dst=172 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=-9  18B [14 50 20 5b 59 00 00 08 56 4e 73 91 00 d1 00 80 fb 03] +0.060s
+[16:02:42.493] E motion s=641 up=183802ms state=1 speed_l=4 speed_r=4 dist_mm=7311 turn_rate=1 fault=0 ovf=0  13B [35 50 40 bf 59 00 00 41 48 f8 c8 09 10] +0.719s
+[16:02:42.702] H s=642 up=184001ms  7B [56 50 20 d8 59 00 00] +0.209s
+[16:02:42.703] S s=643 up=184001ms faults=0 mot=1 dst=176 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=3 mpv=0 drp=0 tlt=0 trn=0  18B [74 50 20 d8 59 00 00 08 58 4e 73 91 00 d1 00 00 00 04] +0.001s
+[16:02:43.462] E mission s=644 up=184649ms state=4  8B [95 50 20 29 5a 00 a0 04] +0.759s
+[16:02:43.489] E motion s=645 up=184654ms state=0 speed_l=2 speed_r=2 dist_mm=7348 turn_rate=-1 fault=0 ovf=0  13B [b5 50 c0 29 5a 00 00 20 28 48 cb f9 0f] +0.027s
+[16:02:43.585] E imu s=646 up=184876ms class=0 hump_count=1 hump_height_mm=9  9B [d5 50 80 45 5a 00 60 88 04] +0.096s
+[16:02:43.691] H s=647 up=185001ms  7B [f6 50 20 55 5a 00 00] +0.106s
+[16:02:43.722] S s=648 up=185001ms faults=0 mot=0 dst=0 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=4 mpv=0 drp=0 tlt=0 trn=0  18B [14 51 20 55 5a 00 00 00 00 4e 73 91 00 11 01 00 00 04] +0.031s
+[16:02:44.340] E motion s=649 up=185641ms state=0 speed_l=0 speed_r=0 dist_mm=7349 turn_rate=0 fault=0 ovf=0  13B [35 51 20 a5 5a 00 00 00 08 58 cb 01 10] +0.618s
+[16:02:44.699] H s=650 up=186001ms  7B [56 51 20 d2 5a 00 00] +0.359s
+[16:02:44.714] S s=651 up=186001ms faults=0 mot=0 dst=0 lin=0 dev=39 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=4 mpv=0 drp=0 tlt=4 trn=0  18B [74 51 20 d2 5a 00 00 00 00 4e 73 91 00 11 01 08 00 04] +0.014s
+[16:02:44.950] E line s=652 up=186241ms state=2 deviation=0  9B [95 51 20 f0 5a 00 20 02 02] +0.236s
+[16:02:45.693] E motion s=653 up=186642ms state=0 speed_l=0 speed_r=0 dist_mm=7349 turn_rate=0 fault=0 ovf=0  13B [b5 51 40 22 5b 00 00 00 08 58 cb 01 10] +0.744s
+[16:02:45.724] E mission s=654 up=186819ms state=6  8B [d5 51 60 38 5b 00 a0 06] +0.030s
+[16:02:45.724] E line s=655 up=186823ms state=0 deviation=0  9B [f5 51 e0 38 5b 00 20 00 02] +0.001s
+[16:02:45.725] E barcode s=656 up=186824ms letter=none action=0  8B [15 52 00 39 5b 00 40 1f] +0.000s
+[16:02:45.766] H s=657 up=187001ms  7B [36 52 20 4f 5b 00 00] +0.041s
+[16:02:45.766] S s=658 up=187001ms faults=imu mot=0 dst=0 lin=0 dev=0 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=11 trn=0  18B [54 52 20 4f 5b 00 80 00 00 00 73 91 00 91 01 16 00 04] +0.001s
+[16:02:45.970] E line s=659 up=187269ms state=2 deviation=0  9B [75 52 a0 70 5b 00 20 02 02] +0.203s
+[16:02:46.723] H s=660 up=188001ms  7B [96 52 20 cc 5b 00 00] +0.753s
+[16:02:46.761] S s=661 up=188001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=1 trn=0  18B [b4 52 20 cc 5b 00 80 00 00 01 73 91 00 91 01 02 00 04] +0.038s
+[16:02:47.864] H s=662 up=189001ms  7B [d6 52 20 49 5c 00 00] +1.103s
+[16:02:47.884] S s=663 up=189001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=3 trn=0  18B [f4 52 20 49 5c 00 80 00 00 01 73 91 00 91 01 06 00 04] +0.020s
+[16:02:48.461] E motion s=664 up=189721ms state=0 speed_l=0 speed_r=0 dist_mm=7349 turn_rate=-1 fault=0 ovf=0  13B [15 53 20 a3 5c 00 00 00 08 58 cb f9 0f] +0.577s
+[16:02:48.697] H s=665 up=190001ms  7B [36 53 20 c6 5c 00 00] +0.237s
+[16:02:48.778] S s=666 up=190001ms faults=imu mot=0 dst=0 lin=2 dev=0 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=10 trn=0  18B [54 53 20 c6 5c 00 80 00 00 01 73 91 00 91 01 14 00 04] +0.081s
+[16:02:49.172] E line s=667 up=190461ms state=0 deviation=1  9B [75 53 a0 ff 5c 00 20 04 02] +0.394s
+[16:02:49.699] H s=668 up=191001ms  7B [96 53 20 43 5d 00 00] +0.527s
+[16:02:49.732] S s=669 up=191001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=12 trn=0  18B [b4 53 20 43 5d 00 80 00 00 02 73 91 00 91 01 18 00 04] +0.033s
+[16:02:49.969] E motion s=670 up=191281ms state=0 speed_l=0 speed_r=0 dist_mm=7349 turn_rate=1 fault=0 ovf=0  13B [d5 53 20 66 5d 00 00 00 08 58 cb 09 10] +0.237s
+[16:02:50.422] E imu s=671 up=191627ms class=6 hump_count=1 hump_height_mm=9  9B [f5 53 60 91 5d 00 60 8e 04] +0.453s
+[16:02:50.473] E imu s=672 up=191756ms class=0 hump_count=1 hump_height_mm=9  9B [15 54 80 a1 5d 00 60 88 04] +0.051s
+[16:02:50.692] H s=673 up=192001ms  7B [36 54 20 c0 5d 00 00] +0.218s
+[16:02:50.751] S s=674 up=192001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [54 54 20 c0 5d 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.060s
+[16:02:50.970] E motion s=675 up=192281ms state=0 speed_l=0 speed_r=0 dist_mm=7349 turn_rate=0 fault=0 ovf=0  13B [75 54 20 e3 5d 00 00 00 08 58 cb 01 10] +0.218s
+[16:02:51.702] H s=676 up=193001ms  7B [96 54 20 3d 5e 00 00] +0.732s
+[16:02:51.716] S s=677 up=193001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 54 20 3d 5e 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.014s
+[16:02:52.780] H s=678 up=194001ms  7B [d6 54 20 ba 5e 00 00] +1.065s
+[16:02:52.799] S s=679 up=194001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 54 20 ba 5e 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.019s
+[16:02:53.799] H s=680 up=195001ms  7B [16 55 20 37 5f 00 00] +1.000s
+[16:02:53.888] S s=681 up=195001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 55 20 37 5f 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.089s
+[16:02:54.822] H s=682 up=196001ms  7B [56 55 20 b4 5f 00 00] +0.934s
+[16:02:54.852] S s=683 up=196001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 55 20 b4 5f 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.031s
+[16:02:55.698] H s=684 up=197001ms  7B [96 55 20 31 60 00 00] +0.846s
+[16:02:55.709] S s=685 up=197001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 55 20 31 60 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.011s
+[16:02:56.693] H s=686 up=198001ms  7B [d6 55 20 ae 60 00 00] +0.985s
+[16:02:56.724] S s=687 up=198001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 55 20 ae 60 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.030s
+[16:02:57.792] H s=688 up=199001ms  7B [16 56 20 2b 61 00 00] +1.068s
+[16:02:57.813] S s=689 up=199001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 56 20 2b 61 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.021s
+[16:02:58.811] H s=690 up=200001ms  7B [56 56 20 a8 61 00 00] +0.998s
+[16:02:58.847] S s=691 up=200001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 56 20 a8 61 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.036s
+[16:02:59.692] H s=692 up=201001ms  7B [96 56 20 25 62 00 00] +0.845s
+[16:02:59.759] S s=693 up=201001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 56 20 25 62 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.067s
+[16:03:00.876] H s=694 up=202001ms  7B [d6 56 20 a2 62 00 00] +1.117s
+[16:03:00.893] S s=695 up=202001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 56 20 a2 62 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.017s
+[16:03:01.769] H s=696 up=203001ms  7B [16 57 20 1f 63 00 00] +0.875s
+[16:03:01.810] S s=697 up=203001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 57 20 1f 63 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.041s
+[16:03:02.693] H s=698 up=204001ms  7B [56 57 20 9c 63 00 00] +0.884s
+[16:03:02.724] S s=699 up=204001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 57 20 9c 63 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.030s
+[16:03:03.688] H s=700 up=205001ms  7B [96 57 20 19 64 00 00] +0.965s
+[16:03:03.754] S s=701 up=205001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 57 20 19 64 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.066s
+[16:03:04.690] H s=702 up=206001ms  7B [d6 57 20 96 64 00 00] +0.936s
+[16:03:04.717] S s=703 up=206001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 57 20 96 64 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.026s
+[16:03:05.740] H s=704 up=207001ms  7B [16 58 20 13 65 00 00] +1.023s
+[16:03:05.805] S s=705 up=207001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 58 20 13 65 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.065s
+[16:03:06.705] H s=706 up=208001ms  7B [56 58 20 90 65 00 00] +0.900s
+[16:03:06.730] S s=707 up=208001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 58 20 90 65 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.025s
+[16:03:07.689] H s=708 up=209001ms  7B [96 58 20 0d 66 00 00] +0.959s
+[16:03:07.727] S s=709 up=209001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 58 20 0d 66 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.038s
+[16:03:08.713] H s=710 up=210001ms  7B [d6 58 20 8a 66 00 00] +0.986s
+[16:03:08.755] S s=711 up=210001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 58 20 8a 66 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.042s
+[16:03:09.839] H s=712 up=211001ms  7B [16 59 20 07 67 00 00] +1.084s
+[16:03:09.875] S s=713 up=211001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 59 20 07 67 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.036s
+[16:03:10.691] H s=714 up=212001ms  7B [56 59 20 84 67 00 00] +0.816s
+[16:03:10.722] S s=715 up=212001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 59 20 84 67 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.031s
+[16:03:12.904] H s=716 up=213001ms  7B [96 59 20 01 68 00 00] +2.182s
+[16:03:12.928] S s=717 up=213001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 59 20 01 68 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.024s
+[16:03:12.928] H s=718 up=214001ms  7B [d6 59 20 7e 68 00 00] +0.000s
+[16:03:12.929] S s=719 up=214001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 59 20 7e 68 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.000s
+[16:03:13.732] H s=720 up=215001ms  7B [16 5a 20 fb 68 00 00] +0.804s
+[16:03:13.787] S s=721 up=215001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5a 20 fb 68 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.055s
+[16:03:14.707] H s=722 up=216001ms  7B [56 5a 20 78 69 00 00] +0.920s
+[16:03:14.713] S s=723 up=216001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5a 20 78 69 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.007s
+[16:03:15.701] H s=724 up=217001ms  7B [96 5a 20 f5 69 00 00] +0.987s
+[16:03:15.751] S s=725 up=217001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5a 20 f5 69 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.050s
+[16:03:16.763] H s=726 up=218001ms  7B [d6 5a 20 72 6a 00 00] +1.012s
+[16:03:16.817] S s=727 up=218001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5a 20 72 6a 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.054s
+[16:03:17.690] H s=728 up=219001ms  7B [16 5b 20 ef 6a 00 00] +0.873s
+[16:03:17.701] S s=729 up=219001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5b 20 ef 6a 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.010s
+[16:03:18.702] H s=730 up=220001ms  7B [56 5b 20 6c 6b 00 00] +1.001s
+[16:03:18.710] S s=731 up=220001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5b 20 6c 6b 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.008s
+[16:03:19.709] H s=732 up=221001ms  7B [96 5b 20 e9 6b 00 00] +0.999s
+[16:03:19.729] S s=733 up=221001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5b 20 e9 6b 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.021s
+[16:03:20.715] H s=734 up=222001ms  7B [d6 5b 20 66 6c 00 00] +0.985s
+[16:03:20.744] S s=735 up=222001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5b 20 66 6c 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.029s
+[16:03:21.842] H s=736 up=223001ms  7B [16 5c 20 e3 6c 00 00] +1.098s
+[16:03:21.859] S s=737 up=223001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5c 20 e3 6c 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.017s
+[16:03:22.896] H s=738 up=224001ms  7B [56 5c 20 60 6d 00 00] +1.037s
+[16:03:23.001] S s=739 up=224001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5c 20 60 6d 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.104s
+[16:03:23.698] H s=740 up=225001ms  7B [96 5c 20 dd 6d 00 00] +0.697s
+[16:03:23.723] S s=741 up=225001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5c 20 dd 6d 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.026s
+[16:03:24.724] H s=742 up=226001ms  7B [d6 5c 20 5a 6e 00 00] +1.001s
+[16:03:24.749] S s=743 up=226001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5c 20 5a 6e 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.025s
+[16:03:25.746] H s=744 up=227001ms  7B [16 5d 20 d7 6e 00 00] +0.998s
+[16:03:25.753] S s=745 up=227001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5d 20 d7 6e 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.007s
+[16:03:26.696] H s=746 up=228001ms  7B [56 5d 20 54 6f 00 00] +0.942s
+[16:03:26.728] S s=747 up=228001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5d 20 54 6f 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.032s
+[16:03:27.694] H s=748 up=229001ms  7B [96 5d 20 d1 6f 00 00] +0.966s
+[16:03:27.714] S s=749 up=229001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5d 20 d1 6f 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.020s
+[16:03:28.697] H s=750 up=230001ms  7B [d6 5d 20 4e 70 00 00] +0.983s
+[16:03:28.719] S s=751 up=230001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5d 20 4e 70 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.021s
+[16:03:29.696] H s=752 up=231001ms  7B [16 5e 20 cb 70 00 00] +0.977s
+[16:03:29.709] S s=753 up=231001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5e 20 cb 70 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.014s
+[16:03:30.867] H s=754 up=232001ms  7B [56 5e 20 48 71 00 00] +1.158s
+[16:03:30.888] S s=755 up=232001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5e 20 48 71 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.021s
+[16:03:31.705] H s=756 up=233001ms  7B [96 5e 20 c5 71 00 00] +0.817s
+[16:03:31.718] S s=757 up=233001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5e 20 c5 71 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.013s
+[16:03:32.709] H s=758 up=234001ms  7B [d6 5e 20 42 72 00 00] +0.990s
+[16:03:32.732] S s=759 up=234001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5e 20 42 72 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.024s
+[16:03:33.690] H s=760 up=235001ms  7B [16 5f 20 bf 72 00 00] +0.958s
+[16:03:33.718] S s=761 up=235001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 5f 20 bf 72 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.028s
+[16:03:34.691] H s=762 up=236001ms  7B [56 5f 20 3c 73 00 00] +0.973s
+[16:03:34.713] S s=763 up=236001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 5f 20 3c 73 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.022s
+[16:03:35.707] H s=764 up=237001ms  7B [96 5f 20 b9 73 00 00] +0.995s
+[16:03:35.785] S s=765 up=237001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 5f 20 b9 73 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.078s
+[16:03:36.695] H s=766 up=238001ms  7B [d6 5f 20 36 74 00 00] +0.910s
+[16:03:36.705] S s=767 up=238001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 5f 20 36 74 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.010s
+[16:03:37.690] H s=768 up=239001ms  7B [16 60 20 b3 74 00 00] +0.985s
+[16:03:39.081] S s=769 up=239001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 60 20 b3 74 00 80 00 00 02 73 91 00 91 01 00 00 04] +1.391s
+[16:03:39.579] H s=770 up=240001ms  7B [56 60 20 30 75 00 00] +0.498s
+[16:03:39.580] S s=771 up=240001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 60 20 30 75 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.000s
+[16:03:39.691] H s=772 up=241001ms  7B [96 60 20 ad 75 00 00] +0.112s
+[16:03:39.702] S s=773 up=241001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 60 20 ad 75 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.010s
+[16:03:40.710] H s=774 up=242001ms  7B [d6 60 20 2a 76 00 00] +1.009s
+[16:03:40.827] S s=775 up=242001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 60 20 2a 76 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.117s
+[16:03:41.742] H s=776 up=243001ms  7B [16 61 20 a7 76 00 00] +0.916s
+[16:03:41.753] S s=777 up=243001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 61 20 a7 76 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.010s
+[16:03:42.749] H s=778 up=244001ms  7B [56 61 20 24 77 00 00] +0.996s
+[16:03:42.769] S s=779 up=244001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 61 20 24 77 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.020s
+[16:03:43.690] H s=780 up=245001ms  7B [96 61 20 a1 77 00 00] +0.921s
+[16:03:43.699] S s=781 up=245001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 61 20 a1 77 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.009s
+[16:03:44.712] H s=782 up=246001ms  7B [d6 61 20 1e 78 00 00] +1.013s
+[16:03:44.727] S s=783 up=246001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 61 20 1e 78 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.015s
+[16:03:45.815] H s=784 up=247001ms  7B [16 62 20 9b 78 00 00] +1.088s
+[16:03:45.834] S s=785 up=247001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 62 20 9b 78 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.019s
+[16:03:46.697] H s=786 up=248001ms  7B [56 62 20 18 79 00 00] +0.863s
+[16:03:46.705] S s=787 up=248001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 62 20 18 79 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.009s
+[16:03:47.691] H s=788 up=249001ms  7B [96 62 20 95 79 00 00] +0.986s
+[16:03:47.702] S s=789 up=249001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 62 20 95 79 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.011s
+[16:03:48.689] H s=790 up=250001ms  7B [d6 62 20 12 7a 00 00] +0.987s
+[16:03:48.709] S s=791 up=250001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 62 20 12 7a 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.020s
+[16:03:49.708] H s=792 up=251001ms  7B [16 63 20 8f 7a 00 00] +0.999s
+[16:03:49.735] S s=793 up=251001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [34 63 20 8f 7a 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.026s
+[16:03:50.692] H s=794 up=252001ms  7B [56 63 20 0c 7b 00 00] +0.957s
+[16:03:50.700] S s=795 up=252001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [74 63 20 0c 7b 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.008s
+[16:03:51.690] H s=796 up=253001ms  7B [96 63 20 89 7b 00 00] +0.990s
+[16:03:51.698] S s=797 up=253001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [b4 63 20 89 7b 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.008s
+[16:03:52.699] H s=798 up=254001ms  7B [d6 63 20 06 7c 00 00] +1.000s
+[16:03:52.709] S s=799 up=254001ms faults=imu mot=0 dst=0 lin=0 dev=1 bar=Z act=1 hum=1 hgt=9 obs=16 byp=1 mis=6 mpv=0 drp=0 tlt=0 trn=0  18B [f4 63 20 06 7c 00 80 00 00 02 73 91 00 91 01 00 00 04] +0.010s
