@@ -3,11 +3,11 @@
 
 /*
  * bc_analog_front.h - the analog barcode sensor's front end
- * (BARCODE_SENSOR_ANALOG 1, line_config.h).  Ours, not Boon's.
+ * (BARCODE_SENSOR_ANALOG 1, line_config.h).  Ours, not the other team's.
  *
  * Every 1 ms sample of the IR module's AO (GP28, ADC2, darker = higher
  * with BC_ANALOG_BLACK_HIGH 1) gives:
- *   norm     0 white .. 1000 black for Boon's capture (bc_analog_capture.h):
+ *   norm     0 white .. 1000 black for the other team's capture (bc_analog_capture.h):
  *            the reading above the white floor, scaled by BC_ANALOG_SPAN_RAW;
  *   black    the floor-relative hysteresis of the lab test image (20 Nov):
  *            black from BC_ANALOG_ON_DELTA above the white floor, white

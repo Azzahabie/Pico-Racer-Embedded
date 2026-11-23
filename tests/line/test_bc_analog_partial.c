@@ -1,5 +1,5 @@
 /* Host test for the partial-read decoder (bc_analog_partial.c, ours) and
-   its place in bc_finish(), after Boon's decoders (pass 7):
+   its place in bc_finish(), after the other team's decoders (pass 7):
      - the car reads of 20 Nov that were rejected (M): P1 (17:44, a 27
        that is *F* read backwards with one thin bar lost) must decode 'F';
        P2 (18:00, 15 elements) and P3 (17:30, 17) must give no letter;
@@ -93,7 +93,7 @@ static void test_car_reads(void)
 	(void)printf("P1 (M, 17:44): '%c' %s, %u missed bar, cost %u, next '%c' %u (x%.1f)\n", pt.ch,
 		     pt.b_reversed ? "rev" : "fwd", (unsigned)pt.missed_bars, (unsigned)pt.cost,
 		     pt.ch2, (unsigned)pt.cost2, (double)pt.cost2 / (double)pt.cost);
-	/* through bc_finish(): Boon's decoders give nothing (his best match
+	/* through bc_finish(): the other team's decoders give nothing (their best match
 	   never runs: trim_specks() cuts it to 23), the partial one 'F' */
 	r = finish_one(w, n, &o);
 	CHECK((r == BC_VALID) && (o.ch == 'F') && o.b_reversed && (o.pass == 7u) && (o.elements == 27u));

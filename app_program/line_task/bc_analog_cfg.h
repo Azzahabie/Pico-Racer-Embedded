@@ -1,9 +1,8 @@
 /*
- *  Adapted from line_cfg.h and line_types.h by Boon (Buddy 3, another
- *  team in the same module), used with the author's permission
- *  (confirmed by Hanis, 20 Nov 2026).  Changes: file renamed
+ *  Adapted from line_cfg.h and line_types.h (another team's code), used with
+ *  the author's permission (20 Nov 2026).  Changes: file renamed
  *  bc_analog_cfg.h; only the barcode settings are kept (steering, slip,
- *  lift and sensor-channel settings for Boon's car are left out); most
+ *  lift and sensor-channel settings for the other team's car are left out); most
  *  values can be set with -D (#ifndef); the capture states
  *  (line_bc_state_t in line_types.h) moved here as bc_state_t, with
  *  BC_ST_DECODING added for the decode on core 0; BC_QUIET_WINDOWS added
@@ -17,7 +16,7 @@
 #ifndef BC_ANALOG_CFG_H
 #define BC_ANALOG_CFG_H
 
-/* Capture states (Boon's line_bc_state_t).  BC_ST_DECODING (ours): the
+/* Capture states (the other team's line_bc_state_t).  BC_ST_DECODING (ours): the
    trailing white ended a code; barcode_task on core 0 decodes it while the
    capture waits (bc_analog_capture.h). */
 typedef enum

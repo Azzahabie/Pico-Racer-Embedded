@@ -3,10 +3,10 @@
 
 /*
  * bc_analog_partial.h - the partial-read decoder of the analog barcode
- * path (BARCODE_SENSOR_ANALOG 1).  Ours, not Boon's.
+ * path (BARCODE_SENSOR_ANALOG 1).  Ours, not the other team's.
  *
  * The last resort, run by bc_finish() (core 0) only after every exact
- * decoder, the repairs and Boon's best match have failed.  A read that
+ * decoder, the repairs and the other team's best match have failed.  A read that
  * lost a few thin elements is lined up (dynamic programming) with the 29
  * printed elements of *X* for every X in A-Z, read forwards and
  * backwards.  The steps of a line-up:

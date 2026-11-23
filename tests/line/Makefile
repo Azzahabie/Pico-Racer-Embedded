@@ -30,7 +30,7 @@ BINS := test_barcode_decode test_barcode_action test_barcode_action_table test_i
         test_bc_analog test_bc_analog_fixtures test_bc_analog_chain \
         test_bc_analog_partial test_barcode_task_analog
 
-# The analog barcode path (BARCODE_SENSOR_ANALOG 1): Boon's capture and
+# The analog barcode path (BARCODE_SENSOR_ANALOG 1): the other team's capture and
 # decoders as adapted, our front end; the car traces of 20 Nov
 # (fixtures/); the barcode-armed junction with it; barcode_task's side.
 ANALOG   := -DBARCODE_SENSOR_ANALOG=1

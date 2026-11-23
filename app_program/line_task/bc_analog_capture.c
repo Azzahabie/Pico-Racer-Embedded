@@ -1,20 +1,19 @@
 /*
- *  Adapted from line_barcode.c by Boon (Buddy 3, another team in the same
- *  module), used with the author's permission (confirmed by Hanis,
- *  20 Nov 2026).  Changes: file renamed bc_analog_capture.c; the whole
+ *  Adapted from line_barcode.c (another team's code), used with
+ *  the author's permission (20 Nov 2026).  Changes: file renamed bc_analog_capture.c; the whole
  *  file builds only with BARCODE_SENSOR_ANALOG 1 (line_config.h), so the
  *  digital car image is unchanged; finish() became bc_finish(), which
  *  only reads the capture (run by barcode_task on core 0; the pass goes
  *  to bc_out_t, the state change to bc_resume()); bc_sample() returns
- *  BC_DONE and waits in BC_ST_DECODING where Boon's code called finish()
+ *  BC_DONE and waits in BC_ST_DECODING where the other team's code called finish()
  *  or rejected a code too long or with too many elements; ours, for the
  *  car: the stop-character END and the run-on last bar
  *  (BC_END_ON_STOP), the scan gate, the
  *  junction cut, the mission abort, the read id and bc_in_read() /
  *  bc_busy(), the white noise taken as the quietest of the last three
- *  windows, runs_to_widths() in one pass (same result), and after his
+ *  windows, runs_to_widths() in one pass (same result), and after their
  *  best match our partial-read decoder (bc_analog_partial.c, pass 7;
- *  marked "ours" below).  Boon's swing reading, darkness
+ *  marked "ours" below).  The other team's swing reading, darkness
  *  profile, re-reads, speck trimming, repair and best match are
  *  unchanged.
  *
@@ -161,7 +160,7 @@ void bc_prof_levels(uint16_t const * p_prof, uint16_t n_bins, uint16_t * p_white
 /* Runs (in bins, bar first) to widths: runs shorter than
    BC_PROF_MIN_BINS merge into their neighbours (a speck inside a bar or a
    glint inside a space), keeping the bar / space alternation.
-   Ours (20 Nov): the same merges in one pass (Boon's moved the rest of
+   Ours (20 Nov): the same merges in one pass (the other team's moved the rest of
    the array down after each merge: up to 1.85 million moves, about
    100 ms on the Cortex-M0+, for a profile of 1411 one-bin runs, C).  A
    merge never looks back at the run it grew, so keeping the runs in
@@ -419,8 +418,8 @@ static code39_result_t decode_exact(uint32_t const * p_w, uint16_t n, char * p_c
    Ours: run on core 0 (barcode_task) on a capture in BC_ST_DECODING; it
    only reads the capture, so the pass goes to p_out and the state change
    to bc_resume().  A code bc_sample() gave up on (too long, too many
-   elements) is rejected here as Boon's bc_sample() did, without a decode.
-   Ours (21 Nov): if his best match gives nothing either, the partial-read
+   elements) is rejected here as the other team's bc_sample() did, without a decode.
+   Ours (21 Nov): if their best match gives nothing either, the partial-read
    decoder (bc_analog_partial.h) runs on ONE reading, the one whose count
    is nearest 29 as it was read (not trimmed: once a thin bar is lost the
    median inner bar trim_specks() compares with is a wide one, and it cut
@@ -530,7 +529,7 @@ bc_result_t bc_finish(bc_capture_t const * p_bc, bc_out_t * p_out)
         }
         else
         {
-            /* decoded by Boon's best match */
+            /* decoded by the other team's best match */
         }
     }
     if (r == CODE39_NOT_BARCODE)
@@ -822,7 +821,7 @@ void bc_resume(bc_capture_t * p_bc, bc_result_t r)
     }
     if ((r == BC_NONE) && !p_bc->b_cut)
     {
-        p_bc->state = (uint8_t)BC_ST_ARMED;     /* Boon's NOT_BARCODE */
+        p_bc->state = (uint8_t)BC_ST_ARMED;     /* The other team's NOT_BARCODE */
     }
     else
     {

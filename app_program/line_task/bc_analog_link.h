@@ -10,12 +10,12 @@
  *       decoded on core 1: barcode_task looks the letter up and stores the
  *       command and the judged word, as for a GP7 read.
  *   ir_sense_task --bar_mbf ANALOG {5, read_id, BAR_ANALOG_CUT or 0}--> barcode_task
- *       Boon's end of a code: the capture (line_bc_capture()) waits in
- *       BC_ST_DECODING; barcode_task runs bc_finish() on it (his re-reads
+ *       The other team's end of a code: the capture (line_bc_capture()) waits in
+ *       BC_ST_DECODING; barcode_task runs bc_finish() on it (their re-reads
  *       and best match, up to milliseconds), stores the command and the
  *       judged word if it decoded, then the reply word, and only then
  *       prints.  ir_sense_task polls the reply word every 1 ms and gives
- *       the capture back to Boon's states (bc_resume()).
+ *       the capture back to the other team's states (bc_resume()).
  *   ir_sense_task --bar_mbf ABORT {3, read_id, BAR_ABORT_CANCELLED}--> barcode_task
  *       a mission change dropped a capture: barcode_rx.c judges it as for
  *       GP7 ("REJECTED: aborted (cancelled)").

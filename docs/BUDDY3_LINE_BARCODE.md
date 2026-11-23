@@ -486,18 +486,17 @@ the course photos (19 Nov):
 
 ### Credit
 
-The analog barcode path uses **Boon's** barcode code. Boon is Buddy 3 of
-another team in the same module; Hanis confirmed on 20 Nov 2026 that Boon
-gave permission to use it. Adapted from his files:
+The analog barcode path uses another team's barcode code, used with the
+author's permission (20 Nov 2026). Adapted from their files:
 
-| Ours | Adapted from Boon's |
+| Ours | Adapted from the other team's |
 |---|---|
 | `app_program/line_task/bc_analog_capture.c/.h` | `line_barcode.c/.h` (the capture: swing reading, darkness profile, re-reads, speck trimming, best match) |
 | `app_program/line_task/bc_analog_code39.c/.h` | `code39.c/.h` (the Code 39 decoders, the one-bar repair, the best match) |
 | `app_program/line_task/bc_analog_cfg.h` | `line_cfg.h` (the barcode settings only) and `line_types.h` (the capture states) |
 
 Each of these files starts with a credit header that lists what was
-changed. His algorithms are kept; what we added or changed is marked
+changed. Their algorithms are kept; what we added or changed is marked
 "ours" in the code and listed below. Ours alone: `bc_analog_front.c/.h`
 (the reading and the travel), `bc_analog_link.h` (the hand-over between
 the cores), the glue in `line_task.c` and `barcode_task.c`, and the tests.
@@ -518,7 +517,7 @@ master `fbbcde2` and of this branch are identical for `SMP=1
 CONSOLE=usb_cdc` and for the default profile (compared 20 Nov).
 
 The boot line says which sensor is in use: `barcode AO GP28 (ADC2, analog:
-Boon's barcode code, BARCODE_SENSOR_ANALOG 1)`. The 2 s heartbeat line
+the other team's barcode code, BARCODE_SENSOR_ANALOG 1)`. The 2 s heartbeat line
 shows `barcode AO GP28=<reading> floor <white> norm <0-1000> (black|white)
 <speed> mm/s`.
 
@@ -528,15 +527,15 @@ shows `barcode AO GP28=<reading> floor <white> norm <0-1000> (black|white)
 ir_sense_task, core 1, every 1 ms
   adc_hw_read(2) -> bc_analog_front: darkness 0..1000, floor black, speed
   motion_ds_read()  (dist_mm, whole mm every 10 ms)  -> travel of this ms
-  -> Boon's capture (bc_sample: swing, darkness profile, widths in um)
+  -> the other team's capture (bc_sample: swing, darkness profile, widths in um)
        29th element is the stop's last bar and the 29 decode  -> LETTER
-       Boon's end of a code (white > 40 mm and > 2.5 x widest) -> ANALOG
+       the other team's end of a code (white > 40 mm and > 2.5 x widest) -> ANALOG
   junction side: floor black after the glitch filter -> junction_arm, line_track
 barcode_task, core 0
   LETTER: table, command, judged word, console, telemetry
-  ANALOG: bc_finish (Boon's re-reads, repair, best match), command, judged
+  ANALOG: bc_finish (the other team's re-reads, repair, best match), command, judged
           word, then the reply word; console and telemetry after
-ir_sense_task: the reply gives the capture back to Boon's states
+ir_sense_task: the reply gives the capture back to the other team's states
 ```
 
 - **Darkness**: (reading - white floor) x 1000 / `BC_ANALOG_SPAN_RAW`,
@@ -552,12 +551,12 @@ ir_sense_task: the reply gives the capture back to Boon's states
   `BC_ANALOG_NO_DS_UM_PER_MS` (32, base 4).
 - **Hand-over**: the capture belongs to core 1, except from an ANALOG
   message until core 1 sees barcode_task's reply word (`BC_ST_DECODING`);
-  meanwhile core 1 only counts the travel for Boon's cooldown. The reply
+  meanwhile core 1 only counts the travel for the other team's cooldown. The reply
   word has one writer (barcode_task, after a barrier that ends its reads)
   and one reader. The command and the judged word keep their single
   writer (barcode_task) and their order (command, then judged word), so
   `junction_arm` and nav see them exactly as for GP7.
-- **Rejects** print like GP7's, with Boon's reason and the first reading's
+- **Rejects** print like GP7's, with the other team's reason and the first reading's
   widths in mm, and send letter 31:
   `[barcode] REJECTED: malformed (analog count, decode 4210 us)`, then
   `[barcode]   25 widths in mm (1 letter = 29); readings swing/mid/low/adapt20/15/10: 25/21/25/25/25/27`
@@ -574,13 +573,13 @@ ir_sense_task: the reply gives the capture back to Boon's states
   digital sensor. The scan gate shuts new captures while turning, as for
   GP7, and counts them.
 - A read that ENDs at its stop character arms the junction once that black
-  has ended, or the next bar has begun by Boon's swing reading (a crossbar
+  has ended, or the next bar has begun by the other team's swing reading (a crossbar
   close behind the sheet): never on the sheet's own last bar. Until then
   it holds the junction side as an open read does.
 - A read decoded by barcode_task arms the junction when the reply comes
   (the command is already stored). A junction that falls due while core 0
   decodes waits for it, at most `BC_ANALOG_VERDICT_WAIT_MS` (200 ms).
-- After a valid read Boon's capture cools down for 100 mm, so the crossbar
+- After a valid read the other team's capture cools down for 100 mm, so the crossbar
   opens no capture of its own; the armed junction fires on it. A crossbar
   that opens a capture is dropped when its junction fires; a capture with
   elements before the crossbar is cut there and judged only (printed, no
@@ -591,23 +590,23 @@ ir_sense_task: the reply gives the capture back to Boon's states
   (3.0-7.5 mm into it), with the sheet's command, and none inside the
   sheet. Faint thin bars with the crossbar 120 mm behind: 12 of 12.
 
-### What we changed in Boon's code, and why
+### What we changed in the other team's code, and why
 
-- `bc_finish()` is his `finish()` run by barcode_task on core 0, reading
+- `bc_finish()` is their `finish()` run by barcode_task on core 0, reading
   the capture only; the capture waits in `BC_ST_DECODING`
-  (`bc_resume()` sets his next state). His end-of-code passes take
+  (`bc_resume()` sets their next state). Their end-of-code passes take
   milliseconds; the 1 ms loop must not.
 - A read ENDs at its stop character when its 29 widths decode, and a last
   bar that runs on into a crossbar is tried as narrow (`BC_END_ON_STOP`,
   as `BARCODE_END_ON_STOP` for GP7). The car trace run3 is such a run-on.
 - A read two bars short at one end is repaired (`BC_REPAIR4`): car trace
   run1.
-- The white noise for his adaptive re-reads is the quietest of the last
+- The white noise for their adaptive re-reads is the quietest of the last
   three 25 mm windows, not the last one: faint leading bars could fill the
   last window and switch the re-reads off (sim: 0 of 26 faint sheets
   decoded before, `test_bc_analog`).
-- `runs_to_widths()` merges in one pass (same result; tested against his
-  version): his moved the array down after every merge, up to 1.85 million
+- `runs_to_widths()` merges in one pass (same result; tested against their
+  version): theirs moved the array down after every merge, up to 1.85 million
   moves on a noisy profile, about 100 ms (C).
 - `code39_char()` compares precomputed pattern numbers (same result,
   tested): about 5600 cycles less per failed lookup (C).
@@ -638,8 +637,8 @@ ir_sense_task: the reply gives the capture back to Boon's states
 | `SMP=1 CONSOLE=usb_cdc` | 32752 B | 45328 B | +12576 B |
 | Wi-Fi netlog car profile | 90320 B (to `__bss_end`) | 102880 B | +12560 B |
 
-The largest: Boon's capture `g_bc` 3300 B (the darkness profile, 1411 x
-2 B), his best-match tables `dp` 4080 B and `ed` 1020 B, his run buffers
+The largest: the other team's capture `g_bc` 3300 B (the darkness profile, 1411 x
+2 B), their best-match tables `dp` 4080 B and `ed` 1020 B, their run buffers
 2 x 1410 B; the GP7 capture (148 B) is not built. The kernel's memory
 (task stacks, message buffers) is what is left of the 256 KB after
 `__bss_end` and the 2 KB exception stack: 214768 B (227344 B before), and
@@ -655,8 +654,8 @@ rebuilt as motion publishes it, the capture, `bc_finish()`.
 |---|---|---|
 | run3_1509 | the test image decoded `Z` | `Z`, at the stop END (the last bar ran on into the tape) |
 | run1_1506 | `Z`, first four elements never above white | `Z`, by the four-element repair |
-| run4_1517 | the track's sheet, faint thin bars | `F`, read backwards, by Boon's adaptive re-read (pass 3); checked by hand: `*F*` reversed in reading 5 |
-| run2_1508 | faint, aborted | no letter: rejected too long (the unseen thin bars make gaps of 46 and 69 mm, so his end needs 173 mm of white) |
+| run4_1517 | the track's sheet, faint thin bars | `F`, read backwards, by the other team's adaptive re-read (pass 3); checked by hand: `*F*` reversed in reading 5 |
+| run2_1508 | faint, aborted | no letter: rejected too long (the unseen thin bars make gaps of 46 and 69 mm, so their end needs 173 mm of white) |
 
 Span sweep (sim): all three decode from 2100 to 2500; below 2100 a bump in
 a narrow space between two thick bars splits run3, above 2500 run4's thin
@@ -668,19 +667,19 @@ bars are lost. 2300 is the middle. None of the spans gave a wrong letter.
 120), `BC_ANALOG_FLOOR_RISE_MS` (8), `BC_ANALOG_NORM_FLOOR` (1) and
 `BC_ANALOG_WHITE_RAW` (200), `BC_ANALOG_NO_DS_UM_PER_MS` (32),
 `BC_END_ON_STOP` (1), `BC_REPAIR4` (1), `BC_ANALOG_VERDICT_WAIT_MS` (200),
-`BC_ANALOG_GPIO` (28), `BC_ANALOG_BLACK_HIGH` (1); Boon's barcode settings
+`BC_ANALOG_GPIO` (28), `BC_ANALOG_BLACK_HIGH` (1); the other team's barcode settings
 in `bc_analog_cfg.h` (`BC_DELTA`, `BC_END_MIN_UM`, ...).
 
 ### Limits and open questions
 
 - Nothing here has run on the car. The span (2300) is fitted to four
   traces of one sensor height and two sheets.
-- A faint sheet decodes only at Boon's end, 40 mm or more of white after
+- A faint sheet decodes only at the other team's end, 40 mm or more of white after
   its last bar, so the armed junction needs the crossbar further behind
   than that; nearer, the crossbar joins the read (as for a failed GP7
   read) and only the length rule can fire.
 - Thin bars all unseen at the 5.1 mm and 6.9 mm scales leave white inside
-  the code longer than his 40 mm end, so the read splits (sim: thin bars
+  the code longer than their 40 mm end, so the read splits (sim: thin bars
   at 700 of 200..2600 decode 2-14 of 26; at 900 and above 20-26 of 26).
 - The first bar a faint sheet shows may be a thick one: a capture's first
   bar is never "in a read", so a thick bar longer than
@@ -859,7 +858,7 @@ docker compose run --rm build bash -lc "make -C tests/line"
 | `test_barcode_action` | the table, map apply and reject, the command word; every action for every letter from a map; the writeup example as the laptop's 7 bytes; the comms vector; built again with a compiled-in table (`test_barcode_action_table`) |
 | `test_barcode_task` | `barcode_task.c`'s own loop on a fake kernel: the boot table line, a map from comms, each action stored from it, a map sent while a sheet is read (waits for the read), a map between a read and its junction (the stored command stays), a full map queue, a wrong length, a new mission; built three times (no table, a compiled-in table, one with a bad character) |
 | `test_line_state` | the word, and the motion statechart contract |
-| `test_bc_analog` | the analog path's modules: Boon's decoders on every Code 39 character both ways, his repair and best match, our four-element repair, the precomputed patterns, his run merge against ours on 4000 random profiles; false decodes (random and damaged reads, rates printed); the front end (speed at 15-100 mm/s within 2 %, stop, reverse, no `distance_state`, the floor-relative level and glitch filter); the capture on modelled sheets (312 sheets at three scales decode at the stop, faint thin bars, a crossbar alone, the run-on last bar, the scan gate, the junction drop and cut, the mission abort) |
+| `test_bc_analog` | the analog path's modules: the other team's decoders on every Code 39 character both ways, their repair and best match, our four-element repair, the precomputed patterns, their run merge against ours on 4000 random profiles; false decodes (random and damaged reads, rates printed); the front end (speed at 15-100 mm/s within 2 %, stop, reverse, no `distance_state`, the floor-relative level and glitch filter); the capture on modelled sheets (312 sheets at three scales decode at the stop, faint thin bars, a crossbar alone, the run-on last bar, the scan gate, the junction drop and cut, the mission abort) |
 | `test_bc_analog_fixtures` | the car traces of 20 Nov through the whole analog path (`fixtures/`) |
 | `test_bc_analog_chain` | the barcode-armed junction with the analog sensor, end to end (108 courses, faint sheets, barcode_task slower than the verdict wait, no crossbar) |
 | `test_barcode_task_analog` | `barcode_task.c` with the analog path: LETTER stored, ANALOG decoded on core 0 with the reply, a reject with its widths in mm, a read cut by a junction |

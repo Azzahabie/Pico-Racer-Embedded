@@ -401,9 +401,9 @@
    0 (default): the GP7 digital DO path above, unchanged.
    1: the barcode sensor is an analog IR module (TCRT5000 type) whose AO
    is on GP28 (ADC2, Grove 7's second wire; the Robo Pico's VBAT-sense
-   jumper is open, so GP28 is free; Grove VCC 3.3 V), read with Boon's
-   barcode code (Buddy 3 of another team in the module, used with his
-   permission, confirmed by Hanis 20 Nov; docs/BUDDY3_LINE_BARCODE.md):
+   jumper is open, so GP28 is free; Grove VCC 3.3 V), read with another
+   team's barcode code (used with the author's permission, 20 Nov;
+   docs/BUDDY3_LINE_BARCODE.md):
    bc_analog_front.h turns the reading and distance_state into a
    0..1000 darkness and the travel of each 1 ms sample,
    bc_analog_capture.h finds bars by swing and keeps a darkness profile in
@@ -425,13 +425,13 @@
 #ifndef BC_ANALOG_BLACK_HIGH
 #define BC_ANALOG_BLACK_HIGH                      (1u)
 #endif
-/* The darkness for Boon's capture: (reading - white) x 1000 /
+/* The darkness for the other team's capture: (reading - white) x 1000 /
    BC_ANALOG_SPAN_RAW, 0..1000.  White is the floor below (1) or
    BC_ANALOG_WHITE_RAW (0).  Measured 20 Nov (M, lab traces): white about
    200, thick bars 2400-3900, thin bars 600-2500 (faint ones 500-850 on
    the track).  The span sets how faint a thin bar the first (swing)
    reading sees: BC_DELTA 250 of 1000 is 575 counts at 2300.  Thicker bars
-   clip at 1000; Boon's re-reads of the darkness profile find fainter bars.
+   clip at 1000; the other team's re-reads of the darkness profile find fainter bars.
    On the four car traces of 20 Nov (sim, tests/line
    test_bc_analog_fixtures, spans 1200-3600 tried) the two 'Z' runs and
    the track's faint sheet all decode from 2100 to 2500; below 2100 a
@@ -468,8 +468,8 @@
 #endif
 /* 1 (ours, as BARCODE_END_ON_STOP for GP7): a read ENDs as soon as its
    29th element, the stop character's last bar, ends, if the 29 decode as
-   one *X* either way round; otherwise Boon's end (a white run longer
-   than 40 mm and 2.5 x the widest element) and his re-reads decide.
+   one *X* either way round; otherwise the other team's end (a white run longer
+   than 40 mm and 2.5 x the widest element) and their re-reads decide.
    Needed for the armed junction when the crossbar is closer than about
    40 mm behind the sheet. */
 #ifndef BC_END_ON_STOP
@@ -482,8 +482,8 @@
 #ifndef BC_REPAIR4
 #define BC_REPAIR4                                (1u)
 #endif
-/* After Boon's end of a code, a junction that is due waits at most this
-   long (ms) for barcode_task's decode on core 0 (the worst case of his
+/* After the other team's end of a code, a junction that is due waits at most this
+   long (ms) for barcode_task's decode on core 0 (the worst case of their
    re-reads and best match is estimated in docs/BUDDY3_LINE_BARCODE.md). */
 #ifndef BC_ANALOG_VERDICT_WAIT_MS
 #define BC_ANALOG_VERDICT_WAIT_MS                 (200u)

@@ -10,7 +10,7 @@
    "LRFU" + 22 x F: A left, B right, C straight, D U-turn), with a
    compiled-in table that has a wrong character, and with the example and
    the analog barcode path (-DBARCODE_SENSOR_ANALOG=1: its LETTER and
-   ANALOG messages, Boon's decode on this side, the reply word). */
+   ANALOG messages, the other team's decode on this side, the reply word). */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -670,7 +670,7 @@ static void analog_letter_stored(void)
 }
 
 /* ANALOG: a read one bar short (27 elements: no stop END) is decoded on
-   core 0 by Boon's repair; command, judged word, then the reply. */
+   core 0 by the other team's repair; command, judged word, then the reply. */
 static void analog_decoded_on_core0(void)
 {
 	uint32_t w[32];
@@ -692,7 +692,7 @@ static void analog_decoded_on_core0(void)
 	CHECK('A' == bc_link_reply_letter(barcode_analog_reply_word()));
 }
 
-/* A reject prints Boon's reason and the widths in mm, sends letter 31,
+/* A reject prints the other team's reason and the widths in mm, sends letter 31,
    stores the judged word and no command. */
 static void analog_rejected(void)
 {
@@ -719,7 +719,7 @@ static void analog_rejected(void)
 	CHECK((1 == g_e_n) && (COMM_W_BARCODE_UNREADABLE == g_e_letter[0]));
 }
 
-/* Ours: the car read of 20 Nov 17:44 (M), a 27 that Boon's decoders
+/* Ours: the car read of 20 Nov 17:44 (M), a 27 that the other team's decoders
    reject, is *F* backwards with one thin bar lost: the partial decoder
    reads it (pass 7) and the console says so. */
 static void analog_partial_decoded(void)

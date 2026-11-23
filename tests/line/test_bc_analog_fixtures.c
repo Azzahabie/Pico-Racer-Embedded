@@ -2,7 +2,7 @@
    there) through the whole analog barcode path, one 1 ms sample at a time
    as line_task.c runs it with BARCODE_SENSOR_ANALOG 1:
      ADC reading -> bc_analog_front.c (floor, darkness, travel from
-     distance_state) -> Boon's capture (bc_analog_capture.c) -> on BC_DONE
+     distance_state) -> the other team's capture (bc_analog_capture.c) -> on BC_DONE
      bc_finish() (barcode_task's part, core 0) -> bc_resume().
    Nothing here runs on the car.
 
@@ -14,7 +14,7 @@
    motion_task does (whole mm every 10 ms, the counter +1), so the front
    end sees the same 1 mm steps as on the car (sim).  Before each trace:
    1.5 s of its first reading at 32 mm/s, so the capture sees a quiet
-   zone; after it: 2.5 s of that reading at 32 mm/s, so Boon's end
+   zone; after it: 2.5 s of that reading at 32 mm/s, so the other team's end
    of a code (40 mm of white) can come, as the traces stop soon after the
    last bar (sim, both synthetic).
 

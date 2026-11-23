@@ -11,7 +11,7 @@
  *
  * BARCODE_SENSOR_ANALOG 1: the analog path's LETTER and ANALOG messages
  * (bc_analog_link.h) are judged here too.  For ANALOG this task runs
- * Boon's end-of-code decode (bc_finish(), with our partial-read decoder
+ * The other team's end-of-code decode (bc_finish(), with our partial-read decoder
  * last) on ir_sense_task's capture, stores the command and the judged
  * word, then the reply word, and only then prints: the pass that decoded
  * (and for the partial decoder the elements it found lost), or after a
@@ -272,7 +272,7 @@ EXPORT uint32_t barcode_analog_reply_word(void)
 	return g_analog_reply;
 }
 
-/* Boon's reason codes (bc_analog_code39.h) in REJECTED lines. */
+/* The other team's reason codes (bc_analog_code39.h) in REJECTED lines. */
 LOCAL const char *analog_reason_name(uint8_t reason)
 {
 	switch((code39_result_t)reason) {

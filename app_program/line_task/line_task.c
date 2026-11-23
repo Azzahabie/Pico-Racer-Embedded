@@ -29,7 +29,7 @@
  *
  * BARCODE_SENSOR_ANALOG 1 (line_config.h): the barcode sensor is an analog
  * IR module on GP28 (ADC2), read every 1 ms after the line sensors and fed
- * to Boon's capture (bc_analog_front.h, bc_analog_capture.h); reads cross
+ * to the other team's capture (bc_analog_front.h, bc_analog_capture.h); reads cross
  * to barcode_task as bc_analog_link.h says.  The junction side counts the
  * front end's floor-relative black (after the glitch filter) where it
  * counts GP7 above; a read that ENDed at its stop character arms the
@@ -263,7 +263,7 @@ LOCAL BOOL send_analog(uint8_t type, uint16_t value)
 	return TRUE;
 }
 
-/* Boon's end of a code (or a junction cut): barcode_task decodes the
+/* The other team's end of a code (or a junction cut): barcode_task decodes the
    capture.  Without room in bar_mbf the read is lost and the capture
    cools down as after a reject. */
 LOCAL void analog_hand_off(BOOL cut)
@@ -543,7 +543,7 @@ EXPORT void ir_sense_task(INT stacd, void *exinf)
 		}
 	}
 #if BARCODE_SENSOR_ANALOG
-	tm_printf((UB *)"[line] ir_sense_task: line ADC GP%d/GP%d, barcode AO GP%d (ADC%d, analog: Boon's barcode code, BARCODE_SENSOR_ANALOG 1), 1 ms; span %u, black +%u/+%u over the floor\n",
+	tm_printf((UB *)"[line] ir_sense_task: line ADC GP%d/GP%d, barcode AO GP%d (ADC%d, analog: the other team's barcode code, BARCODE_SENSOR_ANALOG 1), 1 ms; span %u, black +%u/+%u over the floor\n",
 		  (INT)LINE_SENSOR_LEFT_GPIO, (INT)LINE_SENSOR_RIGHT_GPIO,
 		  (INT)BC_ANALOG_GPIO, (INT)BC_ANALOG_ADC_CHANNEL,
 		  (UINT)BC_ANALOG_SPAN_RAW, (UINT)BC_ANALOG_ON_DELTA,

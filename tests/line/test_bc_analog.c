@@ -1,9 +1,9 @@
 /* Host test for the analog barcode path's pure modules
-   (BARCODE_SENSOR_ANALOG 1): Boon's Code 39 decoders as adapted
-   (bc_analog_code39.c), his capture as adapted (bc_analog_capture.c) and
-   our front end (bc_analog_front.c).  Boon's own host tests were not in
+   (BARCODE_SENSOR_ANALOG 1): the other team's Code 39 decoders as adapted
+   (bc_analog_code39.c), their capture as adapted (bc_analog_capture.c) and
+   our front end (bc_analog_front.c).  The other team's own host tests were not in
    the files we were given, so these are new; the decoder cases follow the
-   behaviour his comments describe.  Sheets come from bc_sim.h (sim).
+   behaviour their comments describe.  Sheets come from bc_sim.h (sim).
 
    Also a false-decode property test: random widths, and valid reads
    damaged, never give a letter other than the one printed (the rates are
@@ -84,7 +84,7 @@ static void test_decoders(void)
 	w[0] = 18000u;
 	CHECK(code39_decode_one_repair(w, 1u, BC_RATIO_MIN_X10, &ch, &rev) == CODE39_NOT_BARCODE);
 
-	/* Boon's repair: one bar and its space lost at either end, either way */
+	/* The other team's repair: one bar and its space lost at either end, either way */
 	for (d = 0; d < 4; ++d) {
 		uint16_t n = code_widths('A', 3400u, 25u, d & 1, w);
 
@@ -117,7 +117,7 @@ static void test_decoders(void)
 #endif
 	}
 
-	/* Boon's best match: a thick bar split by a speck (31 elements) */
+	/* The other team's best match: a thick bar split by a speck (31 elements) */
 	{
 		uint16_t n = code_widths('K', 3400u, 25u, 0, w);
 		uint32_t s[64];
@@ -149,7 +149,7 @@ static uint32_t rnd(void)
 	return bc_sim_rand >> 8;
 }
 
-/* Every decoder a read can reach in Boon's bc_finish(), in his order. */
+/* Every decoder a read can reach in the other team's bc_finish(), in their order. */
 static int decode_any(uint32_t *w, uint16_t n, char *ch)
 {
 	bool rev;
@@ -266,8 +266,8 @@ static void test_false_decodes(void)
 	CHECK((dmg_wrong * 1000u) < dmg_n);			/* under 0.1 %  */
 }
 
-/* ---- Boon's original run merge, to compare with ours ------------------ */
-/* Copied unchanged from line_barcode.c (Boon) but for the names: the
+/* ---- the other team's original run merge, to compare with ours ------------------ */
+/* Copied unchanged from the other team's line_barcode.c but for the names: the
    adapted runs_to_widths() is one pass; both must give the same widths. */
 static uint16_t ref_runs_to_widths(uint16_t * p_runs, uint16_t nr, uint32_t * p_widths, uint16_t max)
 {
@@ -631,13 +631,13 @@ static void test_capture(void)
 		}
 	}
 	(void)printf("capture: %u sheets (3 scales, ratio 2.5/3, both ways): %u wrong, "
-		     "%u decoded after Boon's end instead of at the stop\n", runs, bad, late);
+		     "%u decoded after the other team's end instead of at the stop\n", runs, bad, late);
 	CHECK(bad == 0u);
 	CHECK(late == 0u);
 
-	/* faint thin bars: the stop END cannot see them, Boon's re-reads of
+	/* faint thin bars: the stop END cannot see them, the other team's re-reads of
 	   the darkness profile can, while the white between thick bars stays
-	   under his 40 mm end of a code (5.1 mm scale: up to 43 mm, so a
+	   under their 40 mm end of a code (5.1 mm scale: up to 43 mm, so a
 	   sheet whose thin bars are all unseen splits).  700 (500 over white,
 	   under the swing's 575 at span 2300; less under a 4 mm spot on a
 	   3.4 mm bar) is reported only; never a wrong letter */

@@ -1,13 +1,12 @@
 /*
- *  Adapted from code39.c by Boon (Buddy 3, another team in the same
- *  module), used with the author's permission (confirmed by Hanis,
- *  20 Nov 2026).  Changes: file renamed bc_analog_code39.c; the whole
+ *  Adapted from code39.c (another team's code), used with
+ *  the author's permission (20 Nov 2026).  Changes: file renamed bc_analog_code39.c; the whole
  *  file builds only with BARCODE_SENSOR_ANALOG 1 (line_config.h), so the
  *  digital car image is unchanged; code39_decode_one_repair() calls
  *  repair_four() (ours, BC_REPAIR4) for a read two bars short at one end;
  *  code39_char() compares precomputed pattern numbers (k_bits, ours, same
  *  results, faster on the Cortex-M0+); code39_bits_ok() (ours, for the
- *  host test).  Boon's decoders are otherwise unchanged.
+ *  host test).  The other team's decoders are otherwise unchanged.
  *
  *  Code 39 decoder.  See bc_analog_code39.h.
  */
@@ -318,7 +317,7 @@ code39_result_t code39_decode_one(uint32_t const * p_widths, uint16_t n, uint16_
 
 #if BC_REPAIR4
 /* ---- two element pairs lost at one end (ours, 20 Nov) -------------- */
-/* Not Boon's: on the car (run1 of 20 Nov, tests/line/fixtures) the first
+/* Not the other team's: on the car (run1 of 20 Nov, tests/line/fixtures) the first
    narrow bar, the wide space, the second narrow bar and the narrow space
    of the start '*' never rose above white, so a good read of "*Z*" came
    in four elements short (25).  As the 2-element repair below, the lost

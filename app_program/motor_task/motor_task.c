@@ -4247,7 +4247,7 @@ man_drive (motion_ctx_t *p_ctx, motion_state_t state)
             /* TEST IMAGE (20 Nov): slower over a barcode (line_state's
                barcode bit, LINE_BARCODE_HOLD 1), so the slow analog
                barcode sensor sees thin bars darker.  Widths are measured
-               in mm (Boon's reader), so the change of speed does not
+               in mm (the other team's reader), so the change of speed does not
                distort them.  0: off. */
             int32_t base = MOTION_LF_BASE;
             int32_t c;

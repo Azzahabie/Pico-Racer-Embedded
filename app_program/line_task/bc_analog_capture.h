@@ -1,9 +1,8 @@
 /*
- *  Adapted from line_barcode.h by Boon (Buddy 3, another team in the same
- *  module), used with the author's permission (confirmed by Hanis,
- *  20 Nov 2026).  Changes: file renamed bc_analog_capture.h; includes
+ *  Adapted from line_barcode.h (another team's code), used with
+ *  the author's permission (20 Nov 2026).  Changes: file renamed bc_analog_capture.h; includes
  *  bc_analog_cfg.h and bc_analog_code39.h; the end-of-code decode
- *  (Boon's finish()) is split off as bc_finish(), run by barcode_task on
+ *  (the other team's finish()) is split off as bc_finish(), run by barcode_task on
  *  core 0 while the capture waits in BC_ST_DECODING (bc_sample() returns
  *  BC_DONE, then bc_resume()); the pass that decoded moved from the
  *  capture to bc_out_t; added for our car: a read ENDs at the stop
@@ -13,7 +12,7 @@
  *  side, the white noise from the quietest of the last three windows,
  *  and the partial-read decoder's verdict in bc_out_t (part, pass 7).
  *
- *  Region B of the Line & Barcode statechart (Boon's Week 6 6.2):
+ *  Region B of the Line & Barcode statechart (the other team's Week 6 6.2):
  *  WAIT_QUIET -> ARMED -> CAPTURING -> (VALID | REJECT) -> COOLDOWN.
  *  Pure C (host-tested in tests/line).
  *
@@ -136,7 +135,7 @@ void        bc_prof_levels(uint16_t const * p_prof, uint16_t n_bins, uint16_t * 
    BC_ST_DECODING for bc_finish().  Core 1. */
 bc_result_t bc_sample(bc_capture_t * p_bc, uint16_t norm, uint32_t step_um, bc_out_t * p_out);
 
-/* Boon's end-of-code decode (his finish()), on a capture in
+/* The other team's end-of-code decode (their finish()), on a capture in
    BC_ST_DECODING; changes nothing in it.  Returns BC_VALID (p_out->ch),
    BC_REJECT (p_out->reason) or BC_NONE (not a barcode: a crossing line or
    a speck).  Ours: then the partial-read decoder (pass 7, p_out->part).

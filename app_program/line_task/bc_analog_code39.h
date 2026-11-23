@@ -1,7 +1,6 @@
 /*
- *  Adapted from code39.h by Boon (Buddy 3, another team in the same
- *  module), used with the author's permission (confirmed by Hanis,
- *  20 Nov 2026).  Changes: file renamed bc_analog_code39.h (include
+ *  Adapted from code39.h (another team's code), used with
+ *  the author's permission (20 Nov 2026).  Changes: file renamed bc_analog_code39.h (include
  *  guard BC_ANALOG_CODE39_H); code39_decode_one_repair() also puts back
  *  four lost end elements (BC_REPAIR4, ours, see the .c file);
  *  code39_bits_ok() added (ours, for the host test).

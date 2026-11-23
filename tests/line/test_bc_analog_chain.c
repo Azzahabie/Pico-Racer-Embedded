@@ -2,7 +2,7 @@
    (BARCODE_SENSOR_ANALOG 1, LINE_JUNCTION_RULE 1), end to end, one 1 ms
    sample at a time in line_task.c's order:
      the reading (bc_sim.h) -> bc_analog_front.c -> barcode_task's reply
-     polled -> Boon's capture (bc_analog_capture.c) -> LETTER or ANALOG to
+     polled -> the other team's capture (bc_analog_capture.c) -> LETTER or ANALOG to
      barcode_task (modelled: after a latency it decodes, stores the
      command, the judged word, then the reply) -> the arming rule ->
      junction_arm.c -> line_track.c's gate -> the junction, where nav's
@@ -334,8 +334,8 @@ int main(void)
 		     runs, ok, bad_before, missed, bad_cmd, into_min, into_max);
 	CHECK(ok == runs);
 
-	/* faint thin bars: no stop END, decoded at Boon's end on core 0 (the
-	   reply arms the junction), so the crossbar must come after his 40 mm
+	/* faint thin bars: no stop END, decoded at the other team's end on core 0 (the
+	   reply arms the junction), so the crossbar must come after their 40 mm
 	   end of a code */
 	{
 		unsigned fok = 0u;
@@ -360,12 +360,12 @@ int main(void)
 	}
 
 	/* barcode_task slower than the verdict wait (300 ms > 200): a faint
-	   sheet decoded at Boon's end, the crossbar 45 mm behind its last bar
-	   (5 mm after his end): one junction, on the crossbar, with the
+	   sheet decoded at the other team's end, the crossbar 45 mm behind its last bar
+	   (5 mm after their end): one junction, on the crossbar, with the
 	   sheet's command */
 	latency_cfg = 300u;
 	course('K', 5.1, 0, 900.0, 45.0);
-	(void)printf("analog chain: barcode_task 300 ms late, crossbar 5 mm after Boon's end: "
+	(void)printf("analog chain: barcode_task 300 ms late, crossbar 5 mm after the other team's end: "
 		     "%u junction(s) on the crossbar, %u before, command '%c'\n",
 		     j_cross, j_before, j_letter);
 	CHECK((j_cross == 1u) && (j_before == 0u) && (j_letter == 'K'));
